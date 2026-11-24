@@ -13,6 +13,7 @@ import (
 )
 
 const libraryCatalogEmptyPreference = "workshop-library-catalog-empty"
+const libraryDefaultLimit = 20
 
 func (s *Server) mountCommerceRoutes(mux *http.ServeMux) {
 	mountPublicRead(mux, "/v1/workshop/quote", s.commerceQuoteHTTP)
@@ -187,7 +188,7 @@ func (s *Server) commerceLibraryHTTP(w http.ResponseWriter, r *http.Request) {
 		commerceInvalid(w, r, 400)
 		return
 	}
-	limit := 20
+	limit := libraryDefaultLimit
 	if _, exists := q["limit"]; exists {
 		var e error
 		limit, e = strconv.Atoi(q.Get("limit"))
@@ -199,6 +200,23 @@ func (s *Server) commerceLibraryHTTP(w http.ResponseWriter, r *http.Request) {
 	input := commerceOwner(p)
 	input["cursor"], input["limit"] = q.Get("cursor"), limit
 	s.commerceCall(w, r, "library", input, nil, "")
+}
+func (s *Server) firstWorkshopLibrary(ctx context.Context, session customerSession) *commerceLibrary {
+	if !commerceUUID(session.AccountID) || !commerceUUID(session.OrganizationID) {
+		return nil
+	}
+	input := commerceOwner(Principal{CustomerAccountID: session.AccountID, OrganizationID: session.OrganizationID})
+	input["cursor"], input["limit"] = "", libraryDefaultLimit
+	status, body, err := s.doCommerce(ctx, "library", input, nil, "")
+	if err != nil || status != http.StatusOK {
+		return nil
+	}
+	public, _ := commercePublicResult("library", status, body, input, s.commerceClient)
+	library, ok := public.(commerceLibrary)
+	if !ok {
+		return nil
+	}
+	return &library
 }
 func (s *Server) commerceWebhookHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")

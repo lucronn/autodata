@@ -42,7 +42,9 @@ if (params.get('sample') === '1' && !wantsDemo) {
     })
     .catch(() => null);
   const initialAccount = wantsDemo ? undefined : import('./auth.mjs')
-    .then(({ readSessionBootstrap }) => readSessionBootstrap())
+    .then(({ readSessionBootstrap }) => readSessionBootstrap(undefined, {
+      includeLibrary: params.get('view') === 'library' && !params.has('order'),
+    }))
     .catch(() => null);
   const { testCheckout, openDemo } = wantsDemo ? await modeRequest : {};
   // Startup requests can overlap the stylesheet and page parsing.

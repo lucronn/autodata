@@ -11,11 +11,16 @@ import (
 	"time"
 )
 
-const workshopSessionModePreference = "workshop-session-mode"
+const (
+	workshopSessionModePreference    = "workshop-session-mode"
+	workshopSessionLibraryPreference = "workshop-session-library"
+)
 
-func (s *customerAuthService) mountRoutes(mux *http.ServeMux, confirmSelectedIndex bool) {
+func (s *customerAuthService) mountRoutes(mux *http.ServeMux, confirmSelectedIndex bool, firstLibrary func(context.Context, customerSession) *commerceLibrary) {
 	mux.HandleFunc("GET /auth/config", s.publicConfig)
-	mux.HandleFunc("GET /auth/session", s.currentSession)
+	mux.HandleFunc("GET /auth/session", func(w http.ResponseWriter, r *http.Request) {
+		s.currentSession(w, r, firstLibrary)
+	})
 	mux.HandleFunc("POST /auth/firebase/session", func(w http.ResponseWriter, r *http.Request) {
 		s.exchangeSession(w, r, confirmSelectedIndex)
 	})
@@ -50,7 +55,7 @@ func (s *customerAuthService) writeError(w http.ResponseWriter, r *http.Request,
 	}
 	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": message, "retryable": retryable, "request_id": requestIDFrom(r), "details": map[string]any{"login_available": s.config.Mode == "firebase"}}})
 }
-func (s *customerAuthService) currentSession(w http.ResponseWriter, r *http.Request) {
+func (s *customerAuthService) currentSession(w http.ResponseWriter, r *http.Request, firstLibrary func(context.Context, customerSession) *commerceLibrary) {
 	w.Header().Set("Cache-Control", "no-store")
 	session, token, err := s.session(r, true)
 	if err != nil {
@@ -65,6 +70,11 @@ func (s *customerAuthService) currentSession(w http.ResponseWriter, r *http.Requ
 	}
 	if catalogReadPreferenceRequested(r, workshopSessionModePreference) {
 		result["mode"] = s.config.Mode
+		if firstLibrary != nil && catalogReadPreferenceRequested(r, workshopSessionLibraryPreference) {
+			if library := firstLibrary(r.Context(), session); library != nil {
+				result["workshop_library"] = library
+			}
+		}
 	}
 	writeJSON(w, 200, result)
 }

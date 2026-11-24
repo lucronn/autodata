@@ -1705,6 +1705,25 @@ test('a verified Firebase session opens before public login configuration and re
   }
 });
 
+test('saved Library startup requests its first page with the verified Firebase session', async () => {
+  const { createSession, readSessionBootstrap } = await import('./workshop/auth.mjs');
+  const library = { version: 'v1', items: [], next_cursor: null };
+  const calls = [];
+  const request = async (path, options) => {
+    calls.push([path, options.headers?.Prefer]);
+    if (path === '/auth/config') return new Promise(() => {});
+    return { mode: 'firebase', authenticated: true, roles: ['dataset_viewer'],
+      expires_at: '2099-01-01T00:00:00Z', csrf_token: 'verified', workshop_library: library };
+  };
+  const session = createSession({ request });
+  assert.equal(await session.bootstrap({ initial: readSessionBootstrap(request, { includeLibrary: true }) }), library);
+  assert.equal(session.state.authenticated, true);
+  assert.deepEqual(calls, [
+    ['/auth/config', undefined],
+    ['/auth/session', 'workshop-session-mode, workshop-session-library'],
+  ]);
+});
+
 test('session mode cannot accelerate a missing dataset role, CSRF token or unexpired session', async () => {
   const { createSession } = await import('./workshop/auth.mjs');
   for (const invalid of [{ roles: [] }, { csrf_token: '' }, { expires_at: '2000-01-01T00:00:00Z' }]) {
@@ -6490,6 +6509,30 @@ test('opening My vehicles hides the previous purchase panel while Library is loa
   response.resolve({ version: 'v1', next_cursor: null, items: [] });
   await opening;
   assert.equal(purchase.hidden, true);
+});
+
+test('a bundled first Library page is used only for the current signed-in route', async () => {
+  const card = { configuration_id: routeConfiguration, library_item_id: routeOrder, label: 'Exact owned vehicle',
+    region: 'US', access_state: 'viewable', granted_at: '2026-11-16T00:00:00Z' };
+  const first = { version: 'v1', next_cursor: 'more', items: [card] };
+  for (const scenario of ['valid', 'legacy', 'invalid', 'navigated', 'signed-out']) {
+    const pending = deferredAuthOperation(), requests = [];
+    const h = articleMediaHarness({
+      session: { state: { authenticated: scenario !== 'signed-out' } }, validLibrary, clearReader() {},
+      requestJSON: async path => { requests.push(path); return first; },
+    });
+    runInNewContext(appSection('async function library(', 'function clearReader('), h.context);
+    const opening = h.context.library(h.g, false, { initialAccountCheck: pending.promise });
+    if (scenario === 'navigated') h.navigation.next();
+    const bundled = scenario === 'invalid' ? { ...first, items: [{ ...card, region: '' }] }
+      : scenario === 'legacy' ? undefined : first;
+    pending.resolve(bundled);
+    await opening;
+    assert.deepEqual(requests, ['legacy', 'invalid'].includes(scenario) ? ['/v1/workshop/library?limit=20'] : []);
+    const list = h.nodes.get('library-items');
+    if (['navigated', 'signed-out'].includes(scenario)) assert.equal(list.children.length, 0);
+    else assert.match(list.children[0].textContent, /Exact owned vehicle \/ US/);
+  }
 });
 
 test('Library Load more makes one cursor request and keeps prior cards mounted', async () => {
