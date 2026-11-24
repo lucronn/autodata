@@ -909,6 +909,33 @@ func TestPostgresPaidCatalogLinkedPDFPreviewRights(t *testing.T) {
 	storePreview(wrapper, linked, ids)
 	assertDetail(wrapperText, pdfText)
 	assertSearch(pdfQuery, true)
+
+	// Withdraw the descriptor after the paid middleware's exact identity check,
+	// but before the detail handler reads the saved body.
+	server := f.applications[0]
+	var descriptor string
+	if err := f.pool.QueryRow(context.Background(), `SELECT descriptor_source_snapshot_id::text
+		FROM canonical_articles WHERE canonical_article_id=$1::uuid`, f.article).Scan(&descriptor); err != nil {
+		t.Fatal(err)
+	}
+	guarded := server.catalogProtected(func(w http.ResponseWriter, r *http.Request, p Principal) {
+		f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=$1::uuid`, descriptor)
+		server.getCatalogArticle(w, r, p)
+	}, true)
+	request := httptest.NewRequest("GET", "https://cars.example"+detail, nil)
+	request.SetPathValue("vehicle_id", f.configuration)
+	request.SetPathValue("article_id", f.article)
+	owner := f.owners[0]
+	request.AddCookie(customerSessionCookie(owner.token, owner.session.ExpiresAt, time.Now()))
+	response := httptest.NewRecorder()
+	guarded.ServeHTTP(response, request)
+	f.exec(`UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=$1::uuid`, descriptor)
+	if response.Code != http.StatusAccepted || bytes.Contains(response.Body.Bytes(), []byte(wrapperText)) ||
+		bytes.Contains(response.Body.Bytes(), []byte(pdfText)) {
+		t.Fatalf("a descriptor withdrawn at the detail boundary must suppress source previews, status=%d", response.Code)
+	}
+	assertDetail(wrapperText, pdfText)
+
 	for _, observer := range []struct{ owner, status int }{{-1, 401}, {1, 403}} {
 		for _, path := range []string{detail, f.path("?q=" + url.QueryEscape(pdfQuery))} {
 			if bytes.Contains(f.expect(observer.owner, "GET", path, "", observer.status), []byte(pdfText)) {

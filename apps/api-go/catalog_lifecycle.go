@@ -226,6 +226,8 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 			SELECT * FROM catalog_article_current WHERE canonical_article_id=a.canonical_article_id LIMIT 1
 		) view_row ON true
 		LEFT JOIN LATERAL (`+catalogSourceBodyPreviewSQL+`) early ON view_row.takedown_status='active'
+			AND EXISTS (SELECT 1 FROM source_snapshots descriptor
+				WHERE descriptor.source_snapshot_id=a.descriptor_source_snapshot_id AND descriptor.takedown_status='active')
 		LEFT JOIN LATERAL (`+catalogStagedOriginalSQL+` AND $3 AND a.vehicle_configuration_id::text=$1) original ON true
 		WHERE a.canonical_article_id IN ($2::uuid, (
 			SELECT alias.canonical_article_id FROM canonical_article_aliases alias
