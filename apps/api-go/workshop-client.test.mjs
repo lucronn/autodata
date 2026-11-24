@@ -895,7 +895,7 @@ test('readable capture previews can show newer source before scheduled reads', a
   const starts = [], firstVisible = new Map();
   await readArticle(async (options) => {
     starts.push(now);
-    if (now === 2000) {
+    if (now === 4000) {
       assert.equal(options.timeout, 1000);
       assert.equal(options.readableBodyTimeout, 1000);
     }
@@ -915,8 +915,8 @@ test('readable capture previews can show newer source before scheduled reads', a
       if (!firstVisible.has(view)) firstVisible.set(view, now);
     },
   });
-  assert.deepEqual(starts, [0, 1000, 2000, 3000, 5000, 7000, 11000, 15000]);
-  assert.deepEqual([...firstVisible], [['wrapper', 0], ['linked', 5000], ['original', 11000], ['published', 15000]]);
+  assert.deepEqual(starts, [0, 1000, 3000, 4000, 5000, 7000, 11000, 15000]);
+  assert.deepEqual([...firstVisible], [['wrapper', 0], ['linked', 4000], ['original', 11000], ['published', 15000]]);
 });
 
 test('capture preview checks preserve retry floors, access errors and cancellation', async () => {
@@ -929,13 +929,13 @@ test('capture preview checks preserve retry floors, access errors and cancellati
   const busy = Object.assign(new Error('Busy'), { status: 503, retryable: true, retryAfterSeconds: 4 });
   const denied = Object.assign(new Error('Access revoked'), { status: 403, code: 'ENTITLEMENT_REVOKED' });
   const ordinary = [0, 1000, 3000, 7000, 15000, 25000];
-  const probed = [0, 1000, 2000, 3000, 5000, 7000, 11000, 15000, 25000];
+  const probed = [0, 1000, 3000, 4000, 5000, 7000, 11000, 15000, 25000];
   for (const [label, data, retryAfterSeconds, outcome, starts] of [
     ['steady capture', article, 1, null, probed],
     ['transient transport failure', article, 1, new TypeError('Network failed'), probed],
-    ['explicit retry floor', article, 1, busy, [0, 1000, 2000, 3000, 5000, 9000, 13000, 17000, 27000]],
-    ['revoked grant', article, 1, denied, [0, 1000, 2000, 3000, 5000]],
-    ['aborted preview check', article, 1, 'abort', [0, 1000, 2000, 3000, 5000]],
+    ['explicit retry floor', article, 1, busy, [0, 1000, 3000, 4000, 5000, 9000, 13000, 17000, 27000]],
+    ['revoked grant', article, 1, denied, [0, 1000, 3000, 4000, 5000]],
+    ['aborted preview check', article, 1, 'abort', [0, 1000, 3000, 4000, 5000]],
     ['no preview contract', { ...article, source_body_preview: undefined }, 1, null, ordinary],
     ['stored revision', { ...article, source_revision_id: 'source' }, 1, null, ordinary],
     ['no retry hint', article, 0, null, ordinary],
@@ -956,7 +956,7 @@ test('capture preview checks preserve retry floors, access errors and cancellati
     });
     if (outcome === 'abort' || outcome === denied) {
       await assert.rejects(reading, outcome === 'abort' ? { name: 'AbortError' } : denied);
-      assert.deepEqual(shown, [0, 1000, 2000, 3000]);
+      assert.deepEqual(shown, [0, 1000, 3000, 4000]);
     } else {
       assert.equal((await reading).data.article.body, 'Stored procedure', label);
     }

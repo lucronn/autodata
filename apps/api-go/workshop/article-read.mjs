@@ -89,6 +89,7 @@ export async function readArticle(
   let confirmedSourceCapture = false;
   let regularSourceReadAt = 0;
   let keepRegularSourceRead = false;
+  let previewMidpointAt = 0;
   let sourceConfirmationAt = 0;
   let publicationReadAt = 0;
   let publicationProbeJob;
@@ -106,6 +107,8 @@ export async function readArticle(
     advancedSourceProbeUntil = 0;
     const initialSourceFallback = initialSourceFallbackAt > startedAt ? initialSourceFallbackAt : 0;
     initialSourceFallbackAt = 0;
+    const previewMidpoint = previewMidpointAt > startedAt ? previewMidpointAt : 0;
+    previewMidpointAt = 0;
     const statusProbe = scheduledPublicationCheck?.regularReadAt > startedAt ? scheduledPublicationCheck : undefined;
     scheduledPublicationCheck = undefined;
     if (firstReadAt <= startedAt) firstReadAt = 0;
@@ -123,7 +126,7 @@ export async function readArticle(
       deadline, firstReadAt || deadline, nextSourceProbeAt || deadline,
       regularSourceReadAt || deadline, sourceConfirmationAt || deadline, publicationReadAt || deadline,
       statusProbe ? Math.min(statusProbe.regularReadAt, startedAt + publicationStatusProbeDelayMs) : deadline,
-      initialSourceFallback || deadline, advancedProbeLimit || deadline,
+      initialSourceFallback || deadline, advancedProbeLimit || deadline, previewMidpoint || deadline,
     );
     const firstScheduledSourceRead = !firstReadAt && confirmedSourceCapture && earlyConfirmationJob !== undefined;
     // Keep the header deadline for a short read. Give a successful body on
@@ -134,7 +137,7 @@ export async function readArticle(
     // A confirmed publication can use the ordinary body deadline even
     // when the probe had a short deadline for its headers.
     const finishBodyBy = statusProbe?.late ? statusProbe.regularReadAt : startedAt + maxArticleRequestMs;
-    const bodyDeadline = advancedProbeLimit || sourceBodyDeadline || (finishPublishedBody && finishBodyBy);
+    const bodyDeadline = advancedProbeLimit || previewMidpoint || sourceBodyDeadline || (finishPublishedBody && finishBodyBy);
     try {
       const response = await read({
         signal,
@@ -195,6 +198,11 @@ export async function readArticle(
     if (statusProbe) {
       const regularWait = Math.max(0, statusProbe.regularReadAt - now());
       await wait(Math.min(remaining, Math.max(regularWait, retryAfter * 1000)), signal);
+      continue;
+    }
+    if (previewMidpoint) {
+      const midpointWait = Math.max(0, previewMidpoint - now());
+      await wait(Math.min(remaining, Math.max(midpointWait, retryAfter * 1000)), signal);
       continue;
     }
     if (firstReadAt) {
@@ -352,12 +360,17 @@ export async function readArticle(
     // Show newer content on a preview check while keeping the ordinary read slot.
     const source = latest?.data?.article;
     const preview = fastSource && source.source_body_preview === true && source.source_revision_id === null;
-    const shortPreviewWait = preview && backoff === 2000;
-    if ((shortPreviewWait || backoff === 4000 || backoff === 8000) && (fastPendingJob || preview) &&
+    if ((backoff === 4000 || backoff === 8000) && (fastPendingJob || preview) &&
         source.processing.state === "fetching_source") {
       keepRegularSourceRead = preview;
       regularSourceReadAt = now() + backoff;
       backoff /= 2;
+      if (preview && backoff === 2000) {
+        // Try once before the first midpoint. A miss keeps that midpoint and
+        // the ordinary read available, including when another retry hint arrives.
+        previewMidpointAt = now() + backoff;
+        backoff = 1000;
+      }
     }
     await wait(
       Math.min(remaining, Math.max(backoff, retryAfter * 1000)),
