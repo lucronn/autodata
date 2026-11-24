@@ -34,10 +34,10 @@ func (s *Server) workshopTestNotice(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
 	name := strings.TrimPrefix(r.URL.Path, "/workshop/test-notices/")
 	notice, ok := workshopTestNotices[name]
-	returnURL := "/workshop/?demo=1"
+	returnURL := workshopEntryPath + "?demo=1"
 	if s.workshopSimulation {
 		notice, ok = workshopSimulationNotices[name]
-		returnURL = "/workshop/"
+		returnURL = workshopEntryPath
 	}
 	if (!s.workshopTestCheckout && !s.workshopSimulation) || !ok || r.URL.RawPath != "" || r.URL.RawQuery != "" || r.URL.ForceQuery {
 		http.NotFound(w, r)

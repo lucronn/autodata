@@ -19,7 +19,7 @@ func TestWorkshopRootEntry(t *testing.T) {
 		t.Run(method, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			server.Handler().ServeHTTP(response, httptest.NewRequest(method, "/", nil))
-			if response.Code != http.StatusFound || response.Header().Get("Location") != "/workshop/" {
+			if response.Code != http.StatusFound || response.Header().Get("Location") != "/workshop" {
 				t.Fatalf("%s root redirect = %d %q", method, response.Code, response.Header().Get("Location"))
 			}
 		})
@@ -277,13 +277,42 @@ func TestWorkshopRealDemoPrivateModeHandshakeHTTP(t *testing.T) {
 	}
 }
 
-func TestWorkshopRedirectPreservesSeparateEntryPoint(t *testing.T) {
+func TestWorkshopEntryAliasesShareContentAndValidators(t *testing.T) {
 	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
-	for _, query := range []string{"", "?year=2024&make=buick-truck&model=envision-awd&region=US"} {
-		response := httptest.NewRecorder()
-		server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/workshop"+query, nil))
-		if response.Code != http.StatusMovedPermanently || response.Header().Get("Location") != "/workshop/"+query {
-			t.Fatalf("unexpected redirect: %d %s", response.Code, response.Header().Get("Location"))
+	handler := server.Handler()
+	request := func(method, path, tag string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, nil)
+		if tag != "" {
+			r.Header.Set("If-None-Match", tag)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+	entry := request(http.MethodGet, "/workshop", "")
+	tag := entry.Header().Get("ETag")
+	if entry.Code != http.StatusOK || tag == "" || !strings.Contains(entry.Body.String(), `class="wordmark" href="/workshop"`) {
+		t.Fatal("canonical Workshop entry unavailable")
+	}
+	for _, path := range []string{"/workshop", "/workshop/"} {
+		for _, query := range []string{"", "?year=2024&make=buick-truck&model=envision-awd&region=US", "?view=library", "?sample=1", "?demo=1", "?order=22222222-2222-4222-8222-222222222222&q=brake%2Bline"} {
+			for _, method := range []string{http.MethodGet, http.MethodHead} {
+				fresh := request(method, path+query, "")
+				if fresh.Code != http.StatusOK || fresh.Header().Get("Location") != "" || fresh.Header().Get("ETag") != tag || fresh.Header().Get("Cache-Control") != "no-cache" {
+					t.Fatalf("%s %s: unexpected entry response %d %v", method, path+query, fresh.Code, fresh.Header())
+				}
+				if method == http.MethodGet && !bytes.Equal(fresh.Body.Bytes(), entry.Body.Bytes()) || method == http.MethodHead && fresh.Body.Len() != 0 {
+					t.Fatalf("%s %s: unexpected entry body", method, path+query)
+				}
+				warm := request(method, path+query, tag)
+				if warm.Code != http.StatusNotModified || warm.Body.Len() != 0 || warm.Header().Get("ETag") != tag || warm.Header().Get("Cache-Control") != "no-cache" {
+					t.Fatalf("%s %s: unexpected conditional response %d %v", method, path+query, warm.Code, warm.Header())
+				}
+			}
+		}
+		unsupported := request(http.MethodPost, path, "")
+		if unsupported.Code != http.StatusMethodNotAllowed || unsupported.Header().Get("Allow") != "GET, HEAD" {
+			t.Fatalf("POST %s: unexpected response %d %v", path, unsupported.Code, unsupported.Header())
 		}
 	}
 }

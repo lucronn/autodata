@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const workshopEntryPath = "/workshop"
+
 var workshopAssetsHandler = buildWorkshopAssetsHandler()
 
 func buildWorkshopAssetsHandler() http.Handler {
@@ -16,7 +18,7 @@ func buildWorkshopAssetsHandler() http.Handler {
 	if err != nil {
 		panic("embedded Workshop assets unavailable: " + err.Error())
 	}
-	const prefix = "/workshop/"
+	const prefix = workshopEntryPath + "/"
 	const bootstrapName = "bootstrap.mjs"
 	bootstrap, err := fs.ReadFile(assets, bootstrapName)
 	if err != nil {
@@ -61,13 +63,17 @@ func buildWorkshopAssetsHandler() http.Handler {
 			return
 		}
 		w.Header().Set("Cache-Control", "no-cache")
-		if r.URL.Path == prefix+bootstrapName && r.URL.RawQuery == bootstrapVersion {
+		path := r.URL.Path
+		if path == workshopEntryPath {
+			path = prefix
+		}
+		if path == prefix+bootstrapName && r.URL.RawQuery == bootstrapVersion {
 			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 		}
-		if tag := tags[r.URL.Path]; tag != "" {
+		if tag := tags[path]; tag != "" {
 			w.Header().Set("ETag", tag)
 		}
-		if r.URL.Path == prefix {
+		if path == prefix {
 			http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(entryPage))
 			return
 		}

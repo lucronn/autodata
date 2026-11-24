@@ -44,7 +44,7 @@ const openDemo = document.documentElement.dataset.workshopMode === 'open-demo';
 if (openDemo) {
   for (const id of ['signin', 'signout', 'my-vehicles']) $(id).hidden = true;
   $('account-status').hidden = true;
-  document.querySelector('.wordmark').href = '/workshop/?demo=1';
+  document.querySelector('.wordmark').href = '/workshop?demo=1';
 }
 const demoPath = (path) => {
   if (!openDemo) return path;
@@ -2484,7 +2484,7 @@ $("signout").addEventListener("click", async () => {
 $("browse").addEventListener("click", () => {
   invalidate();
   show("welcome");
-  history.pushState(null, "", openDemo ? "/workshop/?demo=1" : "/workshop/");
+  history.pushState(null, "", openDemo ? "/workshop?demo=1" : "/workshop");
   void restoreRoute();
 });
 $("my-vehicles").addEventListener("click", () => {

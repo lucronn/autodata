@@ -253,17 +253,14 @@ func TestPurchaseConfigFullServerNetwork(t *testing.T) {
 					io.Copy(io.Discard, resp.Body)
 					resp.Body.Close()
 					want := 200
-					if path == "/workshop" {
-						want = 301
-					}
 					if method == "POST" || method == "OPTIONS" {
 						want = 405
-						if resp.Header.Get("Allow") != "GET, HEAD" || resp.Header.Get("Location") != "" {
-							t.Fatal("unsafe static redirect", resp.Header)
+						if resp.Header.Get("Allow") != "GET, HEAD" {
+							t.Fatal("unexpected static methods", resp.Header)
 						}
 					}
-					if resp.StatusCode != want {
-						t.Fatalf("%s %s: %d", method, path, resp.StatusCode)
+					if resp.StatusCode != want || resp.Header.Get("Location") != "" {
+						t.Fatalf("%s %s: %d Location %q", method, path, resp.StatusCode, resp.Header.Get("Location"))
 					}
 				}
 			}
