@@ -433,7 +433,7 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                             '<figure><img src="/fixture/alignment.png" alt="Shim">'
                             '<figcaption>Shim A</figcaption></figure>'
                             '<table><tr><td><p>Do not remove the retaining clip.</p>'
-                            f'<object data="{_PDF_LOCATOR}">Hidden fallback.</object>'
+                            f'<a href="{_PDF_LOCATOR}">Oil seal service addendum</a>'
                             '<p>Do not rotate the service shaft.</p></td>'
                             '<td>Drive seal seating depth: 2.0 mm</td></tr></table></li></ol>'
                             '<p>Tighten the cover bolts to 18 Nm.</p>'

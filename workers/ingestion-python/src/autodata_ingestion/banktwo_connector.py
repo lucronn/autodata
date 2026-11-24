@@ -183,6 +183,8 @@ class ArticleParser(HTMLParser):
         r"(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse))"
         r"\s*(?:!important\s*)?(?:;|$)", re.IGNORECASE,
     )
+    _PDF_ANCHOR_INLINE = frozenset({"b", "em", "i", "small", "span", "strong", "sub", "sup"})
+    _CSS_COMMENT = re.compile(r"/\*.*?(?:\*/|$)", re.S)
 
     def __init__(
         self, *, asset_bindings=(), preserve_legacy_list_starts=True, keep_html_headings=False,
@@ -242,6 +244,9 @@ class ArticleParser(HTMLParser):
         self.untyped_pdf_embed_refs = {}
         self._resolved_pdf_refs = resolved_pdf_refs
         self._include_untyped_pdf_positions = include_untyped_pdf_positions
+        self._keep_pdf_anchors = keep_bound_pdf_iframes and keep_html_document_links and bool(self._asset_bindings)
+        self._pdf_anchor: tuple[str, list[str], int] | None = None
+        self._hidden_pdf_anchor_tags: list[str] = []
         self._hidden_html_tag = None
         self._hidden_html_depth = 0
         self.positioned_html_table_images = False
@@ -343,12 +348,7 @@ class ArticleParser(HTMLParser):
             if tag == self._document_link_scope:
                 self._document_link_depth += 1
         else:
-            style = attrs.get("style") or ""
-            excluded = (
-                tag in self._DOCUMENT_LINK_EXCLUSIONS or "hidden" in attrs
-                or (attrs.get("aria-hidden") or "").strip().casefold() == "true"
-                or bool(style and self._HIDDEN_LINK_STYLE.search(style))
-            )
+            excluded = tag in self._DOCUMENT_LINK_EXCLUSIONS or self._hidden_link(attrs)
             if (excluded or tag == self._DOCUMENT_LINK) and tag not in _VOID_TAGS:
                 self._document_link_scope = tag
                 self._document_link_depth = 1
@@ -655,9 +655,59 @@ class ArticleParser(HTMLParser):
                     return None
         return ref
 
-    def handle_starttag(self, tag, attrs):
-        duplicate_graphic_id = tag == "mtr-image" and sum(name == "id" for name, _ in attrs) != 1
-        attrs = dict(attrs)
+    def _start_pdf_anchor(self, attrs, duplicate_href):
+        ref = self._asset_bindings.get(attrs["href"])
+        media_type = (attrs.get("type") or "").strip().casefold()
+        if (ref and not duplicate_href and media_type in {"", "application/pdf"}
+                and self._heading is None and self._hidden_image_scope is None
+                and self._document_link_scope == "a" and self._document_link_depth == 1
+                and not self._hidden_pdf_anchor_tags
+                and not self._hidden_link(attrs)):
+            self._pdf_anchor = (ref, self._text, len(self._text))
+
+    def _finish_pdf_anchor(self):
+        anchor, self._pdf_anchor = self._pdf_anchor, None
+        if anchor is None:
+            return
+        ref, buffer, start = anchor
+        if buffer is not self._text:
+            return
+        label = " ".join("".join(buffer[start:]).split())
+        if not label:
+            return
+        # The connector's actual MIME and readable PDF bytes decide whether
+        # this anchor becomes a document, even when the markup supplies a type.
+        self.untyped_pdf_embed_refs[ref] = None
+        if self._include_untyped_pdf_positions or ref in self._resolved_pdf_refs:
+            del buffer[start:]
+            document = ConnectorDocumentEmbed(ref, untyped=True)
+            document["text"] = label
+            self.handled_pdf_embeds = True
+            self._append_inline_media(document)
+
+    @classmethod
+    def _hidden_link(cls, attrs):
+        return (
+            "hidden" in attrs or (attrs.get("aria-hidden") or "").strip().casefold() == "true"
+            or bool(cls._HIDDEN_LINK_STYLE.search(attrs.get("style") or ""))
+        )
+
+    def _track_pdf_anchor_visibility(self, tag, raw_attrs, attrs):
+        # Repeated attributes can carry a hidden first value that the dict lost.
+        if self._hidden_pdf_anchor_tags:
+            if tag == self._hidden_pdf_anchor_tags[-1]:
+                self._hidden_pdf_anchor_tags.append(tag)
+        elif (
+            any(sum(name == key for name, _ in raw_attrs) > 1 for key in ("style", "aria-hidden") if key in attrs)
+            or self._HIDDEN_LINK_STYLE.search(self._CSS_COMMENT.sub("", attrs.get("style") or ""))
+        ):
+            self._hidden_pdf_anchor_tags.append(tag)
+
+    def handle_starttag(self, tag, raw_attrs):
+        duplicate_graphic_id = tag == "mtr-image" and sum(name == "id" for name, _ in raw_attrs) != 1
+        attrs = dict(raw_attrs)
+        if self._pdf_anchor is not None and (tag not in self._PDF_ANCHOR_INLINE or self._hidden_link(attrs)):
+            self._pdf_anchor = None
         if self._keep_html_document_links:
             self._start_document_link_tag(tag, attrs)
         if self._hidden_embed_tags:
@@ -677,6 +727,11 @@ class ArticleParser(HTMLParser):
                 self._hidden_html_tag = tag
                 self._hidden_html_depth = 1
             return
+        if (self._keep_pdf_anchors and tag not in _VOID_TAGS
+                and (self._hidden_pdf_anchor_tags or "style" in attrs or "aria-hidden" in attrs)):
+            self._track_pdf_anchor_visibility(tag, raw_attrs, attrs)
+            if self._hidden_pdf_anchor_tags:
+                self._pdf_anchor = None
         if self._keep_bound_html_images or self._keep_bankone_html_flow:
             if tag == self._hidden_image_scope:
                 self._hidden_image_depth += 1
@@ -814,6 +869,9 @@ class ArticleParser(HTMLParser):
                 self._image_link += 1
             elif attrs.get("href"):
                 self.links.append(attrs["href"])
+                if self._keep_pdf_anchors:
+                    duplicate_href = sum(name == "href" for name, _ in raw_attrs) != 1
+                    self._start_pdf_anchor(attrs, duplicate_href)
         if tag in {"img", "mtr-image"}:
             if tag == "mtr-image" and (
                 not self._keep_bankone_html_flow or duplicate_graphic_id
@@ -912,6 +970,8 @@ class ArticleParser(HTMLParser):
             if tag in {"script", "style"}:
                 self._skip -= 1
             return
+        if self._hidden_pdf_anchor_tags and tag == self._hidden_pdf_anchor_tags[-1]:
+            self._hidden_pdf_anchor_tags.pop()
         if tag == self._hidden_image_scope:
             self._hidden_image_depth -= 1
             if not self._hidden_image_depth:
@@ -981,6 +1041,7 @@ class ArticleParser(HTMLParser):
                 return
         if tag == "a":
             self._image_link = 0
+            self._finish_pdf_anchor()
         if tag in {"p", "div", "li", "tr"} or (
             tag in {"figure", "figcaption"} and self._current_list_item() is not None
         ):
