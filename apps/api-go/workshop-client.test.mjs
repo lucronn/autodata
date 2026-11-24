@@ -2022,6 +2022,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
     Option: function(text, value) { return { text, value }; },
     location: { pathname: '/workshop/', search }, signingIn: false, sessionRequest: null, viewGeneration: navigation.next(),
     vehicle: { id: previousConfiguration, region: 'US' }, quote: null,
+    merchant: { enabled: true }, merchantRequest: null,
     names: ['year', 'make', 'model', 'configuration'],
     rows: { configuration: [configuration] }, $: element,
     checkout: { read: () => null, clear() { calls.checkoutClears++; }, start() { calls.checkouts++; } },
@@ -2073,6 +2074,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
   runInNewContext(
     appSection('function populate(', 'async function loadOptions(') +
     appSection('async function signIn() {', 'export async function bootstrap(') +
+    appSection('function loadPurchaseConfiguration(', 'function checkAccount(') +
     appSection('async function restoreRoute(', 'for (const [index, name] of names.entries())'),
     context,
   );
@@ -2197,7 +2199,43 @@ test('sign-in rechecks paid access for the displayed selection without reloading
   assert.equal(h.calls.invalidations, 1);
   assert.equal(h.calls.checkoutClears, 1);
   assert.equal(h.calls.checkouts, 0);
+  assert.equal(h.calls.selectorReads.length, 0, 'known regular purchase config does not need a refresh');
   h.context.names.forEach((name, index) => assert.equal(h.element(name).children, before[index]));
+});
+
+test('sign-in refreshes unknown purchase config without letting a guest reply replace it', async t => {
+  for (const guestStatus of ['pending', 'failed']) {
+    await t.test(guestStatus, async () => {
+      const h = selectedCheckoutHarness();
+      const guest = deferredAuthOperation(), owner = deferredAuthOperation();
+      const reads = [];
+      h.context.requestJSON = path => {
+        assert.equal(path, '/workshop/purchase-config.json');
+        const signedIn = h.context.session.state.authenticated;
+        reads.push(signedIn ? 'owner' : 'guest');
+        return signedIn ? owner.promise : guest.promise;
+      };
+      h.context.loadPurchaseConfiguration();
+      const guestRequest = h.context.merchantRequest;
+      if (guestStatus === 'failed') {
+        guest.reject(new Error('Purchase configuration unavailable'));
+        await guestRequest;
+      }
+      assert.equal(h.context.merchant, null);
+
+      await h.context.signIn();
+      assert.deepEqual(reads, ['guest', 'owner']);
+      const ownerConfig = { enabled: true, checkout_mode: 'simulation' };
+      owner.resolve(ownerConfig);
+      await h.context.merchantRequest;
+      if (guestStatus === 'pending') {
+        guest.resolve({ enabled: false, checkout_mode: 'simulation' });
+        await guestRequest;
+      }
+      assert.equal(h.context.merchant, ownerConfig);
+      assert.equal(h.context.merchantRequest, null);
+    });
+  }
 });
 
 test('selected sign-in hands off the exact negotiated index and purchase quote error once', async () => {
