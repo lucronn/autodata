@@ -28,6 +28,9 @@ func TestWorkshopTestNotices(t *testing.T) {
 				if enabled && method == "GET" && (!strings.Contains(w.Body.String(), "No real money") || !strings.Contains(w.Body.String(), "<main>") || strings.Count(w.Body.String(), "<h1>") != 1) {
 					t.Fatal("missing honest accessible notice")
 				}
+				if enabled && method == "GET" && !strings.Contains(w.Body.String(), `href="/workshop?demo=1"`) {
+					t.Fatal("test notice does not return to the canonical Workshop entry")
+				}
 				if enabled && method == "HEAD" && w.Body.Len() != 0 {
 					t.Fatal("HEAD returned body")
 				}

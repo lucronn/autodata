@@ -158,7 +158,7 @@ func (s *Server) Handler() http.Handler {
 	authService.mountRoutes(mux, s.selectedIndexAuth() != nil)
 	s.mountCommerceRoutes(mux)
 	mux.HandleFunc("GET /{$}", func(response http.ResponseWriter, request *http.Request) {
-		http.Redirect(response, request, "/workshop/", http.StatusFound)
+		http.Redirect(response, request, workshopEntryPath, http.StatusFound)
 	})
 	mountPublicRead(mux, "/openapi.json", func(response http.ResponseWriter, _ *http.Request) {
 		body, err := dashboardFiles.ReadFile("openapi.json")
@@ -229,21 +229,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics.handler)
-	mux.HandleFunc("GET /workshop", func(response http.ResponseWriter, request *http.Request) {
-		location := "/workshop/"
-		if request.URL.RawQuery != "" {
-			location += "?" + request.URL.RawQuery
-		}
-		http.Redirect(response, request, location, http.StatusMovedPermanently)
-	})
-	mux.HandleFunc("/workshop", func(response http.ResponseWriter, request *http.Request) {
-		response.Header().Set("Allow", "GET, HEAD")
-		http.Error(response, "Method Not Allowed", http.StatusMethodNotAllowed)
-	})
+	mux.Handle(workshopEntryPath, workshopAssetsHandler)
 	mux.HandleFunc("/workshop/purchase-config.json", s.workshopPurchaseConfig)
 	mux.HandleFunc("/workshop/demo-mode.json", s.workshopDemoMode)
 	mux.HandleFunc("/workshop/test-notices/", s.workshopTestNotice)
-	mux.Handle("/workshop/", workshopAssetsHandler)
+	mux.Handle(workshopEntryPath+"/", workshopAssetsHandler)
 	s.mountCatalogSelector(mux, "/v1/catalog/years", s.listCatalogYears)
 	s.mountCatalogSelector(mux, "/v1/catalog/years/{year}/makes", s.listCatalogMakes)
 	s.mountCatalogSelector(mux, "/v1/catalog/years/{year}/makes/{make}/models", s.listCatalogModels)
