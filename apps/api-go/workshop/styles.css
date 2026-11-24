@@ -674,6 +674,10 @@ select:enabled:hover {
   background: white;
   border: 1px solid var(--rule);
 }
+.article-content img[data-figure-pending] {
+  inline-size: min(100%, 20rem);
+  block-size: 8rem;
+}
 .article-content figcaption {
   font-size: 12px;
   color: var(--quiet);
@@ -1020,6 +1024,7 @@ footer {
   .welcome,
   .catalog,
   .reader-nav,
+  #print-status,
   #open-original,
   #original-error,
   footer,
