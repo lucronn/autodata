@@ -946,6 +946,55 @@ test('readable capture previews can show newer source before scheduled reads', a
   assert.deepEqual([...firstVisible], [['wrapper', 0], ['linked', 4000], ['original', 11000], ['published', 15000]]);
 });
 
+test('a first capture preview at a midpoint preserves the scheduled Original read', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const pending = { status: 202, retryAfterSeconds: 1, data: { article: {
+    processing: { job_id: 'job', state: 'fetching_source' },
+  } } };
+  const stored = { status: 200, data: { article: {
+    content_origin: 'source', source_revision_id: 'revision', body: 'Stored Original',
+  } } };
+  const busy = Object.assign(new Error('Busy'), { status: 503, retryable: true, retryAfterSeconds: 4 });
+  const slowDownload = Symbol('slow Original download');
+  for (const [job, storedAt, confirmation, expectedStarts] of [
+    ['job', 6900, null, [0, 1000, 2000, 4000, 6000, 7000]],
+    ['job', 6900, slowDownload, [0, 1000, 2000, 4000, 6000, 7000]],
+    ['job', 7800, null, [0, 1000, 2000, 4000, 6000, 7000, 8000]],
+    ['job', 7800, busy, [0, 1000, 2000, 4000, 6000, 7000, 11000]],
+    ['job', 10500, null, [0, 1000, 2000, 4000, 6000, 7000, 8000, 14000]],
+    ['other-job', 7800, null, [0, 1000, 2000, 4000, 6000, 7000, 14000]],
+  ]) {
+    let now = 0;
+    const starts = [], previews = [];
+    const preview = { status: 200, retryAfterSeconds: 1, data: { article: {
+      content_origin: 'source', source_body_preview: true, source_revision_id: null,
+      body: 'Readable attachment preview', processing: { job_id: job, state: 'fetching_source' },
+    } } };
+    const result = await readArticle(async ({ timeout, readableBodyTimeout, preferShortSourceCheck }) => {
+      starts.push(now);
+      if (now === 7000 && job === 'job') {
+        assert.equal(timeout, 7000);
+        assert.equal(readableBodyTimeout, undefined);
+        assert.equal(preferShortSourceCheck, false);
+        if (confirmation === slowDownload) now += 1100;
+        else if (confirmation) throw confirmation;
+      }
+      if (now >= storedAt) return stored;
+      if (now < 5900) return pending;
+      return preview;
+    }, {
+      now: () => now,
+      wait: async milliseconds => { now += milliseconds; },
+      onUpdate(response) {
+        if (response.data.article.source_body_preview) previews.push(now);
+      },
+    });
+    assert.equal(previews.at(0), 6000);
+    assert.deepEqual(starts, expectedStarts);
+    assert.equal(result.data.article.source_revision_id, 'revision');
+  }
+});
+
 test('capture preview checks preserve retry floors, access errors and cancellation', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   const article = {
