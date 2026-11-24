@@ -510,6 +510,63 @@ def test_published_pdf_anchor_reuses_the_same_digest(runtime, provider):
     assert draft.requests == [list(("Remove the pump.", "Inspect the seal.", "Install the replacement."))]
 
 
+def test_published_hal_anchor_label_stays_safe_when_the_png_changes(runtime):
+    provider = "banktwo"
+    runtime.article_id = runtime.articles[provider]
+    connector = runtime.servers[provider]
+    label = "Protect the pump during service."
+    html = f'<a href="{_PDF_LOCATOR}">{label}</a>'
+    raw = json.dumps({"_embedded": {"data": {"article": {"content": html}}}}).encode()
+    connector.body(raw, "application/hal+json", assets=[_PDF_REF], asset_bindings=[
+        {"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF},
+    ])
+    draft = FixtureDraft(
+        introduction="This reference covers pump service.",
+        paraphrases={label: "Shield the pump while working on it."},
+    )
+
+    def refresh():
+        job = refresh_article_job(
+            runtime.repo, runtime.article_id, actor="fixture", reason="refresh the figure for the same anchor label",
+            rewrite_profile_version=AUTO_PROFILE,
+        )
+        assert run_article_worker_once(
+            runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+            object_store=runtime.objects, model_client=draft, job_id=job.job_id,
+        )
+        view = runtime.read_current()
+        assert view["content_origin"] == "canonical", runtime.diagnostics()
+        binding = load_source_revision(runtime.repo, view["source_revision_id"])
+        assert binding.resource_manifest[0]["sha256"] == sha256(raw).hexdigest()
+        assert "html_document_link_layout" not in binding.resource_manifest[0]
+        assert binding.source_body == label
+        assert _PDF_LOCATOR not in json.dumps(view["document"])
+        return view, binding
+
+    def set_image(color):
+        with BytesIO() as png:
+            Image.new("RGB", (4, 4), color).save(png, format="PNG")
+            pixels = png.getvalue()
+        connector.body(pixels, "image/png", ref=_PDF_REF, kind="binary")
+        return sha256(pixels).hexdigest()
+
+    initial_image = set_image("green")
+    first, source = refresh()
+    repeated, _ = refresh()
+    assert repeated["source_revision_id"] == first["source_revision_id"]
+    assert repeated["canonical_revision_id"] == first["canonical_revision_id"]
+    assert source.resource_manifest[1]["sha256"] == initial_image
+    assert draft.requests == [[label]]
+
+    revised_image = set_image("red")
+    changed, refreshed_source = refresh()
+    assert changed["source_revision_id"] != first["source_revision_id"]
+    assert refreshed_source.body_source_snapshot_id == source.body_source_snapshot_id
+    assert refreshed_source.resource_manifest[1]["sha256"] == revised_image
+    assert changed["images"][0]["content_sha256"] == revised_image
+    assert draft.requests == [[label], [label]]
+
+
 @pytest.mark.parametrize(('provider', 'embed_tag'), [('banktwo', 'iframe'), ('bankone', 'object'), ('banktwo', 'object')])
 def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(runtime, monkeypatch, provider, embed_tag):
     from autodata_ingestion import source_adapters

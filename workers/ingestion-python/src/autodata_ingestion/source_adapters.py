@@ -2096,11 +2096,11 @@ def adapt_bound_article(
                         "blocks": _maintenance_xml_blocks(text),
                         "asset_resource_refs": article.get("asset_resource_refs", []),
                     }
-                html_tags = r"p|div|ol|ul|li|table|h[1-6]|script|style|img"
+                # Anchor labels need HTML parsing even on a pinned source
+                # whose PDF-link projection remains disabled.
+                html_tags = r"a(?=[\s/>])|p|div|ol|ul|li|table|h[1-6]|script|style|img"
                 if keep_bound_pdf_iframes:
                     html_tags += r"|iframe|object|embed"
-                    if keep_html_document_links and resource.metadata.get("asset_bindings"):
-                        html_tags += r"|a"
                 if re.search(rf"</?(?:{html_tags})\b", text, re.I):
                     nested = SourceResource.from_bytes(
                         resource.source_uri,

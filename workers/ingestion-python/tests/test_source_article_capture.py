@@ -2615,6 +2615,55 @@ def test_hal_anchor_only_body_is_parsed_with_a_registered_binding(capture_fixtur
     assert "/media/attached" not in json.dumps(captured.source_document)
 
 
+def test_hal_anchor_only_legacy_body_keeps_a_safe_label_when_the_asset_changes(capture_fixture):
+    from io import BytesIO
+    import json
+
+    from PIL import Image
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_workshop_linked_pdf import _pdf_with_fixture_figure
+
+    html = '<a href="/media/attached">Service addendum</a>'
+    raw = json.dumps({"_embedded": {"data": {"article": {"content": html}}}}).encode()
+    capture_fixture.body("banktwo", raw, "application/hal+json", assets=["attached"], asset_bindings=[
+        {"source_url": "/media/attached", "resource_ref": "attached"},
+    ])
+    images = []
+    for color in ("green", "red"):
+        with BytesIO() as png:
+            Image.new("RGB", (4, 4), color).save(png, format="PNG")
+            images.append(png.getvalue())
+    capture_fixture.body("banktwo", images[0], "image/png", ref="attached", kind="binary")
+    context = capture_fixture.context("banktwo")
+    options = dict(
+        registry=capture_fixture.registry, object_store=capture_fixture.objects,
+        keep_bound_pdf_iframes=True, keep_html_document_links=True,
+    )
+    first = capture_source_article(context, **options)
+    assert "html_document_link_layout" not in first.resource_manifest[0]
+    legacy = replace(context, legacy_published_html_document_link_body=sha256(raw).hexdigest())
+
+    repeated = capture_source_article(legacy, **options)
+    assert repeated.source_fingerprint == first.source_fingerprint
+    assert repeated.source_document == first.source_document
+
+    capture_fixture.body("banktwo", images[1], "image/png", ref="attached", kind="binary")
+    changed = capture_source_article(legacy, **options)
+    assert changed.body_source_snapshot_id == first.body_source_snapshot_id
+    assert changed.source_fingerprint != first.source_fingerprint
+    assert changed.resource_manifest[1]["sha256"] == sha256(images[1]).hexdigest()
+
+    pdf, _ = _pdf_with_fixture_figure()
+    capture_fixture.body("banktwo", pdf, "application/pdf", ref="attached", kind="binary")
+    with_pdf = capture_source_article(legacy, **options)
+    assert with_pdf.body_source_snapshot_id == first.body_source_snapshot_id
+    assert all(resource["role"] != "document_asset" for resource in with_pdf.resource_manifest)
+    for captured in (first, repeated, changed, with_pdf):
+        assert captured.source_document["blocks"][0]["text"] == "Service addendum"
+        assert "<a" not in captured.source_body
+        assert "/media/attached" not in json.dumps(captured.source_document)
+
+
 def test_inferred_pdf_omits_assets_only_used_in_hidden_fallback(capture_fixture):
     from io import BytesIO
 
