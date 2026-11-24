@@ -73,6 +73,8 @@ _COMPOUND_MEASUREMENT_PROMPT_VERSION = "full-prose-auto-prompt-v57"
 _FLUID_OUNCE_RATE_PROMPT_VERSION = "full-prose-auto-prompt-v58"
 _SPATIAL_SCOPE_PROMPT_VERSION = "full-prose-auto-prompt-v59"
 _ASSEMBLY_LABEL_PROMPT_VERSION = "full-prose-auto-prompt-v60"
+_NOTE_LABEL_PROMPT_VERSION = "full-prose-auto-prompt-v61"
+_AUTHORED_NOTE_PREFIX = re.compile(r"^\s*note\s*:\s*", re.IGNORECASE)
 _NUMERIC_SUPERSCRIPT = re.compile(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]|\^\([+−-]?(?:[0-9]*\.[0-9]+|[0-9]+/[0-9]+)\)")
 _WORDS = re.compile(r"\w+")
 _MIN_COPIED_SENTENCE_WORDS = 6
@@ -1992,14 +1994,24 @@ def _build_auto_prompt_v59(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
+def authored_note_prefix(text: str) -> str | None:
+    match = _AUTHORED_NOTE_PREFIX.match(text)
+    return match[0] if match else None
+
+
 def build_auto_prompt(document, *, context, profile_version=PROFILE):
     if profile_version == PROFILE:
-        return _build_auto_prompt_v60(document, context=context)
+        return _build_auto_prompt_v61(document, context=context)
     if profile_version != SOURCE_BOUND_REWRITE_PROFILE:
         raise ValueError("REWRITE_PROFILE_UNSUPPORTED")
-    payload = json.loads(_build_auto_prompt_v60(document, context={}))
+    return _build_source_bound_prompt(document, preserve_notes=True)
+
+
+def _build_source_bound_prompt(document, *, preserve_notes):
+    builder = _auto_prompt_payload_v61 if preserve_notes else _auto_prompt_payload_v60
+    payload = builder(document, context={})
     payload.pop("context", None)
-    payload["profile_version"] = profile_version
+    payload["profile_version"] = SOURCE_BOUND_REWRITE_PROFILE
     if payload["slots"]:
         payload["task"] = (
             "Draft a concise introduction grounded in the article and rewrite its editable prose. "
@@ -2015,7 +2027,7 @@ def build_auto_prompt(document, *, context, profile_version=PROFILE):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _build_auto_prompt_v60(document, *, context):
+def _auto_prompt_payload_v60(document, *, context):
     payload = _auto_prompt_payload_v59(document, context=context)
     if any(_source_assembly_component(slot) for slot in payload["slots"]):
         payload["prompt_version"] = _ASSEMBLY_LABEL_PROMPT_VERSION
@@ -2023,19 +2035,42 @@ def _build_auto_prompt_v60(document, *, context):
             "Preserve the complete component name in assembly labels, including its type and qualifiers. "
             "For example, reword a component name followed by assembly as an assembly for that same component."
         )
+    return payload
+
+
+def _build_auto_prompt_v60(document, *, context):
+    payload = _auto_prompt_payload_v60(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v61(document, *, context):
+    payload = _auto_prompt_payload_v60(document, context=context)
+    if any(authored_note_prefix(slot["text"]) for slot in payload["slots"]):
+        payload["prompt_version"] = _NOTE_LABEL_PROMPT_VERSION
+        payload["rules"].append(
+            "Keep each leading Note: label in its original passage. Preserve its spelling and spacing. "
+            "Reword the text after the label when the passage requires a rewrite."
+        )
+    return payload
+
+
+def _build_auto_prompt_v61(document, *, context):
+    payload = _auto_prompt_payload_v61(document, context=context)
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROFILE):
     """Identify the rules bound to the saved model attempt."""
     if profile_version == SOURCE_BOUND_REWRITE_PROFILE:
-        payload = build_auto_prompt(document, context=context, profile_version=profile_version)
-        if sha256(payload.encode()).hexdigest() == prompt_hash:
-            return json.loads(payload)["prompt_version"]
+        for preserve_notes in (True, False):
+            payload = _build_source_bound_prompt(document, preserve_notes=preserve_notes)
+            if sha256(payload.encode()).hexdigest() == prompt_hash:
+                return json.loads(payload)["prompt_version"]
         return None
     if profile_version != PROFILE:
         return None
     for builder in (
+        _build_auto_prompt_v61,
         _build_auto_prompt_v60, _build_auto_prompt_v59, _build_auto_prompt_v58, _build_auto_prompt_v57, _build_auto_prompt_v56,
         _build_auto_prompt_v55, _build_auto_prompt_v54,
         _build_auto_prompt_v53, _build_auto_prompt_v52,
@@ -3474,7 +3509,7 @@ def _combined_replacement_preparation_targets(text, *, recognize_then_comma=Fals
 
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
-        None, _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
+        None, _NOTE_LABEL_PROMPT_VERSION, _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
         _SPATIAL_SCOPE_PROMPT_VERSION, _ASSEMBLY_LABEL_PROMPT_VERSION,
         _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
         _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
@@ -3487,7 +3522,7 @@ def _uses_prose_guards(prompt_version, slot_count):
 
 def _include_cell_blocks(prompt_version):
     return prompt_version in (
-        None, _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
+        None, _NOTE_LABEL_PROMPT_VERSION, _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
         _SPATIAL_SCOPE_PROMPT_VERSION, _ASSEMBLY_LABEL_PROMPT_VERSION,
         _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
         _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
@@ -3503,6 +3538,9 @@ def _require_changes(
     restored = {"blocks": candidate["blocks"][1:]}
     if include_cell_blocks is None:
         include_cell_blocks = _include_cell_blocks(prompt_version)
+    guard_note_labels = prompt_version == _NOTE_LABEL_PROMPT_VERSION
+    if guard_note_labels:
+        prompt_version = _auto_prompt_payload_v60(source, context={})["prompt_version"]
     guard_assembly_labels = prompt_version in (None, _ASSEMBLY_LABEL_PROMPT_VERSION)
     if prompt_version == _ASSEMBLY_LABEL_PROMPT_VERSION:
         # Keep the existing content-specific guards for the rest of this document.
@@ -3663,6 +3701,13 @@ def _require_changes(
     def check_slot(slot):
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
+        if guard_note_labels:
+            original_label = authored_note_prefix(original)
+            replacement_label = authored_note_prefix(replacement)
+            if original_label != replacement_label or (
+                replacement_label and not replacement[len(replacement_label):]
+            ):
+                raise ValueError("REWRITE_NOTE_LABEL_MUTATION")
         if compound_measurement and any(compound_measurement.search(text) for text in (original, replacement)):
             if original != replacement:
                 raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
@@ -3868,6 +3913,8 @@ def _require_changes(
 
 def require_current_publication_checks(source, candidate, *, saved_prompt_version):
     """Apply current prose rules to the saved prompt's editable slots."""
+    if saved_prompt_version == _NOTE_LABEL_PROMPT_VERSION:
+        saved_prompt_version = _auto_prompt_payload_v60(source, context={})["prompt_version"]
     if saved_prompt_version == _ASSEMBLY_LABEL_PROMPT_VERSION:
         saved_prompt_version = _auto_prompt_payload_v59(source, context={})["prompt_version"]
     else:
@@ -3908,7 +3955,7 @@ def check_automatic_introduction(source, wording):
                      prompt_version=None, introduction_only=True)
 
 
-def failed_rewrite_passages(source, response):
+def failed_rewrite_passages(source, response, *, prompt_version=None):
     """Locate passage failures in a complete, source-aligned draft for correction.
 
     The introduction and comparisons between passages still require the
@@ -3916,6 +3963,8 @@ def failed_rewrite_passages(source, response):
     """
     if not isinstance(response, dict) or set(response) != {"introduction", "replacements"}:
         return []
+    if prompt_version == _NOTE_LABEL_PROMPT_VERSION:
+        response = _restore_authored_note_labels(source, response)
     rows = response["replacements"]
     slots = full.prose_slots(source, include_cell_blocks=_include_cell_blocks(None))
     if not isinstance(rows, list) or len(rows) != len(slots):
@@ -3932,11 +3981,42 @@ def failed_rewrite_passages(source, response):
             errors[path] = str(error)
         else:
             full._set(restored, path, row["text"])
-    _require_changes(source, {"blocks": [None, *restored["blocks"]]}, prompt_version=None, slot_errors=errors)
+    _require_changes(source, {"blocks": [None, *restored["blocks"]]}, prompt_version=prompt_version, slot_errors=errors)
     return [{"path": slot["path"], "code": errors[slot["path"]]} for slot in slots if slot["path"] in errors]
 
 
+def _restore_authored_note_labels(source, response):
+    """Reapply source labels by slot while preserving the raw response for replay."""
+    if not isinstance(response, dict) or not isinstance(response.get("replacements"), list):
+        return response
+    try:
+        slots = full.prose_slots(source, include_cell_blocks=True)
+    except (KeyError, TypeError, AttributeError):
+        return response
+    rows = response["replacements"]
+    if len(slots) != len(rows):
+        return response
+    restored = list(rows)
+    for index, (slot, row) in enumerate(zip(slots, rows, strict=True)):
+        if (not isinstance(row, dict) or row.get("action") != "rewrite"
+                or row.get("path") != slot["path"] or row.get("block_id") != slot["block_id"]
+                or not isinstance(row.get("text"), str) or not isinstance(slot["text"], str)):
+            continue
+        label = authored_note_prefix(slot["text"])
+        if label is None:
+            continue
+        reply_label = authored_note_prefix(row["text"]) or ""
+        if label == reply_label:
+            continue
+        body = row["text"][len(reply_label):].lstrip()
+        if body:
+            restored[index] = {**row, "text": label + body}
+    return {**response, "replacements": restored}
+
+
 def render_auto(source, response, *, prompt_version=None, profile_version=PROFILE):
+    if prompt_version == _NOTE_LABEL_PROMPT_VERSION:
+        response = _restore_authored_note_labels(source, response)
     candidate = full.render_full(
         source, response, profile_version=profile_version, include_cell_blocks=_include_cell_blocks(prompt_version),
     )
@@ -3945,6 +4025,8 @@ def render_auto(source, response, *, prompt_version=None, profile_version=PROFIL
 
 
 def validate_auto(source, candidate, *, response=None, prompt_version=None, profile_version=PROFILE):
+    if prompt_version == _NOTE_LABEL_PROMPT_VERSION:
+        response = _restore_authored_note_labels(source, response)
     validation = full.validate_full(
         source, candidate, response=response, profile_version=profile_version,
         include_cell_blocks=_include_cell_blocks(prompt_version),
@@ -4017,6 +4099,7 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None, prof
             _FLUID_OUNCE_RATE_PROMPT_VERSION: "full-prose-auto-validator-v56",
             _SPATIAL_SCOPE_PROMPT_VERSION: "full-prose-auto-validator-v57",
             _ASSEMBLY_LABEL_PROMPT_VERSION: "full-prose-auto-validator-v58",
+            _NOTE_LABEL_PROMPT_VERSION: "full-prose-auto-validator-v59",
         }.get(prompt_version, "full-prose-auto-validator-v53")
     report.update(validator_version=validator_version, profile_version=profile_version,
         publication_mode="automatic", content_acceptance_required=False,

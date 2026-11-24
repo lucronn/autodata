@@ -239,10 +239,11 @@ def _correct_sentences(source, slots, draft, failures, complete_json, exchanges,
     return recovery
 
 
-def correct_sentence_draft(source, previous, *, complete_json, model_call_budget):
+def correct_sentence_draft(source, previous, *, complete_json, model_call_budget, preserve_notes=False):
     """Keep valid retained prose and correct failed passages with at most two calls."""
     return _correct_sentence_draft(
         source, previous, complete_json=complete_json, model_call_budget=model_call_budget,
+        preserve_notes=preserve_notes,
     )
 
 
@@ -253,10 +254,10 @@ def _validate_sentence_draft(source, slots, draft, version):
     return document, error_code
 
 
-def _correct_sentence_draft(source, previous, *, complete_json, model_call_budget, recover=False):
+def _correct_sentence_draft(source, previous, *, complete_json, model_call_budget, recover=False, preserve_notes=False):
     if type(model_call_budget) is not int or not 1 <= model_call_budget <= MAX_SENTENCE_CORRECTION_CALLS:
         raise ValueError("REWRITE_CORRECTION_BUDGET_INVALID")
-    version, slots, draft = _initial_draft(source, previous)
+    version, slots, draft = _initial_draft(source, previous, preserve_notes=preserve_notes)
     exchanges = []
     recovery = {}
     failures = _remaining_passage_errors(source, slots, draft)
@@ -283,9 +284,10 @@ def _correct_sentence_draft(source, previous, *, complete_json, model_call_budge
     return CorrectionResult(draft, document, error_code, evidence)
 
 
-def recover_sentence_correction(source, previous, *, model_call_budget, attempts):
+def recover_sentence_correction(source, previous, *, model_call_budget, attempts, preserve_notes=False):
     """Replay the terminal draft and reframe proven wiring explanations without dispatch."""
     def recover(source, previous, **options):
         return _correct_sentence_draft(source, previous, recover=True, **options)
 
-    return _replay_transcript(recover, source, previous, model_call_budget=model_call_budget, attempts=attempts)
+    return _replay_transcript(recover, source, previous, model_call_budget=model_call_budget, attempts=attempts,
+                              preserve_notes=preserve_notes)

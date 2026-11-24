@@ -6,7 +6,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from .article_lifecycle_types import (
     AUTOMATIC_REWRITE_PROFILE, AUTOMATIC_REWRITE_PROFILES, MAX_CORRECTION_CALLS,
-    NORMALIZATION_VERSION, SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE,
+    NORMALIZATION_VERSION, RETAINED_NOTE_LABEL_REPAIR_PROFILE, SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE,
     EnsureResult, JobLease, digest_json, transformation_key,
 )
 
@@ -94,7 +94,7 @@ def _ensure_locked(cur, article, *, force_new=False):
         # The authoritative pointer may be to an older terminal transformation.
         if job:
             return _result(cur, article, job)
-    if article["target_rewrite_profile_version"] == SOURCE_BOUND_CORRECTION_PROFILE:
+    if article["target_rewrite_profile_version"] in (SOURCE_BOUND_CORRECTION_PROFILE, RETAINED_NOTE_LABEL_REPAIR_PROFILE):
         raise ProfileRefreshRequired()
     job_id = uuid4()
     job = cur.execute(
@@ -154,7 +154,7 @@ def refresh_article_job(
 ):
     if not actor.strip() or not reason.strip():
         raise ValueError("refresh actor and reason required")
-    if rewrite_profile_version == SOURCE_BOUND_CORRECTION_PROFILE:
+    if rewrite_profile_version in (SOURCE_BOUND_CORRECTION_PROFILE, RETAINED_NOTE_LABEL_REPAIR_PROFILE):
         raise ProfileRefreshRequired()
     if expected_published_revision_id is not None and (
         expected_source_revision_id is None or normalization_version is not None or rewrite_profile_version is not None
@@ -195,7 +195,9 @@ def refresh_article_job(
                 ):
                     raise ValueError("LEGACY_SVG_REFRESH_BUSY")
                 return _result(cur, article, job)
-        if rewrite_profile_version is None and article["target_rewrite_profile_version"] == SOURCE_BOUND_CORRECTION_PROFILE:
+        if rewrite_profile_version is None and article["target_rewrite_profile_version"] in (
+            SOURCE_BOUND_CORRECTION_PROFILE, RETAINED_NOTE_LABEL_REPAIR_PROFILE,
+        ):
             raise ProfileRefreshRequired()
         article = cur.execute(
             """UPDATE canonical_articles SET request_generation=request_generation+1,
@@ -334,10 +336,11 @@ def source_bound_correction_prior_attempt(cur, prior_job):
         or attempt["response_hash"] != digest_json(response)):
         raise ValueError(rejected)
     from .procedure_rewrite_auto import _auto_prompt_version
-    if _auto_prompt_version(source, context={}, prompt_hash=attempt["prompt_hash"],
-                           profile_version=SOURCE_BOUND_REWRITE_PROFILE) is None:
+    guard_version = _auto_prompt_version(source, context={}, prompt_hash=attempt["prompt_hash"],
+                                         profile_version=SOURCE_BOUND_REWRITE_PROFILE)
+    if guard_version is None:
         raise ValueError(rejected)
-    return attempt
+    return {**attempt, "guard_version": guard_version}
 
 
 def schedule_source_bound_correction(

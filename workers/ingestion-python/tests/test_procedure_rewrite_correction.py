@@ -31,6 +31,25 @@ class Replies:
         return reply
 
 
+@pytest.mark.parametrize("preserve_notes", [False, True])
+def test_correction_replays_note_labels_only_under_the_bound_policy(preserve_notes):
+    source = document("Note: Remove the cover.", "Inspect the seal.")
+    previous = response("Take the cover off.", "Inspect the seal.")
+    delegate = Replies([["Check the seal.", "Check the seal.", "Inspect the seal."]])
+    corrected = correct_retained_draft(
+        source, previous, complete_json=delegate.complete, model_call_budget=1, preserve_notes=preserve_notes,
+    )
+    assert corrected.error_code is None
+    assert corrected.response["replacements"][0]["text"] == "Take the cover off."
+    expected = "Note: Take the cover off." if preserve_notes else "Take the cover off."
+    assert corrected.document["blocks"][1]["text"] == expected
+    assert corrected.document["blocks"][2]["text"] == "Check the seal."
+    assert replay_retained_correction(
+        source, previous, model_call_budget=1, evidence=corrected.evidence, attempts=delegate.attempts,
+        preserve_notes=preserve_notes,
+    ) == corrected
+
+
 def test_correction_replays_all_guards_and_keeps_the_prior_response():
     source = document("Remove the cover.", "Install the shield.", "Tighten the bolts to 25 Nm.")
     previous = response("Remove the cover.", "Take off the shield.", "Tighten the bolts to 20 Nm.",

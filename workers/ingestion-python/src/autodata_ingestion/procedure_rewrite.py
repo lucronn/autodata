@@ -398,8 +398,13 @@ def rewrite_ordered_document(document, *, client, context, profile_version=_PROF
         return result(source, error="REWRITE_INPUT_LIMIT")
     if profile_version == "full-prose-review-v1" or profile_version in AUTOMATIC_REWRITE_PROFILES:
         from .procedure_rewrite_full import render_full, validate_full, _source_valid
+        render_options = {"profile_version": profile_version}
         if profile_version in AUTOMATIC_REWRITE_PROFILES:
+            from .procedure_rewrite_auto import _NOTE_LABEL_PROMPT_VERSION
             from .procedure_rewrite_auto import render_auto as render_full, validate_auto as validate_full
+            if json.loads(prompt)["prompt_version"] == _NOTE_LABEL_PROMPT_VERSION:
+                render_options["prompt_version"] = _NOTE_LABEL_PROMPT_VERSION
+                metadata["prompt_version"] = _NOTE_LABEL_PROMPT_VERSION
         if not _source_valid(source):
             return result(source, error="REWRITE_DOCUMENT_INVALID")
         if client is None:
@@ -408,14 +413,14 @@ def rewrite_ordered_document(document, *, client, context, profile_version=_PROF
         if len(json.dumps(raw, ensure_ascii=False).encode()) > 1024*1024:
             return result(source, error="REWRITE_RESPONSE_LIMIT")
         try:
-            candidate = render_full(source, raw, profile_version=profile_version)
+            candidate = render_full(source, raw, **render_options)
         except ValueError as error:
             if profile_version == SOURCE_BOUND_REWRITE_PROFILE:
                 from .procedure_rewrite_auto import failed_rewrite_passages
-                if passages := failed_rewrite_passages(source, raw):
+                if passages := failed_rewrite_passages(source, raw, prompt_version=render_options.get("prompt_version")):
                     metadata["passage_errors"] = passages
             return result(source, raw=raw if isinstance(raw, dict) else {}, error=str(error))
-        validation = validate_full(source, candidate, response=raw, profile_version=profile_version)
+        validation = validate_full(source, candidate, response=raw, **render_options)
         if not validation.passed:
             return result(source, raw=raw, error=validation.error_codes[0])
         return result(candidate, validation.report["changed_slots"], raw)

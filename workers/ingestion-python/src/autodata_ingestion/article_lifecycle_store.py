@@ -745,6 +745,7 @@ _CORRECTION_SERVER = "server-source-bound-correction"
 
 
 def _bound_correction_draft(cur, job, document):
+    from .procedure_rewrite_auto import _NOTE_LABEL_PROMPT_VERSION
     from .source_job_persistence import source_bound_correction_prior_attempt
 
     checkpoint = job["checkpoint"]
@@ -795,7 +796,7 @@ def _bound_correction_draft(cur, job, document):
     if (binding.get("prior_attempt_id") != str(attempt["rewrite_attempt_id"])
         or binding.get("prior_response_hash") != attempt["response_hash"]):
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
-    return binding, attempt["response"]
+    return {**binding, "preserve_notes": attempt["guard_version"] == _NOTE_LABEL_PROMPT_VERSION}, attempt["response"]
 
 
 def _validate_correction_rounds(rounds, *, limit, model, token, input_hash, revision):
@@ -858,7 +859,7 @@ def resolve_source_bound_correction(cur, job, candidate):
     if method == scheduled_method:
         result = replay_retained_correction(
             source, previous, model_call_budget=binding["model_call_budget"], evidence=evidence, attempts=rounds,
-            method=scheduled_method,
+            method=scheduled_method, preserve_notes=binding["preserve_notes"],
         )
     else:
         recovery_method, recover = correction_recovery_for_method(scheduled_method)
@@ -870,6 +871,7 @@ def resolve_source_bound_correction(cur, job, candidate):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
         result = recover(
             source, previous, model_call_budget=binding["model_call_budget"], attempts=rounds,
+            preserve_notes=binding["preserve_notes"],
         )
         if (not recovery.get("terminal_error")
             or result.evidence.get("original_error_code") != recovery["terminal_error"]):
@@ -980,6 +982,7 @@ def recover_source_bound_correction(repo, article_id, *, expected_job_id, expect
         )
         result = recover(
             document, previous, model_call_budget=binding["model_call_budget"], attempts=rounds,
+            preserve_notes=binding["preserve_notes"],
         )
         if (result.evidence.get("method") != recovery_method
             or result.evidence.get("original_error_code") != job["error_code"]):
@@ -1086,6 +1089,7 @@ def run_source_bound_correction(repo, lease, document, *, model_client, hooks=No
 
     result = correction_for_method(binding.get("correction_method", _CORRECTION_METHOD))(
         document, previous, complete_json=complete_json, model_call_budget=binding["model_call_budget"],
+        preserve_notes=binding["preserve_notes"],
     )
     if result.error_code is not None or result.document is None:
         raise ValueError(result.error_code or _CORRECTION_EVIDENCE_INVALID)
@@ -1435,12 +1439,14 @@ def _store_rewrite_result(repo,lease,result):
             if digest_json(render_full(source,result.raw_response)) != digest_json(result.document) or not full_validation.passed:
                 raise ValueError("rewrite operation binding mismatch")
         if result.profile_version in AUTOMATIC_REWRITE_PROFILES and (recovered is not None or not result.error_code):
-            from .procedure_rewrite_auto import render_auto, validate_auto
+            from .procedure_rewrite_auto import _NOTE_LABEL_PROMPT_VERSION, render_auto, validate_auto
             source = job["checkpoint"]["normalized_document"]
             response = recovered.response if recovered is not None else result.raw_response
             document = recovered.document if recovered is not None else result.document
             output_hash = digest_json(document) if recovered is not None else result.output_hash
             guard_version = prompt_version if recovered is not None else None
+            if result.model_metadata.get("prompt_version") == _NOTE_LABEL_PROMPT_VERSION:
+                guard_version = _NOTE_LABEL_PROMPT_VERSION
             rendered = render_auto(source, response, prompt_version=guard_version, profile_version=result.profile_version)
             validation = validate_auto(
                 source, document, response=response, prompt_version=guard_version, profile_version=result.profile_version,
@@ -1530,6 +1536,7 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
     from .article_lifecycle_types import digest_json
     from .article_document import project_ordered_document
     from .procedure_rewrite import validate_article_rewrite
+    from .retained_note_label_repair import METHOD as NOTE_LABEL_REPAIR_METHOD, resolve_retained_note_label_repair
     from .retained_procedure_repair import METHOD as RETAINED_PROCEDURE_REPAIR_METHOD, resolve_retained_procedure_repair
     from .staged_media_reply_recovery import METHOD, verify_staged_media_reply_recovery
     job=cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s FOR UPDATE",(lease.job_id,)).fetchone()
@@ -1549,11 +1556,13 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
     projection=project_ordered_document(row["canonical_document"])
     profile = job["rewrite_profile_version"]
     method = row["model_metadata"].get("transformation_method")
-    archived_reply_recovery = method in (METHOD, RETAINED_PROCEDURE_REPAIR_METHOD)
+    archived_reply_recovery = method in (METHOD, RETAINED_PROCEDURE_REPAIR_METHOD, NOTE_LABEL_REPAIR_METHOD)
     if method == METHOD:
         validation = verify_staged_media_reply_recovery(cur, job, article, row)
     elif method == RETAINED_PROCEDURE_REPAIR_METHOD:
         validation = resolve_retained_procedure_repair(cur, job, article, row, publishing=True).validation
+    elif method == NOTE_LABEL_REPAIR_METHOD:
+        validation = resolve_retained_note_label_repair(cur, job, article, row, publishing=True).validation
     elif profile in AUTOMATIC_REWRITE_PROFILES:
         validation = automatic_candidate_validation(cur, job, row, require_current=True)
     elif profile == "full-prose-review-v1":
@@ -1598,7 +1607,7 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
         _bind_v2_operations(row["normalized_source_document"], row["canonical_document"], attempt["response"])
     if job["rewrite_profile_version"] == "full-prose-review-v1":
         _require_full_approval(cur,job,article,row)
-    if profile in AUTOMATIC_REWRITE_PROFILES:
+    if profile in AUTOMATIC_REWRITE_PROFILES or method == NOTE_LABEL_REPAIR_METHOD:
         source, document = row["normalized_source_document"], row["canonical_document"]
         rewritten_paths = validation.report["changed_prose_slots"]
         require_distinct_generated_introduction(source, document, rewritten_paths=rewritten_paths)

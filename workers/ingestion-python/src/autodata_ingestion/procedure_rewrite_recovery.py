@@ -115,10 +115,11 @@ def recover_first_draft(source, raw, *, prompt_version):
     })
 
 
-def recover_retained_correction(source, previous, *, model_call_budget, attempts):
+def recover_retained_correction(source, previous, *, model_call_budget, attempts, preserve_notes=False):
     """Verify the original transcript and reframe only unresolved passages."""
-    original = rebuild_retained_correction(source, previous, model_call_budget=model_call_budget, attempts=attempts)
-    version, slots, _ = _initial_draft(source, previous)
+    original = rebuild_retained_correction(source, previous, model_call_budget=model_call_budget, attempts=attempts,
+                                            preserve_notes=preserve_notes)
+    version, slots, _ = _initial_draft(source, previous, preserve_notes=preserve_notes)
     draft = deepcopy(original.response)
     batch, alternatives = [], []
     for index in _passage_errors(source, slots, draft):
