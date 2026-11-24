@@ -52,6 +52,7 @@ const demoPath = (path) => {
 };
 const names = ["year", "make", "model", "configuration"];
 const rows = Object.fromEntries(names.map((name) => [name, []]));
+const pickerStates = new Map();
 const selectorCache = new Map();
 const selectorCacheLifetime = 30_000;
 const selectorCacheSize = 32;
@@ -226,6 +227,7 @@ function clearUnavailableArticle() {
 }
 function invalidate() {
   navigation.clear();
+  cancelPickerRefreshes();
   currentOrder = "";
   paidOrder = null;
   unconfirmedOrder = null;
@@ -377,16 +379,80 @@ function usableEngineChoices(name, response) {
 function readStoredSelector(path, signal, timeout) {
   return requestStoredSelector(path, { signal, timeout }, requestJSON);
 }
+function cancelPickerRefreshes() {
+  for (const picker of pickerStates.values()) picker.refresh?.abort();
+}
+async function readStoredPicker(picker, name, signal, timeout) {
+  const stored = await readStoredSelector(picker.path, signal, timeout);
+  signal.throwIfAborted();
+  if (name !== "configuration" || stored.complete) return stored;
+  if (stored.hydrating || stored.discovering) {
+    picker.discoveryInstance = stored.discovery_instance;
+  } else if (picker.discoveryInstance && stored.discovery_instance &&
+      stored.discovery_instance !== picker.discoveryInstance) {
+    // An idle peer cannot confirm that the scheduling instance has finished.
+    const usable = usableEngineChoices(name, stored);
+    return { ...stored, hydrating: !usable, discovering: usable };
+  } else {
+    picker.discoveryInstance = undefined;
+  }
+  return stored;
+}
+async function refreshPicker(name) {
+  const picker = pickerStates.get(name);
+  const select = $(name);
+  if (!picker?.incomplete || select.disabled || picker.path !== selectorPath(name) ||
+      picker.loading?.current() || (picker.refresh && !picker.refresh.signal.aborted)) return;
+  const refresh = new AbortController();
+  picker.refresh = refresh;
+  try {
+    await readCollection((timeout) => readStoredPicker(picker, name, refresh.signal, timeout), {
+      signal: refresh.signal,
+      // Only configurations distinguish active discovery from incomplete coverage.
+      attempts: name === "configuration" ? undefined : 1,
+      backoffWithChoices: true,
+      onUpdate(data) {
+        if (pickerStates.get(name) !== picker || picker.path !== selectorPath(name) || select.disabled)
+          return;
+        if (!data.items.length) return;
+        picker.incomplete = data.complete !== true;
+        rememberSelector(picker.path, name, data);
+        const known = new Set(rows[name].map((item) => String(item.id ?? item.year)));
+        const additional = data.items.filter((item) => !known.has(String(item.id ?? item.year)));
+        if (!additional.length) return;
+        if (name === "year") {
+          populate(name, [...rows[name], ...additional]);
+          return;
+        }
+        rows[name] = [...rows[name], ...additional];
+        select.append(...additional.map((item) => new Option(selectorLabel(name, item), String(item.id))));
+      },
+    });
+  } catch {
+    // Opening a picker can still use its existing choices if the optional read fails.
+  } finally {
+    if (picker.refresh === refresh) picker.refresh = null;
+  }
+}
 async function loadOptions(name, g, desired = "", initial = null) {
   const path = selectorPath(name);
+  pickerStates.get(name)?.refresh?.abort();
+  const picker = { path, incomplete: false, loading: g };
+  pickerStates.set(name, picker);
   const cached = cachedSelector(path);
   const choice = (item) => String(item.id ?? item.year) === desired;
   const label = name === "configuration" ? "engine / trim" : name;
   let showingPartial = false;
   let requestedConfiguration = false;
-  let discoveryInstance;
+  function trackDiscovery(response) {
+    if (name === "configuration" && g.current() && (response.hydrating || response.discovering))
+      picker.discoveryInstance = response.discovery_instance;
+    return response;
+  }
   function showChoices(data) {
     if (!g.current()) return;
+    picker.incomplete = data.complete === false ||
+      (data.complete !== true && Boolean(data.hydrating || data.discovering));
     populate(name, data.items, desired);
     if (!(data.hydrating || data.discovering)) return;
     const hasChoices = data.items.length > 0;
@@ -409,7 +475,7 @@ async function loadOptions(name, g, desired = "", initial = null) {
         if (Array.isArray(response?.items)) {
           if (name === "year" || (desired ? response.items.some(choice) : response.complete === true)) {
             if (name !== "year" && response.complete !== true)
-              void requestJSON(path, { signal: g.signal }).catch(() => null);
+              void requestJSON(path, { signal: g.signal }).then(trackDiscovery).catch(() => null);
             return response;
           }
           if (response.items.length) {
@@ -420,22 +486,11 @@ async function loadOptions(name, g, desired = "", initial = null) {
         // Stored descendants cannot start ingestion. A regular read can do so once the parent is valid.
       }
       if (name === "configuration") {
-        if (requestedConfiguration) {
-          const stored = await readStoredSelector(path, g.signal, timeout);
-          // An idle peer cannot confirm the scheduling instance has finished.
-          if (discoveryInstance && stored.discovery_instance && stored.discovery_instance !== discoveryInstance &&
-              !stored.complete && !stored.hydrating && !stored.discovering) {
-            const usable = usableEngineChoices(name, stored);
-            return { ...stored, hydrating: !usable, discovering: usable };
-          }
-          return stored;
-        }
+        if (requestedConfiguration) return readStoredPicker(picker, name, g.signal, timeout);
         requestedConfiguration = true;
       }
       const response = await requestJSON(path, { signal: g.signal, timeout });
-      if (name === "configuration" && (response.hydrating || response.discovering))
-        discoveryInstance = response.discovery_instance;
-      return response;
+      return trackDiscovery(response);
     },
     {
       signal: g.signal,
@@ -452,7 +507,7 @@ async function loadOptions(name, g, desired = "", initial = null) {
       },
       onUpdate: showChoices,
     },
-  );
+  ).finally(() => { picker.loading = null; });
   if (!g.current()) return;
   if (result !== cached) rememberSelector(path, name, result);
   const selected = desired && result.items.some(choice);
@@ -2314,8 +2369,16 @@ async function restoreRoute(initialYears = null, { focusArticle = "", initialSel
   );
   return early ? restore.finally(early.abort) : restore;
 }
-for (const [index, name] of names.entries())
-  $(name).addEventListener("change", () => {
+for (const [index, name] of names.entries()) {
+  const select = $(name);
+  select.addEventListener("pointerdown", (event) => {
+    if (event.button === 0) void refreshPicker(name);
+  });
+  select.addEventListener("keydown", (event) => {
+    if (!event.repeat && ["ArrowDown", "ArrowUp", "Enter", " ", "F4"].includes(event.key))
+      void refreshPicker(name);
+  });
+  select.addEventListener("change", () => {
     invalidate();
     vehicle = null;
     quote = null;
@@ -2341,6 +2404,7 @@ for (const [index, name] of names.entries())
       operation((g) => selectVehicle(g));
     }
   });
+}
 $("signin").addEventListener("click", () => void signIn());
 $("signout").addEventListener("click", async () => {
   invalidate();
@@ -2381,6 +2445,7 @@ $("search").addEventListener("input", () => {
 $("retry").addEventListener("click", () => retryAction?.());
 $("cancel").addEventListener("click", () => {
   navigation.clear();
+  cancelPickerRefreshes();
   status("Loading stopped. You can try again.", {
     retry: () => restoreRoute(),
   });

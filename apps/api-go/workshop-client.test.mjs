@@ -22,6 +22,8 @@ function runInNewContext(code, context) {
   context.paidOrder ??= null;
   context.articleIndexOrigin ??= null;
   context.performance ??= performance;
+  context.pickerStates ??= new Map();
+  context.cancelPickerRefreshes ??= () => {};
   context.selectorCache ??= new Map();
   context.selectorCacheLifetime ??= 30_000;
   context.selectorCacheSize ??= 32;
@@ -6734,11 +6736,20 @@ for (const outcome of ['resolve', 'reject']) {
 
 function selectorOptionsHarness(response) {
  const nodes = new Map();
- const $ = id => { if (!nodes.has(id)) nodes.set(id, {value:'',disabled:false,hidden:true,textContent:'',dataset:{}}); return nodes.get(id); };
+ const $ = id => {
+   if (!nodes.has(id)) nodes.set(id, {
+     value:'', disabled:false, hidden:true, textContent:'', dataset:{}, options:[],
+     append(...choices) { this.options.push(...choices); },
+   });
+   return nodes.get(id);
+ };
+ class PickerOption {
+   constructor(text, value) { Object.assign(this, {text, value}); }
+ }
  const statuses=[], displayed=[];
  const requests=[], waits=[];
  let clock = 0;
- const context={ $, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices',
+ const context={ $, rows:{}, Option:PickerOption, AbortController, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices',
   async requestJSON(path, options) {
     requests.push(path);
     if (response instanceof Error) throw response;
@@ -6746,13 +6757,17 @@ function selectorOptionsHarness(response) {
   },
   session:{ state:{mode:'firebase'} },
   readCollection:(read,options)=>readCollection(read,{
-    ...options, attempts:3, now:() => clock,
+    ...options, attempts:options.attempts ?? 3, now:() => clock,
     async wait(ms) { waits.push(ms); clock += ms; },
   }),
-  populate(name,items,desired) {
+  populate(name,items,desired='') {
+    const select = $(name);
+    const selected = desired || select.value;
+    context.rows[name] = items;
     displayed.push(items);
-    $(name).disabled = !items.length;
-    $(name).value = items.some(item => String(item.id ?? item.year) === desired) ? desired : '';
+    select.disabled = !items.length;
+    select.options = items.map(item => new PickerOption(selectorLabel(name,item), String(item.id ?? item.year)));
+    select.value = select.options.some(option => option.value === selected) ? selected : '';
   },
   recordStatus:(text,options={})=>statuses.push({text,...options}), restoreRoute(){},
  };
@@ -6760,6 +6775,91 @@ function selectorOptionsHarness(response) {
   'const actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',context);
  return {context,$,statuses,displayed,requests,waits,load:(desired='',current,initial=null,name='configuration')=>context.operation(g=>context.loadOptions(name,current?{...g,current}:g,desired,initial),()=>context.restoreRoute())};
 }
+
+test('an incomplete picker shares a stored reopen read and keeps the exact selected option', async () => {
+  const first = { id: 'engine-a', engine: '3.5', complete: true };
+  const sibling = { id: 'engine-b', engine: '2.7', complete: true };
+  const pending = deferredAuthOperation();
+  const h = selectorOptionsHarness(path => path.includes('stored_only') ? pending.promise
+    : { items: [first], complete: false });
+  await h.load();
+  const select = h.$('configuration');
+  select.value = first.id;
+  const option = select.options[0];
+  const statuses = h.statuses.length;
+  const reopening = h.context.refreshPicker('configuration');
+  await h.context.refreshPicker('configuration');
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
+  assert.equal(select.disabled, false);
+  assert.equal(select.value, first.id);
+  assert.deepEqual(select.options, [option]);
+  pending.resolve({ items: [first, sibling], complete: true });
+  await reopening;
+  assert.deepEqual(select.options.map(choice => choice.value), [first.id, sibling.id]);
+  assert.equal(select.options[0], option);
+  assert.equal(select.value, first.id);
+  assert.equal(h.statuses.length, statuses);
+  await h.context.refreshPicker('configuration');
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
+});
+
+test('an engine reopen follows existing discovery through an idle peer using stored reads', async () => {
+  const first = { id: 'engine-a', engine: '3.5', complete: true };
+  const second = { id: 'engine-b', engine: '2.7', complete: true };
+  const partial = { items: [first], complete: false, discovery_instance: 'scheduler', discovering: true };
+  const reads = [
+    partial,
+    { items: [first], complete: false, discovery_instance: 'peer' },
+    { items: [first, second], complete: true },
+  ];
+  const h = selectorOptionsHarness(() => reads.shift());
+  await h.load(first.id);
+  await h.context.refreshPicker('configuration');
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1', '/choices?stored_only=1']);
+  assert.deepEqual(h.waits, [4000]);
+  assert.equal(h.$('configuration').value, first.id);
+  assert.equal(h.$('configuration').options[1].value, second.id);
+});
+
+test('a stale reopen is canceled on parent change and never enters the new scope', async () => {
+  const first = { id: 'engine-a', engine: '3.5' };
+  const pending = deferredAuthOperation();
+  let staleSignal;
+  let path = '/old-parent';
+  const h = selectorOptionsHarness((readPath, { signal }) => {
+    if (readPath === '/old-parent?stored_only=1') {
+      staleSignal = signal;
+      return pending.promise;
+    }
+    return readPath === '/old-parent' ? { items: [first], complete: false }
+      : { items: [{ id: 'current', engine: '5.0' }], complete: true };
+  });
+  h.context.selectorPath = () => path;
+  await h.load();
+  const opening = h.context.refreshPicker('configuration');
+  h.context.cancelPickerRefreshes();
+  path = '/new-parent';
+  await h.load();
+  pending.resolve({ items: [first, { id: 'stale', engine: '2.7' }], complete: true });
+  await opening;
+  assert.equal(staleSignal.aborted, true);
+  assert.deepEqual(h.$('configuration').options.map(choice => choice.value), ['current']);
+  await h.context.refreshPicker('configuration');
+  assert.deepEqual(h.requests, ['/old-parent', '/old-parent?stored_only=1', '/new-parent']);
+});
+
+test('an incomplete model reopen reads storage once when hydration only describes coverage', async () => {
+  const first = { id: 'original', name: 'Original' };
+  const sibling = { id: 'new', name: 'New' };
+  const h = selectorOptionsHarness(path => path.includes('stored_only')
+    ? { items: [first, sibling], complete: false, hydrating: true }
+    : { items: [first], complete: false });
+  await h.load('', null, null, 'model');
+  await h.context.refreshPicker('model');
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
+  assert.deepEqual(h.waits, []);
+  assert.deepEqual(h.$('model').options.map(choice => choice.value), [first.id, sibling.id]);
+});
 
 test('identical hydration snapshots preserve existing option nodes and the selected make', () => {
   const harness = loginRouteHarness('');
