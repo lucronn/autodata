@@ -352,7 +352,8 @@ export async function readArticle(
     // Show newer content on a preview check while keeping the ordinary read slot.
     const source = latest?.data?.article;
     const preview = fastSource && source.source_body_preview === true && source.source_revision_id === null;
-    if ((backoff === 4000 || backoff === 8000) && (fastPendingJob || preview) &&
+    const shortPreviewWait = preview && backoff === 2000;
+    if ((shortPreviewWait || backoff === 4000 || backoff === 8000) && (fastPendingJob || preview) &&
         source.processing.state === "fetching_source") {
       keepRegularSourceRead = preview;
       regularSourceReadAt = now() + backoff;
