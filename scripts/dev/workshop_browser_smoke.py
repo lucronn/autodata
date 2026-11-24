@@ -144,20 +144,26 @@ def verify_provenance(args):
     certificate_hash=hashlib.sha256(ssl.PEM_cert_to_DER_cert(certificate)).hexdigest()
     assets={}
     asset_root=ROOT/'apps/api-go/workshop'
-    bootstrap_path='/workshop/bootstrap.mjs'
-    bootstrap=(asset_root/'bootstrap.mjs').read_bytes()
-    bootstrap_hash=hashlib.sha256(bootstrap).hexdigest()
-    versioned_bootstrap=f'{bootstrap_path}?v={bootstrap_hash}'
+    release=hashlib.sha256()
+    for path in sorted(asset_root.rglob('*'), key=lambda path: path.relative_to(asset_root).parts):
+        name=path.relative_to(asset_root).as_posix()
+        if path.is_file() and name!='index.html':
+            release.update(f'{name}\0{hashlib.sha256(path.read_bytes()).hexdigest()}\n'.encode())
+    asset_prefix=f'/workshop/assets/{release.hexdigest()}/'
+    html_assets=('bootstrap.mjs','catalog.mjs','styles.css','fonts/InstrumentSans.woff2')
     for name in ('index.html','app.mjs','auth.mjs','catalog.mjs','progress.mjs','commerce.mjs','article-read.mjs','styles.css','firebase-web.mjs','firebase-web.mjs.LEGAL.txt','firebase-web.provenance.json'):
         local=(asset_root/name).read_bytes()
         if name=='index.html':
-            local=local.replace(f'src="{bootstrap_path}"'.encode(),f'src="{versioned_bootstrap}"'.encode())
-        with urlopen(args.base_url+'/workshop/'+name,context=ssl._create_unverified_context(),timeout=10) as response: served=response.read()
+            for asset in html_assets:
+                local=local.replace(f'"/workshop/{asset}"'.encode(),f'"{asset_prefix}{asset}"'.encode(),1)
+        serve_path='/workshop' if name=='index.html' else asset_prefix+name
+        with urlopen(args.base_url+serve_path,context=ssl._create_unverified_context(),timeout=10) as response: served=response.read()
         if local!=served: raise ValueError(f'compiled Go asset differs from candidate: {name}')
         assets[name]={'sha256':hashlib.sha256(served).hexdigest(),'bytes':len(served)}
-    with urlopen(args.base_url+versioned_bootstrap,context=ssl._create_unverified_context(),timeout=10) as response:
-        if response.read()!=bootstrap:
-            raise ValueError('compiled Go asset differs from candidate: bootstrap.mjs')
+    for name in ('bootstrap.mjs','fonts/InstrumentSans.woff2'):
+        with urlopen(args.base_url+asset_prefix+name,context=ssl._create_unverified_context(),timeout=10) as response:
+            if response.read()!=(asset_root/name).read_bytes():
+                raise ValueError(f'compiled Go asset differs from candidate: {name}')
     return {'certificate_sha256':certificate_hash,'assets':assets}
 
 
@@ -199,7 +205,9 @@ class DTOFixture:
         request = route.request
         url = urlsplit(request.url)
         path, query = url.path, parse_qs(url.query)
-        self.requests.append({'method':request.method,'path':path,'query':query})
+        # Preserve the logical asset routes used in synthetic browser receipts.
+        receipt_path = re.sub(r'^/workshop/assets/[a-f0-9]{64}/', '/workshop/', path)
+        self.requests.append({'method':request.method,'path':receipt_path,'query':query})
         if not request.url.startswith(self.origin + '/'):
             if not allowed_external(request.url):
                 self.unexpected.append(request.url); await route.abort(); return

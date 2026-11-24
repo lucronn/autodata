@@ -30,7 +30,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
     for (const module of ['app', 'commerce', 'article-read']) {
       const link = document.createElement('link');
       link.rel = 'modulepreload';
-      link.href = `/workshop/${module}.mjs`;
+      link.href = new URL(`./${module}.mjs`, import.meta.url).href;
       document.head.append(link);
     }
   }
