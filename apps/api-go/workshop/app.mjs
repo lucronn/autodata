@@ -2289,7 +2289,7 @@ async function signIn() {
     signingIn = false;
   }
   if (!session.state.authenticated) return;
-  if (merchant?.checkout_mode === "simulation") loadPurchaseConfiguration();
+  if (!merchant || merchant.checkout_mode === "simulation") loadPurchaseConfiguration();
   if (matchesSelection()) {
     // Apply access only for the public selection retained through sign-in.
     const confirmed = canConfirmIndex() ? firstIndex : null;
