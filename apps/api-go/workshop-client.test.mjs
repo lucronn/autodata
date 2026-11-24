@@ -2220,8 +2220,10 @@ function sourceReviewHarness() {
     currentArticle: { source_review: { url: '/article-A/source' } },
     viewGeneration: first,
     $: id => ({ addEventListener(event, callback) {
-      assert.equal(event, 'click');
-      if (id === 'source-review-load') click = callback;
+      if (id === 'source-review-load') {
+        assert.equal(event, 'click');
+        click = callback;
+      }
     } }),
     loadSource(url, generation) {
       loads.push({ url, generation });
@@ -7568,10 +7570,12 @@ test('Original loads the verified capture and existing article citations keep th
   assert.deepEqual(mediaIDs(frame), ['recovered']);
   assert.equal(sourceTitle.focusCalls, 1);
   assert.equal(sourceTitle.lastScroll.behavior, 'instant');
+  assert.equal(h.nodes.get('reader').dataset.readingOriginal, 'true');
   assert.equal(open.disabled, false);
   assert.equal(open.textContent, 'View Original');
   assert.equal(back.hidden, false);
   back.dispatch('click');
+  assert.equal(h.nodes.get('reader').dataset.readingOriginal, undefined);
   assert.equal(h.nodes.get('article-title').focusCalls, 1);
   assert.equal(h.nodes.get('article-title').lastScroll.behavior, 'instant');
   assert.deepEqual(requested, [originalURL]);

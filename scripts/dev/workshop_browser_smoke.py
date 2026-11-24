@@ -1674,8 +1674,10 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
                     '#source-review-frame ol[start="4"] > li[value="9"] table td figure img[alt="Drive alignment"]'
                 )
                 await expect(stored_figure).to_have_count(1)
+                await expect(article_content).to_be_hidden()
                 await expect(page.locator('#source-review-title')).to_be_focused()
                 await page.locator('#back-to-article').click()
+                await expect(article_content).to_be_visible()
                 await expect(page.locator('#article-title')).to_be_focused()
             source_path=await page.locator('#source-review-link').get_attribute('href')
             assert parse_qs(urlsplit(source_path).query).get('source_revision_id')

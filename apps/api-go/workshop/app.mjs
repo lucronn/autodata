@@ -223,6 +223,7 @@ function resetSourceReview() {
   sourceURL = "";
   ++sourceRevision;
   displayedSourceRevision = sourceRevision;
+  delete $("reader").dataset.readingOriginal;
   $("source-review").hidden = true;
   $("open-original").hidden = true;
   $("original-error").hidden = true;
@@ -1899,6 +1900,7 @@ async function loadSource(value, g, blockID = null, { focusSource = false } = {}
     if (blockID !== null || focusSource) {
       const target = targets?.get(blockID) || $("source-review-title");
       target.setAttribute("tabindex", "-1");
+      if (focusSource) $("reader").dataset.readingOriginal = "true";
       target.focus({ preventScroll: focusSource });
       if (focusSource) target.scrollIntoView({ behavior: "instant", block: "start" });
     }
@@ -2750,9 +2752,13 @@ $("source-review-load").addEventListener("click", () => openOriginal(false));
 $("open-original").addEventListener("click", () => openOriginal(true));
 $("back-to-article").addEventListener("click", () => {
   if (!viewGeneration?.current()) return;
+  delete $("reader").dataset.readingOriginal;
   const title = $("article-title");
   title.focus({ preventScroll: true });
   title.scrollIntoView({ behavior: "instant", block: "start" });
+});
+$("article-reference").addEventListener("toggle", () => {
+  if (!$("article-reference").open) delete $("reader").dataset.readingOriginal;
 });
 function returnToArticleIndex() {
   const origin = articleIndexOrigin;

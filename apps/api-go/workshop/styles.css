@@ -622,6 +622,11 @@ select:enabled:hover {
 #back-to-article {
   min-block-size: 44px;
 }
+@media screen {
+  #reader[data-reading-original="true"]:has(#article-reference[open]) :is(#article-content, #open-original) {
+    display: none;
+  }
+}
 .article-content {
   font-size: 17px;
   line-height: 1.75;
