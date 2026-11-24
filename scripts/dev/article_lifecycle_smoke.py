@@ -19,6 +19,7 @@ REQUIRED = (
     "test_article_publication.py", "test_article_worker.py",
     "test_article_lifecycle_integration.py", "test_article_document.py",
     "test_source_bound_rewrite_scheduling.py", "test_source_bound_rewrite_worker.py",
+    "test_source_only_rewrite_worker.py",
     "test_source_bound_correction_recovery.py",
     "test_first_draft_recovery_worker.py",
     "test_procedure_rewrite.py", "test_mercury2.py",
