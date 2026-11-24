@@ -1,12 +1,16 @@
 from dataclasses import replace
 from hashlib import sha256
+from io import BytesIO
 import json
 
 import pytest
+from PIL import Image
 
 from autodata_ingestion.article_lifecycle_types import BANKONE_HTML_FLOW_LAYOUT
 from autodata_ingestion.procedure_normalize import normalize_procedure_article
 from autodata_ingestion.source_article_capture import capture_source_article
+from autodata_ingestion.source_connector_client import SourceConnectorError
+from autodata_ingestion.svg_rasterization import SVGUnavailable
 from test_source_article_capture import capture_fixture
 
 
@@ -78,6 +82,7 @@ def test_same_graphic_is_fetched_once_and_keeps_both_authored_positions(capture_
     legacy = replace(context, legacy_published_bankone_flow_body=body["sha256"])
     original = capture_source_article(context, **options)
     refreshed = capture_source_article(legacy, keep_bankone_html_flow=True, **options)
+    assert not refreshed.recovered_legacy_bankone_svg
     assert refreshed.source_document == original.source_document
     assert refreshed.source_fingerprint == original.source_fingerprint != captured.source_fingerprint
 
@@ -114,3 +119,109 @@ def test_note_before_graphic_preserves_preceding_step_and_layout_fingerprint(cap
         assert revised.source_document["blocks"][-1]["start"] == 2
         assert revised.resource_manifest[0]["bankone_html_flow_layout"] == BANKONE_HTML_FLOW_LAYOUT
         assert revised.source_fingerprint != original.source_fingerprint
+
+
+@pytest.mark.parametrize("condition", [
+    "complete", "changed_digest", "undeclared", "duplicate_position", "conflicting_locator",
+    "missing_svg", "raster_failure", "already_raster", "partial_projection",
+])
+def test_same_body_legacy_svg_upgrade_requires_exact_positions_and_derivatives(
+    capture_fixture, monkeypatch, condition,
+):
+    other = "second-graphic"
+    refs = [ASSET, other]
+    other_locator = "bankone:asset:" + sha256(b'{"kind":"graphic","id":"72"}').hexdigest()[:24]
+    positions = (
+        '<p>Remove the cover.</p>'
+        '<figure><mtr-image id="71" alt="Cover fasteners"></mtr-image>'
+        '<figcaption>Upper mounting points</figcaption></figure>'
+        '<p>Clean the threads.</p>'
+        '<figure><mtr-image id="72" alt="Backing plate"></mtr-image>'
+        '<figcaption>Backing plate alignment</figcaption></figure>'
+        '<p>Install the replacement.</p>'
+    )
+    if condition == "duplicate_position":
+        positions += '<mtr-image id="72"></mtr-image>'
+    payload = positions.encode()
+    declared = [ASSET] if condition == "undeclared" else refs
+    if condition == "partial_projection":
+        declared = [*declared, "another-missing-figure"]
+    capture_fixture.body("bankone", payload, assets=declared)
+    svgs = {
+        ref: ('<svg xmlns="http://www.w3.org/2000/svg" '
+              f'width="{index}" height="1"/>').encode()
+        for index, ref in enumerate(refs, 1)
+    }
+
+    def rasterize(source, *, timeout):
+        assert 0 < timeout <= 30
+        index = list(svgs.values()).index(source) + 1
+        if condition == "raster_failure" and index == 2:
+            raise SVGUnavailable("INVALID_SVG")
+        output = BytesIO()
+        Image.new("RGB", (index, 1), "red").save(output, format="PNG")
+        return output.getvalue()
+
+    monkeypatch.setattr("autodata_ingestion.source_article_capture.rasterize_svg", rasterize)
+    for ref, svg in svgs.items():
+        if ref == other and condition == "missing_svg":
+            continue
+        is_raster = ref == other and condition == "already_raster"
+        data = rasterize(svg, timeout=1) if is_raster else svg
+        capture_fixture.body(
+            "bankone", data, "image/png" if is_raster else "image/svg+xml", ref=ref, kind="asset",
+        )
+
+    class ArchivedReceipts:
+        provider = "bankone"
+
+        def read_resource(self, ref, **options):
+            envelope = capture_fixture.registry["bankone"].read_resource(ref, **options)
+            if ref not in refs:
+                return envelope
+            locator = GRAPHIC_LOCATOR if ref == ASSET or condition == "conflicting_locator" else other_locator
+            return replace(envelope, source_locator=locator)
+
+    original_body = b"<p>Earlier article body.</p>" if condition == "changed_digest" else payload
+    digest = sha256(original_body).hexdigest()
+    context = replace(
+        capture_fixture.context("bankone", asset_ref=other),
+        legacy_published_bankone_flow_body=digest,
+        legacy_published_bankone_svg_refs=frozenset(refs),
+        legacy_published_html_flow_figure_body=digest,
+    )
+    previews = []
+    options = {
+        "registry": {"bankone": ArchivedReceipts()},
+        "object_store": capture_fixture.objects,
+        "keep_bankone_html_flow": True,
+        "keep_html_flow_figure_captions": True,
+        "on_body_preview": lambda _, document: previews.append(document),
+    }
+    if condition not in {"complete", "changed_digest"}:
+        with pytest.raises(SourceConnectorError, match="source_legacy_svg_recovery_incomplete"):
+            capture_source_article(context, **options)
+        assert not previews
+        if condition == "undeclared":
+            assert capture_fixture.resource_calls("bankone", other) == 0
+        return
+
+    captured = capture_source_article(context, **options)
+    assert captured.recovered_legacy_bankone_svg == (condition == "complete")
+    assert len(previews) == (1 if condition == "changed_digest" else 0)
+    assert captured.projection_status == "readable"
+    assert captured.resource_manifest[0]["bankone_graphic_position_bindings"] == {
+        GRAPHIC_LOCATOR: ASSET, other_locator: other,
+    }
+    blocks = captured.source_document["blocks"]
+    assert [block["type"] for block in blocks] == ["paragraph", "image", "paragraph", "image", "paragraph"]
+    assert [blocks[index]["caption"] for index in (1, 3)] == [
+        "Upper mounting points", "Backing plate alignment",
+    ]
+    assert [blocks[index]["alt"] for index in (1, 3)] == ["Cover fasteners", "Backing plate"]
+    assert all(blocks[index]["media_type"] == "image/png" for index in (1, 3))
+    assert {
+        entry["opaque_ref"]: entry["derived_from_sha256"]
+        for entry in captured.resource_manifest if entry["role"] == "asset"
+    } == {ref: sha256(svgs[ref]).hexdigest() for ref in refs}
+    assert [capture_fixture.resource_calls("bankone", ref) for ref in refs] == [1, 1]

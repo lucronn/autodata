@@ -21,6 +21,33 @@ class ProfileRefreshRequired(ValueError):
 
 ACTIVE = ("pending", "processing", "failed")
 ARTICLE_JOB_CHANNEL = "autodata_article_job"
+STAGED_MEDIA_REFRESH = "staged_media_refresh"
+REQUIRE_POSITIONED_SVG_REFRESH = "require_positioned_svg_refresh"
+
+
+def staged_media_refresh_binding(article, source_revision_id):
+    return {
+        "version": 1,
+        "source_revision_id": str(source_revision_id),
+        "prior_source_revision_id": str(article["current_source_revision_id"]),
+        "prior_canonical_revision_id": str(article["current_canonical_revision_id"]),
+    }
+
+
+def transform_source_matches(article, job):
+    """Match a job to the served source or to its exact staged replacement."""
+    if article is None:
+        return False
+    candidate = job["source_revision_id"]
+    if STAGED_MEDIA_REFRESH not in job["checkpoint"]:
+        return article["current_source_revision_id"] == candidate
+    return bool(
+        article["provider_slug"] == job["provider_slug"] == "bankone"
+        and article["current_source_revision_id"]
+        and article["current_canonical_revision_id"]
+        and candidate and candidate != article["current_source_revision_id"]
+        and job["checkpoint"][STAGED_MEDIA_REFRESH] == staged_media_refresh_binding(article, candidate)
+    )
 
 
 def _cursor(conn):
@@ -123,11 +150,16 @@ def refresh_article_job(
     normalization_version=None,
     rewrite_profile_version=None,
     expected_source_revision_id=None,
+    expected_published_revision_id=None,
 ):
     if not actor.strip() or not reason.strip():
         raise ValueError("refresh actor and reason required")
     if rewrite_profile_version == SOURCE_BOUND_CORRECTION_PROFILE:
         raise ProfileRefreshRequired()
+    if expected_published_revision_id is not None and (
+        expected_source_revision_id is None or normalization_version is not None or rewrite_profile_version is not None
+    ):
+        raise ValueError("LEGACY_SVG_REFRESH_BINDING_INVALID")
     with repo.connect() as conn, _cursor(conn) as cur:
         article = cur.execute(
             "SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE",
@@ -135,7 +167,18 @@ def refresh_article_job(
         ).fetchone()
         if article is None:
             raise KeyError("canonical article not found")
-        if expected_source_revision_id is not None:
+        checkpoint = {"refresh_actor": actor, "refresh_reason": reason}
+        if expected_published_revision_id is not None:
+            if (article["provider_slug"] != "bankone"
+                or str(article["current_source_revision_id"]) != str(expected_source_revision_id)
+                or str(article["current_canonical_revision_id"]) != str(expected_published_revision_id)
+                or not source_bound_rewrite_source_allowed(cur, article, article["current_source_revision_id"])):
+                raise ValueError("LEGACY_SVG_REFRESH_BINDING_INVALID")
+            checkpoint[REQUIRE_POSITIONED_SVG_REFRESH] = {
+                "source_revision_id": str(expected_source_revision_id),
+                "canonical_revision_id": str(expected_published_revision_id),
+            }
+        elif expected_source_revision_id is not None:
             if str(article["current_source_revision_id"]) != str(expected_source_revision_id):
                 raise ValueError("AUTOMATIC_SOURCE_CHANGED")
             if article["current_canonical_revision_id"] is not None:
@@ -146,6 +189,11 @@ def refresh_article_job(
                 (article["current_job_id"],),
             ).fetchone()
             if job["status"] in ACTIVE:
+                if expected_published_revision_id is not None and (
+                    job["checkpoint"].get(REQUIRE_POSITIONED_SVG_REFRESH)
+                    != checkpoint[REQUIRE_POSITIONED_SVG_REFRESH]
+                ):
+                    raise ValueError("LEGACY_SVG_REFRESH_BUSY")
                 return _result(cur, article, job)
         if rewrite_profile_version is None and article["target_rewrite_profile_version"] == SOURCE_BOUND_CORRECTION_PROFILE:
             raise ProfileRefreshRequired()
@@ -158,7 +206,7 @@ def refresh_article_job(
         result = _ensure_locked(cur, article, force_new=True)
         cur.execute(
             "UPDATE source_fetch_jobs SET checkpoint=%s WHERE source_fetch_job_id=%s",
-            (Jsonb({"refresh_actor": actor, "refresh_reason": reason}), result.job_id),
+            (Jsonb(checkpoint), result.job_id),
         )
         return result
 
@@ -603,7 +651,7 @@ def _claim_automatic_resume(cur, worker_id, job_id=None):
     try:
         if (article is None or article["current_job_id"] != job["source_fetch_job_id"]
             or article["request_generation"] != job["request_generation"]
-            or article["current_source_revision_id"] != job["source_revision_id"]
+            or not transform_source_matches(article, job)
             or article["target_rewrite_profile_version"] != job["rewrite_profile_version"]
             or article["target_normalization_version"] != job["normalization_version"]):
             raise ValueError("automatic publication owner changed")
@@ -647,7 +695,12 @@ def _claim_model_configuration_resume(cur, worker_id, job_id):
           AND j.status IN ('failed','dead_letter') AND j.error_code='MODEL_NOT_CONFIGURED'
           AND j.source_revision_id IS NOT NULL AND j.checkpoint ? 'normalized_document' AND j.checkpoint ? 'normalized_hash'
           AND a.current_job_id=j.source_fetch_job_id AND a.request_generation=j.request_generation
-          AND a.current_source_revision_id=j.source_revision_id
+          AND (a.current_source_revision_id=j.source_revision_id OR (
+            j.checkpoint ? '{STAGED_MEDIA_REFRESH}'
+            AND j.checkpoint->'{STAGED_MEDIA_REFRESH}'->>'source_revision_id'=j.source_revision_id::text
+            AND j.checkpoint->'{STAGED_MEDIA_REFRESH}'->>'prior_source_revision_id'=a.current_source_revision_id::text
+            AND j.checkpoint->'{STAGED_MEDIA_REFRESH}'->>'prior_canonical_revision_id'=a.current_canonical_revision_id::text
+          ))
           AND a.target_rewrite_profile_version=j.rewrite_profile_version AND a.target_normalization_version=j.normalization_version
           AND {_MODEL_CONFIGURATION_NO_ATTEMPT_SQL}
         ORDER BY j.created_at,j.source_fetch_job_id FOR UPDATE OF j SKIP LOCKED LIMIT 1""",
@@ -656,7 +709,7 @@ def _claim_model_configuration_resume(cur, worker_id, job_id):
         return None
     article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE", (job["canonical_article_id"],)).fetchone()
     if (article["current_job_id"] != job["source_fetch_job_id"] or article["request_generation"] != job["request_generation"]
-        or article["current_source_revision_id"] != job["source_revision_id"]
+        or not transform_source_matches(article, job)
         or article["target_rewrite_profile_version"] != job["rewrite_profile_version"]
         or article["target_normalization_version"] != job["normalization_version"]):
         return None

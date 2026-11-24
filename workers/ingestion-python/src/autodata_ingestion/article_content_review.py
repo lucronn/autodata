@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from .article_lifecycle_types import digest_json
+from .source_job_persistence import STAGED_MEDIA_REFRESH, transform_source_matches
 
 PROFILE = "full-prose-review-v1"
 REASON_SCHEMA = "autodata:article-content-review:v1"
@@ -190,7 +191,7 @@ def _load_locked(cur, expected, *, allow_resume=False, failed=False):
         or job["rewrite_profile_version"] != PROFILE
         or article["current_job_id"] != job["source_fetch_job_id"]
         or article["request_generation"] != job["request_generation"]
-        or article["current_source_revision_id"] != job["source_revision_id"]
+        or not transform_source_matches(article, job)
         or article["target_rewrite_profile_version"] != PROFILE
         or article["target_normalization_version"] != job["normalization_version"]
         or candidate["canonical_article_id"] != job["canonical_article_id"]
@@ -204,6 +205,9 @@ def _load_locked(cur, expected, *, allow_resume=False, failed=False):
         or candidate["rewrite_result_hash"] != digest_json(candidate["canonical_document"])
         or expected != bindings_for(job, article, candidate, source["source_fingerprint"])):
         raise ValueError("CONTENT_REVIEW_STALE_BINDING")
+    if STAGED_MEDIA_REFRESH in job["checkpoint"]:
+        from .article_lifecycle_store import _require_staged_media_refresh_rights
+        _require_staged_media_refresh_rights(cur, job, article)
     if failed:
         _require_failed_start(cur, job, candidate)
         return job, article, candidate, source

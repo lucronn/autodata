@@ -11,7 +11,10 @@ from .article_lifecycle_types import (
     SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, SOURCE_PROJECTION_VERSIONS,
     digest_json, transformation_key,
 )
-from .source_job_persistence import lock_live_lease, LeaseLost
+from .source_job_persistence import (
+    REQUIRE_POSITIONED_SVG_REFRESH, STAGED_MEDIA_REFRESH, LeaseLost, lock_live_lease,
+    staged_media_refresh_binding, transform_source_matches,
+)
 
 from psycopg.errors import DataError
 from psycopg.rows import dict_row
@@ -248,6 +251,14 @@ def _store_captured_source(cur, lease, captured):
         or article["current_job_id"] != lease.job_id
     ):
         raise LeaseLost("article generation changed")
+    if REQUIRE_POSITIONED_SVG_REFRESH in job["checkpoint"] and (
+        not captured.recovered_legacy_bankone_svg
+        or job["checkpoint"][REQUIRE_POSITIONED_SVG_REFRESH] != {
+            "source_revision_id": str(article["current_source_revision_id"]),
+            "canonical_revision_id": str(article["current_canonical_revision_id"]),
+        }
+    ):
+        raise ValueError("LEGACY_SVG_REFRESH_BINDING_INVALID")
     current_version = article["current_projection_version"]
     projection = effective_projection(article)
     if review_projection is not None and review_projection != projection:
@@ -298,6 +309,13 @@ def _store_captured_source(cur, lease, captured):
     current_canonical = (
         published["canonical_article_revision_id"] if published else None
     )
+    staged = captured.recovered_legacy_bankone_svg and not published
+    if staged:
+        binding = {STAGED_MEDIA_REFRESH: staged_media_refresh_binding(article, revision_id)}
+        staged_job = {**job, "source_revision_id": revision_id, "checkpoint": {**job["checkpoint"], **binding}}
+        _require_staged_media_refresh_rights(cur, staged_job, article)
+    else:
+        binding = {}
     if owner and owner["source_fetch_job_id"] != lease.job_id:
         terminal = owner["status"] in ("needs_review", "dead_letter") or bool(
             rejected
@@ -305,6 +323,7 @@ def _store_captured_source(cur, lease, captured):
         if not published and not terminal:
             raise LeaseLost("transformation already has an owner")
         checkpoint = {
+            **binding,
             "reused_terminal_result": terminal,
             "reused_transformation_job_id": str(owner["source_fetch_job_id"]),
         }
@@ -315,12 +334,14 @@ def _store_captured_source(cur, lease, captured):
             (revision_id, Jsonb(checkpoint), lease.job_id),
         )
         if terminal:
-            current_job = owner["source_fetch_job_id"]
+            if not staged:
+                current_job = owner["source_fetch_job_id"]
             if (review_owner is not None and owner["status"] == "needs_review"
                 and job["rewrite_profile_version"] == "full-prose-review-v1"
                 and owner["source_revision_id"] == revision_id
                 and owner["normalization_version"] == job["normalization_version"]
-                and owner["rewrite_profile_version"] == job["rewrite_profile_version"]):
+                and owner["rewrite_profile_version"] == job["rewrite_profile_version"]
+                and (not staged or owner["checkpoint"].get(STAGED_MEDIA_REFRESH) == binding[STAGED_MEDIA_REFRESH])):
                 candidate = cur.execute("SELECT * FROM canonical_article_revisions WHERE transformation_key=%s FOR UPDATE",(key,)).fetchone()
                 if candidate is not None and candidate["status"] == "validated":
                     from .article_lifecycle_types import digest_json
@@ -333,6 +354,7 @@ def _store_captured_source(cur, lease, captured):
                     review_checkpoint = {"version":1,"state":"awaiting_review",
                         "candidate_revision_id":str(candidate["canonical_article_revision_id"]),
                         "candidate_hash":digest_json(candidate["canonical_document"])}
+                    current_job = owner["source_fetch_job_id"]
                     cur.execute("""UPDATE source_fetch_jobs SET request_generation=%s,
                         checkpoint=checkpoint||%s,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""",
                         (adopted_generation,Jsonb({"content_review":review_checkpoint,
@@ -343,9 +365,14 @@ def _store_captured_source(cur, lease, captured):
     else:
         cur.execute(
             """UPDATE source_fetch_jobs SET source_revision_id=%s,transformation_key=%s,phase='normalizing',
-                checkpoint=checkpoint-'source_body_preview',updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""",
-            (revision_id, key, lease.job_id),
+                checkpoint=(checkpoint-'source_body_preview')||%s,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""",
+            (revision_id, key, Jsonb(binding), lease.job_id),
         )
+    if staged:
+        if current_job != lease.job_id:
+            cur.execute("""UPDATE canonical_articles SET current_job_id=%s,updated_at=clock_timestamp()
+                WHERE canonical_article_id=%s""", (current_job, lease.canonical_article_id))
+        return revision_id
     cur.execute(
         """UPDATE canonical_articles SET current_source_revision_id=%s,current_canonical_revision_id=%s,current_job_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s""",
         (revision_id, current_canonical, current_job, lease.canonical_article_id),
@@ -521,7 +548,7 @@ def _lock_transform(cur, lease):
     article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE", (job["canonical_article_id"],)).fetchone()
     if (article is None or article["current_job_id"] != lease.job_id
         or article["request_generation"] != job["request_generation"]
-        or article["current_source_revision_id"] != job["source_revision_id"]
+        or not transform_source_matches(article, job)
         or article["target_normalization_version"] != job["normalization_version"]
         or article["target_rewrite_profile_version"] != job["rewrite_profile_version"]
         or job["rewrite_profile_version"] != lease.rewrite_profile_version):
@@ -529,7 +556,58 @@ def _lock_transform(cur, lease):
     return job, article
 
 
+def _require_staged_media_refresh_rights(cur, job, article):
+    from .source_job_persistence import source_bound_rewrite_source_allowed
+    from .source_media_replay import _check_review_quarantine, _load_snapshots
+
+    unavailable = "STAGED_MEDIA_REFRESH_SOURCE_UNAVAILABLE"
+    if (not transform_source_matches(article, job)
+            or not source_bound_rewrite_source_allowed(cur, article, article["current_source_revision_id"])):
+        raise ValueError(unavailable)
+    row = cur.execute("""SELECT candidate.body_source_snapshot_id,candidate.resource_manifest,
+               observation.resource_provenance,observation.descriptor_source_snapshot_id,
+               observation.resolution_source_snapshot_id
+        FROM canonical_article_source_revisions candidate
+        JOIN canonical_article_source_observations observation
+          ON observation.source_revision_id=candidate.source_revision_id
+          AND observation.canonical_article_id=candidate.canonical_article_id
+        JOIN canonical_article_source_revisions prior
+          ON prior.source_revision_id=%s AND prior.canonical_article_id=candidate.canonical_article_id
+        JOIN catalog_article_current served ON served.canonical_article_id=candidate.canonical_article_id
+        WHERE candidate.source_revision_id=%s AND candidate.canonical_article_id=%s
+          AND candidate.body_source_snapshot_id=prior.body_source_snapshot_id
+          AND observation.source_fetch_job_id=%s AND observation.request_generation<=%s
+          AND observation.descriptor_source_snapshot_id=%s
+          AND served.canonical_revision_id=%s""",
+        (article["current_source_revision_id"], job["source_revision_id"], article["canonical_article_id"],
+         job["source_fetch_job_id"], job["request_generation"], article["descriptor_source_snapshot_id"],
+         article["current_canonical_revision_id"])).fetchone()
+    if row is None:
+        raise ValueError(unavailable)
+    try:
+        resources = {}
+        for entry, provenance in zip(row["resource_manifest"], row["resource_provenance"], strict=True):
+            checksum = entry.get("sha256")
+            if checksum:
+                if checksum != provenance["sha256"]:
+                    raise ValueError(unavailable)
+                resources[UUID(provenance["source_snapshot_id"])] = checksum
+        if row["body_source_snapshot_id"] not in resources:
+            raise ValueError(unavailable)
+        ids = set(resources) | {row["descriptor_source_snapshot_id"], row["resolution_source_snapshot_id"]}
+        snapshots = _load_snapshots(cur, ids, resource_ids=set(resources), lock=True)
+        if any(snapshot.digest != resources[snapshot.id] for snapshot in snapshots if snapshot.id in resources):
+            raise ValueError(unavailable)
+        _check_review_quarantine(cur, ids, lock=True)
+    except (AttributeError, KeyError, TypeError, ValueError):
+        raise ValueError(unavailable) from None
+
+
 def _require_source_bound_rewrite_rights(cur, job, article):
+    if STAGED_MEDIA_REFRESH in job["checkpoint"]:
+        _require_staged_media_refresh_rights(cur, job, article)
+        if "source_bound_rewrite" not in job["checkpoint"] and job["rewrite_profile_version"] != SOURCE_BOUND_CORRECTION_PROFILE:
+            return
     profile = job["rewrite_profile_version"]
     marker_version = {SOURCE_BOUND_REWRITE_PROFILE: 1, SOURCE_BOUND_CORRECTION_PROFILE: 2}.get(profile)
     predecessor_observation = None
@@ -1035,7 +1113,7 @@ def _require_full_approval(cur, job, article, candidate):
     from .article_lifecycle_types import digest_json
     if (candidate is None or article is None or article["current_job_id"] != job["source_fetch_job_id"]
         or article["request_generation"] != job["request_generation"]
-        or article["current_source_revision_id"] != job["source_revision_id"]
+        or not transform_source_matches(article, job)
         or article["target_normalization_version"] != job["normalization_version"]
         or article["target_rewrite_profile_version"] != job["rewrite_profile_version"]
         or candidate["canonical_article_id"] != article["canonical_article_id"]
@@ -1477,7 +1555,9 @@ def publish_article_revision(repo,lease,revision_id,*,hooks=None):
             _require_full_approval(cur,job,article,row)
         cur.execute("UPDATE canonical_article_revisions SET status='published',published_at=clock_timestamp() WHERE canonical_article_revision_id=%s",(revision_id,))
         if hooks is not None:hooks("inside_publication")
-        cur.execute("UPDATE canonical_articles SET current_canonical_revision_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s",(revision_id,lease.canonical_article_id))
+        cur.execute("""UPDATE canonical_articles SET current_source_revision_id=%s,
+            current_canonical_revision_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s""",
+            (job["source_revision_id"], revision_id, lease.canonical_article_id))
         cur.execute("UPDATE source_fetch_jobs SET status='completed',phase='completed',retryable=false,error_code=NULL,next_attempt_at=NULL,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",(lease.job_id,))
         cur.execute("""INSERT INTO publication_events(publication_event_id,event_type,event_version,canonical_article_id,canonical_article_revision_id,correlation_id,idempotency_key,payload,producer)
             VALUES (%s,'catalog.article.published',1,%s,%s,%s,%s,%s,'ingestion-worker') ON CONFLICT(idempotency_key) DO NOTHING""",

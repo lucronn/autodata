@@ -55,6 +55,8 @@ func (s *postgresCatalogStore) paidCatalogSourceView(ctx context.Context, config
 			JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id
 			WHERE $4 AND sr.canonical_article_id=a.canonical_article_id
 			AND sr.source_revision_id=COALESCE($3::uuid,anchor.source_revision_id)
+			AND CASE WHEN sr.source_revision_id=anchor.source_revision_id AND anchor.canonical_revision_id IS NOT NULL
+				THEN TRUE ELSE `+catalogSourceRevisionPublicationSQL+` END
 			AND `+catalogSourceRevisionEligibleSQL+`
 		) selected ON anchor.takedown_status='active' AND descriptor.takedown_status='active'
 		WHERE a.vehicle_configuration_id=$1::uuid AND a.canonical_article_id=$2::uuid AND `+lifecycleEligibleSQL,
