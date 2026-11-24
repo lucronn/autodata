@@ -46,10 +46,17 @@ export function authMessage(error) {
   return "Google sign-in is unavailable. You can keep browsing.";
 }
 export function readSessionBootstrap(request = requestJSON, { signal } = {}) {
-  return Promise.allSettled([
-    request("/auth/config", { signal, timeout: 10000 }),
-    request("/auth/session", { signal, timeout: 10000 }),
-  ]);
+  const read = async (path, headers) => {
+    try {
+      return { status: "fulfilled", value: await request(path, { signal, timeout: 10000, headers }) };
+    } catch (reason) {
+      return { status: "rejected", reason };
+    }
+  };
+  return [
+    read("/auth/config"),
+    read("/auth/session", { Prefer: "workshop-session-mode" }),
+  ];
 }
 export function createSession({
   request = requestJSON,
@@ -66,6 +73,7 @@ export function createSession({
     message: "",
   };
   let config,
+    pendingLoginConfiguration,
     sdk,
     auth,
     provider,
@@ -74,6 +82,11 @@ export function createSession({
     selectedIndexConfirmation,
     retried = false;
   const changed = () => onChange({ ...state });
+  const configureLogin = (result) => {
+    config = result.status === "fulfilled" ? result.value : null;
+    state.mode = ["local", "firebase"].includes(config?.mode) ? config.mode : null;
+    state.available = validLoginConfig(config);
+  };
   const clear = () => {
     epoch++;
     selectedIndexConfirmation?.abort();
@@ -143,35 +156,41 @@ export function createSession({
     async bootstrap({ signal, initial } = {}) {
       const current = ++epoch;
       selectedIndexConfirmation?.abort();
+      pendingLoginConfiguration = null;
       state.mode = null;
       state.authenticated = false;
       state.csrf = "";
       state.ready = false;
       const initialResult = initial ? await initial : null;
-      const [configuration, session] = await (initialResult ?? readSessionBootstrap(request, { signal }));
+      const [configuration, response] = initialResult ?? readSessionBootstrap(request, { signal });
+      const session = await response;
       if (signal?.aborted || current !== epoch) return;
-      config = configuration.status === "fulfilled" ? configuration.value : null;
-      state.mode = ["local", "firebase"].includes(config?.mode) ? config.mode : null;
-      state.available = validLoginConfig(config);
-      try {
-        if (session.status === "rejected") throw session.reason;
-        const data = session.value;
-        if (!validSession(data)) throw new Error("Invalid session");
+      const data = session.status === "fulfilled" ? session.value : null;
+      const confirmedMode = validSession(data) && data.mode === "firebase";
+      if (confirmedMode) {
+        // The checked session can open owned data while public login settings load.
+        pendingLoginConfiguration = configuration;
+        state.mode = data.mode;
+        state.available = false;
+      } else {
+        const settings = await configuration;
+        if (signal?.aborted || current !== epoch) return;
+        configureLogin(settings);
+      }
+      if (confirmedMode || validSession(data)) {
         state.authenticated = true;
         state.csrf = data.csrf_token;
         state.message = "Signed in.";
         changed();
-      } catch (error) {
-        if (signal?.aborted || current !== epoch) return;
-        state.authenticated = false;
-        state.csrf = "";
-        state.message =
-          state.available && error.status === 401
-            ? "Sign in with Google to open your articles."
-            : authMessage(error);
-        changed();
-        if (state.available && error.status === 401) await prepare(current);
+        return;
       }
+      const error = session.status === "rejected" ? session.reason : null;
+      const guest = error?.status === 401;
+      state.message = state.available && guest
+        ? "Sign in with Google to open your articles."
+        : authMessage(error);
+      changed();
+      if (state.available && guest) await prepare(current);
     },
     signIn({ confirmSelectedIndex } = {}) {
       // App assets can span releases during a rolling deployment.
@@ -276,6 +295,7 @@ export function createSession({
     async logout() {
       const csrf = state.csrf;
       clear();
+      const current = epoch;
       state.message = "Signing out…";
       changed();
       const firebaseLogout = sdk && auth
@@ -294,6 +314,12 @@ export function createSession({
         state.message = "Signed out.";
         state.ready = false;
         changed();
+        if (pendingLoginConfiguration) {
+          const settings = await pendingLoginConfiguration;
+          if (current !== epoch) return true;
+          pendingLoginConfiguration = null;
+          configureLogin(settings);
+        }
         if (state.available) await prepare(epoch);
         return true;
       } catch {
