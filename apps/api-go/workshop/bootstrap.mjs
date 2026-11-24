@@ -27,7 +27,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
 } else {
   if (!wantsDemo) {
     // Download the regular app and its helpers during the startup reads.
-    for (const module of ['app', 'progress', 'commerce', 'article-read']) {
+    for (const module of ['app', 'commerce', 'article-read']) {
       const link = document.createElement('link');
       link.rel = 'modulepreload';
       link.href = `/workshop/${module}.mjs`;

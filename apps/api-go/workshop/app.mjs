@@ -1,5 +1,4 @@
 import * as catalog from "./catalog.mjs";
-import { loadingProgress } from "./progress.mjs";
 import { createSession } from "./auth.mjs";
 import {
   createCheckout,
@@ -53,6 +52,14 @@ const demoPath = (path) => {
   return url.pathname + url.search;
 };
 const names = ["year", "make", "model", "configuration"];
+const loadingStages = [
+  ["year", "Years"],
+  ["make", "Makes"],
+  ["model", "Models"],
+  ["configuration", "Engine / trim"],
+  ["articles", "Article catalog"],
+  ["article", "Article"],
+];
 const rows = Object.fromEntries(names.map((name) => [name, []]));
 const pickerStates = new Map();
 const selectorCache = new Map();
@@ -147,9 +154,9 @@ function status(
   document.body.dataset.busy = String(busy);
 }
 function stage(key) {
-  const p = loadingProgress(key);
+  const index = Math.max(0, loadingStages.findIndex(([stageKey]) => stageKey === key));
   $("loading-progress-stage").textContent =
-    `Step ${p.step} of ${p.total} · ${p.label}`;
+    `Step ${index + 1} of ${loadingStages.length} · ${loadingStages[index][1]}`;
   $("loading-progress-bar").removeAttribute("value");
 }
 function show(id) {
@@ -2322,11 +2329,9 @@ export async function bootstrap(initialYears, initialAccount, { preservePicker =
   await Promise.all([accountCheck, restoreRoute(years, { initialSelectors: early })]);
 }
 function loadPurchaseConfiguration() {
-  const configRequest = Promise.all([
-    requestJSON("/workshop/purchase-config.json").catch(() => null),
-    checkoutModeReady,
-  ])
-    .then(([config]) => {
+  const configRequest = requestJSON("/workshop/purchase-config.json").catch(() => null)
+    .then(async (config) => {
+      if (config?.checkout_mode !== "simulation") await checkoutModeReady;
       if (merchantRequest !== configRequest) return;
       merchant = config;
       merchantRequest = null;
