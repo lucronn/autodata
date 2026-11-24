@@ -1,9 +1,12 @@
 """Linked provider PDF capture, publication, and withdrawal through the real lifecycle."""
 
+from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha256
+from html import escape
 from io import BytesIO
 import json
 from random import Random
+from threading import Event
 from uuid import uuid4
 
 from PIL import Image
@@ -86,6 +89,104 @@ def _pdf_with_fixture_figure(*, trailing_text=None, second_figure=False, compact
 
 def _layout(document):
     return [(block["type"], block.get("text")) for block in document["blocks"]]
+
+
+@pytest.mark.parametrize("bare_link", [True, False])
+def test_linked_pdf_preview_precedes_figures_and_unrelated_assets(runtime, monkeypatch, bare_link):
+    from test_article_lifecycle_integration import scoped_runtime_article
+
+    scoped_runtime_article(runtime)
+    connector = runtime.servers["bankone"]
+    pdf, _ = _pdf_with_fixture_figure(trailing_text="Install the replacement.")
+    title = escape(runtime.read_current()["title"])
+    body = (
+        f'<a href="{_PDF_LOCATOR}">{title}</a>' if bare_link else
+        f'<p>Remove the pump.</p><iframe src="{_PDF_LOCATOR}"></iframe><p>Verify the fitting.</p>'
+    ).encode()
+    asset_ref = "fixture-unrelated-figure"
+    png = BytesIO()
+    Image.new("RGB", (2, 2), "blue").save(png, format="PNG")
+    connector.body(body, assets=[asset_ref, _PDF_REF],
+                   asset_bindings=[{"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF}])
+    connector.body(pdf, "application/pdf", ref=_PDF_REF, kind="binary")
+    connector.body(png.getvalue(), "image/png", ref=asset_ref, kind="asset")
+    job = refresh_article_job(
+        runtime.repo, runtime.article_id, actor="fixture", reason="capture linked PDF preview",
+        rewrite_profile_version=AUTO_PROFILE,
+    )
+    asset_started, asset_release = Event(), Event()
+    figure_started, figure_release = Event(), Event()
+    client = runtime.registry["bankone"]
+    put_object = runtime.objects.put_object
+
+    class HeldAssetConnector:
+        provider = "bankone"
+
+        def read_resource(self, ref, **kwargs):
+            if ref == asset_ref:
+                asset_started.set()
+                assert asset_release.wait(12)
+            return client.read_resource(ref, **kwargs)
+
+    def hold_pdf_figure(key, payload, media_type):
+        if media_type == "image/png" and payload != png.getvalue():
+            figure_started.set()
+            assert figure_release.wait(12)
+        return put_object(key, payload, media_type)
+
+    def current_preview():
+        with runtime.repo.connect() as conn:
+            row = conn.execute("""
+                SELECT checkpoint->'source_body_preview' AS preview,source_revision_id
+                FROM source_fetch_jobs WHERE source_fetch_job_id=%s
+            """, (job.job_id,)).fetchone()
+        preview = row["preview"]
+        if preview and "linked_preview" in preview:
+            assert row["source_revision_id"] is None
+            return preview
+
+    monkeypatch.setattr(runtime.objects, "put_object", hold_pdf_figure)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(
+            run_article_worker_once, runtime.repo, worker_id=uuid4(), job_id=job.job_id,
+            registry={"bankone": HeldAssetConnector()}, object_store=runtime.objects, model_client=None,
+        )
+        try:
+            assert asset_started.wait(5)
+            preview = runtime.wait_for(current_preview)
+            assert not asset_release.is_set()
+            assert ("document" in preview) is not bare_link
+            if not bare_link:
+                assert "Inspect the seal." not in json.dumps(preview["document"])
+                assert "Remove the pump." in json.dumps(preview["document"])
+            expanded = preview["linked_preview"]
+            [snapshot_id] = expanded["snapshot_ids"]
+            with runtime.repo.connect() as conn:
+                artifact = conn.execute("""
+                    SELECT a.media_type,a.content_sha256 FROM source_artifacts a WHERE a.source_snapshot_id=%s
+                """, (snapshot_id,)).fetchone()
+            assert artifact == {"media_type": "application/pdf", "content_sha256": sha256(pdf).hexdigest()}
+            blocks = expanded["document"]["blocks"]
+            texts = [block.get("text") for block in blocks]
+            assert texts.index("Inspect the seal.") < texts.index("Install the replacement.")
+            if not bare_link:
+                assert texts.index("Remove the pump.") < texts.index("Inspect the seal.")
+                assert texts.index("Install the replacement.") < texts.index("Verify the fitting.")
+            [figure] = [block for block in blocks if block["type"] == "image"]
+            assert figure["unavailable_reason"] == "SOURCE_MEDIA_PENDING"
+            assert not ({"storage_key", "href", "content_sha256", "asset_resource_ref"} & figure.keys())
+            assert _PDF_LOCATOR not in json.dumps(expanded)
+            asset_release.set()
+            assert figure_started.wait(5)
+            assert current_preview() == preview
+        finally:
+            asset_release.set()
+            figure_release.set()
+        assert future.result(timeout=10)
+    final = runtime.read_current()
+    assert final["source_revision_id"] and final["content_origin"] == "source"
+    assert len([figure for figure in final["images"] if figure["status"] == "available"]) >= 1
+    assert current_preview() is None
 
 
 def test_linked_single_line_figure_refresh_reuses_original_pdf_bytes(runtime, monkeypatch):

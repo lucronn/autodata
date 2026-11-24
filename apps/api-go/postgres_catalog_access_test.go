@@ -824,6 +824,155 @@ func TestPostgresPaidCatalogSourceBodyPreviewRights(t *testing.T) {
 	assertHidden(0, http.StatusAccepted)
 }
 
+func TestPostgresPaidCatalogLinkedPDFPreviewRights(t *testing.T) {
+	const wrapperText = "Set aside the retaining collar."
+	const pdfText = "Inspect the zinc sensor connector."
+	const pdfQuery = "zinc sensor connector"
+	f := paidSetup(t)
+	f.grant(0, f.configuration, "US")
+	detail := f.path("/" + f.article)
+	f.expect(0, "POST", detail+"/prepare", "{}", http.StatusAccepted)
+
+	body := f.uuid()
+	var snapshots []string
+	for i, character := range []string{"b", "c", "d", "e", "f", "7"} {
+		id, digest, key := body, strings.Repeat(character, 64), "sources/"+character
+		if i != 0 {
+			id = f.uuid()
+			snapshots = append(snapshots, id)
+		}
+		f.exec(`INSERT INTO source_snapshots(source_snapshot_id,adapter_name,source_uri,source_version,content_sha256,object_key,
+			license_metadata,retrieved_at)
+			VALUES($1::uuid,$2,'https://fixture.invalid/preview','fixture',$3,$4,'{}',now())`, id, f.provider, digest, key)
+		if i != 0 {
+			f.exec(`INSERT INTO source_artifacts(source_snapshot_id,artifact_kind,media_type,content_sha256,object_key,extraction_status)
+				VALUES($1::uuid,'document','application/pdf',$2,$3,'candidate_ready')`, id, digest, key)
+		}
+	}
+	makeDocument := func(paragraphs ...string) CatalogDocument {
+		document := CatalogDocument{SchemaVersion: 1}
+		for _, paragraph := range paragraphs {
+			document.Blocks = append(document.Blocks, CatalogDocumentBlock{Type: "paragraph", Text: paragraph})
+		}
+		return document
+	}
+	wrapper, linked := makeDocument(wrapperText), makeDocument(wrapperText, pdfText)
+	ids := snapshots[:2]
+	storePreview := func(document, linkedDocument, attachments any) {
+		t.Helper()
+		preview, err := json.Marshal(map[string]any{
+			"snapshot_id": body,
+			"document":    document,
+			"linked_preview": map[string]any{
+				"document": linkedDocument, "snapshot_ids": attachments,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.exec(`UPDATE source_fetch_jobs j SET checkpoint=checkpoint||jsonb_build_object('source_body_preview',
+			$2::jsonb||jsonb_build_object('descriptor_snapshot_id',a.descriptor_source_snapshot_id::text))
+			FROM canonical_articles a WHERE a.canonical_article_id=$1::uuid AND a.current_job_id=j.source_fetch_job_id`,
+			f.article, string(preview))
+	}
+	assertSearch := func(query string, want bool) {
+		t.Helper()
+		found := false
+		for _, item := range f.contentSearch(0, query).Items {
+			found = found || item.ID == f.article
+		}
+		if found != want {
+			t.Fatalf("query %q searchable = %t, want %t", query, found, want)
+		}
+	}
+	assertDetail := func(want ...string) {
+		t.Helper()
+		got := f.detail(0)
+		if !got.SourceBodyPreview || got.SourceRevisionID != nil || got.SourceReview != nil || got.Document == nil {
+			t.Fatal("expected an early source document without published source identifiers")
+		}
+		var paragraphs []string
+		for _, block := range got.Document.Blocks {
+			paragraphs = append(paragraphs, block.Text)
+		}
+		if !reflect.DeepEqual(paragraphs, want) {
+			t.Fatalf("preview paragraphs = %v, want %v", paragraphs, want)
+		}
+	}
+	assertWrapper := func() {
+		t.Helper()
+		assertDetail(wrapperText)
+		assertSearch("retaining collar", true)
+		assertSearch(pdfQuery, false)
+	}
+
+	storePreview(wrapper, linked, ids)
+	assertDetail(wrapperText, pdfText)
+	assertSearch(pdfQuery, true)
+	for _, observer := range []struct{ owner, status int }{{-1, 401}, {1, 403}} {
+		for _, path := range []string{detail, f.path("?q=" + url.QueryEscape(pdfQuery))} {
+			if bytes.Contains(f.expect(observer.owner, "GET", path, "", observer.status), []byte(pdfText)) {
+				t.Fatal("linked preview content was visible without a grant")
+			}
+		}
+	}
+	demoContext := context.WithValue(context.Background(), paidCatalogContextKey{}, paidCatalogContext{
+		configuration: CatalogConfiguration{ID: f.configuration}, openDemo: true,
+	})
+	demoItems, err := f.applications[0].catalog.(paidArticleSearchStore).PaidArticleSearchDescriptors(
+		demoContext, Principal{}, f.configuration, pdfQuery,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range demoItems {
+		if item.ID == f.article {
+			t.Fatal("demo search matched customer-only PDF text")
+		}
+	}
+
+	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=$1::uuid`, ids[1])
+	assertWrapper()
+	f.exec(`UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=$1::uuid`, ids[1])
+	f.exec(`INSERT INTO source_review_items(source_review_item_id,item_key,item_kind,reason_code,source_snapshot_ids)
+		VALUES(gen_random_uuid(),'linked-pdf-preview-quarantine','quarantine','FIXTURE',jsonb_build_array($1::text))`, ids[1])
+	assertWrapper()
+	f.exec(`UPDATE source_review_items SET status='approved' WHERE item_key='linked-pdf-preview-quarantine'`)
+	for _, change := range []struct{ fields, restore string }{
+		{"extraction_status='quarantined'", "extraction_status='candidate_ready'"},
+		{"media_type='application/json'", "media_type='application/pdf'"},
+		{"content_sha256=repeat('0',64)", "content_sha256=repeat('d',64)"},
+		{"object_key='sources/wrong'", "object_key='sources/d'"},
+	} {
+		f.exec(`UPDATE source_artifacts SET `+change.fields+` WHERE source_snapshot_id=$1::uuid`, ids[1])
+		assertWrapper()
+		f.exec(`UPDATE source_artifacts SET `+change.restore+` WHERE source_snapshot_id=$1::uuid`, ids[1])
+	}
+	for _, attachments := range []any{
+		nil, ids[0], map[string]string{"id": ids[0]}, []string{}, []string{ids[0], ids[0]},
+		[]any{ids[0], nil}, []string{ids[0], "not-a-uuid"}, []string{ids[0], f.uuid()}, snapshots,
+	} {
+		storePreview(wrapper, linked, attachments)
+		assertWrapper()
+	}
+	for _, badDocument := range []any{
+		nil, "not a document",
+		json.RawMessage(`{"schema_version":1,"blocks":[{"type":false}]}`),
+		json.RawMessage(`{"schema_version":1,"blocks":[null]}`),
+	} {
+		storePreview(wrapper, badDocument, ids)
+		assertWrapper()
+	}
+	storePreview(nil, makeDocument(pdfText), ids)
+	assertDetail(pdfText)
+	assertSearch(pdfQuery, true)
+	f.exec(`DELETE FROM source_artifacts WHERE source_snapshot_id=$1::uuid`, ids[1])
+	f.expect(0, "GET", detail, "", http.StatusAccepted)
+	assertSearch(pdfQuery, false)
+	storePreview(wrapper, linked, ids)
+	assertWrapper()
+}
+
 func (f *paidFixture) image(owner int, path string, want int) http.Header {
 	f.t.Helper()
 	status, raw, headers := f.call(owner, "GET", path, "")

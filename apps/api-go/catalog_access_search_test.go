@@ -14,8 +14,8 @@ type paidSearchProjectionRow struct {
 }
 
 func (row paidSearchProjectionRow) Scan(dest ...any) error {
-	if len(dest) != 14 {
-		return fmt.Errorf("paid search projection scanned %d columns, want 14", len(dest))
+	if len(dest) != 15 {
+		return fmt.Errorf("paid search projection scanned %d columns, want 15", len(dest))
 	}
 	*dest[0].(*string) = "00000000-0000-0000-0000-000000000111"
 	*dest[1].(*string) = "Torque guide"

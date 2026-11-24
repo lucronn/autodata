@@ -26,6 +26,7 @@ from .article_lifecycle_types import (
     HTML_TABLE_CAPTION_LAYOUT,
     HTML_TABLE_SPAN_LAYOUT,
     LEADING_DECIMAL_LAYOUT,
+    MAX_LINKED_PDFS,
     MIXED_HTML_PDF_LAYOUT,
     MISSING_TABLE_IMAGE_CAPTION_LAYOUT,
     MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V2,
@@ -53,7 +54,6 @@ from .article_document import (
 from .svg_rasterization import rasterize_svg, SVGUnavailable, RASTERIZER_VERSION
 
 
-_MAX_LINKED_PDFS = 4
 _MAX_BODY_PREVIEW_BYTES = 256 * 1024
 _LEGACY_SVG_RECOVERY_INCOMPLETE = "SOURCE_LEGACY_SVG_RECOVERY_INCOMPLETE"
 
@@ -381,14 +381,14 @@ def project_document(
     return "\n".join(texts), steps, images
 
 
-def _replace_pdf_embeds(value, documents):
+def _replace_pdf_embeds(value, documents, *, pending=False):
     """Expand signed connector document bindings in their original block positions."""
     if isinstance(value, dict):
         children = value.get("blocks")
         if isinstance(children, list) and any(isinstance(node, ConnectorDocumentEmbed) for node in children):
             value["_preserve_cell_block_order"] = True
         for child in value.values():
-            _replace_pdf_embeds(child, documents)
+            _replace_pdf_embeds(child, documents, pending=pending)
     elif isinstance(value, list):
         expanded = []
         for node in value:
@@ -399,21 +399,25 @@ def _replace_pdf_embeds(value, documents):
                 if ref in documents:
                     blocks, evidence, _ = documents[ref]
                     expanded.extend({**deepcopy(block), "evidence_ids": evidence} for block in blocks)
-                else:
+                elif not pending:
                     expanded.append({
                         "kind": "callout", "label": "Embedded document unavailable",
                         "text": "This document could not be prepared for Workshop.",
                     })
             else:
-                _replace_pdf_embeds(node, documents)
+                _replace_pdf_embeds(node, documents, pending=pending)
                 expanded.append(node)
         value[:] = expanded
 
 
-def _source_body_preview(context, article, *, step_parser, keep_json_rows, keep_json_columns):
+def _source_body_preview(
+    context, article, *, step_parser, keep_json_rows, keep_json_columns, linked_documents=None,
+):
     blocks = deepcopy(article["blocks"])
     if article.get("authored_json_blocks"):
         _mark_json_table_cells(blocks, keep_rows=keep_json_rows, keep_columns=keep_json_columns)
+    if linked_documents:
+        _replace_pdf_embeds(blocks, linked_documents, pending=True)
     document = build_ordered_document(
         {"article_id": str(article_id(context.key)), "evidence_ids": list(context.evidence_ids)},
         blocks, preserve_marked_cells=True, preserve_structured_columns=True, step_parser=step_parser,
@@ -465,6 +469,7 @@ def capture_source_article(
     keep_mixed_html_pdf_embeds=False,
     keep_bound_html_images=False,
     on_body_preview=None,
+    on_linked_preview=None,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -565,7 +570,7 @@ def capture_source_article(
             and node["asset_resource_ref"] in (body.body.get("asset_resource_refs") or [])
             and node["asset_resource_ref"] != body_ref
         )
-        selected_documents = set(list(linked_refs)[:_MAX_LINKED_PDFS])
+        selected_documents = set(list(linked_refs)[:MAX_LINKED_PDFS])
         # Stable dedupe retains the first source position; opaque refs are never normalized.
         refs = list(dict.fromkeys(ref for ref in refs if ref not in linked_refs))
         labor_ref = context.descriptor.get("labor_resource_ref")
@@ -653,7 +658,20 @@ def capture_source_article(
     early_figures = set()
     figure_lock = Lock()
     figure_writes = {}
+    deferred_figures = {}
     hidden_fallback_refs = set()
+
+    def build_preview(article, linked_documents=None):
+        try:
+            return _source_body_preview(
+                context, article, step_parser=LeadingDecimalStepParser() if keep_leading_decimals else None,
+                keep_json_rows=keep_structured_table_cell_order,
+                keep_json_columns=keep_structured_table_columns and keep_structured_table_column_order,
+                linked_documents=linked_documents,
+            )
+        except (ValueError, TypeError, KeyError):
+            # Later media preparation can make an incomplete initial projection readable.
+            return None
 
     def store_document_figures(blocks):
         for node in _embedded_images(blocks):
@@ -670,6 +688,7 @@ def capture_source_article(
 
     parser_pool = ThreadPoolExecutor(max_workers=1)
     body_resource = None
+    body_preview = None
     pool = None
     try:
         caption_settings = {
@@ -748,19 +767,13 @@ def capture_source_article(
             return article
 
         article = parser_pool.submit(parse, step_parser=step_parser).result(timeout=remaining())
-        if on_body_preview is not None and not recover_legacy_bankone_svg:
-            try:
-                preview = _source_body_preview(
-                    context, article, step_parser=LeadingDecimalStepParser() if keep_leading_decimals else None,
-                    keep_json_rows=keep_structured_table_cell_order,
-                    keep_json_columns=keep_structured_table_columns and keep_structured_table_column_order,
-                )
-            except (ValueError, TypeError, KeyError):
-                # Later media preparation can make an incomplete initial projection readable.
-                preview = None
-            if preview is not None:
+        if recover_legacy_bankone_svg:
+            on_linked_preview = None
+        elif on_body_preview is not None or on_linked_preview is not None:
+            body_preview = build_preview(article)
+            if body_preview is not None and on_body_preview is not None:
                 body_resource = upload_resource(body, body_ref, "body", bounded_objects)
-                on_body_preview(body_resource, preview)
+                on_body_preview(body_resource, body_preview)
         candidates = article.get("untyped_pdf_embed_refs", ())
         if candidates:
             _, positioned, planned = plan_assets(article, article["blocks"])
@@ -780,7 +793,7 @@ def capture_source_article(
             }
             inferred = set(candidates)
             pending = {futures[ref]: ref for ref, role in planned if ref in inferred or role == "document_asset"}
-            capacity = max(0, _MAX_LINKED_PDFS - len(positioned))
+            capacity = max(0, MAX_LINKED_PDFS - len(positioned))
             verified = set()
             projected_refs = frozenset()
             projection = None
@@ -813,7 +826,10 @@ def capture_source_article(
                             if ref in inferred:
                                 verified.add(ref)
                             if deadline > time.monotonic():
-                                figure_writes[ref] = pool.submit(store_document_figures, adapted["blocks"])
+                                if on_linked_preview is None:
+                                    figure_writes[ref] = pool.submit(store_document_figures, adapted["blocks"])
+                                else:
+                                    deferred_figures[ref] = adapted["blocks"]
                 for future, ref in tuple(pending.items()):
                     if ref in hidden_fallback_refs:
                         del pending[future]
@@ -898,7 +914,7 @@ def capture_source_article(
     if hidden_fallback_refs:
         refs = [ref for ref in refs if ref not in hidden_fallback_refs]
         optional = [(ref, role) for ref, role in optional if role != "asset" or ref not in hidden_fallback_refs]
-    selected_documents = set(list(linked_refs)[:_MAX_LINKED_PDFS])
+    selected_documents = set(list(linked_refs)[:MAX_LINKED_PDFS])
     for node in _walk(blocks):
         if (
             (node.get("kind") or node.get("type")) == "image"
@@ -961,6 +977,37 @@ def capture_source_article(
     for ref, role in optional:
         if ref not in futures:
             futures[ref] = pool.submit(fetch, (ref, role))
+    if on_linked_preview is not None and selected_documents:
+        pending_documents = {futures[ref]: ref for ref in linked_refs if ref in selected_documents}
+        preview_documents = {}
+        preview_resources = {}
+        try:
+            while pending_documents and time.monotonic() < deadline:
+                ready, _ = wait(pending_documents, timeout=max(0, deadline - time.monotonic()),
+                                return_when=FIRST_COMPLETED)
+                if not ready:
+                    break
+                ready_refs = []
+                for future in ready:
+                    ref = pending_documents.pop(future)
+                    _, role, resource, _, _, adapted = future.result()
+                    if role == "document_asset" and resource is not None and adapted is not None:
+                        ready_refs.append(ref)
+                        preview_resources[ref] = resource
+                        preview_documents[ref] = (adapted["blocks"], ["source:" + resource["source_snapshot_id"]], [])
+                if ready_refs and time.monotonic() < deadline:
+                    preview = build_preview(article, preview_documents)
+                    if preview is not None and time.monotonic() < deadline:
+                        on_linked_preview(resources[0], body_preview, linked_document=preview,
+                                          linked_resources=tuple(
+                                              preview_resources[ref] for ref in linked_refs if ref in preview_resources
+                                          ))
+                for ref in ready_refs:
+                    if ref in deferred_figures and time.monotonic() < deadline:
+                        figure_writes[ref] = pool.submit(store_document_figures, deferred_figures[ref])
+        except BaseException:
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
     work = [futures[ref] for ref, _ in optional]
     work.extend(figure_writes[ref] for ref, _ in optional if ref in figure_writes)
     done, _ = wait(work, timeout=max(0, deadline - time.monotonic()))

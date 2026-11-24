@@ -191,7 +191,7 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 	rows, err := tx.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),
 		c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,`+paidArticleAvailabilitySQL+`,
 		COALESCE(c.review_status,'UNREVIEWED'),
-		COALESCE(c.document,early.document),COALESCE(c.body,''),c.steps,c.images,source.source_images
+		COALESCE(c.document,early.document),COALESCE(c.body,''),c.steps,c.images,source.source_images,early.linked_document
 		FROM canonical_articles a
 		LEFT JOIN LATERAL (
 			SELECT * FROM catalog_article_current
@@ -230,7 +230,7 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 func scanPaidArticleSearchRow(row interface{ Scan(...any) error }, configurationID string, words []string) (CatalogArticle, bool, error) {
 	var article CatalogArticle
 	var projection paidSearchProjection
-	if err := row.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &projection.document, &projection.body, &projection.steps, &projection.images, &projection.sourceImages); err != nil {
+	if err := row.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &projection.document, &projection.body, &projection.steps, &projection.images, &projection.sourceImages, &projection.linkedPreview); err != nil {
 		return CatalogArticle{}, false, err
 	}
 	if !catalogSearchWordsMatch(strings.Join([]string{article.Title, article.Component, article.Kind}, " "), words) {
@@ -252,11 +252,15 @@ func scanPaidArticleSearchRow(row interface{ Scan(...any) error }, configuration
 
 type paidSearchProjection struct {
 	document, steps, images, sourceImages []byte
+	linkedPreview                         []byte
 	body                                  string
 }
 
 func (projection paidSearchProjection) matchesContent(searchable CatalogArticle, words []string) (bool, error) {
-	if len(projection.document) > 0 {
+	if searchable.SourceRevisionID == nil {
+		searchable.Document = parseLinkedSourceBodyPreview(projection.linkedPreview)
+	}
+	if searchable.Document == nil && len(projection.document) > 0 {
 		var parsed CatalogDocument
 		if err := json.Unmarshal(projection.document, &parsed); err != nil {
 			// An unreadable early preview must not break descriptor searches.

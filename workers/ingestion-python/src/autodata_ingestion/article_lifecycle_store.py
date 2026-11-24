@@ -7,7 +7,7 @@ import json
 from uuid import UUID, uuid4
 from .article_document import has_ordered_list_numbering, has_structured_list_items
 from .article_lifecycle_types import (
-    AUTOMATIC_REWRITE_PROFILE, AUTOMATIC_REWRITE_PROFILES, MAX_CORRECTION_CALLS,
+    AUTOMATIC_REWRITE_PROFILE, AUTOMATIC_REWRITE_PROFILES, MAX_CORRECTION_CALLS, MAX_LINKED_PDFS,
     SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, SOURCE_PROJECTION_VERSIONS,
     digest_json, transformation_key,
 )
@@ -136,12 +136,21 @@ def _remap_snapshot_references(value, snapshots):
     return result
 
 
-def store_source_body_preview(repo, lease, context, resource, document):
+def store_source_body_preview(
+    repo, lease, context, resource, document, *, linked_document=None, linked_resources=()
+):
     """Bind the parsed body to a live article generation without publishing it."""
     body_ref = context.descriptor.get("resource_ref") or context.descriptor.get("body_resource_ref")
     if (article_id(context.key) != lease.canonical_article_id or resource["provider"] != context.key.provider
             or resource["role"] != "body" or resource["opaque_ref"] != body_ref):
         raise ValueError("source body preview identity mismatch")
+    if (bool(linked_resources) != (linked_document is not None) or len(linked_resources) > MAX_LINKED_PDFS
+            or any(
+                child["provider"] != context.key.provider or child["role"] != "document_asset"
+                or child["media_type"] != "application/pdf" or child["opaque_ref"] == body_ref
+                for child in linked_resources
+            )):
+        raise ValueError("linked source preview identity mismatch")
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
         job = lock_live_lease(cur, lease)
         article = cur.execute("""
@@ -163,8 +172,14 @@ def store_source_body_preview(repo, lease, context, resource, document):
         preview = {
             "snapshot_id": str(snapshot),
             "descriptor_snapshot_id": str(context.descriptor_snapshot_id),
-            "document": document,
         }
+        if document is not None:
+            preview["document"] = document
+        if linked_document is not None:
+            preview["linked_preview"] = {
+                "document": linked_document,
+                "snapshot_ids": list(dict.fromkeys(str(persist_resource(cur, child)) for child in linked_resources)),
+            }
         cur.execute("""
             UPDATE source_fetch_jobs SET checkpoint=checkpoint||%s WHERE source_fetch_job_id=%s
             """, (Jsonb({"source_body_preview": preview}), lease.job_id))
