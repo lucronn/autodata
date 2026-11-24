@@ -450,6 +450,7 @@ async function loadOptions(name, g, desired = "", initial = null) {
   const cached = cachedSelector(path);
   const choice = (item) => String(item.id ?? item.year) === desired;
   const label = name === "configuration" ? "engine / trim" : name;
+  const stopWithChoices = name !== "configuration" && !desired;
   let showingPartial = false;
   let requestedConfiguration = false;
   function trackDiscovery(response) {
@@ -504,6 +505,7 @@ async function loadOptions(name, g, desired = "", initial = null) {
       signal: g.signal,
       desired,
       backoffWithChoices: true,
+      stopWithChoices,
       async emptyProbe(timeout) {
         try {
           return await readStoredSelector(path, g.signal, timeout);
@@ -519,7 +521,8 @@ async function loadOptions(name, g, desired = "", initial = null) {
   if (!g.current()) return;
   if (result !== cached) rememberSelector(path, name, result);
   const selected = desired && result.items.some(choice);
-  if (!selected && (result.refreshFailed || result.timedOut || result.complete === false)) {
+  const choicesReady = stopWithChoices && result.items.length > 0;
+  if (!selected && (result.refreshFailed || result.timedOut || (result.complete === false && !choicesReady))) {
     if (!desired && result.items.length) {
       status(`Choose an available ${label}. Some choices could not be loaded.`, { retry: () => restoreRoute() });
       return;

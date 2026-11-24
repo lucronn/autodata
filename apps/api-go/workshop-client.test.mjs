@@ -7111,12 +7111,52 @@ test('an incomplete model reopen reads storage once when hydration only describe
   const sibling = { id: 'new', name: 'New' };
   const h = selectorOptionsHarness(path => path.includes('stored_only')
     ? { items: [first, sibling], complete: false, hydrating: true }
-    : { items: [first], complete: false });
+    : { items: [first], complete: false, hydrating: true });
   await h.load('', null, null, 'model');
+  assert.deepEqual(h.requests, ['/choices']);
+  assert.equal(h.statuses.at(-1).text, 'Choose your vehicle to continue.');
   await h.context.refreshPicker('model');
   assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
   assert.deepEqual(h.waits, []);
   assert.deepEqual(h.$('model').options.map(choice => choice.value), [first.id, sibling.id]);
+});
+
+test('an unpinned year or make stays usable with its first rows', async () => {
+  for (const [name, item] of [['year', { year: 2024 }], ['make', { id: 'buick-truck' }]]) {
+    const partial = { items: [item], complete: false, hydrating: true };
+    const h = selectorOptionsHarness(partial);
+    await h.load('', null, name === 'year' ? Promise.resolve(partial) : null, name);
+    assert.deepEqual(h.requests, name === 'year' ? [] : ['/choices']);
+    assert.deepEqual(h.waits, []);
+    assert.deepEqual(h.displayed, [[item]]);
+    assert.equal(h.$(name).disabled, false);
+    assert.equal(h.$('retry').hidden, true);
+  }
+});
+
+test('an empty model still polls and settles as soon as stored rows become usable', async () => {
+  const empty = { items: [], complete: false, hydrating: true };
+  const partial = { ...empty, items: [{ id: 'available' }] };
+  const responses = [empty, empty, partial];
+  const h = selectorOptionsHarness(() => responses.shift());
+  await h.load('', null, null, 'model');
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1', '/choices']);
+  assert.deepEqual(h.waits, [350, 1150]);
+  assert.deepEqual(h.displayed, [[], partial.items]);
+  assert.equal(h.$('model').disabled, false);
+  assert.equal(h.$('retry').hidden, true);
+});
+
+test('an alternate model keeps polling for a missing saved model', async () => {
+  const alternate = { id: 'alternate' };
+  const wanted = { id: 'selected' };
+  const partial = { items: [alternate], complete: false, hydrating: true };
+  const responses = [partial, partial, { ...partial, items: [alternate, wanted] }];
+  const h = selectorOptionsHarness(() => responses.shift());
+  await h.load(wanted.id, null, null, 'model');
+  assert.deepEqual(h.requests, ['/choices', '/choices', '/choices']);
+  assert.deepEqual(h.waits, [1500, 1500]);
+  assert.equal(h.$('model').value, wanted.id);
 });
 
 test('identical hydration snapshots preserve existing option nodes and the selected make', () => {
@@ -7233,9 +7273,11 @@ test('stored make and model choices are selectable before normal discovery repli
       assert.equal(h.$(name).disabled, false);
       assert.equal(h.context.document.body.dataset.busy, 'false');
     } finally {
-      discovery.resolve({ items: [first, { id: 'another' }], complete: true });
+      discovery.resolve({ ...stored, items: [first, { id: 'another' }] });
       await loading;
     }
+    assert.deepEqual(h.requests, ['/choices']);
+    assert.deepEqual(h.waits, []);
     assert.equal(h.displayed.at(-1).length, 2);
   }
 });

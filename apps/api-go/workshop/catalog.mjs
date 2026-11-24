@@ -282,6 +282,7 @@ export async function readCollection(
     wait = delay,
     emptyProbe,
     backoffWithChoices = false,
+    stopWithChoices = false,
     now = () => performance.now(),
   } = {},
 ) {
@@ -294,9 +295,10 @@ export async function readCollection(
     if (!Array.isArray(data?.items)) throw new Error('The catalog returned an unreadable list. Try again.');
     latest = data;
     onUpdate(latest, { attempt: attempt + 1, attempts });
-    // A saved selection can resume using an existing row while ingestion continues.
-    return (desired && latest.items.some(item => String(item.id ?? item.year) === desired)) ||
-      !(latest.hydrating || latest.discovering) || latest.complete === true;
+    const usable = desired
+      ? latest.items.some(item => String(item.id ?? item.year) === desired)
+      : stopWithChoices && latest.items.length > 0;
+    return usable || !(latest.hydrating || latest.discovering) || latest.complete === true;
   }
   for (let attempt = 0; attempt < attempts; attempt++) {
     signal?.throwIfAborted();
