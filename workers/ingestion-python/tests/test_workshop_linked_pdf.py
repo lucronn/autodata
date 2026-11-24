@@ -6,7 +6,7 @@ from html import escape
 from io import BytesIO
 import json
 from random import Random
-from threading import Event
+from threading import Event, Lock
 from uuid import uuid4
 
 from PIL import Image
@@ -103,18 +103,24 @@ def test_linked_pdf_preview_precedes_figures_and_unrelated_assets(runtime, monke
         f'<a href="{_PDF_LOCATOR}">{title}</a>' if bare_link else
         f'<p>Remove the pump.</p><iframe src="{_PDF_LOCATOR}"></iframe><p>Verify the fitting.</p>'
     ).encode()
-    asset_ref = "fixture-unrelated-figure"
+    # Bare anchors must probe MIME first. The iframe already declares a
+    # positioned document and can take a slot before unrelated images.
+    asset_refs = [f"fixture-unrelated-figure-{index}" for index in range(1 if bare_link else 4)]
     png = BytesIO()
     Image.new("RGB", (2, 2), "blue").save(png, format="PNG")
-    connector.body(body, assets=[asset_ref, _PDF_REF],
+    connector.body(body, assets=[*asset_refs, _PDF_REF],
                    asset_bindings=[{"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF}])
     connector.body(pdf, "application/pdf", ref=_PDF_REF, kind="binary")
-    connector.body(png.getvalue(), "image/png", ref=asset_ref, kind="asset")
+    for asset_ref in asset_refs:
+        connector.body(png.getvalue(), "image/png", ref=asset_ref, kind="asset")
     job = refresh_article_job(
         runtime.repo, runtime.article_id, actor="fixture", reason="capture linked PDF preview",
         rewrite_profile_version=AUTO_PROFILE,
     )
-    asset_started, asset_release = Event(), Event()
+    asset_started = {asset_ref: Event() for asset_ref in asset_refs}
+    pdf_started, asset_release = Event(), Event()
+    read_lock = Lock()
+    active_reads = peak_reads = 0
     figure_started, figure_release = Event(), Event()
     client = runtime.registry["bankone"]
     put_object = runtime.objects.put_object
@@ -123,10 +129,20 @@ def test_linked_pdf_preview_precedes_figures_and_unrelated_assets(runtime, monke
         provider = "bankone"
 
         def read_resource(self, ref, **kwargs):
-            if ref == asset_ref:
-                asset_started.set()
-                assert asset_release.wait(12)
-            return client.read_resource(ref, **kwargs)
+            nonlocal active_reads, peak_reads
+            with read_lock:
+                active_reads += 1
+                peak_reads = max(peak_reads, active_reads)
+            try:
+                if ref == _PDF_REF:
+                    pdf_started.set()
+                if ref in asset_started:
+                    asset_started[ref].set()
+                    assert asset_release.wait(12)
+                return client.read_resource(ref, **kwargs)
+            finally:
+                with read_lock:
+                    active_reads -= 1
 
     def hold_pdf_figure(key, payload, media_type):
         if media_type == "image/png" and payload != png.getvalue():
@@ -152,9 +168,14 @@ def test_linked_pdf_preview_precedes_figures_and_unrelated_assets(runtime, monke
             registry={"bankone": HeldAssetConnector()}, object_store=runtime.objects, model_client=None,
         )
         try:
-            assert asset_started.wait(5)
+            assert all(started.wait(5) for started in asset_started.values())
+            if not bare_link:
+                assert pdf_started.is_set(), "four unrelated image reads starved the predeclared PDF"
             preview = runtime.wait_for(current_preview)
             assert not asset_release.is_set()
+            with read_lock:
+                assert active_reads == len(asset_refs)
+                assert peak_reads <= 4
             assert ("document" in preview) is not bare_link
             if not bare_link:
                 assert "Inspect the seal." not in json.dumps(preview["document"])
@@ -186,6 +207,12 @@ def test_linked_pdf_preview_precedes_figures_and_unrelated_assets(runtime, monke
     final = runtime.read_current()
     assert final["source_revision_id"] and final["content_origin"] == "source"
     assert len([figure for figure in final["images"] if figure["status"] == "available"]) >= 1
+    retained = load_source_revision(runtime.repo, final["source_revision_id"])
+    assets = [ref for ref in retained.resource_manifest if ref["role"] in {"asset", "document_asset"}]
+    assert [ref["opaque_ref"] for ref in assets] == [*asset_refs, _PDF_REF]
+    assert assets[-1]["sha256"] == sha256(pdf).hexdigest()
+    preview_layout = _layout(expanded["document"])
+    assert _layout(final["document"])[:len(preview_layout)] == preview_layout
     assert current_preview() is None
 
 
