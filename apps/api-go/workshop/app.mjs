@@ -2497,17 +2497,25 @@ async function confirmedSavedYear(desired, initial, region) {
 }
 
 async function finishSavedYears(g, pending, confirmed) {
+  const picker = pickerStates.get("year");
+  const current = () => g.current() && pickerStates.get("year") === picker &&
+    $("year").value === String(confirmed.year);
+  // The year dropdown can already be used. Its existing read owns the refresh.
+  if (picker) picker.loading = g;
   try {
     const path = selectorPath("year");
-    const response = (await pending) ?? await requestJSON(path, { signal: g.signal });
-    if (!g.current() || $("year").value !== String(confirmed.year) || !Array.isArray(response?.items)) return;
+    let response = await pending;
+    if (!current()) return;
+    response ??= await requestJSON(path, { signal: g.signal });
+    if (!current() || !Array.isArray(response?.items)) return;
     const includesYear = response.items.some((item) => item?.year === confirmed.year);
     populate("year", includesYear ? response.items : [...response.items, confirmed]);
-    const picker = pickerStates.get("year");
     if (picker) picker.incomplete = !includesYear || response.complete !== true;
     if (includesYear) rememberSelector(path, "year", response);
   } catch {
     // The exact stored branch remains available if the broader year list fails.
+  } finally {
+    if (picker?.loading === g) picker.loading = null;
   }
 }
 

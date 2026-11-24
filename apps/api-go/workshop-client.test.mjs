@@ -2751,10 +2751,26 @@ test('a late year list cannot update a superseded saved picker', async () => {
   assert.equal(h.element('configuration').disabled, false);
   h.context.invalidate();
   h.context.populate('year', [{ year: 2001 }], '2001');
-  h.year.resolve(fullPickerYears);
+  h.year.resolve(null);
   await h.opening;
   assert.deepEqual(h.element('year').children.slice(1).map(option => option.value), ['2001']);
   assert.equal(h.element('year').value, '2001');
+  assert.deepEqual(h.calls.selectorReads, []);
+});
+
+test('the pending saved year list owns the dropdown refresh until its rows arrive', async () => {
+  const h = setupSlowSavedYears(savedPickerRoute);
+  const picker = { path: '/v1/catalog/years', incomplete: true };
+  h.context.pickerStates.set('year', picker);
+  await new Promise(setImmediate);
+  assert.equal(h.element('year').disabled, false);
+  assert.equal(picker.loading.current(), true);
+  await h.context.refreshPicker('year');
+  assert.deepEqual(h.calls.selectorReads, []);
+  h.year.resolve(fullPickerYears);
+  await h.opening;
+  assert.equal(picker.loading, null);
+  assert.equal(picker.incomplete, false);
 });
 
 test('early saved selectors skip independent or session-dependent routes', () => {
