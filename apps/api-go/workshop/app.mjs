@@ -2652,34 +2652,39 @@ async function recheckReader(g) {
     configuration?.id === selected.configuration_id && configuration?.region === selected.region;
   const reader = $("reader");
   const focused = document.activeElement;
+  const restoreFocus = () => {
+    if (reader.contains(focused) && document.activeElement === document.body)
+      focused.focus({ preventScroll: true });
+  };
   // Reopening a folded source will request a fresh authorized copy.
   if (sourceURL && !$("article-reference").open) resetSourceReview();
   const pinned = sourceURL ? validSourceURL(sourceURL) : null;
+  if (sourceURL && !pinned) resetSourceReview();
   const pin = pinned?.searchParams.get("source_revision_id");
   const stagedPin = validSourceURL(opened.original_source_review?.url)?.searchParams.get("source_revision_id");
+  const checkedSourceRevision = sourceRevision;
   const order = articleDetailOrder(g, opened.id);
   const { signal } = g;
-  // Keep the view nodes for continuity, withhold article display and printing
-  // until the same session and each retained projection are authorized again.
+  // Each view stays hidden until its own read verifies current access.
   reader.hidden = true;
   document.body.dataset.printable = "false";
+  if (pinned) {
+    $("source-review-frame").hidden = true;
+    $("source-review-load").disabled = true;
+    $("source-review-meta").textContent = "Checking the stored source…";
+  }
   try {
-    const [sameSession, detail, source] = await Promise.all([
+    const articleRead = Promise.all([
       session.matchesCurrentSession({ signal }),
       requestArticleDetail(order, articleRequestPath(opened.id), { signal }),
-      pinned ? requestJSON(pinned.pathname + pinned.search, { signal, headers: sourceDocumentHeaders }).catch((error) => {
-        if (pin === stagedPin && error.status === 404 && error.code === "CATALOG_NOT_FOUND") return null;
-        throw error;
-      }) : null,
     ]);
+    const sourceRead = pinned ? requestJSON(pinned.pathname + pinned.search, { signal, headers: sourceDocumentHeaders })
+      .then(value => ({ value }), error => ({ error })) : null;
+    const [sameSession, detail] = await articleRead;
     if (!g.current()) return;
     const article = acceptArticleDetail(order, detail)?.data?.article;
-    const returnedPin = source && validSourceURL(source.source?.url);
-    if (pin && pin === stagedPin && source === null) resetSourceReview();
     if (!sameSession || detail.status !== 200 || !scopeMatches(detail.data?.configuration) ||
-        article?.id !== opened.id || !readableArticle(article) || processingArticle(article) ||
-        (sourceURL && (!pinned || !returnedPin || returnedPin.searchParams.get("source_revision_id") !==
-          pinned.searchParams.get("source_revision_id")))) {
+        article?.id !== opened.id || !readableArticle(article) || processingArticle(article)) {
       invalidate();
       await recheck();
       return;
@@ -2690,8 +2695,26 @@ async function recheckReader(g) {
     if (articleViewRevision(opened) !== articleViewRevision(article) || opened.processing?.state !== article.processing?.state)
       showArticleReadStatus(opened.id, article);
     show("reader");
-    if (reader.contains(focused) && document.activeElement === document.body)
-      focused.focus({ preventScroll: true });
+    restoreFocus();
+    if (!sourceRead) return;
+    const { value, error } = await sourceRead;
+    if (!g.current()) return;
+    if ([401, 403, 410].includes(error?.status)) throw error;
+    if (sourceRevision !== checkedSourceRevision) return;
+    const returned = validSourceURL(value?.source?.url);
+    if (returned?.pathname === pinned.pathname &&
+        returned.searchParams.get("source_revision_id") === pin) {
+      $("source-review-frame").hidden = false;
+      $("source-review-load").disabled = false;
+      $("source-review-meta").textContent = "Stored source loaded.";
+    } else {
+      resetSourceReview();
+      renderArticle(currentArticle, g);
+      const stagedUnavailable = pin === stagedPin && error?.status === 404 && error.code === "CATALOG_NOT_FOUND";
+      if (!stagedUnavailable && !$("source-review").hidden)
+        $("source-review-meta").textContent = "The stored source could not be checked. Load it again to retry.";
+    }
+    restoreFocus();
   } catch (error) {
     if (!g.current()) return;
     invalidate();
