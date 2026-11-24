@@ -16,6 +16,99 @@ def run(source, payload):
     return rewrite.rewrite_ordered_document(source, client=Draft(payload), context={}, profile_version=PROFILE)
 
 
+@pytest.mark.parametrize("introduction", [
+    "Overview. The acoustic insulation softens vibration from the ventilation system.",
+    'The manual states: "The acoustic insulation softens vibration from the ventilation system."',
+])
+def test_new_introduction_rejects_copied_sentence_without_rejecting_archived_reply(introduction):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source = document("The acoustic insulation softens vibration from the ventilation system.")
+    payload = response("Vibration from the ventilation unit is damped by the acoustic insulation.",
+                       introduction=introduction)
+    version = "full-prose-auto-prompt-v55"
+    candidate = auto.render_auto(source, payload, prompt_version=version)
+    archived = auto.validate_auto(source, candidate, response=payload, prompt_version=version)
+    assert archived.passed
+    with pytest.raises(ValueError, match="^REWRITE_INTRODUCTION_COPIED$"):
+        auto.require_distinct_generated_introduction(
+            source, candidate, rewritten_paths=archived.report["changed_prose_slots"],
+        )
+
+
+@pytest.mark.parametrize(("source_text", "introduction", "rewritten_paths"), [
+    (
+        "The panel shows “The system is ready for a check.”",
+        "“The system is ready for a check.” is the display message.",
+        ("/blocks/0/text",),
+    ),
+    ("Torque is 18 N·m at T-42.", "Torque is 18 N·m at T-42.", ("/blocks/0/text",)),
+    (
+        "The acoustic insulation softens vibration from the ventilation system.",
+        "The acoustic insulation softens vibration from the ventilation system.",
+        (),
+    ),
+])
+def test_new_introduction_preserves_authored_quotations_technical_literals_and_retained_paths(
+    source_text, introduction, rewritten_paths,
+):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    auto.require_distinct_generated_introduction(
+        document(source_text), {"blocks": [{"text": introduction}]}, rewritten_paths=rewritten_paths,
+    )
+
+
+def test_new_introduction_checks_prose_around_an_exact_authored_quotation():
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    wording = "The panel shows “Ready” whenever the vehicle enters inspection mode."
+    with pytest.raises(ValueError, match="^REWRITE_INTRODUCTION_COPIED$"):
+        auto.require_distinct_generated_introduction(
+            document(wording), {"blocks": [{"text": wording}]}, rewritten_paths=("/blocks/0/text",),
+        )
+
+
+@pytest.mark.parametrize(("source_text", "draft_text"), [
+    (
+        "The panel displays “Service mode available” during diagnostics.",
+        "During the diagnostic check, “Service mode available” is shown on the instrument cluster.",
+    ),
+    (
+        "The switch labeled 'Ventilation override' controls the fan.",
+        "The fan is governed by the switch marked 'Ventilation override'.",
+    ),
+    (
+        "The report calls this an “overnight check”. The screen displays “Ready for service”.",
+        "The report describes a “nighttime review”. “Ready for service” appears on the screen.",
+    ),
+    (
+        "The bulletin describes the mechanism as “ready for inspection”.",
+        "The bulletin says the mechanism is “prepared for a review”.",
+    ),
+])
+def test_new_display_quotation_check_allows_surrounding_and_unrelated_prose_edits(source_text, draft_text):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source = document(source_text)
+    candidate = document("This article describes the system.", draft_text)
+    auto.require_preserved_display_quotations(source, candidate, rewritten_paths=("/blocks/0/text",))
+
+
+@pytest.mark.parametrize("draft_text", [
+    "The screen lists the operating state.",
+    "The screen shows “Maintenance mode available”. The report calls it “Service mode available”.",
+    "The switch marked “Service mode available” identifies the operating control.",
+])
+def test_new_display_quotation_check_rejects_missing_or_moved_authored_display_text(draft_text):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source = document("The display reads “Service mode available” during the check.")
+    candidate = document("This article describes the system.", draft_text)
+    with pytest.raises(ValueError, match="^REWRITE_DISPLAY_QUOTATION_MUTATION$"):
+        auto.require_preserved_display_quotations(source, candidate, rewritten_paths=("/blocks/0/text",))
+
+
 def test_automatic_rewrite_has_own_identity_and_no_manual_acceptance():
     source = document("Remove the cover.", "Tighten the bolts to 25 Nm with tool T-42.")
     payload = response("Take the cover off.", source["blocks"][1]["text"])

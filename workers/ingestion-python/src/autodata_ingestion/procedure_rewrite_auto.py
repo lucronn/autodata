@@ -76,6 +76,24 @@ _ASSEMBLY_LABEL_PROMPT_VERSION = "full-prose-auto-prompt-v60"
 _NUMERIC_SUPERSCRIPT = re.compile(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]|\^\([+−-]?(?:[0-9]*\.[0-9]+|[0-9]+/[0-9]+)\)")
 _WORDS = re.compile(r"\w+")
 _MIN_COPIED_SENTENCE_WORDS = 6
+_AUTHORED_QUOTATION = re.compile(
+    r'(?<!\w)"[^"\n]+"|“[^”\n]+”|‘(?:[^’\n]|’(?=\w))+’(?!\w)'
+    r"|(?<!\w)'(?:[^'\n]|'(?=\w))+'(?!\w)"
+)
+_DISPLAY_NOUN = r"(?:display|screen|panel|instrument[ \t]+cluster)"
+_DISPLAY_QUOTATION_PREFIX = re.compile(
+    rf"\b{_DISPLAY_NOUN}[ \t]+(?:displays?|shows?|reads?)(?:[ \t]+the[ \t]+message)?[ \t]*:?[ \t]*$",
+    re.IGNORECASE,
+)
+_DISPLAY_QUOTATION_SUFFIX = re.compile(
+    rf"[ \t]+(?:is[ \t]+(?:displayed|shown)|appears)[ \t]+on[ \t]+(?:the[ \t]+)?{_DISPLAY_NOUN}\b",
+    re.IGNORECASE,
+)
+_CONTROL_QUOTATION_PREFIX = re.compile(
+    r"\b(?:button|switch|selector|control|menu[ \t]+(?:item|option))[ \t]+"
+    r"(?:marked|labeled|labelled)[ \t]*:?[ \t]*$",
+    re.IGNORECASE,
+)
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
     r"|\b(?:(?:do|must|should|shall|can|may)\s+not|do\s*-\s*not|"
@@ -2067,6 +2085,15 @@ def _ordinary_prose_words(text):
     return _WORDS.findall(full._TOKENS.sub(" ", text).casefold())
 
 
+def _contains_copied_sentence(sentences, replacement_words):
+    draft_text = f" {' '.join(replacement_words)} "
+    for sentence in sentences:
+        words = _ordinary_prose_words(sentence)
+        if len(words) >= _MIN_COPIED_SENTENCE_WORDS and f" {' '.join(words)} " in draft_text:
+            return True
+    return False
+
+
 def _near_copy(original, replacement, *, check_sentences=False):
     original_words, replacement_words = map(_ordinary_prose_words, (original, replacement))
     shorter, longer = sorted((original_words, replacement_words), key=len)
@@ -2074,20 +2101,64 @@ def _near_copy(original, replacement, *, check_sentences=False):
         return True
     if check_sentences and len(original_words) > _MIN_COPIED_SENTENCE_WORDS:
         sentences = _SENTENCES.split(original)
-        if len(sentences) > 1:
+        if len(sentences) > 1 and _contains_copied_sentence(sentences, replacement_words):
             # A copied sentence can survive the whole-slot overlap threshold.
             # Check contiguous ordinary words even when the draft adds a lead-in.
-            draft_text = f" {' '.join(replacement_words)} "
-            for sentence in sentences:
-                words = _ordinary_prose_words(sentence)
-                if len(words) >= _MIN_COPIED_SENTENCE_WORDS and f" {' '.join(words)} " in draft_text:
-                    return True
+            return True
     if len(original_words) < 12 or len(replacement_words) < 5:
         return False
     # A majority of shared five-word phrases flags long copied prose,
     # including a copied sentence surrounded by new material.
     copied = (_phrase_counts(original_words) & _phrase_counts(replacement_words)).total()
     return 2 * copied > min(len(original_words), len(replacement_words)) - 4
+
+
+def require_distinct_generated_introduction(source, candidate, *, rewritten_paths):
+    """Apply sentence originality when publishing a new automatic revision."""
+    if not rewritten_paths:
+        return
+    introduction = candidate["blocks"][0]["text"]
+    introduction_words = _ordinary_prose_words(introduction)
+    quotations = set(_AUTHORED_QUOTATION.findall(introduction))
+    for path in rewritten_paths:
+        original = full._get(source, path)
+        words = introduction_words
+        authored = quotations.intersection(_AUTHORED_QUOTATION.findall(original)) if quotations else set()
+        if authored:
+            # Preserve exact source quotations. Newly added quotation marks
+            # around unquoted source prose do not exempt a copied sentence.
+            def mask_authored_quotation(match):
+                return " " if match.group() in authored else match.group()
+
+            original = _AUTHORED_QUOTATION.sub(mask_authored_quotation, original)
+            words = _ordinary_prose_words(_AUTHORED_QUOTATION.sub(mask_authored_quotation, introduction))
+        if _contains_copied_sentence(_SENTENCES.split(original), words):
+            raise ValueError("REWRITE_INTRODUCTION_COPIED")
+
+
+def _display_control_quotations(text):
+    quotations = []
+    for match in _AUTHORED_QUOTATION.finditer(text):
+        quoted = match.group()[1:-1]
+        if not quoted.strip() or full._technical_tokens(quoted) or full._ambiguous(quoted):
+            continue
+        if _CONTROL_QUOTATION_PREFIX.search(text, 0, match.start()):
+            quotations.append(("control", match.group()))
+        elif (
+            _DISPLAY_QUOTATION_PREFIX.search(text, 0, match.start())
+            or _DISPLAY_QUOTATION_SUFFIX.match(text, match.end())
+        ):
+            quotations.append(("display", match.group()))
+    return quotations
+
+
+def require_preserved_display_quotations(source, candidate, *, rewritten_paths):
+    """Preserve explicitly identified unnumbered display text and control labels."""
+    restored = {"blocks": candidate["blocks"][1:]}
+    for path in rewritten_paths:
+        authored = _display_control_quotations(full._get(source, path))
+        if authored and authored != _display_control_quotations(full._get(restored, path)):
+            raise ValueError("REWRITE_DISPLAY_QUOTATION_MUTATION")
 
 
 def _rotary_direction(match):

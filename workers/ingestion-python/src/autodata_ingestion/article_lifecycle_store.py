@@ -1559,7 +1559,10 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
         or row["validation_hash"]!=digest_json(validation.report)
         or projection!={"body":row["canonical_body"],"steps":row["canonical_steps"],"images":row["canonical_images"]}):
         raise ValueError("publication binding validation failed")
-    from .procedure_rewrite_auto import SOURCE_PRESERVING_METHOD
+    from .procedure_rewrite_auto import (
+        SOURCE_PRESERVING_METHOD, require_distinct_generated_introduction,
+        require_preserved_display_quotations,
+    )
     server_candidate=(profile in AUTOMATIC_REWRITE_PROFILES
         and row["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD)
     # The v3 validator independently reconstructed the full correction
@@ -1580,6 +1583,11 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
         _bind_v2_operations(row["normalized_source_document"], row["canonical_document"], attempt["response"])
     if job["rewrite_profile_version"] == "full-prose-review-v1":
         _require_full_approval(cur,job,article,row)
+    if profile in AUTOMATIC_REWRITE_PROFILES:
+        source, document = row["normalized_source_document"], row["canonical_document"]
+        rewritten_paths = validation.report["changed_prose_slots"]
+        require_distinct_generated_introduction(source, document, rewritten_paths=rewritten_paths)
+        require_preserved_display_quotations(source, document, rewritten_paths=rewritten_paths)
     cur.execute("UPDATE canonical_article_revisions SET status='published',published_at=clock_timestamp() WHERE canonical_article_revision_id=%s",(revision_id,))
     if hooks is not None:hooks("inside_publication")
     cur.execute("""UPDATE canonical_articles SET current_source_revision_id=%s,

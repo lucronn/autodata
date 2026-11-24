@@ -496,6 +496,101 @@ def test_automatic_publication_rejects_tampered_saved_response(fresh_database, c
     assert store.load_article_state(repo, lease.canonical_article_id)["content_origin"] == "source"
 
 
+@pytest.mark.parametrize(("source_text", "rewritten", "introduction", "gate", "error"), [
+    pytest.param(
+        "The acoustic insulation softens vibration from the ventilation system.",
+        "Vibration from the ventilation unit is damped by the acoustic insulation.",
+        "The acoustic insulation softens vibration from the ventilation system.",
+        "require_distinct_generated_introduction", "REWRITE_INTRODUCTION_COPIED", id="copied-introduction",
+    ),
+    pytest.param(
+        "The panel displays “Service mode available” during diagnostics.",
+        "During diagnostic activity, the panel shows “Maintenance mode available”.",
+        "This article describes the display during diagnostics.",
+        "require_preserved_display_quotations", "REWRITE_DISPLAY_QUOTATION_MUTATION", id="mutated-display",
+    ),
+    pytest.param(
+        "The panel displays “Service mode available” during diagnostics.",
+        "During diagnostic activity, the panel shows “Service mode available”.",
+        "This article describes the display during diagnostics.",
+        None, None, id="preserved-display",
+    ),
+])
+def test_automatic_publication_checks_new_prose_and_preserves_historical_replay(
+    fresh_database, capture_fixture, monkeypatch, source_text, rewritten, introduction, gate, error,
+):
+    from dataclasses import replace
+    import json
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE
+    from autodata_ingestion.published_media_publication import _publication_evidence
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_article_source_persistence import prepare
+
+    class ArchivedDraft:
+        _model = "fixture-introduction"
+
+        def complete_json(self, prompt):
+            return {
+                "introduction": introduction,
+                "replacements": [
+                    {"path": slot["path"], "block_id": slot["block_id"], "action": "rewrite",
+                     "text": rewritten, "reason": ""}
+                    for slot in json.loads(prompt)["slots"]
+                ],
+            }
+
+    repo = fresh_database()
+    context, lease, _ = prepare(repo, capture_fixture)
+    capture_fixture.body("bankone", f"<p>{source_text}</p>".encode())
+    captured = capture_source_article(context, registry=capture_fixture.registry, object_store=capture_fixture.objects)
+    with repo.connect() as conn:
+        conn.execute("UPDATE canonical_articles SET target_rewrite_profile_version=%s WHERE canonical_article_id=%s",
+                     (AUTOMATIC_REWRITE_PROFILE, lease.canonical_article_id))
+        conn.execute("UPDATE source_fetch_jobs SET rewrite_profile_version=%s WHERE source_fetch_job_id=%s",
+                     (AUTOMATIC_REWRITE_PROFILE, lease.job_id))
+    lease = replace(lease, rewrite_profile_version=AUTOMATIC_REWRITE_PROFILE)
+    source_id = store.store_captured_source(repo, lease, captured)
+    source = store.load_source_revision(repo, source_id)
+    lease = replace(lease, source_revision_id=source_id, phase="normalizing")
+    store.save_normalized_input(repo, lease, source.as_article())
+    attempt = store.prepare_rewrite_attempt(repo, lease, source.source_document, context=source.vehicle,
+                                           model=ArchivedDraft._model)
+    store.mark_rewrite_dispatched(repo, lease, attempt)
+    result = rewrite_ordered_document(source.source_document, client=ArchivedDraft(), context=source.vehicle,
+                                      profile_version=AUTOMATIC_REWRITE_PROFILE)
+    assert result.error_code is None
+    revision = store.store_rewrite_result(repo, lease, result)
+    validation = store.validate_saved_candidate(repo, lease, store.load_candidate(repo, lease))
+    assert validation.passed
+    store.store_validation(repo, lease, validation)
+
+    if gate is None:
+        assert store.publish_article_revision(repo, lease, revision) == revision
+    else:
+        with pytest.raises(ValueError, match=f"^{error}$"):
+            store.publish_article_revision(repo, lease, revision)
+        state = store.load_article_state(repo, lease.canonical_article_id)
+        assert (state["source_revision_id"], state["canonical_revision_id"], state["content_origin"]) == (source_id, None, "source")
+        with repo.connect() as conn:
+            assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 0
+
+        # Represent a publication accepted under the prior policy.
+        with monkeypatch.context() as historical:
+            historical.setattr(auto, gate, lambda *args, **kwargs: None)
+            assert store.publish_article_revision(repo, lease, revision) == revision
+    assert store.publish_article_revision(repo, lease, revision) == revision
+    with repo.connect() as conn, conn.cursor() as cur:
+        cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (lease.canonical_article_id,)).fetchone()
+        served, _, _, raw, replayed, _, _ = _publication_evidence(cur, article, source, fixture_mode=False, lock=False)
+        assert served["canonical_article_revision_id"] == revision
+        assert served["canonical_document"] == result.document
+        assert raw["response"] == replayed == result.raw_response
+        assert cur.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
+
+
 def test_automatic_saved_candidate_resumes_without_model_or_review(fresh_database, capture_fixture):
     from autodata_ingestion.article_lifecycle import run_article_job
     from test_article_worker import prepare_automatic, AutomaticModel
