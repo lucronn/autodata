@@ -20,7 +20,8 @@ from .article_content_review import (
 )
 from .article_document import project_ordered_document
 from .article_lifecycle_store import (
-    _latest_content_review, _persist_article_capture, automatic_candidate_validation, resolve_source_bound_correction,
+    _latest_content_review, _persist_article_capture, automatic_candidate_validation, resolve_first_draft_recovery,
+    resolve_source_bound_correction,
 )
 from .article_lifecycle_types import (
     AUTOMATIC_REWRITE_PROFILES, SOURCE_BOUND_CORRECTION_PROFILE, digest_json, transformation_key,
@@ -33,6 +34,7 @@ from .procedure_rewrite_auto import (
     build_source_preserving_candidate,
 )
 from .procedure_rewrite_full import PROFILE as REVIEW_PROFILE, validate_full
+from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHOD
 from .published_media_repair import (
     MEDIA_METHOD, ORDINAL_METHOD, SVG_RECOVERY_METHOD, TABLE_SPAN_METHOD, TECHNICAL_V1, TECHNICAL_V2,
     PublishedMediaRepair, repair_published_media,
@@ -168,11 +170,13 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
             response = {"introduction": document["blocks"][0]["text"], "replacements": []}
             prompt_version = "full-prose-auto-prompt-v3"
         elif attempt is not None:
-            response = attempt["response"]
             prompt_version = _auto_prompt_version(
                 source, context=binding.context.vehicle, prompt_hash=attempt["prompt_hash"],
                 profile_version=profile,
             )
+            response = attempt["response"]
+            if row["model_metadata"].get("transformation_method") == FIRST_DRAFT_RECOVERY_METHOD:
+                response = resolve_first_draft_recovery(row, attempt, prompt_version=prompt_version).response
         else:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_ATTEMPT_REQUIRED")
     else:

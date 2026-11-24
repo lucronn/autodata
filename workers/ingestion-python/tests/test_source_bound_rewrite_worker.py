@@ -51,6 +51,9 @@ class FixtureDraft:
                 strict=True,
             )
         ]
+        if self.copy_source and prompt["profile_version"] == AUTOMATIC_REWRITE_PROFILE:
+            # This setup needs a failed first draft before the exact v2 rewrite.
+            replacements[0].update(action="retain", reason="Keep the source wording.")
         return {"introduction": "This procedure describes service information for the pump.", "replacements": replacements}
 
 

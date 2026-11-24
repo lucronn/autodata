@@ -4,6 +4,7 @@ from copy import deepcopy
 import re
 
 from . import procedure_rewrite_auto as auto
+from . import procedure_rewrite_full as full
 from .article_lifecycle_types import digest_json
 from .procedure_rewrite_correction import (
     CorrectionResult,
@@ -15,6 +16,7 @@ from .procedure_rewrite_correction import (
 )
 
 RECOVERY_METHOD = "source-bound-correction-recovery-v1"
+FIRST_DRAFT_RECOVERY_METHOD = "source-bound-first-draft-recovery-v1"
 _PART_WORD = r"[a-z]+(?:-[a-z]+)*"
 _PART = rf"{_PART_WORD}(?: {_PART_WORD}){{0,9}}"
 _REFERENCE = r"\([0-9]{1,4}\)"
@@ -58,6 +60,59 @@ def _equivalent_wording(text):
     if text.casefold() == "oil filter":
         return "Filter for the oil"
     return None
+
+
+def recover_first_draft(source, raw, *, prompt_version):
+    """Recover verbatim echoes in one saved first draft through unchanged guards."""
+    if (not full._source_valid(source) or not isinstance(raw, dict)
+            or set(raw) != {"introduction", "replacements"}
+            or not isinstance(raw["introduction"], str) or not isinstance(raw["replacements"], list)):
+        return None
+    slots = full.prose_slots(source, include_cell_blocks=auto._include_cell_blocks(prompt_version))
+    if (prompt_version is None or not auto._uses_prose_guards(prompt_version, len(slots))
+            or len(raw["replacements"]) != len(slots)):
+        return None
+    draft = deepcopy(raw)
+    corrected_paths = []
+    for slot, row in zip(slots, draft["replacements"], strict=True):
+        if (not isinstance(row, dict) or set(row) != {"block_id", "path", "action", "text", "reason"}
+                or not all(isinstance(value, str) for value in row.values())
+                or row["block_id"] != slot["block_id"] or row["path"] != slot["path"]
+                or row["action"] not in {"retain", "rewrite"} or not row["text"].strip()):
+            return None
+        if row["action"] == "rewrite" and row["text"] == slot["text"]:
+            wording = _equivalent_wording(slot["text"])
+            if wording is None:
+                return None
+            row.update(text=wording, reason="Distinct source-bound prose.")
+            corrected_paths.append(slot["path"])
+    if not corrected_paths:
+        return None
+    try:
+        auto.render_auto(source, raw, prompt_version=prompt_version)
+    except ValueError as error:
+        if str(error) != "REWRITE_UNCHANGED":
+            return None
+    else:
+        return None
+    try:
+        document = auto.render_auto(source, draft, prompt_version=prompt_version)
+        validation = auto.validate_auto(source, document, response=draft, prompt_version=prompt_version)
+        if not validation.passed:
+            return None
+        auto.require_current_publication_checks(source, document, saved_prompt_version=prompt_version)
+    except ValueError:
+        return None
+    return CorrectionResult(draft, document, None, {
+        "method": FIRST_DRAFT_RECOVERY_METHOD,
+        "original_error_code": "REWRITE_UNCHANGED",
+        "guard_version": prompt_version,
+        "input_hash": digest_json(source),
+        "raw_response_hash": digest_json(raw),
+        "draft_hash": digest_json(draft),
+        "output_hash": digest_json(document),
+        "corrected_paths": corrected_paths,
+    })
 
 
 def recover_retained_correction(source, previous, *, model_call_budget, attempts):
