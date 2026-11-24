@@ -16,6 +16,8 @@ import stat
 from threading import Event
 from uuid import UUID, uuid4
 
+from psycopg import DatabaseError, sql
+
 STATE_DIRECTORY = Path('/var/lib/autodata/new-article-worker')
 MAX_STATE_BYTES = 16384
 CONTINUOUS_MAX_STATE_BYTES = 2 * 1024 * 1024
@@ -383,16 +385,56 @@ def configured_model():
     return Mercury2Client.from_environment()
 
 
+def _subscribe_to_article_jobs(repo):
+    from .source_job_persistence import ARTICLE_JOB_CHANNEL
+
+    listener = None
+    try:
+        listener = repo.connect()
+        listener.autocommit = True
+        listener.execute(sql.SQL("LISTEN {}").format(sql.Identifier(ARTICLE_JOB_CHANNEL)))
+        return listener
+    except (DatabaseError, OSError):
+        if listener is not None:
+            listener.close()
+        return None
+
+
 def run_new_article_worker(repo, state, *, registry, object_store, model_client, stop=None):
     stop = stop or Event()
     worker_id = uuid4()
+    listener = None
     with state.worker_lock():
-        while not stop.is_set() and state.running(state.read(), database_now(repo)):
-            if stop.is_set():
-                break
-            dispatch_next(repo, state, worker_id=worker_id, registry=registry,
-                          object_store=object_store, model_client=model_client, stop=stop)
-            stop.wait(2)
+        try:
+            while not stop.is_set():
+                snapshot = state.read()
+                now = database_now(repo)
+                if not state.running(snapshot, now) or stop.is_set():
+                    break
+                # Subscribe before reading the durable queue so a commit during
+                # the check or just before the wait will still wake this worker.
+                can_wait_for_jobs = snapshot['schema'] == 2 and state.active(snapshot, now)
+                if can_wait_for_jobs and listener is None:
+                    listener = _subscribe_to_article_jobs(repo)
+                elif not can_wait_for_jobs and listener is not None:
+                    listener.close()
+                    listener = None
+                dispatched = dispatch_next(repo, state, worker_id=worker_id, registry=registry,
+                                           object_store=object_store, model_client=model_client, stop=stop)
+                if listener is not None and not dispatched and not stop.is_set():
+                    try:
+                        for _ in listener.notifies(timeout=2, stop_after=1):
+                            pass
+                    except (DatabaseError, OSError):
+                        listener.close()
+                        listener = None
+                    else:
+                        continue
+                # Poll on listener failure, at quota, and after a dispatch.
+                stop.wait(2)
+        finally:
+            if listener is not None:
+                listener.close()
     return 0
 
 
