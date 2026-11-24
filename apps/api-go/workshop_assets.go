@@ -96,6 +96,13 @@ func buildWorkshopAssetsHandler() http.Handler {
 				return
 			}
 			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+			if r.URL.RawQuery == "" && r.Header.Get("Range") == "" {
+				// The release digest identifies the exact embedded bytes. Keep
+				// request-specific tracing values out of the shared response.
+				w.Header().Set("Vercel-CDN-Cache-Control", "public, max-age=86400, immutable")
+				w.Header().Del("X-Request-ID")
+				w.Header().Del("Traceparent")
+			}
 			r = r.Clone(r.Context())
 			r.URL.Path = assetPath
 			r.URL.RawPath = ""
