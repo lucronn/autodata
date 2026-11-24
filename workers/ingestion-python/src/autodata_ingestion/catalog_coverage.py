@@ -1,6 +1,6 @@
 """Independent durable bank enumeration. Index browsing never reads article bodies."""
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from .article_lifecycle_types import ArticleKey, scope_key
@@ -111,6 +111,80 @@ def refresh_catalog_jobs(repo, *, vehicle_id, vehicle_configuration_id, actor, r
                 )
             )
     return tuple(results)
+
+
+def retry_failed_catalog_provider(
+    repo, *, vehicle_id, vehicle_configuration_id, provider, expected_job_id, actor, reason,
+):
+    """Queue the next catalog generation for one failed provider on a paid vehicle."""
+    if provider not in PROVIDERS or not all(
+        isinstance(value, str) and value.strip() and len(value) <= limit
+        and all(32 <= ord(character) != 127 for character in value)
+        for value, limit in ((actor, 256), (reason, 2048))
+    ):
+        raise ValueError("CATALOG_PROVIDER_RETRY_INVALID")
+    try:
+        vehicle_id, vehicle_configuration_id, expected_job_id = (
+            UUID(str(value)) for value in (vehicle_id, vehicle_configuration_id, expected_job_id)
+        )
+    except ValueError:
+        raise ValueError("CATALOG_PROVIDER_RETRY_INVALID") from None
+    audit = {"prior_job_id": str(expected_job_id), "actor": actor, "reason": reason}
+    with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+        scope = cur.execute(
+            """SELECT * FROM catalog_article_provider_scopes
+               WHERE vehicle_id=%s AND vehicle_configuration_id=%s AND provider_slug=%s
+                 AND scope_key=%s FOR UPDATE""",
+            (vehicle_id, vehicle_configuration_id, provider, scope_key(vehicle_id, vehicle_configuration_id)),
+        ).fetchone()
+        if scope is None:
+            raise ValueError("CATALOG_PROVIDER_RETRY_STALE")
+        paid = cur.execute(
+            """SELECT 1 FROM workshop_orders o
+               JOIN vehicle_configurations c ON c.vehicle_configuration_id=o.configuration_id
+               JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
+               JOIN customer_accounts a ON a.customer_account_id=o.customer_account_id
+                   AND a.personal_organization_id=o.organization_id
+               JOIN entitlements e ON e.entitlement_id=o.entitlement_id AND e.commerce_order_id=o.order_id
+                   AND e.customer_account_id=o.customer_account_id AND e.organization_id=o.organization_id
+                   AND e.configuration_id=o.configuration_id AND e.region=o.region
+                   AND e.dataset_request_id=o.dataset_request_id
+               JOIN payment_events p ON p.payment_event_id=e.payment_event_id
+               WHERE o.configuration_id=%s AND c.vehicle_id=%s AND o.region=b.region
+                 AND o.status='paid' AND e.status='active' AND a.status='active'
+                 AND p.fulfillment_status='fulfilled'
+                 AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'
+               ORDER BY o.order_id LIMIT 1 FOR SHARE OF o,e,a,c,b,p""",
+            (vehicle_configuration_id, vehicle_id),
+        ).fetchone()
+        if paid is None:
+            raise ValueError("CATALOG_PROVIDER_RETRY_GRANT_REQUIRED")
+        job = cur.execute(
+            """SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s
+                 AND job_kind='catalog_index' AND request_generation=%s
+                 AND catalog_provider_scope_id=%s AND provider_slug=%s AND canonical_vehicle_id=%s""",
+            (scope["current_job_id"], scope["generation"], scope["catalog_provider_scope_id"], provider, vehicle_id),
+        ).fetchone()
+        if job is None:
+            raise ValueError("CATALOG_PROVIDER_RETRY_STALE")
+        if job["checkpoint"].get("catalog_provider_retry") == audit:
+            return _result(cur, None, job)
+        if (
+            job["source_fetch_job_id"] != expected_job_id
+            or scope["status"] != "failed" or scope["error_code"] != "UPSTREAM_UNAVAILABLE"
+            or job["status"] != "dead_letter" or job["error_code"] != "UPSTREAM_UNAVAILABLE"
+            or job["retryable"] or job["retry_count"] < job["max_attempts"]
+            or job["next_attempt_at"] is not None or job["lease_owner"] is not None
+        ):
+            raise ValueError("CATALOG_PROVIDER_RETRY_STALE")
+        scope = cur.execute(
+            """UPDATE catalog_article_provider_scopes
+               SET generation=generation+1, retry_at=NULL
+               WHERE catalog_provider_scope_id=%s RETURNING *""",
+            (scope["catalog_provider_scope_id"],),
+        ).fetchone()
+        successor = _create_catalog_job(cur, scope, {"catalog_provider_retry": audit})
+        return _result(cur, None, successor, True)
 
 
 def _lock_scope(cur, lease):

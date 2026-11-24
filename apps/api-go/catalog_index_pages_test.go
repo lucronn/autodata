@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -145,15 +147,17 @@ func TestCatalogIndexPagesValidateOnlyOptedInBoundaries(t *testing.T) {
 		"&offset=100&anchor=" + ids[0], "&offset=0&q=", "&offset=0&title=Brake", "&anchor=" + ids[0] + "&q=Brake",
 	} {
 		t.Run(query, func(t *testing.T) {
-			before := store.protected
-			response := callCatalogIndexPage(handler, query, catalogIndexPagesPreference, "")
-			if response.Code != http.StatusUnprocessableEntity || store.protected != before ||
-				!strings.Contains(response.Body.String(), "INVALID_REQUEST") || strings.Contains(response.Body.String(), `"page"`) {
-				t.Fatalf("invalid opted-in boundary reached the index, status=%d", response.Code)
+			for _, preference := range []string{catalogIndexPagesPreference, catalogIndexLivePagesPreference} {
+				before := store.protected
+				response := callCatalogIndexPage(handler, query, preference, "")
+				if response.Code != http.StatusUnprocessableEntity || store.protected != before ||
+					!strings.Contains(response.Body.String(), "INVALID_REQUEST") || strings.Contains(response.Body.String(), `"page"`) {
+					t.Fatalf("invalid opted-in boundary reached the index, preference=%s, status=%d", preference, response.Code)
+				}
 			}
 		})
 	}
-	for _, preference := range []string{"", "workshop-index-pages-extra", "workshop-index-pages=true"} {
+	for _, preference := range []string{"", "workshop-index-pages-extra", "workshop-index-pages=true", "workshop-index-live-pages=true"} {
 		response := callCatalogIndexPage(handler, "&offset=legacy&anchor=ignored", preference, "")
 		var body CatalogArticlesResponse
 		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &body) != nil || body.Page != nil || len(body.Items) != len(ids) {
@@ -163,15 +167,76 @@ func TestCatalogIndexPagesValidateOnlyOptedInBoundaries(t *testing.T) {
 	// Access checks run on every page, including a malformed or foreign cursor.
 	grants.err = ErrVehicleGrantRevoked
 	before := store.protected
-	response := callCatalogIndexPage(handler, "&offset=bad", catalogIndexPagesPreference, "")
+	response := callCatalogIndexPage(handler, "&offset=bad", catalogIndexLivePagesPreference, "")
 	if response.Code != http.StatusForbidden || store.protected != before ||
 		response.Header().Get("Cache-Control") != "private, no-store" || response.Header().Get("Preference-Applied") != "" {
 		t.Fatal("a revoked owner reached pagination before the current grant check")
 	}
 	server.auth.(*fakeAuthenticator).err = ErrUnauthenticated
-	response = callCatalogIndexPage(handler, "&anchor="+ids[124], catalogIndexPagesPreference, "")
+	response = callCatalogIndexPage(handler, "&anchor="+ids[124], catalogIndexLivePagesPreference, "")
 	if response.Code != http.StatusUnauthorized || store.protected != before || response.Header().Get("Preference-Applied") != "" {
 		t.Fatal("unauthenticated anchor reached pagination")
+	}
+}
+
+type paidIndexProgressTimeoutStore struct{ *paidHTTPStore }
+
+func (s paidIndexProgressTimeoutStore) CatalogArticleProgress(context.Context, Principal, string) (*CatalogArticleProgress, error) {
+	return nil, context.DeadlineExceeded
+}
+
+func TestPaidCatalogLivePagesUseCurrentAuthorizedRowsDuringRecovery(t *testing.T) {
+	server, store, grants := paidHTTPServer()
+	grants.err = nil
+	ids := fillPaidIndexPageFixture(store, 3242)
+	handler := server.Handler()
+	preference := catalogIndexPagesPreference + ", " + catalogIndexLivePagesPreference
+	revision := ""
+	for _, tc := range []struct {
+		name, query string
+		progress    *CatalogArticleProgress
+		hydrating   bool
+		offset      int
+		want        int
+	}{
+		{"exhausted", "", &CatalogArticleProgress{Status: "failed"}, false, 0, 100},
+		{"queued", "&offset=100", &CatalogArticleProgress{Status: "pending"}, true, 100, 100},
+		{"running", "&anchor=" + ids[3241], &CatalogArticleProgress{Status: "running"}, true, 3200, 42},
+		{"retrying", "", &CatalogArticleProgress{Status: "failed", Retryable: true, Detail: "more rows may arrive"}, true, 0, 100},
+		{"progress missing", "", nil, false, 0, 100},
+		{"recovered", "", &CatalogArticleProgress{Status: "completed", Complete: true}, false, 0, 100},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store.progress = tc.progress
+			response := callCatalogIndexPage(handler, tc.query, preference, "")
+			var body CatalogArticlesResponse
+			if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &body) != nil || body.Page == nil ||
+				!slices.Equal(response.Header().Values("Preference-Applied"), []string{catalogIndexLivePagesPreference}) {
+				t.Fatalf("live paging unavailable: status=%d, ack=%q", response.Code, response.Header().Values("Preference-Applied"))
+			}
+			if !reflect.DeepEqual(body.Progress, tc.progress) || body.Hydrating != tc.hydrating ||
+				body.Complete != (tc.progress != nil && tc.progress.Complete) {
+				t.Fatal("live paging changed index progress")
+			}
+			if body.Page.Offset != tc.offset || body.Page.Total != len(ids) || len(body.Items) != tc.want ||
+				body.Items[0].ID != ids[tc.offset] || body.Items[len(body.Items)-1].ID != ids[tc.offset+tc.want-1] {
+				t.Fatalf("live page does not match current metadata rows: page=%+v, count=%d", body.Page, len(body.Items))
+			}
+			if revision == "" {
+				revision = body.Page.Revision
+			} else if body.Page.Revision != revision {
+				t.Fatal("unchanged descriptor snapshot received a new revision during recovery")
+			}
+		})
+	}
+
+	server.catalog = paidIndexProgressTimeoutStore{store}
+	response := callCatalogIndexPage(server.Handler(), "&offset=300", catalogIndexLivePagesPreference, "")
+	var body CatalogArticlesResponse
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &body) != nil ||
+		body.Progress != nil || body.Hydrating || body.Complete || body.Page == nil || body.Page.Offset != 300 ||
+		body.Page.Revision != revision || len(body.Items) != 100 || body.Items[0].ID != ids[300] {
+		t.Fatal("progress lookup timeout hid or misrepresented known authorized rows")
 	}
 }
 
@@ -182,6 +247,7 @@ func TestCatalogIndexPagesPreserveOtherIndexShapes(t *testing.T) {
 		count, want  int
 		demo, legacy bool
 		paged        bool
+		live         bool
 	}{
 		{name: "terminal failed", progress: &CatalogArticleProgress{Status: "failed"}, count: 130, want: 30, paged: true, query: "&offset=100"},
 		{name: "retrying", progress: &CatalogArticleProgress{Status: "failed", Retryable: true}, count: 130, want: 130, query: "&offset=100"},
@@ -194,6 +260,12 @@ func TestCatalogIndexPagesPreserveOtherIndexShapes(t *testing.T) {
 		{name: "query", progress: &CatalogArticleProgress{Complete: true}, count: 130, want: 130, query: "&q=Brake"},
 		{name: "empty query", progress: &CatalogArticleProgress{Complete: true}, count: 130, want: 130, query: "&q="},
 		{name: "title", progress: &CatalogArticleProgress{Complete: true}, count: 130, want: 1, query: "&title=" + url.QueryEscape("Brake procedure 006")},
+		{name: "live exactly 100", live: true, progress: &CatalogArticleProgress{Status: "pending"}, count: 100, want: 100},
+		{name: "live demo", live: true, demo: true, progress: &CatalogArticleProgress{Status: "pending"}, count: 130, want: 130, query: "&demo=1&offset=100"},
+		{name: "live legacy", live: true, legacy: true, progress: &CatalogArticleProgress{Status: "pending"}, count: 130, want: 130, query: "&offset=100"},
+		{name: "live query", live: true, progress: &CatalogArticleProgress{Status: "pending"}, count: 130, want: 130, query: "&q=Brake"},
+		{name: "live empty query", live: true, progress: &CatalogArticleProgress{Status: "pending"}, count: 130, want: 130, query: "&q="},
+		{name: "live title", live: true, progress: &CatalogArticleProgress{Status: "pending"}, count: 130, want: 1, query: "&title=" + url.QueryEscape("Brake procedure 006")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server, store, grants := paidHTTPServer()
@@ -208,11 +280,15 @@ func TestCatalogIndexPagesPreserveOtherIndexShapes(t *testing.T) {
 				server.customerAuth = nil
 				server.auth.(*fakeAuthenticator).principal.Roles = []string{"dataset_viewer"}
 			}
-			response := callCatalogIndexPage(server.Handler(), tc.query, catalogIndexPagesPreference, host)
+			preference := catalogIndexPagesPreference
+			if tc.live {
+				preference = catalogIndexLivePagesPreference
+			}
+			response := callCatalogIndexPage(server.Handler(), tc.query, preference, host)
 			var body CatalogArticlesResponse
 			if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &body) != nil ||
 				(body.Page != nil) != tc.paged || len(body.Items) != tc.want ||
-				slices.Contains(response.Header().Values("Preference-Applied"), catalogIndexPagesPreference) != tc.paged {
+				slices.Contains(response.Header().Values("Preference-Applied"), preference) != tc.paged {
 				t.Fatalf("wrong index shape: status=%d, items=%d, page=%+v", response.Code, len(body.Items), body.Page)
 			}
 			if tc.paged && (body.Hydrating || body.Complete || body.Page.Total != tc.count || body.Page.Offset != 100) {
