@@ -393,8 +393,10 @@ def scoped_runtime_article(runtime):
     return configuration
 
 
-@pytest.mark.parametrize("fail_after_preview", [False, True])
-def test_workshop_source_preview_while_optional_asset_is_held(runtime, monkeypatch, fail_after_preview):
+@pytest.mark.parametrize(("fail_after_preview", "preview_lock_timeout"), [
+    (False, False), (True, False), (False, True),
+])
+def test_workshop_source_preview_while_optional_asset_is_held(runtime, monkeypatch, fail_after_preview, preview_lock_timeout):
     from collections import Counter
     from concurrent.futures import ThreadPoolExecutor
     from hashlib import sha256
@@ -402,6 +404,8 @@ def test_workshop_source_preview_while_optional_asset_is_held(runtime, monkeypat
     import json
     from threading import Event
     from PIL import Image
+    from psycopg.errors import LockNotAvailable
+    from autodata_ingestion import article_lifecycle_store
     from autodata_ingestion.article_lifecycle import run_article_worker_once
 
     scoped_runtime_article(runtime)
@@ -416,6 +420,27 @@ def test_workshop_source_preview_while_optional_asset_is_held(runtime, monkeypat
     connector.body(html, assets=["fixture-private-ref"])
     connector.body(png.getvalue(), "image/png", ref="fixture-private-ref", kind="asset")
     job = runtime.ensure()
+    preview_store = article_lifecycle_store.store_source_body_preview
+    preview_writes = []
+
+    class LockTimeoutRepository:
+        def connect(self):
+            conn = runtime.repo.connect()
+            conn.execute("SET LOCAL lock_timeout='100ms'")
+            return conn
+
+    def store_preview(repo, lease, context, resource, document):
+        preview_writes.append(lease.token)
+        if preview_lock_timeout and len(preview_writes) == 1:
+            with runtime.repo.connect() as blocker:
+                blocker.execute("SELECT 1 FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE",
+                                (runtime.article_id,))
+                with pytest.raises(LockNotAvailable) as timed_out:
+                    preview_store(LockTimeoutRepository(), lease, context, resource, document)
+                raise timed_out.value
+        return preview_store(repo, lease, context, resource, document)
+
+    monkeypatch.setattr(article_lifecycle_store, "store_source_body_preview", store_preview)
     asset_read = Event()
     release_asset = Event()
     client = runtime.registry["bankone"]
@@ -452,6 +477,9 @@ def test_workshop_source_preview_while_optional_asset_is_held(runtime, monkeypat
                     pending.result()
                 pytest.fail(runtime.diagnostics())
             assert not pending.done()
+            assert len(preview_writes) == (2 if preview_lock_timeout else 1)
+            assert len(set(preview_writes)) == 1
+            assert uploads == {sha256(html).hexdigest(): 1}
             with runtime.repo.connect() as conn:
                 row = conn.execute("""
                     SELECT j.source_revision_id,j.checkpoint->'source_body_preview' AS preview,
@@ -482,6 +510,7 @@ def test_workshop_source_preview_while_optional_asset_is_held(runtime, monkeypat
         assert pending.result(timeout=10)
 
     assert uploads == {sha256(html).hexdigest(): 1, sha256(png.getvalue()).hexdigest(): 1}
+    assert runtime.counters()["source"] == 1
     with runtime.repo.connect() as conn:
         final = conn.execute("""
             SELECT checkpoint->'source_body_preview' AS preview,j.error_code,

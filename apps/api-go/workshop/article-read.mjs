@@ -342,6 +342,13 @@ export async function readArticle(
       scheduledPublicationCheck = { anchor, regularReadAt: now() + backoff, late: checkLongBackoff };
       backoff = publicationStatusProbeDelayMs;
     }
+    // Check midway through the first long waits for a confirmed active capture.
+    // If the check misses, keep the next ordinary read and its backoff.
+    if ((backoff === 4000 || backoff === 8000) && fastPendingJob &&
+        latest.data.article.processing.state === "fetching_source") {
+      regularSourceReadAt = now() + backoff;
+      backoff /= 2;
+    }
     await wait(
       Math.min(remaining, Math.max(backoff, retryAfter * 1000)),
       signal,
