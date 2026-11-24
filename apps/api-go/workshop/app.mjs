@@ -1365,7 +1365,35 @@ function indexRenderableImages(images) {
   }
   return imagesByID;
 }
-function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = null, figures = null) {
+function authoredHeadingLevel(level) {
+  return Number.isInteger(level) && level >= 1 && level <= 6 ? level : null;
+}
+function articleHeadingOutline(blocks, base) {
+  let lowest = 6;
+  const pending = [blocks];
+  const includeChildren = (values) => {
+    for (const value of values || []) {
+      if (Array.isArray(value?.blocks)) pending.push(value.blocks);
+    }
+  };
+  while (pending.length && lowest > 1) {
+    for (const block of pending.pop() || []) {
+      if (block?.type === "heading") {
+        lowest = Math.min(lowest, authoredHeadingLevel(block.level) ?? lowest);
+        if (lowest === 1) break;
+      } else if (block?.type === "ordered_list" || block?.type === "unordered_list")
+        includeChildren(block.items);
+      else if (block?.type === "table") {
+        includeChildren(block.columns);
+        for (const row of block.rows || [])
+          includeChildren(Array.isArray(row) ? row : row?.cells);
+      }
+    }
+  }
+  return { base, offset: base - lowest };
+}
+function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = null, figures = null,
+  outline = articleHeadingOutline(blocks, 3)) {
   const isListNumber = value =>
     Number.isInteger(value) && value >= -2147483648 && value <= 2147483647;
   const find = (ref) => {
@@ -1385,7 +1413,8 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = nul
     if (value.asset_id || value.image_id || value.status === "unavailable")
       addReference(target, value);
     for (const ref of value.images || []) addReference(target, ref);
-    if (Array.isArray(value.blocks)) renderBlocks(target, value.blocks, imagesByID, review, g, sourceTargets, figures);
+    if (Array.isArray(value.blocks))
+      renderBlocks(target, value.blocks, imagesByID, review, g, sourceTargets, figures, outline);
   };
   for (const block of blocks || []) {
     if (!block || typeof block !== "object") continue;
@@ -1393,10 +1422,17 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = nul
     const childIndex = sourceID ? parent.children.length : 0;
     const type = block.type;
     if (type === "heading" || type === "paragraph" || type === "link") {
-      const tag = type === "heading"
-        ? `h${Math.max(3, Math.min(6, Number(block.level) || 3))}`
-        : "p";
-      parent.append(element(tag, block.text ?? ""));
+      if (type === "heading") {
+        const authored = authoredHeadingLevel(block.level);
+        const level = authored === null ? outline.base : authored + outline.offset;
+        const heading = element(level <= 6 ? `h${level}` : "div", block.text ?? "", "article-heading");
+        heading.dataset.headingStyle = String(Math.max(3, authored ?? 3));
+        if (level > 6) {
+          heading.setAttribute("role", "heading");
+          heading.setAttribute("aria-level", String(level));
+        }
+        parent.append(heading);
+      } else parent.append(element("p", block.text ?? ""));
       for (const ref of block.images || [])
         addReference(parent, ref, false);
     } else if (type === "callout") {
@@ -1535,7 +1571,8 @@ function renderContent(parent, article, g, figures = null) {
       }
       parent.append(section);
     }
-  } else if (presentation.blocks.length)
+  } else if (presentation.blocks.length) {
+    const outline = articleHeadingOutline(presentation.blocks, 3);
     for (const b of presentation.blocks) {
       if (b.type === "step") {
         const section = element("section", undefined, "procedure-step");
@@ -1543,9 +1580,9 @@ function renderContent(parent, article, g, figures = null) {
         for (const part of b.parts || [])
           section.append(element("p", part.text ?? ""));
         parent.append(section);
-      } else renderBlocks(parent, [b], imagesByID, null, g);
+      } else renderBlocks(parent, [b], imagesByID, null, g, null, null, outline);
     }
-  else parent.append(element("p", "No readable content is available yet."));
+  } else parent.append(element("p", "No readable content is available yet."));
 }
 function retryImage(img, images) {
   const found = images.find(
@@ -2010,7 +2047,8 @@ async function loadSource(value, g, blockID = null, { focusSource = false } = {}
       const fragment = document.createDocumentFragment();
       const figures = !openDemo && session.state.mode === "firebase" ? [] : null;
       targets = stable || blockID !== null ? new Map() : null;
-      if (blocks?.length) renderBlocks(fragment, blocks, images, null, g, targets, figures);
+      if (blocks?.length)
+        renderBlocks(fragment, blocks, images, null, g, targets, figures, articleHeadingOutline(blocks, 4));
       else if (data.source?.format === "json")
         fragment.append(element("pre", data.content ?? ""));
       else fragment.append(element("p", "Stored source is unavailable."));
