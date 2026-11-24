@@ -52,12 +52,13 @@ type CatalogConfigurationsResponse struct {
 	CatalogHydrationResponse
 }
 type CatalogArticlesResponse struct {
-	Version       string                  `json:"version"`
-	Items         []CatalogArticle        `json:"items"`
-	Complete      bool                    `json:"complete"`
-	Hydrating     bool                    `json:"hydrating"`
-	Progress      *CatalogArticleProgress `json:"progress,omitempty"`
-	Configuration *CatalogConfiguration   `json:"configuration,omitempty"`
+	Version       string                   `json:"version"`
+	Items         []CatalogArticle         `json:"items"`
+	Complete      bool                     `json:"complete"`
+	Hydrating     bool                     `json:"hydrating"`
+	Progress      *CatalogArticleProgress  `json:"progress,omitempty"`
+	Configuration *CatalogConfiguration    `json:"configuration,omitempty"`
+	Page          *CatalogArticleIndexPage `json:"page,omitempty"`
 }
 type CatalogArticleResponse struct {
 	Version       string                `json:"version"`
@@ -215,6 +216,16 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "article search query is invalid", false)
 		return
 	}
+	wantsPages := catalogReadPreferenceRequested(request, catalogIndexPagesPreference)
+	var pageRequest catalogIndexPageRequest
+	if wantsPages {
+		var valid bool
+		pageRequest, valid = parseCatalogIndexPageRequest(filters)
+		if !valid {
+			writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "article index page query is invalid", false)
+			return
+		}
+	}
 	query := ""
 	if len(queryValues) == 1 {
 		query = strings.TrimSpace(queryValues[0])
@@ -319,12 +330,19 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		}
 	}
 	var configuration *CatalogConfiguration
+	var page *CatalogArticleIndexPage
 	if scope, ok := request.Context().Value(paidCatalogContextKey{}).(paidCatalogContext); ok {
 		configuration = &scope.configuration
+		if paid && !scope.openDemo && wantsPages && !filters.Has("q") && !filters.Has("title") &&
+			len(items) > catalogIndexPageSize && progress != nil &&
+			(progress.Complete || (progress.Status == "failed" && !progress.Retryable)) {
+			items, page = pageRequest.selectPage(items)
+			response.Header().Add("Preference-Applied", catalogIndexPagesPreference)
+		}
 	}
 	writeJSON(response, http.StatusOK, CatalogArticlesResponse{
 		Version: "v1", Items: items, Complete: progress != nil && progress.Complete,
-		Hydrating: hydrating, Progress: progress, Configuration: configuration,
+		Hydrating: hydrating, Progress: progress, Configuration: configuration, Page: page,
 	})
 }
 

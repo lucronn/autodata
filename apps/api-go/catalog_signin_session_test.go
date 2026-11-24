@@ -76,6 +76,8 @@ func TestSelectedIndexConfirmsOnlyTheExchangedCookie(t *testing.T) {
 		return 503, []byte(`{"error":{"code":"COMMERCE_UNAVAILABLE"}}`), nil
 	}}
 	index := "/v1/catalog/vehicles/" + paidTestConfiguration + "/articles"
+	catalog.progress = &CatalogArticleProgress{Complete: true, Status: "completed"}
+	fillPaidIndexPageFixture(catalog, 101)
 	for _, tc := range []struct {
 		name, query, code string
 		cookie            *http.Cookie
@@ -104,6 +106,7 @@ func TestSelectedIndexConfirmsOnlyTheExchangedCookie(t *testing.T) {
 				req.AddCookie(tc.cookie)
 			}
 			req.Header.Set("Prefer", selectedIndexSessionPreference)
+			req.Header.Add("Prefer", catalogIndexPagesPreference)
 			if tc.name == "purchase needed" {
 				req.Header.Add("Prefer", purchaseQuotePreference)
 			}
@@ -114,8 +117,9 @@ func TestSelectedIndexConfirmsOnlyTheExchangedCookie(t *testing.T) {
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, req)
 			gotProof := slices.Contains(w.Header().Values("Preference-Applied"), selectedIndexSessionPreference)
+			gotPages := slices.Contains(w.Header().Values("Preference-Applied"), catalogIndexPagesPreference)
 			gotExpiry := w.Header().Get("Workshop-Session-Expires")
-			if w.Code != tc.status || gotProof != tc.proof || verifier.checks != tc.checks ||
+			if w.Code != tc.status || gotProof != tc.proof || gotPages != (tc.name == "owned") || verifier.checks != tc.checks ||
 				grant.calls != tc.grants || catalog.protected != tc.reads ||
 				(tc.code != "" && !strings.Contains(w.Body.String(), tc.code)) ||
 				w.Header().Get("Cache-Control") != "private, no-store" ||
