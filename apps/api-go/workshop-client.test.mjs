@@ -4569,6 +4569,19 @@ test('large article indexes page stored descriptors and search beyond the visibl
   assert.equal(h.$('article-page-range').textContent, '101–200 of 206');
   assert.equal(list.firstElementChild.firstElementChild, focused);
   assert.equal(h.context.document.activeElement, focused);
+  h.$('article-next').focus();
+  h.context.articles = articles.slice(0, 10);
+  h.context.renderArticles();
+  assert.equal(h.$('article-pages').hidden, true);
+  assert.equal(h.context.document.activeElement, h.$('catalog-title'));
+  h.context.articles = articles;
+  h.context.renderArticles();
+  assert.equal(h.$('article-pages').hidden, false);
+  h.context.clearProtected();
+  assert.equal(h.$('article-pages').hidden, true);
+  assert.equal(h.$('article-page-range').textContent, '');
+  assert.equal(h.$('article-prev').disabled, true);
+  assert.equal(h.$('article-next').disabled, true);
 });
 
 test('a zero-match search keeps a failed partial index usable', async () => {
@@ -5239,7 +5252,8 @@ function mediaArticle(blocks, images = [], changes = {}) {
 function articleMediaHarness(overrides = {}) {
   const body = new ArticleMediaNode('body'), nodes = new Map();
   const ids = ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items',
-    'article-title', 'catalog-count', 'article-note', 'source-review-meta', 'source-review', 'source-review-title', 'print',
+    'article-title', 'catalog-count', 'article-pages', 'article-page-range', 'article-prev', 'article-next',
+    'article-note', 'source-review-meta', 'source-review', 'source-review-title', 'print',
     'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase', 'purchase-selection',
     'article-kind', 'article-reference', 'source-review-load', 'check-order',
     'library-more', 'library-message', 'library-title'];

@@ -178,6 +178,10 @@ function clearProtected() {
     $(id).replaceChildren();
   $("article-title").textContent = "";
   $("catalog-count").textContent = "";
+  $("article-page-range").textContent = "";
+  $("article-pages").hidden = true;
+  $("article-prev").disabled = true;
+  $("article-next").disabled = true;
   $("reader").hidden = true;
   $("catalog").hidden = true;
   clearLibrary();
@@ -1008,9 +1012,15 @@ function renderArticles({ keepFocus = true } = {}) {
   const start = articlePage * articlePageSize;
   const end = Math.min(start + articlePageSize, items.length);
   renderArticleLinks(items.slice(start, end));
-  $("article-pages").hidden = lastPage === 0;
-  $("article-prev").disabled = articlePage === 0;
-  $("article-next").disabled = articlePage === lastPage;
+  const pages = $("article-pages");
+  const previous = $("article-prev");
+  const next = $("article-next");
+  const active = document.activeElement;
+  pages.hidden = lastPage === 0;
+  previous.disabled = articlePage === 0;
+  next.disabled = articlePage === lastPage;
+  if ((active === previous || active === next) && (pages.hidden || active.disabled))
+    focusArticleIndex();
   const range = lastPage > 0 ? `${start + 1}–${end} of ${items.length}` : "";
   if ($("article-page-range").textContent !== range) $("article-page-range").textContent = range;
   const articleCount = `${items.length} ${items.length === 1 ? "article" : "articles"}`;
@@ -1082,8 +1092,6 @@ function articleIndexItems(query) {
 function moveArticlePage(direction) {
   articlePage = Math.max(0, articlePage + direction);
   renderArticles({ keepFocus: false });
-  const control = $(direction < 0 ? "article-prev" : "article-next");
-  if (control.disabled) focusArticleIndex();
 }
 const assetID = (image) =>
   image?.id || image?.image_id || image?.asset_id || "";
