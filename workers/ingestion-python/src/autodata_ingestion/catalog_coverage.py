@@ -252,16 +252,16 @@ def _configuration_candidate_matches(cur, scope, configuration, candidate):
               AND mapping->>'source_region'=%s
               AND nullif(btrim(mapping->>'source_uri'),'') IS NOT NULL
               AND nullif(btrim(mapping->>'source_version'),'') IS NOT NULL
-        ) AND NOT EXISTS (
-            SELECT 1 FROM vehicle_provider_mappings
-            WHERE vehicle_id=%s AND vehicle_configuration_id=%s AND provider=%s
-              AND entity_type='car' AND provider_id=%s AND mapping_status='rejected'
+              AND NOT EXISTS (
+                SELECT 1 FROM vehicle_provider_mappings review
+                WHERE review.vehicle_id=o.vehicle_id
+                  AND review.vehicle_configuration_id=o.vehicle_configuration_id
+                  AND review.provider IN (mapping->>'source_provider',mapping->>'provider')
+                  AND review.entity_type='car' AND review.provider_id=mapping->>'provider_id'
+                  AND review.mapping_status='rejected'
+              )
         ) AS matched""",
-        (
-            scope["vehicle_id"], scope["vehicle_configuration_id"], variant,
-            region, provider, ref, region, scope["vehicle_id"],
-            scope["vehicle_configuration_id"], provider, ref,
-        ),
+        (scope["vehicle_id"], scope["vehicle_configuration_id"], variant, region, provider, ref, region),
     ).fetchone()["matched"]
 
 

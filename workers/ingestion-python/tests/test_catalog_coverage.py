@@ -352,6 +352,7 @@ def test_configuration_resolution_sends_human_selector_in_exact_scope(
         ("other_provider", "CNG", "V8-6.0L CNG", False),
         ("untrusted", "CNG", "V8-6.0L CNG", False),
         ("review_rejected", "CNG", "V8-6.0L CNG", False),
+        ("adapter_review_rejected", "CNG", "V8-6.0L CNG", False),
         ("no_variant", "CNG", "V8-6.0L", False),
         ("different_variant", "CNG", "V8-6.0L LPG", False),
         ("missing_displacement", "CNG", "CNG", False),
@@ -411,7 +412,7 @@ def test_scoped_configuration_binding_requires_exact_source_evidence(
                 FROM vehicle_configurations WHERE vehicle_configuration_id=%s""",
             (uuid.uuid4().hex, Jsonb({"provider_mappings": [mapping]}), Jsonb(canonical), configuration),
         )
-        if case in ("review_rejected", "verified_mapping"):
+        if case in ("review_rejected", "adapter_review_rejected", "verified_mapping"):
             conn.execute(
                 """INSERT INTO vehicle_provider_mappings
                     (mapping_key,vehicle_id,vehicle_configuration_id,provider,entity_type,provider_id,
@@ -420,7 +421,7 @@ def test_scoped_configuration_binding_requires_exact_source_evidence(
                     SELECT %s,vehicle_id,vehicle_configuration_id,%s,'car',%s,
                         source_snapshot_id,extraction_evidence_id,'fixture','fixture',1,%s
                     FROM vehicle_configurations WHERE vehicle_configuration_id=%s""",
-                (uuid.uuid4().hex, provider, ref,
+                (uuid.uuid4().hex, mapping["provider"] if case == "adapter_review_rejected" else provider, ref,
                  "verified" if case == "verified_mapping" else "rejected", configuration),
             )
 
