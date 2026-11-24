@@ -580,6 +580,13 @@ def capture_source_article(
             optional.append((labor_ref, "labor"))
         return refs, linked_refs, optional
 
+    def fetch_order(tasks):
+        # A linked preview can use the document while unrelated assets are
+        # pending. Keep final processing in the original manifest order.
+        if on_linked_preview is None:
+            return tasks
+        return sorted(tasks, key=lambda task: task[1] != "document_asset")
+
     def positioned_media_refs(article):
         return set(article.get("untyped_pdf_embed_refs", ())) | {
             node["asset_resource_ref"] for node in _walk(article["blocks"])
@@ -789,7 +796,7 @@ def capture_source_article(
             reading = {ref for ref in candidates if roles[ref] == "asset"}
             futures = {
                 ref: pool.submit(fetch, (ref, role), ref in reading)
-                for ref, role in planned
+                for ref, role in fetch_order(planned)
             }
             inferred = set(candidates)
             pending = {futures[ref]: ref for ref, role in planned if ref in inferred or role == "document_asset"}
@@ -974,7 +981,7 @@ def capture_source_article(
     if pool is None:
         pool = ThreadPoolExecutor(max_workers=4)
         futures = {}
-    for ref, role in optional:
+    for ref, role in fetch_order(optional):
         if ref not in futures:
             futures[ref] = pool.submit(fetch, (ref, role))
     if on_linked_preview is not None and selected_documents:
