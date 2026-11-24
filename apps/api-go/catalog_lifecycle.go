@@ -149,35 +149,76 @@ const lifecycleEligibleSQL = `a.membership_status='active' AND NOT EXISTS(SELECT
 // Search and detail use the same exact job and source rights for the first
 // supplier body. Callers still check current descriptor and configuration rights.
 const catalogSourceBodyPreviewSQL = `
-	SELECT j.checkpoint->'source_body_preview'->'document' AS document
+	SELECT preview.body->'document' AS document,
+		CASE WHEN EXISTS (
+			SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(linked.snapshot_ids)='array'
+				THEN CASE WHEN jsonb_array_length(linked.snapshot_ids) BETWEEN 1 AND 4 THEN linked.snapshot_ids END
+			END) attachment(id)
+			LEFT JOIN source_snapshots pdf ON pdf.source_snapshot_id=CASE
+				WHEN attachment.id ~ '^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$' THEN attachment.id::uuid END
+				AND pdf.takedown_status='active' AND pdf.content_sha256::text ~ '^[a-f0-9]{64}$'
+			LEFT JOIN source_artifacts artifact ON artifact.source_snapshot_id=pdf.source_snapshot_id
+				AND artifact.content_sha256=pdf.content_sha256 AND artifact.object_key=pdf.object_key
+				AND artifact.artifact_kind='document' AND artifact.media_type='application/pdf'
+				AND artifact.extraction_status<>'quarantined'
+				AND NOT EXISTS (
+					SELECT 1 FROM source_review_items quarantine
+					WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved'
+					AND quarantine.source_snapshot_ids ? pdf.source_snapshot_id::text
+				)
+			HAVING count(*)>0 AND count(DISTINCT artifact.source_snapshot_id)=count(*)
+		) THEN preview.body->'linked_preview'->'document' END AS linked_document
 	FROM source_fetch_jobs j
+	CROSS JOIN LATERAL (SELECT j.checkpoint->'source_body_preview') preview(body)
+	CROSS JOIN LATERAL (SELECT preview.body->'linked_preview'->'snapshot_ids') linked(snapshot_ids)
 	JOIN source_snapshots snap ON snap.source_snapshot_id=CASE
-		WHEN j.checkpoint->'source_body_preview'->>'snapshot_id' ~ '^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$'
-		THEN (j.checkpoint->'source_body_preview'->>'snapshot_id')::uuid END
+		WHEN preview.body->>'snapshot_id' ~ '^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$'
+		THEN (preview.body->>'snapshot_id')::uuid END
 	WHERE a.vehicle_configuration_id::text=$1 AND a.current_source_revision_id IS NULL AND a.takedown_status='active'
 	AND j.source_fetch_job_id=a.current_job_id
 	AND j.job_kind='article' AND j.canonical_article_id=a.canonical_article_id
 	AND j.request_generation=a.request_generation AND j.canonical_vehicle_id=a.vehicle_id
 	AND j.provider_slug=a.provider_slug AND j.source_vehicle_ref=a.source_vehicle_ref
 	AND j.source_article_ref=a.source_article_ref AND snap.takedown_status='active'
-	AND j.checkpoint->'source_body_preview'->>'descriptor_snapshot_id'=a.descriptor_source_snapshot_id::text
+	AND preview.body->>'descriptor_snapshot_id'=a.descriptor_source_snapshot_id::text
 	AND NOT EXISTS (
 		SELECT 1 FROM source_review_items quarantine
 		WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved'
 		AND quarantine.source_snapshot_ids ? snap.source_snapshot_id::text
 	)`
 
+func parseSourceBodyPreview(raw []byte) *CatalogDocument {
+	var document CatalogDocument
+	if len(raw) == 0 || json.Unmarshal(raw, &document) != nil || len(document.Blocks) == 0 {
+		return nil
+	}
+	return &document
+}
+
+func parseLinkedSourceBodyPreview(raw []byte) *CatalogDocument {
+	document := parseSourceBodyPreview(raw)
+	if document == nil || document.SchemaVersion != 1 {
+		return nil
+	}
+	for _, block := range document.Blocks {
+		if block.Type == "" {
+			return nil
+		}
+	}
+	return document
+}
+
 func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, id string) (CatalogArticleView, error) {
 	if !commerceUUID(id) {
 		return CatalogArticleView{}, ErrCatalogNotFound
 	}
-	var raw, preview []byte
+	var raw, preview, linkedPreview []byte
 	var originalRevision *string
 	var originalSnapshot, originalHash, originalVersion string
 	scope, paid := ctx.Value(paidCatalogContextKey{}).(paidCatalogContext)
 	// Resolve the direct ID and at most one proven alias before evaluating the
 	// effective article view. Direct IDs take precedence within the same scope.
-	err := s.pool.QueryRow(ctx, `SELECT to_jsonb(view_row), early.document,
+	err := s.pool.QueryRow(ctx, `SELECT to_jsonb(view_row), early.document, early.linked_document,
 		original.source_revision_id::text,COALESCE(original.body_source_snapshot_id::text,''),
 		COALESCE(original.content_sha256::text,''),COALESCE(original.body_provider_revision,'')
 		FROM canonical_articles a
@@ -185,6 +226,8 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 			SELECT * FROM catalog_article_current WHERE canonical_article_id=a.canonical_article_id LIMIT 1
 		) view_row ON true
 		LEFT JOIN LATERAL (`+catalogSourceBodyPreviewSQL+`) early ON view_row.takedown_status='active'
+			AND EXISTS (SELECT 1 FROM source_snapshots descriptor
+				WHERE descriptor.source_snapshot_id=a.descriptor_source_snapshot_id AND descriptor.takedown_status='active')
 		LEFT JOIN LATERAL (`+catalogStagedOriginalSQL+` AND $3 AND a.vehicle_configuration_id::text=$1) original ON true
 		WHERE a.canonical_article_id IN ($2::uuid, (
 			SELECT alias.canonical_article_id FROM canonical_article_aliases alias
@@ -194,7 +237,7 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 			AND legacy.vehicle_configuration_id IS NOT DISTINCT FROM owner.vehicle_configuration_id
 		)) AND `+lifecycleScopeSQL+` AND `+lifecycleEligibleSQL+`
 		ORDER BY (a.canonical_article_id=$2::uuid) DESC LIMIT 1`, v, id, paid && !scope.openDemo).Scan(
-		&raw, &preview, &originalRevision, &originalSnapshot, &originalHash, &originalVersion,
+		&raw, &preview, &linkedPreview, &originalRevision, &originalSnapshot, &originalHash, &originalVersion,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		legacy, e := s.legacyArticle(ctx, p, v, id)
@@ -280,11 +323,11 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 			ContentSHA256: originalHash, Format: "html", URL: catalogPinnedSourceURL(v, article.ID, originalRevision),
 		}
 	}
-	if len(preview) != 0 && !view.Withdrawn {
-		var document CatalogDocument
-		// A failed preview read must not prevent the current article view.
-		if json.Unmarshal(preview, &document) == nil && len(document.Blocks) != 0 {
-			view.sourceBodyPreview = &document
+	if !view.Withdrawn {
+		// Preserve the wrapper when linked evidence or its projection is unusable.
+		view.sourceBodyPreview = parseLinkedSourceBodyPreview(linkedPreview)
+		if view.sourceBodyPreview == nil {
+			view.sourceBodyPreview = parseSourceBodyPreview(preview)
 		}
 	}
 	return view, nil

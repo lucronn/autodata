@@ -167,6 +167,7 @@ def _capture_context(repo,lease):
                 if key.provider == "bankone" and legacy_bankone_html and row["prior_is_published"]
                 and legacy_bankone_flow_body is not None else frozenset()
             ),
+            has_stored_source=row["current_source_revision_id"] is not None,
         )
 
 
@@ -198,12 +199,12 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 context=_capture_context(repo,lease)
                 if context.key.provider not in registry:raise ValueError("SOURCE_NOT_CONFIGURED")
 
-                def save_body_preview(resource, document):
+                def save_body_preview(resource, document, **linked):
                     for _ in range(2):
                         if lost.is_set():
                             raise LeaseLost("heartbeat lost during body preview")
                         try:
-                            store.store_source_body_preview(repo, lease, context, resource, document)
+                            store.store_source_body_preview(repo, lease, context, resource, document, **linked)
                             return
                         except (ConnectionTimeout, LockNotAvailable, QueryCanceled):
                             # Retry the same uploaded body under the same lease.
@@ -216,6 +217,11 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 captured = capture_source_article(
                     context, registry=registry, object_store=object_store,
                     on_body_preview=save_body_preview if context.key.vehicle_configuration_id is not None else None,
+                    on_linked_preview=(
+                        save_body_preview
+                        if context.key.vehicle_configuration_id is not None and not context.has_stored_source
+                        else None
+                    ),
                     keep_embedded_pdf=True, keep_html_headings=True, keep_bound_pdf_iframes=True,
                     keep_pdf_figure_order=True, keep_multiple_pdf_figures=True,
                     keep_html_table_image_order=True, keep_repeated_pdf_figures=True,

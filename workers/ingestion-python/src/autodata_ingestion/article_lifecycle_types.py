@@ -14,6 +14,7 @@ AUTOMATIC_REWRITE_PROFILE = "full-prose-auto-v1"
 SOURCE_BOUND_REWRITE_PROFILE = "full-prose-auto-v2"
 SOURCE_BOUND_CORRECTION_PROFILE = "full-prose-auto-v3"
 MAX_CORRECTION_CALLS = 12
+MAX_LINKED_PDFS = 4
 AUTOMATIC_REWRITE_PROFILES = (
     AUTOMATIC_REWRITE_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, SOURCE_BOUND_CORRECTION_PROFILE,
 )
@@ -186,6 +187,7 @@ class SourceArticleContext:
     legacy_published_html_section_title_body: str | None = None
     legacy_published_bankone_flow_body: str | None = None
     legacy_published_bankone_svg_refs: frozenset[str] = frozenset()
+    has_stored_source: bool = False
 
 
 @dataclass(frozen=True)
