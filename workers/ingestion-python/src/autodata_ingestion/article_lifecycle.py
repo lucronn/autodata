@@ -53,6 +53,10 @@ def _capture_context(repo,lease):
         row=cur.execute("""SELECT a.*,v.make,v.model,v.model_year,v.region,
             prior.projection_version AS prior_projection_version,
             prior.resource_manifest AS prior_published_resources, prior_body.content_sha256 AS prior_published_body,
+            EXISTS (SELECT 1 FROM canonical_article_revisions published
+                WHERE published.canonical_article_revision_id=a.current_canonical_revision_id
+                  AND published.source_revision_id=prior.source_revision_id AND published.status='published'
+            ) AS prior_is_published,
             COALESCE(s.resolution_source_snapshot_id,(SELECT o.resolution_source_snapshot_id FROM canonical_article_source_observations o WHERE o.canonical_article_id=a.canonical_article_id ORDER BY o.request_generation DESC LIMIT 1)) AS resolution_source_snapshot_id FROM canonical_articles a JOIN vehicles v USING(vehicle_id)
             LEFT JOIN catalog_article_provider_scopes s ON s.scope_key=a.scope_key AND s.provider_slug=a.provider_slug
               AND s.source_vehicle_ref=a.source_vehicle_ref
@@ -97,8 +101,16 @@ def _capture_context(repo,lease):
         compact_layout_roots = set()
         margin_layout_roots = set()
         legacy_layout_roots = set()
+        legacy_bankone_html = False
+        legacy_bankone_svg_refs = set()
         for resource in row["prior_published_resources"] or []:
-            if not isinstance(resource, dict) or not isinstance(resource.get("sha256"), str):
+            if not isinstance(resource, dict):
+                continue
+            ref = resource.get("opaque_ref")
+            if (resource.get("role") == "asset" and resource.get("failure_code") == "UNSUPPORTED_ASSET_MEDIA"
+                    and isinstance(ref, str) and ref):
+                legacy_bankone_svg_refs.add(ref)
+            if not isinstance(resource.get("sha256"), str):
                 continue
             digest = resource["sha256"]
             if resource.get("role") == "body" and digest == previous_body:
@@ -116,6 +128,7 @@ def _capture_context(repo,lease):
                     legacy_section_title_body = None
                 if resource.get("bankone_html_flow_layout") == BANKONE_HTML_FLOW_LAYOUT:
                     legacy_bankone_flow_body = None
+                legacy_bankone_html = resource.get("media_type") == "text/html"
             is_pdf = resource.get("role") == "document_asset" and resource.get("media_type") == "application/pdf"
             if is_pdf:
                 previous_pdf_roots.add(digest)
@@ -149,6 +162,11 @@ def _capture_context(repo,lease):
             legacy_published_html_document_link_body=legacy_document_link_body,
             legacy_published_html_section_title_body=legacy_section_title_body,
             legacy_published_bankone_flow_body=legacy_bankone_flow_body,
+            legacy_published_bankone_svg_refs=(
+                frozenset(legacy_bankone_svg_refs)
+                if key.provider == "bankone" and legacy_bankone_html and row["prior_is_published"]
+                and legacy_bankone_flow_body is not None else frozenset()
+            ),
         )
 
 
@@ -309,8 +327,11 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
             # Timeout after dispatch cannot prove whether the upstream model ran.
             status=getattr(error,"code",None)
             retryable=status not in (400,401,403,404)
-            store.record_rewrite_failure(repo,lease,code="MODEL_DELIVERY_AMBIGUOUS",ambiguous=True)
-            fail_source_job(repo,lease,code="MODEL_TRANSPORT_FAILED" if retryable else "MODEL_CONFIGURATION_INVALID",retryable=retryable)
+            if lease.source_revision_id is None:
+                fail_source_job(repo,lease,code="SOURCE_TRANSPORT_FAILED",retryable=retryable)
+            else:
+                store.record_rewrite_failure(repo,lease,code="MODEL_DELIVERY_AMBIGUOUS",ambiguous=True)
+                fail_source_job(repo,lease,code="MODEL_TRANSPORT_FAILED" if retryable else "MODEL_CONFIGURATION_INVALID",retryable=retryable)
         except (MercuryResponseError,store.RewriteStorageError) as error:
             code="REWRITE_RESPONSE_INVALID" if isinstance(error,MercuryResponseError) else error.code
             store.record_rewrite_failure(repo,lease,code=code,failure=error)
@@ -318,7 +339,8 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
         except ValueError as error:
             code=str(error)
             if not code.isupper() or len(code)>96 or any(not(c.isalnum() or c=="_") for c in code):code="REWRITE_RESPONSE_INVALID"
-            store.record_rewrite_failure(repo,lease,code=code)
+            if lease.source_revision_id is not None:
+                store.record_rewrite_failure(repo,lease,code=code)
             fail_source_job(repo,lease,code=code,retryable=False)
 
 

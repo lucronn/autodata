@@ -1002,6 +1002,97 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 	sanitized, err := sanitizeCatalogSourceHTML(`<img src="https://provider.invalid/private"><script>secret()</script>`, "https://provider.invalid/private", f.applications[0].catalogImageKey)
 	f.check("source_sanitizer_no_private_leak", err == nil && !strings.Contains(sanitized, "https://provider.invalid") && !strings.Contains(sanitized, "script") && !bytes.Contains(raw, []byte("storage_key")) && !bytes.Contains(raw, []byte("source_article_ref")))
 	f.snapshot("rights_final")
+	assertStagedMediaRefreshFence(t, f, fresh)
+}
+
+func assertStagedMediaRefreshFence(t *testing.T, f *paidFixture, current CatalogArticle) {
+	t.Helper()
+	if current.SourceRevisionID == nil || current.CanonicalRevisionID == nil {
+		t.Fatal("published anchor fixture missing")
+	}
+	currentSource := *current.SourceRevisionID
+	staged, historical, job, canonical := f.uuid(), f.uuid(), f.uuid(), f.uuid()
+	for _, revision := range []string{staged, historical} {
+		fingerprint := sha256.Sum256([]byte(revision))
+		f.exec(`INSERT INTO canonical_article_source_revisions
+			(source_revision_id,canonical_article_id,source_fingerprint,body_source_snapshot_id,resource_manifest,
+			 source_document,source_images,source_body,source_steps,projection_version,projection_status,evidence_manifest,captured_at)
+			SELECT $1::uuid,canonical_article_id,$2,body_source_snapshot_id,resource_manifest,
+			 source_document,source_images,source_body,source_steps,projection_version,projection_status,evidence_manifest,now()
+			FROM canonical_article_source_revisions WHERE source_revision_id=$3::uuid`,
+			revision, hex.EncodeToString(fingerprint[:]), currentSource)
+	}
+	transformation := sha256.Sum256([]byte(job))
+	f.exec(`INSERT INTO source_fetch_jobs
+		(source_fetch_job_id,provider_slug,canonical_vehicle_id,source_vehicle_ref,source_article_ref,
+		 source_version,connector_name,idempotency_key,status,checkpoint,job_kind,canonical_article_id,
+		 source_revision_id,request_generation,phase,transformation_key,normalization_version,rewrite_profile_version,
+		 lease_owner,lease_token,lease_expires_at,heartbeat_at)
+		SELECT $1::uuid,j.provider_slug,j.canonical_vehicle_id,j.source_vehicle_ref,j.source_article_ref,
+		 j.source_version,j.connector_name,$1::text,'processing','{"staged_media_refresh":true}','article',j.canonical_article_id,
+		 $2::uuid,(SELECT max(prior.request_generation)+1 FROM source_fetch_jobs prior
+			WHERE prior.job_kind='article' AND prior.canonical_article_id=j.canonical_article_id),
+		 'rewriting',$3,j.normalization_version,j.rewrite_profile_version,
+		 $1::uuid,1,now()+interval '2 minutes',now()
+		FROM source_fetch_jobs j JOIN canonical_articles a ON a.current_job_id=j.source_fetch_job_id
+		WHERE a.canonical_article_id=$4::uuid`, job, staged, hex.EncodeToString(transformation[:]), f.article)
+
+	sourcePath := func(revision string) string {
+		return f.path("/" + f.article + "/source?source_revision_id=" + revision)
+	}
+	var original CatalogSourceContentResponse
+	if err := json.Unmarshal(f.expect(0, http.MethodGet, sourcePath(currentSource), "", http.StatusOK), &original); err != nil || len(original.Images) == 0 {
+		t.Fatal("current source capability fixture missing", err)
+	}
+	ref, err := openPaidCatalogImageReference(strings.TrimPrefix(original.Images[0].URL, "/v1/catalog/images/"), f.applications[0].catalogImageKey, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref.SelectedSourceRevisionID = staged
+	media := f.token(ref, time.Now())
+	store := newPostgresCatalogStore(f.pool)
+	checkDenied := func() {
+		t.Helper()
+		raw := f.expect(0, http.MethodGet, sourcePath(staged), "", http.StatusNotFound)
+		if bytes.Contains(raw, []byte("/v1/catalog/images/")) {
+			t.Fatal("denied source issued a media capability")
+		}
+		if _, err := store.ArticleSourceRevision(context.Background(), Principal{}, f.configuration, f.article, staged); !errors.Is(err, ErrCatalogNotFound) {
+			t.Fatal("general source lookup returned the staged revision", err)
+		}
+		reads := f.reader.calls.Load()
+		f.image(0, media, http.StatusNotFound)
+		if f.reader.calls.Load() != reads {
+			t.Fatal("staged media denial reached storage")
+		}
+	}
+	checkDenied()
+	f.expect(0, http.MethodGet, sourcePath(historical), "", http.StatusOK)
+	f.image(0, original.Images[0].URL, http.StatusOK)
+
+	f.exec(`INSERT INTO canonical_article_revisions
+		(canonical_article_revision_id,canonical_article_id,source_revision_id,transformation_key,normalization_version,
+		 rewrite_profile_version,status,normalized_source_document,normalized_source_hash,canonical_document,
+		 canonical_body,canonical_steps,canonical_images,validation_report,validation_hash,rewrite_result_hash,model_metadata)
+		SELECT $1::uuid,previous.canonical_article_id,j.source_revision_id,j.transformation_key,j.normalization_version,
+		 j.rewrite_profile_version,'validated',previous.normalized_source_document,previous.normalized_source_hash,previous.canonical_document,
+		 previous.canonical_body,previous.canonical_steps,previous.canonical_images,previous.validation_report,previous.validation_hash,
+		 previous.rewrite_result_hash,previous.model_metadata
+		FROM canonical_article_revisions previous JOIN source_fetch_jobs j USING(canonical_article_id)
+		WHERE previous.canonical_article_revision_id=$2::uuid AND j.source_fetch_job_id=$3::uuid`,
+		canonical, *current.CanonicalRevisionID, job)
+	checkDenied()
+	f.exec(`UPDATE source_fetch_jobs
+		SET status='dead_letter',lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL
+		WHERE source_fetch_job_id=$1::uuid`, job)
+	checkDenied()
+	f.exec(`UPDATE canonical_article_revisions SET status='published',published_at=now() WHERE canonical_article_revision_id=$1::uuid`, canonical)
+	f.expect(0, http.MethodGet, sourcePath(staged), "", http.StatusOK)
+	f.image(0, media, http.StatusOK)
+	if stillCurrent := f.detail(0); !samePaidCatalogID(stillCurrent.SourceRevisionID, current.SourceRevisionID) ||
+		!samePaidCatalogID(stillCurrent.CanonicalRevisionID, current.CanonicalRevisionID) {
+		t.Fatal("publishing a historical source changed the selected reader anchor")
+	}
 }
 func TestPostgresPaidCatalogCustomerLegacyRoutesDenied(t *testing.T) {
 	f := paidSetup(t)

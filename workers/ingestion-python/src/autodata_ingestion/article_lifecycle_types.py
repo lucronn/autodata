@@ -185,6 +185,7 @@ class SourceArticleContext:
     legacy_published_html_document_link_body: str | None = None
     legacy_published_html_section_title_body: str | None = None
     legacy_published_bankone_flow_body: str | None = None
+    legacy_published_bankone_svg_refs: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -203,6 +204,7 @@ class CapturedSource:
     projection_status: str
     captured_at: datetime
     projection_version: str = "source-projection-v1"
+    recovered_legacy_bankone_svg: bool = False
 
 
 @dataclass(frozen=True)

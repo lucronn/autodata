@@ -408,6 +408,23 @@ func (s *postgresCatalogStore) ArticleSource(ctx context.Context, p Principal, v
 	return s.ArticleSourceRevision(ctx, p, v, id, "")
 }
 
+// Staged media refreshes keep a private source revision before publishing.
+// The job marker survives failure and supersession. A published canonical
+// record for the exact revision makes it eligible for historical review.
+const catalogSourceRevisionPublicationSQL = `NOT EXISTS (
+	SELECT 1 FROM source_fetch_jobs staged
+	WHERE staged.job_kind='article'
+	  AND staged.canonical_article_id=sr.canonical_article_id
+	  AND staged.source_revision_id=sr.source_revision_id
+	  AND staged.checkpoint ? 'staged_media_refresh'
+	  AND NOT EXISTS (
+		SELECT 1 FROM canonical_article_revisions published
+		WHERE published.canonical_article_id=sr.canonical_article_id
+		  AND published.source_revision_id=sr.source_revision_id
+		  AND published.status='published'
+	  )
+)`
+
 // Selected revisions, including historical revisions, cannot expose any of their
 // retained resources while the body or a resource in the manifest is blocked.
 const catalogSourceRevisionEligibleSQL = `NOT EXISTS (
@@ -454,6 +471,8 @@ func (s *postgresCatalogStore) paidCatalogImageView(ctx context.Context, configu
 			SELECT sr.source_images FROM canonical_article_source_revisions sr
 			JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id
 			WHERE sr.canonical_article_id=a.canonical_article_id AND sr.source_revision_id=$3::uuid
+			AND CASE WHEN sr.source_revision_id=view_row.source_revision_id AND view_row.canonical_revision_id IS NOT NULL
+				THEN TRUE ELSE `+catalogSourceRevisionPublicationSQL+` END
 			AND `+catalogSourceRevisionEligibleSQL+`
 		) selected ON view_row.takedown_status='active' AND descriptor.takedown_status='active'
 		WHERE a.vehicle_configuration_id=$1::uuid AND a.canonical_article_id=$2::uuid AND `+lifecycleEligibleSQL,
@@ -509,7 +528,13 @@ func (s *postgresCatalogStore) ArticleSourceRevision(ctx context.Context, p Prin
 	var steps []byte
 	// Requested revision must belong to this authorized identity. Any resource
 	// takedown suppresses the immutable revision, including historical review.
-	err = s.pool.QueryRow(ctx, `SELECT sr.source_revision_id::text,sr.body_source_snapshot_id::text,snap.content_sha256::text,`+catalogSourceObservationVersionSQL+`,sr.source_document,sr.source_images,sr.source_body,sr.source_steps FROM canonical_article_source_revisions sr JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id WHERE sr.canonical_article_id=$1::uuid AND sr.source_revision_id=$2::uuid AND `+catalogSourceRevisionEligibleSQL, *view.Article.CanonicalArticleID, revision).Scan(&sourceID, &result.SnapshotID, &result.ContentSHA256, &result.Version, &doc, &images, &body, &steps)
+	err = s.pool.QueryRow(ctx, `SELECT sr.source_revision_id::text,sr.body_source_snapshot_id::text,snap.content_sha256::text,
+		`+catalogSourceObservationVersionSQL+`,sr.source_document,sr.source_images,sr.source_body,sr.source_steps
+		FROM canonical_article_source_revisions sr
+		JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id
+		WHERE sr.canonical_article_id=$1::uuid AND sr.source_revision_id=$2::uuid
+		AND `+catalogSourceRevisionPublicationSQL+`
+		AND `+catalogSourceRevisionEligibleSQL, *view.Article.CanonicalArticleID, revision).Scan(&sourceID, &result.SnapshotID, &result.ContentSHA256, &result.Version, &doc, &images, &body, &steps)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return CatalogSourceContent{}, ErrCatalogNotFound
 	}

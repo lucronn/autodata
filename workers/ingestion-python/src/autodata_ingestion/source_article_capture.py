@@ -1,5 +1,6 @@
 """Bounded provider-bound capture; immutable public projection from actual bytes."""
 
+from collections import Counter
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -54,6 +55,7 @@ from .svg_rasterization import rasterize_svg, SVGUnavailable, RASTERIZER_VERSION
 
 _MAX_LINKED_PDFS = 4
 _MAX_BODY_PREVIEW_BYTES = 256 * 1024
+_LEGACY_SVG_RECOVERY_INCOMPLETE = "SOURCE_LEGACY_SVG_RECOVERY_INCOMPLETE"
 
 # Keep in sync with the raster types accepted by the catalog image endpoint.
 DISPLAYABLE_RASTER_MEDIA = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
@@ -170,6 +172,30 @@ def _bind_bankone_graphics(blocks, resources, declared_refs):
                 node["asset_resource_ref"] = ref
                 bindings[node.graphic_locator] = ref
     return bindings
+
+
+def _recovered_bankone_svg_digests(blocks, refs, bindings, resources, localized):
+    """Require one authored position and a retained SVG/PNG pair for every legacy ref."""
+    placements = Counter(
+        node["asset_resource_ref"] for node in _image_nodes(blocks)
+        if node.get("asset_resource_ref") in refs
+    )
+    if not refs.issubset(bindings.values()) or placements != Counter(refs):
+        raise SourceConnectorError(_LEGACY_SVG_RECOVERY_INCOMPLETE)
+    originals = {
+        resource["opaque_ref"]: resource["sha256"] for resource in resources
+        if resource["role"] == "asset_original" and resource["provider"] == "bankone"
+        and resource["media_type"] == "image/svg+xml"
+    }
+    digests = Counter()
+    for ref in refs:
+        png = localized.get(ref)
+        if (ref not in originals or png is None or png["media_type"] != "image/png"
+                or png.get("derived_from_sha256") != originals[ref]
+                or png.get("derivation_version") != RASTERIZER_VERSION):
+            raise SourceConnectorError(_LEGACY_SVG_RECOVERY_INCOMPLETE)
+        digests[png["sha256"]] += 1
+    return digests
 
 
 def _embedded_image_bytes(uri):
@@ -654,7 +680,18 @@ def capture_source_article(
             ),
         }
         body_digest = body.body["sha256"]
-        legacy_captions = {name: enabled and body_digest != legacy for name, (enabled, legacy) in caption_settings.items()}
+        prior_svg_refs = context.legacy_published_bankone_svg_refs
+        recover_legacy_bankone_svg = bool(
+            keep_bankone_html_flow and provider == "bankone" and body.body["media_type"] == "text/html"
+            and body_digest == context.legacy_published_bankone_flow_body and prior_svg_refs
+        )
+        body_asset_refs = body.body.get("asset_resource_refs") or []
+        if recover_legacy_bankone_svg and not prior_svg_refs.issubset(body_asset_refs):
+            raise SourceConnectorError(_LEGACY_SVG_RECOVERY_INCOMPLETE)
+        legacy_captions = {
+            name: enabled and (recover_legacy_bankone_svg or body_digest != legacy)
+            for name, (enabled, legacy) in caption_settings.items()
+        }
         refreshed_captions = {name: enabled for name, (enabled, _) in caption_settings.items() if enabled and not legacy_captions[name]}
         adapt = partial(
             adapt_bound_article, body.to_source_resource(), context,
@@ -680,7 +717,8 @@ def capture_source_article(
                 keep_html_section_titles and body_digest != context.legacy_published_html_section_title_body
             ),
             keep_bankone_html_flow=(
-                keep_bankone_html_flow and body_digest != context.legacy_published_bankone_flow_body
+                keep_bankone_html_flow
+                and (recover_legacy_bankone_svg or body_digest != context.legacy_published_bankone_flow_body)
             ),
             keep_mixed_html_pdf_embeds=keep_mixed_html_pdf_embeds,
             keep_structured_table_cell_order=keep_structured_table_cell_order or (
@@ -710,7 +748,7 @@ def capture_source_article(
             return article
 
         article = parser_pool.submit(parse, step_parser=step_parser).result(timeout=remaining())
-        if on_body_preview is not None:
+        if on_body_preview is not None and not recover_legacy_bankone_svg:
             try:
                 preview = _source_body_preview(
                     context, article, step_parser=LeadingDecimalStepParser() if keep_leading_decimals else None,
@@ -1002,11 +1040,16 @@ def capture_source_article(
                     record["pdf_figure_layout"] = PDF_LEGACY_FIGURE_LAYOUT
     if handled_pdf_embeds:
         _replace_pdf_embeds(blocks, documents)
+    bindings = {}
     if bankone_html_flow:
-        bindings = _bind_bankone_graphics(blocks, resources, body.body.get("asset_resource_refs") or [])
+        bindings = _bind_bankone_graphics(blocks, resources, body_asset_refs)
         for record in (resources[0], provenance[0], manifest[0]):
             record["bankone_html_flow_layout"] = BANKONE_HTML_FLOW_LAYOUT
             record["bankone_graphic_position_bindings"] = bindings
+    if recover_legacy_bankone_svg:
+        recovered_svg_digests = _recovered_bankone_svg_digests(
+            blocks, prior_svg_refs, bindings, resources, localized,
+        )
 
     # Embedded figures are derived only from verified bytes and never fetched by URL.
     evidence_sources = {
@@ -1239,6 +1282,16 @@ def capture_source_article(
         doc, include_cell_figure_captions=html_figure_captions, include_table_captions=html_table_captions,
         include_flow_figure_captions=html_flow_figure_captions,
     )
+    projection_partial = bool(failures or any(image.get("status") == "unavailable" for image in images))
+    if recover_legacy_bankone_svg:
+        # The ordered projection must retain each authorized placement after normalization.
+        placed_svg_digests = Counter(
+            image["content_sha256"] for image in images
+            if image.get("content_sha256") in recovered_svg_digests
+            and image.get("status") == "available" and image.get("media_type") == "image/png"
+        )
+        if projection_partial or placed_svg_digests != recovered_svg_digests or validate_ordered_document(doc, strict=True):
+            raise SourceConnectorError(_LEGACY_SVG_RECOVERY_INCOMPLETE)
     if (
         not body_text.strip()
         or body_text.strip() == str(context.descriptor.get("title", "")).strip()
@@ -1280,11 +1333,7 @@ def capture_source_article(
             {"evidence_id": evidence, "body_source_snapshot_id": resource["source_snapshot_id"]}
             for evidence, resource in evidence_sources.items()
         ],
-        (
-            "partial"
-            if failures or any(i.get("status") == "unavailable" for i in images)
-            else "readable"
-        ),
+        "partial" if projection_partial else "readable",
         datetime.now(timezone.utc),
         projection_version=(
             "source-projection-v10" if retained_pdf_repeats
@@ -1295,4 +1344,5 @@ def capture_source_article(
             else "source-projection-v5" if new_structure
             else "source-projection-v2"
         ),
+        recovered_legacy_bankone_svg=recover_legacy_bankone_svg,
     )
