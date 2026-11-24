@@ -10,10 +10,13 @@ from threading import Event, Lock
 from uuid import uuid4
 
 from PIL import Image
+from pypdf import PageObject
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 import pytest
 
+from autodata_ingestion import source_adapters
+from autodata_ingestion.article_document import validate_ordered_document
 from autodata_ingestion.article_lifecycle import run_article_worker_once
 from autodata_ingestion.article_lifecycle_store import load_source_revision
 from autodata_ingestion.article_lifecycle_types import (
@@ -21,6 +24,7 @@ from autodata_ingestion.article_lifecycle_types import (
     PDF_SINGLE_LINE_FIGURE_LAYOUT, PDF_WORDLESS_FIGURE_LAYOUT,
 )
 from autodata_ingestion.procedure_rewrite_auto import PROFILE as AUTO_PROFILE
+from autodata_ingestion.ocr import OCRUnavailable
 from autodata_ingestion.source_job_persistence import refresh_article_job
 
 from lifecycle_support import fresh_database, runtime
@@ -157,7 +161,9 @@ def test_linked_pdf_preview_precedes_figures_and_unrelated_assets(runtime, monke
                 FROM source_fetch_jobs WHERE source_fetch_job_id=%s
             """, (job.job_id,)).fetchone()
         preview = row["preview"]
-        if preview and "linked_preview" in preview:
+        if preview and "linked_preview" in preview and any(
+            block["type"] == "image" for block in preview["linked_preview"]["document"]["blocks"]
+        ):
             assert row["source_revision_id"] is None
             return preview
 
@@ -214,6 +220,110 @@ def test_linked_pdf_preview_precedes_figures_and_unrelated_assets(runtime, monke
     preview_layout = _layout(expanded["document"])
     assert _layout(final["document"])[:len(preview_layout)] == preview_layout
     assert current_preview() is None
+
+
+@pytest.mark.parametrize("inferred", [False, True])
+def test_linked_native_pdf_preview_precedes_figure_decode(runtime, monkeypatch, inferred):
+    from test_article_lifecycle_integration import scoped_runtime_article
+
+    scoped_runtime_article(runtime)
+    connector = runtime.servers["bankone"]
+    pdf, _ = _pdf_with_fixture_figure(trailing_text="0.5 mm maximum clearance.", blank_page=True)
+    marked = (
+        f'<a href="{_PDF_LOCATOR}">Service bulletin</a>' if inferred else f'<iframe src="{_PDF_LOCATOR}"></iframe>'
+    )
+    body = f"<p>Remove the pump.</p>{marked}<p>Install the replacement.</p>".encode()
+    connector.body(body, assets=[_PDF_REF],
+                   asset_bindings=[{"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF}])
+    connector.body(pdf, "application/pdf", ref=_PDF_REF, kind="binary")
+    job = refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="initial native PDF",
+                              rewrite_profile_version=AUTO_PROFILE)
+    decode_started, decode_release = Event(), Event()
+    original_decode = source_adapters._extract_pdf_page_images
+    original_extract = PageObject.extract_text
+    client = runtime.registry["bankone"]
+    downloaded = []
+    native_pages = []
+
+    class CountPDFReads:
+        provider = "bankone"
+
+        def read_resource(self, ref, **kwargs):
+            downloaded.append(ref)
+            return client.read_resource(ref, **kwargs)
+
+    def read_native_text(page, *args, **kwargs):
+        if not args and not kwargs:
+            native_pages.append(True)
+        return original_extract(page, *args, **kwargs)
+
+    def hold_decode(*args, **kwargs):
+        if not decode_started.is_set():
+            decode_started.set()
+            assert decode_release.wait(12)
+        return original_decode(*args, **kwargs)
+
+    def find_linked_preview():
+        with runtime.repo.connect() as conn:
+            row = conn.execute("""
+                SELECT source_revision_id,checkpoint->'source_body_preview'->'linked_preview' AS preview
+                FROM source_fetch_jobs WHERE source_fetch_job_id=%s
+            """, (job.job_id,)).fetchone()
+        assert row["source_revision_id"] is None
+        return row["preview"]
+
+    monkeypatch.setattr(source_adapters, "_extract_pdf_page_images", hold_decode)
+    monkeypatch.setattr(PageObject, "extract_text", read_native_text)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        worker = executor.submit(run_article_worker_once, runtime.repo, worker_id=uuid4(), job_id=job.job_id,
+                                 registry={"bankone": CountPDFReads()}, object_store=runtime.objects, model_client=None)
+        try:
+            assert decode_started.wait(5)
+            preview = runtime.wait_for(find_linked_preview)
+            assert not decode_release.is_set() and len(native_pages) == 2
+            assert not validate_ordered_document(preview["document"])
+            layout = _layout(preview["document"])
+            assert all(kind != "image" for kind, _ in layout)
+            assert ("paragraph", "0.5 mm maximum clearance.") in layout
+            texts = [text for _, text in layout]
+            assert texts.index("Remove the pump.") < texts.index("Inspect the seal.")
+            assert texts.index("Inspect the seal.") < texts.index("0.5 mm maximum clearance.")
+            assert texts.index("0.5 mm maximum clearance.") < texts.index("Install the replacement.")
+            [snapshot] = preview["snapshot_ids"]
+            with runtime.repo.connect() as conn:
+                artifact = conn.execute("""
+                    SELECT s.takedown_status,a.media_type,a.content_sha256 FROM source_snapshots s
+                    JOIN source_artifacts a USING (source_snapshot_id)
+                    WHERE s.source_snapshot_id=%s AND a.content_sha256=s.content_sha256
+                """, (snapshot,)).fetchone()
+            assert artifact == {"takedown_status": "active", "media_type": "application/pdf",
+                                "content_sha256": sha256(pdf).hexdigest()}
+        finally:
+            decode_release.set()
+        assert worker.result(timeout=10)
+    final = runtime.read_current()
+    assert final["source_revision_id"] and downloaded.count(_PDF_REF) == 1 and len(native_pages) == 2
+    final_layout = _layout(final["document"])
+    assert any(kind == "image" for kind, _ in final_layout)
+    assert [(kind, text) for kind, text in final_layout if kind != "image"] == layout
+
+
+def test_linked_pdf_does_not_signal_incomplete_native_text_when_ocr_is_needed(monkeypatch):
+    pdf, _ = _linked_pdf("middle")
+    resource = source_adapters.SourceResource.from_bytes("https://fixture.invalid/bulletin", "fixture",
+                                                         pdf, "application/pdf")
+    native_documents, ocr_pages = [], []
+
+    def require_ocr(digest, payload, native_pages, *, page_range):
+        assert digest == sha256(pdf).hexdigest() and payload == pdf and native_pages == {1, 3}
+        ocr_pages.append(page_range)
+        raise OCRUnavailable("synthetic OCR unavailable")
+
+    monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", require_ocr)
+    with pytest.raises(ValueError, match="pages requiring unavailable OCR"):
+        source_adapters.adapt_bound_pdf_embed(resource, require_complete_ocr=True, skip_blank_pages=True,
+                                             on_native_text=native_documents.append)
+    assert native_documents == [] and ocr_pages == [(2, 2)]
 
 
 def test_linked_single_line_figure_refresh_reuses_original_pdf_bytes(runtime, monkeypatch):
