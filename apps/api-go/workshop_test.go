@@ -88,6 +88,8 @@ func TestWorkshopPublicAssetsRevalidateByContent(t *testing.T) {
 		if tag != "" {
 			r.Header.Set("If-None-Match", tag)
 		}
+		r.Header.Set("X-Request-ID", "workshop-asset-caller")
+		r.Header.Set("Traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
 		return w
@@ -97,7 +99,8 @@ func TestWorkshopPublicAssetsRevalidateByContent(t *testing.T) {
 			first := request(http.MethodGet, path, "")
 			digest := sha256.Sum256(first.Body.Bytes())
 			wantTag := `W/"` + hex.EncodeToString(digest[:]) + `"`
-			if first.Code != http.StatusOK || first.Header().Get("ETag") != wantTag || first.Header().Get("Cache-Control") != "no-cache" {
+			if first.Code != http.StatusOK || first.Header().Get("ETag") != wantTag || first.Header().Get("Cache-Control") != "no-cache" ||
+				first.Header().Get("Vercel-CDN-Cache-Control") != "" {
 				t.Fatalf("first read = %d, tag %q, cache %q", first.Code, first.Header().Get("ETag"), first.Header().Get("Cache-Control"))
 			}
 			for _, method := range []string{http.MethodGet, http.MethodHead} {
@@ -152,37 +155,53 @@ func TestWorkshopPublicAssetsRevalidateByContent(t *testing.T) {
 			}
 		}
 		const immutable = "private, max-age=31536000, immutable"
+		const edgeCache = "public, max-age=86400, immutable"
 		for _, name := range []string{"bootstrap.mjs", "app.mjs", "auth.mjs", "article-read.mjs", "progress.mjs",
 			"catalog.mjs", "commerce.mjs", "firebase-web.mjs", "demo.mjs", "styles.css", "fonts/InstrumentSans.woff2"} {
 			fresh := request(http.MethodGet, match[1]+name, "")
 			legacy := request(http.MethodGet, "/workshop/"+name, "")
 			if fresh.Code != http.StatusOK || fresh.Header().Get("Cache-Control") != immutable ||
+				fresh.Header().Get("Vercel-CDN-Cache-Control") != edgeCache || fresh.Header().Get("X-Request-ID") != "" ||
+				fresh.Header().Get("Traceparent") != "" ||
 				fresh.Header().Get("ETag") != legacy.Header().Get("ETag") ||
 				fresh.Header().Get("Content-Type") != legacy.Header().Get("Content-Type") ||
 				!bytes.Equal(fresh.Body.Bytes(), legacy.Body.Bytes()) {
 				t.Errorf("versioned %s returned status %d or different content/headers", name, fresh.Code)
 			}
 			warm := request(http.MethodHead, match[1]+name, fresh.Header().Get("ETag"))
-			if warm.Code != http.StatusNotModified || warm.Body.Len() != 0 {
+			if warm.Code != http.StatusNotModified || warm.Body.Len() != 0 || warm.Header().Get("Vercel-CDN-Cache-Control") != edgeCache {
 				t.Errorf("conditional HEAD for %s = %d", name, warm.Code)
 			}
 		}
 		otherVersion := strings.Repeat("e", 64)
 		previous := request(http.MethodGet, "/workshop/assets/"+otherVersion+"/firebase-web.mjs", "")
 		if previous.Code != http.StatusTemporaryRedirect || previous.Header().Get("Location") != "/workshop/firebase-web.mjs" ||
-			previous.Header().Get("Cache-Control") != "no-store" {
+			previous.Header().Get("Cache-Control") != "no-store" || previous.Header().Get("Vercel-CDN-Cache-Control") != "" {
 			t.Fatal("an old release URL must resolve without caching newer bytes at the old URL")
 		}
 		for _, name := range []string{"", "missing.mjs", "purchase-config.json", "demo-mode.json"} {
 			missing := request(http.MethodGet, match[1]+name, "")
-			if missing.Code != http.StatusNotFound || missing.Header().Get("Cache-Control") == immutable {
+			if missing.Code != http.StatusNotFound || missing.Header().Get("Cache-Control") == immutable ||
+				missing.Header().Get("Vercel-CDN-Cache-Control") != "" {
 				t.Errorf("unknown versioned asset %q = %d with %q", name, missing.Code, missing.Header().Get("Cache-Control"))
 			}
+		}
+		query := request(http.MethodGet, match[1]+"bootstrap.mjs?probe=1", "")
+		if query.Code != http.StatusOK || query.Header().Get("Vercel-CDN-Cache-Control") != "" {
+			t.Fatal("a noncanonical asset URL must not be shared")
+		}
+		partial := httptest.NewRecorder()
+		rangeRequest := httptest.NewRequest(http.MethodGet, match[1]+"bootstrap.mjs", nil)
+		rangeRequest.Header.Set("Range", "bytes=0-15")
+		handler.ServeHTTP(partial, rangeRequest)
+		if partial.Code != http.StatusPartialContent || partial.Header().Get("Vercel-CDN-Cache-Control") != "" {
+			t.Fatal("a partial static asset must not be shared")
 		}
 	})
 	for _, path := range []string{"/workshop/purchase-config.json", "/workshop/demo-mode.json"} {
 		live := request(http.MethodGet, path, "*")
-		if live.Code != http.StatusOK || live.Body.Len() == 0 || live.Header().Get("ETag") != "" || live.Header().Get("Cache-Control") != "no-store" {
+		if live.Code != http.StatusOK || live.Body.Len() == 0 || live.Header().Get("ETag") != "" || live.Header().Get("Cache-Control") != "no-store" ||
+			live.Header().Get("Vercel-CDN-Cache-Control") != "" {
 			t.Fatalf("dynamic %s returned %d, tag %q, cache %q", path, live.Code, live.Header().Get("ETag"), live.Header().Get("Cache-Control"))
 		}
 	}
