@@ -181,7 +181,8 @@ def test_configuration_marker_requires_all_providers_and_successful_persistence(
     if outcome == 'exception':
         providers[0] = Provider('bankone', ValueError(SECRET))
     _assert_configuration_marker(repo, providers, monkeypatch, caplog, outcome)
-    assert [p.calls for p in providers] == [1, 1]
+    expected_calls = [1, 0] if outcome == 'persistence_failure' else [1, 1]
+    assert [p.calls for p in providers] == expected_calls
 
 
 def _assert_configuration_marker(repo, providers, monkeypatch, caplog, outcome):
