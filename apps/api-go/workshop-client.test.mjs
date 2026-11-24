@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
 import { pollOrder, purchaseConfiguration, quoteConfigurationLabel, readOrder, resumableCheckoutURL, sameScope, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
-import { articlePresentation, articleSearchParams, CatalogRequestError, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, trimArticleSearch, vehicleSelectorPath } from './workshop/catalog.mjs';
+import { articlePresentation, articleSearchParams, CatalogRequestError, configurationLabel, delay, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, trimArticleSearch, vehicleSelectorPath } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 const paidPagePreferences = 'workshop-index-pages, workshop-index-live-pages';
@@ -15,6 +15,8 @@ function runInNewContext(code, context) {
   context.openDemo ??= false;
   context.resumableCheckoutURL ??= resumableCheckoutURL;
   context.sameScope ??= sameScope;
+  context.validScope ??= validScope;
+  context.delay ??= delay;
   context.demoPath ??= path => path;
   context.articleSearchParams ??= articleSearchParams;
   context.trimArticleSearch ??= trimArticleSearch;
@@ -9106,6 +9108,320 @@ function articleRouteHarness(mode, request, authenticated = true, openDemo = fal
   runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
   return h;
 }
+
+function retainedReaderHarness(request) {
+  const configuration = { id: routeConfiguration, region: 'US', engine: '3.5' };
+  const gracePeriod = deferredAuthOperation();
+  const calls = [];
+  let probeSignal;
+  const h = articleRouteHarness('firebase', (path, options) => {
+    calls.push({ path, ...options });
+    return request(path, options);
+  });
+  h.context.vehicle = configuration;
+  h.context.articlePath = id => `/v1/catalog/vehicles/${configuration.id}/articles/${id}`;
+  h.context.renderPurchase = () => {};
+  h.context.delay = (ms, signal) => {
+    if (probeSignal) return delay(ms, signal);
+    assert.equal(ms, 250);
+    probeSignal = signal;
+    signal.addEventListener('abort', () => gracePeriod.reject(signal.reason), { once: true });
+    return gracePeriod.promise;
+  };
+  return { ...h, configuration, calls, gracePeriod,
+    get probeSignal() { return probeSignal; } };
+}
+
+test('a slow paid prepare opens retained text before the POST finishes on saved and regular entries', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  for (const savedLink of [true, false]) {
+    const prepare = deferredAuthOperation(), poll = deferredAuthOperation(), polling = deferredAuthOperation();
+    const source = mediaArticle([{ type: 'paragraph', text: 'Stored Ford procedure.' }], [], {
+      source_body_preview: true, source_revision_id: null,
+    });
+    const published = mediaArticle([{ type: 'paragraph', text: 'Published Ford procedure.' }], [], {
+      content_origin: 'canonical', view_revision: 'published',
+    });
+    const h = retainedReaderHarness((_path, options) => {
+      if (options.method === 'POST') return prepare.promise;
+      return { status: 200, data: { article: h.calls.length === 2 ? source : published, configuration: h.configuration } };
+    });
+    h.context.readArticle = (read, options) => readArticle(read, {
+      ...options, wait: ms => { assert.equal(ms, 2000); polling.resolve(); return poll.promise; },
+    });
+    const opening = h.context.loadArticle('a', h.g, { savedLink });
+    assert.deepEqual(h.calls.map(call => call.method), ['POST']);
+    assert.equal(h.calls[0].headers['X-CSRF-Token'], 'csrf');
+    assert.equal(h.calls[0].preferEarlySourceCheck, undefined);
+    assert.equal(h.nodes.get('article-content').textContent, '');
+    h.gracePeriod.resolve();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.nodes.get('article-content').textContent, 'Stored Ford procedure.');
+    assert.equal(h.nodes.get('print').disabled, false);
+    assert.equal(h.statuses.at(-1).message, 'Source text is ready.');
+    assert.equal(h.nodes.get('reader-engine').textContent, 'US');
+    assert.equal(h.calls.length, 2);
+    assert.equal(h.calls[1].path, `/v1/catalog/vehicles/${h.configuration.id}/articles/a?region=US`);
+    assert.equal(h.calls[1].headers, undefined);
+    assert.equal(h.calls[1].preferEarlySourceCheck, true);
+    prepare.resolve({ status: 202, retryAfterSeconds: 2, data: { configuration: h.configuration,
+      article: { id: 'a', processing: { job_id: 'queued', state: 'fetching_source' } },
+    } });
+    await polling.promise;
+    assert.equal(h.nodes.get('article-content').textContent, 'Stored Ford procedure.');
+    assert.equal(h.calls.length, 2);
+    poll.resolve();
+    assert.equal(await opening, true);
+    assert.equal(h.nodes.get('article-content').textContent, 'Published Ford procedure.');
+    assert.equal(h.calls[2].preferEarlySourceCheck, undefined);
+    assert.deepEqual(h.calls.map(call => call.method || 'GET'), ['POST', 'GET', 'GET']);
+  }
+});
+
+test('a fast paid prepare cancels the optional check without adding a GET', async () => {
+  const article = mediaArticle([{ type: 'paragraph', text: 'Ready Ford procedure.' }]);
+  const h = retainedReaderHarness((_path, options) => {
+    assert.equal(options.method, 'POST');
+    return { status: 200, data: { article, configuration: h.configuration } };
+  });
+  assert.equal(await h.context.loadArticle('a', h.g, { savedLink: true }), true);
+  assert.equal(h.probeSignal.aborted, true);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.nodes.get('article-content').textContent, 'Ready Ford procedure.');
+});
+
+test('a saved cold article reuses a started GET after its prepare returns 202', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const prepare = deferredAuthOperation(), early = deferredAuthOperation(), getStarted = deferredAuthOperation();
+  const waiting = deferredAuthOperation(), wait = deferredAuthOperation();
+  const stored = mediaArticle([{ type: 'paragraph', text: 'Retained procedure.' }]);
+  let aborted = false;
+  const h = retainedReaderHarness((path, options) => requestArticleJSON(path, {
+    ...options,
+    async fetcher(_url, { method, signal, headers }) {
+      const marked = headers.Prefer.split(', ').includes('workshop-early-source-check');
+      if (method === 'POST') {
+        assert.equal(marked, false);
+        return prepare.promise;
+      }
+      assert.equal(marked, true);
+      if (h.calls.length !== 2) assert.fail('the ordinary poll should reuse the first GET');
+      signal.addEventListener('abort', () => { aborted = true; early.reject(signal.reason); }, { once: true });
+      getStarted.resolve();
+      return early.promise;
+    },
+  }));
+  h.context.readArticle = (read, options) => readArticle(read, {
+    ...options, wait: ms => { assert.equal(ms, 2000); waiting.resolve(); return wait.promise; },
+  });
+  const loading = h.context.loadArticle('a', h.g, { savedLink: true });
+  h.gracePeriod.resolve();
+  await getStarted.promise;
+  prepare.resolve(new Response(JSON.stringify({ configuration: h.configuration,
+    article: { id: 'a', processing: { job_id: 'durable', state: 'fetching_source' } },
+  }), { status: 202, headers: { 'Retry-After': '2' } }));
+  await waiting.promise;
+  assert.equal(h.probeSignal.aborted, false);
+  assert.equal(aborted, false);
+  early.resolve(new Response(JSON.stringify({ configuration: h.configuration, article: stored })));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.nodes.get('article-content').textContent, 'Retained procedure.');
+  assert.deepEqual(h.calls.map(call => call.method || 'GET'), ['POST', 'GET']);
+  wait.resolve();
+  assert.equal(await loading, true);
+  assert.deepEqual(h.calls.map(call => call.method || 'GET'), ['POST', 'GET']);
+});
+
+test('HTTP 200 headers suppress a second download while the prepare body is still streaming', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const article = mediaArticle([{ type: 'paragraph', text: 'Retained Ford procedure.' }]);
+  for (const interruptBody of [false, true]) {
+    const headers = deferredAuthOperation();
+    let body;
+    const h = retainedReaderHarness((path, options) => requestArticleJSON(path, {
+      ...options,
+      onResponseStatus(status) {
+        options.onResponseStatus?.(status);
+        headers.resolve(status);
+      },
+      fetcher: async (_url, { method }) => method === 'POST'
+        ? new Response(new ReadableStream({ start(controller) { body = controller; } }))
+        : new Response(JSON.stringify({ configuration: h.configuration, article })),
+    }));
+    const loading = h.context.loadArticle('a', h.g, { savedLink: true });
+    assert.equal(await headers.promise, 200);
+    assert.equal(h.probeSignal.aborted, true);
+    h.gracePeriod.resolve();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(h.calls.map(call => call.method || 'GET'), ['POST']);
+    if (interruptBody) body.error(new TypeError('Connection closed while reading the body'));
+    else {
+      body.enqueue(new TextEncoder().encode(JSON.stringify({ configuration: h.configuration, article })));
+      body.close();
+    }
+    assert.equal(await loading, true);
+    assert.equal(h.nodes.get('article-content').textContent, 'Retained Ford procedure.');
+    assert.deepEqual(h.calls.map(call => call.method || 'GET'), interruptBody ? ['POST', 'GET'] : ['POST']);
+  }
+});
+
+test('an older readable prepare response cannot replace a newer exact article', async () => {
+  const prepare = deferredAuthOperation();
+  const oldArticle = mediaArticle([{ type: 'paragraph', text: 'Earlier source.' }]);
+  const published = mediaArticle([{ type: 'paragraph', text: 'Newer publication.' }], [], {
+    content_origin: 'canonical', view_revision: 'published',
+  });
+  const h = retainedReaderHarness((_path, options) => options.method === 'POST'
+    ? prepare.promise
+    : { status: 200, data: { article: published, configuration: h.configuration } });
+  const opening = h.context.loadArticle('a', h.g, { savedLink: true });
+  h.gracePeriod.resolve();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.nodes.get('article-content').textContent, 'Newer publication.');
+  prepare.resolve({ status: 200, data: { article: oldArticle, configuration: h.configuration } });
+  assert.equal(await opening, true);
+  assert.equal(h.nodes.get('article-content').textContent, 'Newer publication.');
+  assert.equal(h.context.currentArticle.view_revision, 'published');
+  assert.deepEqual(h.calls.map(call => call.method || 'GET'), ['POST', 'GET']);
+});
+
+test('a readable prepare response cancels an unfinished optional read without waiting', async () => {
+  const prepare = deferredAuthOperation(), detail = deferredAuthOperation(), reading = deferredAuthOperation();
+  const article = mediaArticle([{ type: 'paragraph', text: 'Ready Ford procedure.' }]);
+  const h = retainedReaderHarness((_path, options) => {
+    if (options.method === 'POST') return prepare.promise;
+    reading.resolve(options.signal);
+    return detail.promise;
+  });
+  const opening = h.context.loadArticle('a', h.g);
+  h.gracePeriod.resolve();
+  const signal = await reading.promise;
+  prepare.resolve({ status: 200, data: { article, configuration: h.configuration } });
+  assert.equal(await opening, true);
+  assert.equal(signal.aborted, true);
+  detail.resolve({ status: 200, data: { article: { ...article, title: 'Late duplicate' }, configuration: h.configuration } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.nodes.get('article-title').textContent, article.title);
+  assert.deepEqual(h.calls.map(call => call.method || 'GET'), ['POST', 'GET']);
+});
+
+test('verified scheduling failures reuse a pending exact read and can recover without issuing a second POST', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const article = mediaArticle([{ type: 'paragraph', text: 'Stored Ford procedure.' }]);
+  for (const slow of [false, true]) {
+    const prepare = deferredAuthOperation(), detail = deferredAuthOperation(), reading = deferredAuthOperation();
+    const h = retainedReaderHarness((path, options) => requestArticleJSON(path, {
+      ...options,
+      fetcher: async (_url, { method, headers }) => {
+        const marked = headers.Prefer.split(', ').includes('workshop-early-source-check');
+        if (method === 'POST') {
+          assert.equal(marked, false);
+          return prepare.promise;
+        }
+        assert.equal(marked, slow);
+        reading.resolve();
+        return detail.promise;
+      },
+    }));
+    const opening = h.context.loadArticle('a', h.g, { savedLink: true });
+    if (slow) {
+      h.gracePeriod.resolve();
+      await reading.promise;
+    }
+    prepare.resolve(new Response(JSON.stringify({ error: { code: 'CATALOG_SCHEDULING_UNAVAILABLE', retryable: true } }), { status: 503 }));
+    await reading.promise;
+    detail.resolve(new Response(JSON.stringify({ article, configuration: h.configuration })));
+    assert.equal(await opening, true);
+    assert.equal(h.probeSignal.aborted, true);
+    assert.equal(h.nodes.get('article-content').textContent, 'Stored Ford procedure.');
+    assert.deepEqual(h.calls.map(call => call.method || 'GET'), ['POST', 'GET']);
+  }
+  const h = retainedReaderHarness(async (_path, options) => {
+    assert.equal(options.method, 'POST');
+    throw new CatalogRequestError('Preparation denied.', { status: 503, code: 'CATALOG_SCHEDULING_UNAVAILABLE' });
+  });
+  await assert.rejects(h.context.loadArticle('a', h.g), { status: 503 });
+  assert.equal(h.calls.length, 1);
+});
+
+test('the optional prepare read ignores wrong articles and vehicles', async () => {
+  const source = mediaArticle([{ type: 'paragraph', text: 'Protected text.' }]);
+  for (const wrong of ['article', 'region', 'configuration']) {
+    const prepare = deferredAuthOperation();
+    const h = retainedReaderHarness((_path, options) => {
+      if (options.method === 'POST') return prepare.promise;
+      const article = wrong === 'article' ? { ...source, id: 'b' } : source;
+      const configuration = { ...h.configuration,
+        ...(wrong === 'region' ? { region: 'CA' } : wrong === 'configuration' ? { id: routeOrder } : {}),
+      };
+      return { status: 200, data: { article, configuration } };
+    });
+    const opening = h.context.loadArticle('a', h.g);
+    h.gracePeriod.resolve();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.calls.length, 2);
+    assert.equal(h.nodes.get('article-content').textContent, '');
+    prepare.resolve({ status: 200, data: { article: source, configuration: h.configuration } });
+    assert.equal(await opening, true);
+  }
+});
+
+test('a terminal denial suppresses the optional prepare read and clears any provisional article', async () => {
+  const article = mediaArticle([{ type: 'paragraph', text: 'Protected text.' }]);
+  for (const denyingRequest of ['GET', 'POST']) {
+    for (const status of [401, 403, 410]) {
+      const prepare = deferredAuthOperation();
+      const denial = new CatalogRequestError('Article denied.', { status });
+      const h = retainedReaderHarness((_path, options) => {
+        if (options.method === 'POST') return prepare.promise;
+        if (denyingRequest === 'GET') throw denial;
+        return { status: 200, data: { article, configuration: h.configuration } };
+      });
+      const opening = h.context.loadArticle('a', h.g, { savedLink: true });
+      const denied = assert.rejects(opening, error => error === denial);
+      h.gracePeriod.resolve();
+      if (denyingRequest === 'POST') {
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(h.nodes.get('article-content').textContent, 'Protected text.');
+        prepare.reject(denial);
+      }
+      await denied;
+      assert.equal(h.nodes.get('article-content').textContent, '');
+      assert.equal(h.nodes.get('print').disabled, true);
+      if (denyingRequest === 'GET') {
+        prepare.resolve({ status: 200, data: { article, configuration: h.configuration } });
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(h.nodes.get('article-content').textContent, '');
+      }
+      assert.deepEqual(h.calls.map(call => call.method || 'GET'), ['POST', 'GET']);
+    }
+  }
+});
+
+test('navigation cancels the optional prepare read before or during its GET', async () => {
+  const article = mediaArticle([{ type: 'paragraph', text: 'Stale text.' }]);
+  for (const duringRead of [false, true]) {
+    const prepare = deferredAuthOperation(), detail = deferredAuthOperation(), reading = deferredAuthOperation();
+    const h = retainedReaderHarness((_path, options) => {
+      if (options.method === 'POST') return prepare.promise;
+      reading.resolve();
+      return detail.promise;
+    });
+    const opening = h.context.loadArticle('a', h.g, { savedLink: true });
+    if (duringRead) {
+      h.gracePeriod.resolve();
+      await reading.promise;
+    }
+    h.navigation.next();
+    assert.equal(h.probeSignal.aborted, true);
+    if (duringRead) detail.resolve({ status: 200, data: { article, configuration: h.configuration } });
+    prepare.resolve({ status: 200, data: { article, configuration: h.configuration } });
+    await opening;
+    assert.equal(h.nodes.get('article-content').textContent, '');
+    assert.deepEqual(h.calls.map(call => call.method || 'GET'), duringRead ? ['POST', 'GET'] : ['POST']);
+  }
+});
 
 test('a retained original can check for a later rewrite without hiding the source or preparing it again', async () => {
   const original = mediaArticle([{ type: 'paragraph', text: 'Remove the cover.' }], [], {

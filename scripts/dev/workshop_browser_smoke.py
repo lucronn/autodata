@@ -963,6 +963,33 @@ class APIObservations:
         self._page_complete(response.request,response)
     def page_request_failed(self,request):
         self._page_complete(request,None)
+    async def _early_source_miss(self, request, response):
+        if request.method != 'GET' or (response is not None and response.status != 503):
+            return False
+        preferences = getattr(request, 'headers', {}).get('prefer', '').split(',')
+        if 'workshop-early-source-check' not in {value.strip().lower() for value in preferences}:
+            return False
+        target = urlsplit(request.url)
+        configuration, article = self.scope.get('configuration'), self.scope.get('article')
+        if (not configuration or not article or
+                target.path != f'/v1/catalog/vehicles/{configuration}/articles/{article}' or
+                parse_qs(target.query, keep_blank_values=True) != {'region': ['US']}):
+            return False
+        if response is None:
+            # Explicit pre-header aborts reported by Chromium, Firefox, and WebKit.
+            return getattr(request, 'failure', None) in ('net::ERR_ABORTED', 'NS_BINDING_ABORTED', 'cancelled')
+        try:
+            parsed = api21_body(await response.body(), 'playwright-response-body')['parsed']
+        except Exception:
+            return False
+        error = parsed.get('error') if isinstance(parsed, dict) else None
+        if not isinstance(error, dict) or error.get('code') != 'CATALOG_SOURCE_UNAVAILABLE' or error.get('retryable') is not True:
+            return False
+        details = error.get('details')
+        return (isinstance(details, dict) and details.get('article_id') == article and
+                'job_id' not in details and type(details.get('retry_after_seconds')) is int and
+                details['retry_after_seconds'] > 0)
+
     def _page_complete(self,request,response):
         owned=self.pending.get(id(request))
         if owned is None:
@@ -977,7 +1004,8 @@ class APIObservations:
                 if phase == 'source-page-http':
                     # Keep polling until a response can establish the stored-source
                     # assertion. Carry the request's initiating phase throughout.
-                    if response is not None and response.status == 202:
+                    if ((response is not None and response.status == 202) or
+                            await self._early_source_miss(request, response)):
                         return
                     ordinal = 1
                 else:

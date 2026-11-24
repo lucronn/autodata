@@ -364,6 +364,7 @@ function safeRequestMessage(status) {
   return 'AutoData is temporarily unavailable. Try again.';
 }
 const shortSourceCheckPreference = 'workshop-short-source-check';
+const earlySourceCheckPreference = 'workshop-early-source-check';
 const shortPublicationCheckPreference = 'workshop-short-publication-check';
 const finishPublishedBodyPreference = 'workshop-finish-published-body';
 const publicationStatusPreference = 'workshop-publication-status';
@@ -371,11 +372,13 @@ export const selectedIndexSessionPreference = 'workshop-confirm-session';
 
 export async function requestArticleJSON(path, {
   signal, timeout = 10000, readableBodyTimeout = 0, fetcher = fetch, method = 'GET', body, headers = {},
-  preferShortSourceCheck = false, preferShortPublicationCheck = false,
-  finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck, onResponseDate, onSelectedIndexSession,
+  preferShortSourceCheck = false, preferEarlySourceCheck = false, preferShortPublicationCheck = false,
+  finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck,
+  onResponseStatus, onResponseDate, onSelectedIndexSession,
 } = {}) {
   const preferences = [];
   if (preferShortSourceCheck) preferences.push(shortSourceCheckPreference);
+  if (preferEarlySourceCheck && method === 'GET') preferences.push(earlySourceCheckPreference);
   if (preferShortPublicationCheck) preferences.push(shortPublicationCheckPreference);
   if (finishPublishedBody) preferences.push(finishPublishedBodyPreference);
   if (publicationCheck) {
@@ -410,6 +413,7 @@ export async function requestArticleJSON(path, {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
+    onResponseStatus?.(response.status);
     const applied = response.headers.get('Preference-Applied');
     if (onSelectedIndexSession && response.status !== 401 &&
         applied?.split(',').some(preference => preference.trim() === selectedIndexSessionPreference)) {

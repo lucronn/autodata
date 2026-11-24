@@ -1810,6 +1810,81 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['status'],'failed')
         self.assertEqual(result['observations']['primary_failure'],'assertion_failed')
 
+    async def test_source_observation_ignores_only_the_marked_exact_preparation_miss(self):
+        article = f'https://local/v1/catalog/vehicles/{smoke.CONFIG}/articles/{smoke.ARTICLE}'
+        prefer = 'workshop-short-source-check, workshop-early-source-check'
+        details = {'article_id': smoke.ARTICLE, 'retry_after_seconds': 2}
+        error = {'code': 'CATALOG_SOURCE_UNAVAILABLE', 'retryable': True, 'details': details}
+        for name, marker, region, status, error_body in (
+            ('optional', prefer, 'US', 503, error),
+            ('ordinary', 'workshop-short-source-check', 'US', 503, error),
+            ('wrong region', prefer, 'CA', 503, error),
+            ('wrong article', prefer, 'US', 503, {**error, 'details': {**details, 'article_id': smoke.ORDER}}),
+            ('different error', prefer, 'US', 503, {**error, 'code': 'CATALOG_UNAVAILABLE'}),
+            ('nonretryable', prefer, 'US', 503, {**error, 'retryable': False}),
+            ('durable job', prefer, 'US', 503, {**error, 'details': {**details, 'job_id': smoke.OTHER}}),
+            ('terminal denial', prefer, 'US', 403, error),
+            ('no response', prefer, 'US', None, error),
+        ):
+            with self.subTest(name=name):
+                buffer = self.buffer()
+                buffer.phase = 'source-page-http'
+                buffer.scope = {'configuration': smoke.CONFIG, 'article': smoke.ARTICLE}
+                url = f'{article}?region={region}'
+                request = SimpleNamespace(method='GET', url=url, headers={'prefer': marker})
+                buffer.page_request(request)
+                if status is None:
+                    buffer.page_request_failed(request)
+                else:
+                    buffer.page_response(API21FakeResponse(url, {'error': error_body}, status, request))
+                await buffer.drain()
+                if name == 'optional':
+                    self.assertEqual(buffer.events, [])
+                    self.assertIsNone(buffer.primary)
+                    source = API21FakeResponse(url, {'article': {'id': smoke.ARTICLE, 'body': 'Stored source.'}})
+                    buffer.page_request(source.request)
+                    buffer.page_response(source)
+                    await buffer.drain()
+                    event, = buffer.events
+                    self.assertEqual(event['payload']['status'], 200)
+                    self.assertEqual(event['payload']['response']['parsed'], source.data)
+                else:
+                    event, = buffer.events
+                    self.assertEqual(event['payload']['status'], status)
+
+    async def test_source_observation_distinguishes_marked_cancellation_from_network_loss(self):
+        url = f'https://local/v1/catalog/vehicles/{smoke.CONFIG}/articles/{smoke.ARTICLE}?region=US'
+        for reason, marked, is_optional in (
+            ('net::ERR_ABORTED', True, True),
+            ('NS_BINDING_ABORTED', True, True),
+            ('cancelled', True, True),
+            ('net::ERR_EMPTY_RESPONSE', True, False),
+            ('NS_ERROR_NET_RESET', True, False),
+            ('The network connection was lost.', True, False),
+            ('cancelled', False, False),
+        ):
+            with self.subTest(reason=reason, marked=marked):
+                buffer = self.buffer()
+                buffer.phase = 'source-page-http'
+                buffer.scope = {'configuration': smoke.CONFIG, 'article': smoke.ARTICLE}
+                headers = {'prefer': 'workshop-early-source-check'} if marked else {}
+                request = SimpleNamespace(method='GET', url=url, headers=headers, failure=reason)
+                buffer.page_request(request)
+                buffer.page_request_failed(request)
+                await buffer.drain()
+                if is_optional:
+                    self.assertIsNone(buffer.primary)
+                    self.assertEqual(buffer.events, [])
+                    source = API21FakeResponse(url, {'article': {'id': smoke.ARTICLE, 'body': 'Stored source.'}})
+                    buffer.page_request(source.request)
+                    buffer.page_response(source)
+                    await buffer.drain()
+                    self.assertEqual([event['payload']['status'] for event in buffer.events], [200])
+                else:
+                    event, = buffer.events
+                    self.assertIsNone(event['payload']['status'])
+                    self.assertEqual(buffer.primary, 'http_failed')
+
     async def test_runtime_poll_ceiling_is_phase_specific(self):
         response=API21FakeResponse('https://local/__fixture/runtime',{'application_generation':1})
         for phase,limit in [('runtime-poll',100)]+[(phase,16) for phase in (
