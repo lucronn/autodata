@@ -24,6 +24,8 @@ function runInNewContext(code, context) {
   context.paidOrder ??= null;
   context.articleIndexOrigin ??= null;
   context.articlePage ??= 0;
+  context.indexPage ??= null;
+  context.pendingIndexPage ??= null;
   context.performance ??= performance;
   context.pickerStates ??= new Map();
   context.cancelPickerRefreshes ??= () => {};
@@ -2445,7 +2447,7 @@ test('selected sign-in hands off the exact negotiated index and purchase quote e
     },
     selectorRead(path, options) {
       assert.equal(path, `/v1/catalog/vehicles/${routeConfiguration}/articles?region=US`);
-      assert.equal(options.headers.Prefer, 'workshop-confirm-session, workshop-purchase-quote');
+      assert.equal(options.headers.Prefer, 'workshop-confirm-session, workshop-purchase-quote, workshop-index-pages');
       assert.equal(options.headers['X-CSRF-Token'], 'exchange-csrf');
       options.onSelectedIndexSession({ expiresAt: '2099-01-01T00:00:00Z' });
       throw revoked;
@@ -4270,7 +4272,7 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
   };
   const statuses = [], updates = [], opened = [], requests = [], results = [], shown = [], clearedOrders = [];
   const context = {
-    $, element, URL, openDemo, demoPath: path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path,
+    $, element, URL, uuid, openDemo, demoPath: path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path,
     location: { href: `https://cars.example/workshop?vehicle=B${openDemo ? '&demo=1' : ''}` },
     document,
     navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexLoaded: false, indexComplete: false, indexHydrating: false, indexFailed: false, access: '', retryAction: null, filterArticles,
@@ -4283,9 +4285,10 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
     session: { clear() {}, async bootstrap() {} },
     setTimeout(callback) { callback(); return 1; }, clearTimeout() {}, updateURL() {},
     stage() {}, renderPurchase() {}, show(id) { shown.push(id); },
-    articlePath: () => '/v1/catalog/vehicles/B/articles',
+    articlePath: () => `/v1/catalog/vehicles/${context.vehicle.id}/articles`,
+    scope: () => ({ configuration_id: context.vehicle.id, region: context.vehicle.region }),
     requestJSON(path, options) {
-      requests.push({ path, signal: options.signal });
+      requests.push({ path, signal: options.signal, prefer: options.headers?.Prefer });
       const response = responses[Math.min(requests.length - 1, responses.length - 1)];
       return typeof response === 'function' ? response() : Promise.resolve(response);
     },
@@ -4372,9 +4375,9 @@ test('returning to an interrupted partial index reuses the rows and resumes the 
   assert.equal(h.statuses.at(-1).text, 'Article index ready.');
 });
 
-async function openedIndexHistory() {
+async function openedIndexHistory(responses, { next = false, onRestore } = {}) {
   const article = { id: 'first', title: 'First procedure' };
-  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [article] })]);
+  const h = articleIndexHarness(responses ?? [indexResponse('completed', { complete: true, items: [article] })]);
   const indexURL = `https://cars.example/workshop?configuration=${scope.configuration_id}&region=${scope.region}`;
   h.context.location.href = indexURL;
   h.context.vehicle = { id: scope.configuration_id, region: scope.region };
@@ -4386,14 +4389,18 @@ async function openedIndexHistory() {
     h.context.location.href = article ? `${indexURL}&article=${article}` : indexURL;
   };
   h.context.history = { back() { back.push(true); } };
-  h.context.restoreRoute = (_years, { focusArticle = '' } = {}) => restores.push({ focusArticle });
+  h.context.restoreRoute = (_years, { focusArticle = '', indexAnchor = '' } = {}) => {
+    restores.push({ focusArticle, ...(indexAnchor ? { indexAnchor } : {}) });
+    return onRestore?.(h, { focusArticle, indexAnchor });
+  };
   runInNewContext(appSection('function openArticle(', 'function validSourceURL('), h.context);
   await h.load();
+  if (next) await h.context.moveArticlePage(1);
   const link = h.$('articles').firstElementChild.firstElementChild.firstElementChild;
   link.events.click({ button: 0, preventDefault() {} });
   const returnToIndex = () => {
     h.context.location.href = indexURL;
-    h.context.restoreHistoryEntry();
+    return h.context.restoreHistoryEntry();
   };
   return { ...h, link, routes, back, restores, returnToIndex };
 }
@@ -4865,6 +4872,265 @@ test('large article indexes page stored descriptors and search beyond the visibl
   assert.equal(h.$('article-page-range').textContent, '');
   assert.equal(h.$('article-prev').disabled, true);
   assert.equal(h.$('article-next').disabled, true);
+});
+
+const pageFixtureArticles = Array.from({ length: 205 }, (_, index) => ({
+  id: `22222222-2222-4222-8222-${String(index + 1).padStart(12, '0')}`,
+  title: `Service article ${index + 1}`,
+}));
+function pagedIndexResponse(offset, {
+  descriptors = pageFixtureArticles, failed = false, revision = 'a'.repeat(64),
+} = {}) {
+  return {
+    ...indexResponse(failed ? 'failed' : 'completed', {
+      complete: !failed, items: descriptors.slice(offset, offset + 100),
+    }),
+    configuration: { id: scope.configuration_id, region: scope.region },
+    page: { offset, total: descriptors.length, revision },
+  };
+}
+
+test('negotiated paid index reads one requested page and searches the whole terminal partial index', async () => {
+  const hit = pageFixtureArticles[154];
+  const h = articleIndexHarness([
+    pagedIndexResponse(0, { failed: true }),
+    pagedIndexResponse(100, { failed: true }),
+    pagedIndexResponse(200, { failed: true }),
+    indexResponse('failed', { items: [hit] }),
+    indexResponse('failed'),
+    pagedIndexResponse(100, { failed: true }),
+  ]);
+  h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+  await h.load();
+  const rows = h.$('articles').firstElementChild;
+  assert.equal(rows.children.length, 100);
+  assert.equal(h.$('article-page-range').textContent, '1–100 of 205');
+  assert.equal(h.$('catalog-count').textContent, '205 articles from available sources.');
+  assert.equal(h.$('article-prev').disabled, true);
+  assert.equal(h.requests[0].path.split('?')[1], 'region=US');
+  assert.equal(h.requests[0].prefer, 'workshop-index-pages');
+  await h.context.moveArticlePage(1);
+  assert.equal(rows.firstElementChild.dataset.articleId, pageFixtureArticles[100].id);
+  assert.equal(h.$('article-page-range').textContent, '101–200 of 205');
+  await h.context.moveArticlePage(1);
+  assert.equal(rows.children.length, 5);
+  assert.equal(h.$('article-page-range').textContent, '201–205 of 205');
+  assert.equal(h.$('article-next').disabled, true);
+  h.$('search').value = hit.title;
+  h.$('search').events.input();
+  assert.equal(rows.children.length, 0);
+  await new Promise(setImmediate);
+  assert.equal(rows.firstElementChild.dataset.articleId, hit.id);
+  h.$('search').value = 'Alternator';
+  h.$('search').events.input();
+  await new Promise(setImmediate);
+  assert.equal(h.$('catalog-count').textContent, '0 articles from available sources.');
+  h.$('search').value = '';
+  h.$('search').events.input();
+  assert.equal(rows.firstElementChild.dataset.articleId, pageFixtureArticles[200].id);
+  assert.equal(h.$('article-page-range').textContent, '201–205 of 205');
+  await h.context.moveArticlePage(-1);
+  assert.deepEqual(h.requests.map(({ path, prefer }) => [path.split('?')[1], prefer]), [
+    ['region=US', 'workshop-index-pages'],
+    ['offset=100&region=US', 'workshop-index-pages'],
+    ['offset=200&region=US', 'workshop-index-pages'],
+    ['q=Service+article+155&region=US', undefined],
+    ['q=Alternator&region=US', undefined],
+    ['offset=100&region=US', 'workshop-index-pages'],
+  ]);
+});
+
+test('paged reader Back reuses its index in-app and anchors a fresh browser history read', async () => {
+  const anchor = pageFixtureArticles[100];
+  const initial = [pagedIndexResponse(0), pagedIndexResponse(100)];
+  const inApp = await openedIndexHistory(initial, { next: true });
+  inApp.$('back').events.click();
+  inApp.returnToIndex();
+  assert.equal(inApp.context.document.activeElement, inApp.link);
+  assert.equal(inApp.requests.length, 2);
+
+  for (const retained of [true, false]) {
+    const remaining = pageFixtureArticles.filter(item => item.id !== anchor.id);
+    const descriptors = retained ? [...remaining, anchor] : remaining;
+    const changed = pagedIndexResponse(retained ? 200 : 0, { descriptors, revision: 'b'.repeat(64) });
+    const browser = await openedIndexHistory([...initial, changed], {
+      next: true,
+      onRestore({ context, navigation }, options) {
+        context.clearProtected();
+        return context.loadArticles(navigation.next(), '', options);
+      },
+    });
+    await browser.returnToIndex();
+    assert.deepEqual(browser.restores, [{ focusArticle: anchor.id, indexAnchor: anchor.id }]);
+    assert.equal(browser.requests[2].path.split('?')[1], `anchor=${anchor.id}&region=US`);
+    if (retained) {
+      assert.equal(browser.$('article-page-range').textContent, '201–205 of 205');
+      assert.equal(browser.context.document.activeElement.parent.dataset.articleId, anchor.id);
+    } else {
+      assert.equal(browser.$('article-page-range').textContent, '1–100 of 204');
+      assert.equal(browser.context.document.activeElement, browser.$('catalog-title'));
+    }
+    assert.equal(browser.requests.length, 3);
+  }
+});
+
+test('navigation and search discard a pending page and a denied page scrubs counts and rows', async () => {
+  const late = deferredAuthOperation();
+  const hit = pageFixtureArticles[154];
+  const denial = new CatalogRequestError('Access revoked', { status: 403, code: 'ENTITLEMENT_REVOKED' });
+  const h = articleIndexHarness([
+    pagedIndexResponse(0),
+    () => late.promise,
+    indexResponse('completed', { complete: true, items: [hit] }),
+    () => Promise.reject(denial),
+  ]);
+  h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+  await h.load();
+  const pending = h.context.moveArticlePage(1);
+  assert.equal(h.context.moveArticlePage(1), undefined);
+  assert.equal(h.requests.length, 2);
+  h.$('search').value = hit.title;
+  h.$('search').events.input();
+  assert.equal(h.requests[1].signal.aborted, true);
+  late.resolve(pagedIndexResponse(100));
+  await pending;
+  await new Promise(setImmediate);
+  assert.equal(h.$('articles').firstElementChild.firstElementChild.dataset.articleId, hit.id);
+  h.$('search').value = '';
+  h.$('search').events.input();
+  assert.equal(h.$('article-page-range').textContent, '1–100 of 205');
+  await h.context.moveArticlePage(1);
+  assert.equal(h.context.access, 'revoked');
+  assert.equal(h.context.indexPage, null);
+  assert.equal(h.$('catalog-count').textContent, '');
+  assert.equal(h.$('article-page-range').textContent, '');
+  assert.equal(h.$('articles').children.length, 0);
+  assert.equal(h.shown.at(-1), 'welcome');
+});
+
+test('a buffered paid page is rendered without another index request', async () => {
+  const h = articleIndexHarness([]);
+  h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+  await h.context.loadArticles(h.navigation.next(), '', { firstIndex: { value: pagedIndexResponse(0) } });
+  assert.equal(h.$('article-page-range').textContent, '1–100 of 205');
+  assert.equal(h.requests.length, 0);
+});
+
+test('a legacy hydrating index keeps its local page when the index settles', async () => {
+  const finish = deferredAuthOperation();
+  const h = articleIndexHarness([
+    indexResponse('running', { hydrating: true, items: pageFixtureArticles }),
+    indexResponse('completed', { complete: true, items: pageFixtureArticles }),
+  ], { wait: () => finish.promise });
+  h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+  const opening = h.load();
+  await new Promise(setImmediate);
+  h.context.moveArticlePage(1);
+  const focused = h.$('articles').firstElementChild.firstElementChild.firstElementChild;
+  focused.focus();
+  finish.resolve();
+  await opening;
+  assert.deepEqual(h.requests.map(({ path, prefer }) => [path.split('?')[1], prefer]), [
+    ['region=US', 'workshop-index-pages'],
+    ['region=US', undefined],
+  ]);
+  assert.equal(h.$('article-page-range').textContent, '101–200 of 205');
+  assert.equal(h.context.document.activeElement, focused);
+});
+
+test('a missing exact scope during a page read clears previously visible rows', async () => {
+  const h = articleIndexHarness([
+    pagedIndexResponse(0),
+    () => Promise.reject(new CatalogRequestError('Missing vehicle', { status: 404, code: 'CATALOG_NOT_FOUND' })),
+  ]);
+  h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+  await h.load();
+  await h.context.moveArticlePage(1);
+  assert.equal(h.context.indexPage, null);
+  assert.equal(h.$('catalog-count').textContent, '');
+  assert.equal(h.$('articles').children.length, 0);
+  assert.equal(h.shown.at(-1), 'welcome');
+});
+
+test('paged search shows current-page matches during wait or transport failure', async () => {
+  const failure = deferredAuthOperation();
+  const h = articleIndexHarness([
+    pagedIndexResponse(0), () => failure.promise,
+    () => Promise.reject(new CatalogRequestError('Unavailable', { status: 503 })),
+  ]);
+  h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+  await h.load();
+  h.$('search').value = 'Service article 100';
+  h.$('search').events.input();
+  const rows = h.$('articles').firstElementChild;
+  assert.equal(rows.firstElementChild.dataset.articleId, pageFixtureArticles[99].id);
+  assert.equal(h.$('catalog-count').textContent, '1 article from the loaded page. Searching…');
+  failure.reject(new CatalogRequestError('Unavailable', { status: 503 }));
+  await new Promise(setImmediate);
+  assert.equal(rows.firstElementChild.dataset.articleId, pageFixtureArticles[99].id);
+  assert.equal(h.$('catalog-count').textContent, '1 article from the loaded page. Search could not refresh.');
+  h.$('search').value = 'No local matches';
+  h.$('search').events.input();
+  assert.equal(h.$('catalog-count').textContent, 'Searching articles…');
+  await new Promise(setImmediate);
+  assert.equal(h.$('catalog-count').textContent, 'Article search is unavailable. Try again.');
+});
+
+test('page refresh discards an in-flight search and accepts a fresh off-page result', async () => {
+  for (const changed of ['revision', 'completeness']) {
+    const page = deferredAuthOperation();
+    const old = deferredAuthOperation();
+    const fresh = deferredAuthOperation();
+    const offPage = pageFixtureArticles[101];
+    const h = articleIndexHarness([
+      pagedIndexResponse(0, { failed: changed === 'completeness' }),
+      () => page.promise, () => old.promise, () => fresh.promise,
+    ]);
+    h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+    await h.load();
+    const updating = h.load();
+    h.$('search').value = 'Procedure reference';
+    h.$('search').events.input();
+    page.resolve(pagedIndexResponse(0, { revision: (changed === 'revision' ? 'b' : 'a').repeat(64) }));
+    await updating;
+    assert.equal(h.requests[2].signal.aborted, true);
+    old.resolve(indexResponse('completed', { complete: true, items: [pageFixtureArticles[102]] }));
+    await new Promise(setImmediate);
+    assert.equal(h.$('catalog-count').textContent, 'Searching articles…');
+    fresh.resolve(indexResponse('completed', { complete: true, items: [offPage] }));
+    await new Promise(setImmediate);
+    assert.equal(h.$('articles').firstElementChild.firstElementChild.dataset.articleId, offPage.id);
+    assert.equal(h.requests.length, 4);
+  }
+});
+
+test('paid page negotiation rejects malformed shape and preserves an unpaged smaller fallback', async () => {
+  const right = pagedIndexResponse(0);
+  for (const response of [
+    { ...right, configuration: { ...right.configuration, region: 'CA' } },
+    { ...right, page: { ...right.page, revision: 'not-a-revision' } },
+    { ...right, page: { ...right.page, offset: 100 } },
+    { ...right, progress: null },
+  ]) {
+    const h = articleIndexHarness([response]);
+    h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+    await assert.rejects(h.load(), /unreadable page/);
+    assert.equal(h.$('articles').children.length, 0);
+  }
+  const h = articleIndexHarness([
+    right,
+    {
+      ...indexResponse('completed', { complete: true, items: pageFixtureArticles.slice(0, 20) }),
+      configuration: right.configuration,
+    },
+  ]);
+  h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+  await h.load();
+  await h.context.moveArticlePage(1);
+  assert.equal(h.$('article-page-range').textContent, '');
+  assert.equal(h.$('article-pages').hidden, true);
+  assert.equal(h.$('catalog-count').textContent, '20 articles');
+  assert.equal(h.requests.length, 2);
 });
 
 test('a zero-match search keeps a failed partial index usable', async () => {

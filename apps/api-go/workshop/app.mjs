@@ -75,6 +75,8 @@ let checkoutModeReady = null;
 let vehicle = null,
   articles = [],
   articlePage = 0,
+  indexPage = null,
+  pendingIndexPage = null,
   indexLoaded = false,
   indexComplete = false,
   indexHydrating = false,
@@ -180,6 +182,8 @@ function clearProtected() {
   searchTimer = null;
   articles = [];
   articlePage = 0;
+  indexPage = null;
+  pendingIndexPage = null;
   indexLoaded = false;
   indexComplete = false;
   indexHydrating = false;
@@ -670,7 +674,10 @@ function purchaseConfigured() {
     origin: globalThis.location?.origin,
   });
 }
-async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink = false, reuseQuote = false, focusOnShow = false, focusArticle = "", firstIndex = null } = {}) {
+async function selectVehicle(g, articleID = "", {
+  quoteMode = "eager", savedLink = false, reuseQuote = false, focusOnShow = false,
+  focusArticle = "", indexAnchor = "", firstIndex = null,
+} = {}) {
   if (!g.current()) return;
   // Keep the exact public price visible while paid access and purchase
   // availability are checked together for this same selection.
@@ -739,7 +746,7 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
     if (directArticle && await loadArticle(articleID, g, { savedLink: true })) return;
     if (savedQuery && await loadSavedSearch(g, savedQuery, focusArticle)) return;
     if (!g.current()) return;
-    await loadArticles(g, articleID, { focusOnShow, focusArticle, includePurchaseQuote: Boolean(retainedQuote), firstIndex });
+    await loadArticles(g, articleID, { focusOnShow, focusArticle, indexAnchor, includePurchaseQuote: Boolean(retainedQuote), firstIndex });
   } catch (error) {
     // When a purchase is required, present the price or its unavailable state
     // with the access result so the UI does not announce a false checkout failure.
@@ -783,8 +790,34 @@ async function loadSavedSearch(g, query, focusArticle = "") {
   return true;
 }
 
-async function loadArticles(g, articleID = "", { focusOnShow = false, focusArticle = "", includePurchaseQuote = false, firstIndex = null } = {}) {
+function indexResponsePage(result, requested, configuration, offset, anchor) {
+  if (!Object.hasOwn(result, "page")) return null;
+  const page = result.page;
+  const settled = result.progress && !result.hydrating && !result.discovering &&
+    (result.complete === true || (result.progress.status === "failed" && result.progress.retryable !== true));
+  if (!requested || !settled || !page || result.configuration?.id !== configuration.id ||
+      result.configuration.region !== configuration.region ||
+      !Number.isSafeInteger(page.total) || page.total <= articlePageSize ||
+      !Number.isSafeInteger(page.offset) || page.offset < 0 || page.offset >= page.total ||
+      page.offset % articlePageSize !== 0 ||
+      typeof page.revision !== "string" || !/^[0-9a-f]{64}$/.test(page.revision) ||
+      result.items.length !== Math.min(articlePageSize, page.total - page.offset) ||
+      (anchor ? page.offset > 0 && !result.items.some((item) => item.id === anchor)
+        : page.offset !== Math.min(offset ?? 0, Math.floor((page.total - 1) / articlePageSize) * articlePageSize))) {
+    throw new Error("The catalog returned an unreadable page. Try again.");
+  }
+  return page;
+}
+
+async function loadArticles(g, articleID = "", {
+  focusOnShow = false, focusArticle = "", indexAnchor = "", offset = null,
+  includePurchaseQuote = false, firstIndex = null,
+} = {}) {
   if (!g.current()) return;
+  const selected = { id: vehicle.id, region: vehicle.region };
+  let offerPaging = !openDemo && !articleID && (!focusArticle || indexAnchor) &&
+    !trimArticleSearch($("search").value);
+  const pageQuery = indexAnchor ? { anchor: indexAnchor } : offset !== null ? { offset } : undefined;
   const previousFocus = focusArticle ? document.activeElement : null;
   $("completion-status").textContent = "";
   stage("articles");
@@ -801,9 +834,13 @@ async function loadArticles(g, articleID = "", { focusOnShow = false, focusArtic
         if (Object.hasOwn(result, "error")) throw result.error;
         return result.value;
       }
-      return requestJSON(articleRequestPath(), {
+      const prefer = [
+        includePurchaseQuote && "workshop-purchase-quote",
+        offerPaging && "workshop-index-pages",
+      ].filter(Boolean).join(", ");
+      return requestJSON(articleRequestPath(undefined, "", offerPaging ? pageQuery : undefined), {
         signal: g.signal,
-        headers: includePurchaseQuote ? { Prefer: "workshop-purchase-quote" } : undefined,
+        headers: prefer ? { Prefer: prefer } : undefined,
       });
     },
     {
@@ -811,12 +848,21 @@ async function loadArticles(g, articleID = "", { focusOnShow = false, focusArtic
       desired: articleID,
       onUpdate(result) {
         if (!g.current()) return;
+        if (pageQuery && (result.configuration?.id !== selected.id || result.configuration.region !== selected.region))
+          throw new Error("The catalog returned the wrong vehicle. Try again.");
+        const page = indexResponsePage(result, offerPaging, selected, offset, indexAnchor);
+        // Keep full-index hydration and its local page intact for this read.
+        if (!page) offerPaging = false;
+        const wasPaged = indexPage !== null;
         if (result.configuration?.id === vehicle.id &&
             result.configuration.region === vehicle.region)
           vehicle = result.configuration;
-        const indexChanged = result.items.length !== articles.length ||
+        const indexChanged = page?.revision !== indexPage?.revision || page?.offset !== indexPage?.offset ||
+          result.items.length !== articles.length ||
           result.items.some((item, index) => !sameArticleDescriptor(item, articles[index]));
         const completenessChanged = indexComplete !== (result.complete === true);
+        if (wasPaged && !page) articlePage = (offset ?? indexPage.offset) / articlePageSize;
+        indexPage = page;
         articles = result.items;
         indexLoaded = true;
         indexComplete = result.complete === true;
@@ -832,7 +878,12 @@ async function loadArticles(g, articleID = "", { focusOnShow = false, focusArtic
           (!searchPending && searchItems === null && !searchError) ||
           indexChanged ||
           completenessChanged)) {
-          if (indexChanged && searchQuery === query && searchItems)
+          if (searchQuery === query && (wasPaged || page)) {
+            // A partial page cannot revalidate results elsewhere in the index.
+            searchNavigation.clear();
+            searchPending = false;
+            searchItems = null;
+          } else if (indexChanged && searchQuery === query && searchItems)
             searchItems = searchHitsOnCurrentIndex(searchItems);
           const origin = focusArticle;
           focusArticle = "";
@@ -1024,33 +1075,35 @@ function renderArticles({ keepFocus = true } = {}) {
   const query = trimArticleSearch($("search").value);
   const searching = Boolean(query && searchQuery === query);
   const localSearch = searching && searchItems === null;
+  const page = query ? null : indexPage;
   const items = articleIndexItems(query);
   if (items.length && !localSearch && access === "owned" && paidOrder?.id === currentOrder &&
       vehicle?.id === paidOrder.configuration_id && vehicle?.region === paidOrder.region) {
     clearPaidOrderAction(currentOrder);
   }
-  const lastPage = Math.max(0, Math.ceil(items.length / articlePageSize) - 1);
-  const focusedID = keepFocus ? document.activeElement?.parentElement?.dataset.articleId : "";
+  const total = page?.total ?? items.length;
+  const lastPage = Math.max(0, Math.ceil(total / articlePageSize) - 1);
+  const focusedID = keepFocus && !page ? document.activeElement?.parentElement?.dataset.articleId : "";
   if (focusedID) {
     const focusedIndex = items.findIndex((item) => item.id === focusedID);
     if (focusedIndex >= 0) articlePage = Math.floor(focusedIndex / articlePageSize);
   }
   articlePage = Math.min(articlePage, lastPage);
-  const start = articlePage * articlePageSize;
-  const end = Math.min(start + articlePageSize, items.length);
-  renderArticleLinks(items.slice(start, end));
+  const start = page?.offset ?? articlePage * articlePageSize;
+  const end = Math.min(start + articlePageSize, total);
+  renderArticleLinks(page ? items : items.slice(start, end));
   const pages = $("article-pages");
   const previous = $("article-prev");
   const next = $("article-next");
   const active = document.activeElement;
   pages.hidden = lastPage === 0;
-  previous.disabled = articlePage === 0;
-  next.disabled = articlePage === lastPage;
+  previous.disabled = start === 0;
+  next.disabled = end === total;
   if ((active === previous || active === next) && (pages.hidden || active.disabled))
     focusArticleIndex();
-  const range = lastPage > 0 ? `${start + 1}–${end} of ${items.length}` : "";
+  const range = lastPage > 0 ? `${start + 1}–${end} of ${total}` : "";
   if ($("article-page-range").textContent !== range) $("article-page-range").textContent = range;
-  const articleCount = `${items.length} ${items.length === 1 ? "article" : "articles"}`;
+  const articleCount = `${total} ${total === 1 ? "article" : "articles"}`;
   const resultsComplete = searching ? searchComplete && indexComplete : indexComplete;
   const indexUnavailable = indexFailed && !articles.length;
   const noPartialMatches = searching && indexFailed && !indexUnavailable && !items.length;
@@ -1061,14 +1114,15 @@ function renderArticles({ keepFocus = true } = {}) {
       : indexUnavailable
         ? "Article index could not be prepared."
         : !resultsComplete
-          ? `${items.length} articles so far. Article index is still being prepared.`
+          ? `${total} articles so far. Article index is still being prepared.`
           : openDemo
             ? `${items.length} available articles · ${articles.length} indexed`
-            : `${items.length} articles`;
+            : `${total} articles`;
+  const localSearchSource = indexPage ? "loaded page" : "loaded index";
   if (items.length && searching && searchPending)
-    countText = `${articleCount} from the loaded index. Searching…`;
+    countText = `${articleCount} from the ${localSearchSource}. Searching…`;
   else if (items.length && searching && searchError)
-    countText = `${articleCount} from the loaded index. Search could not refresh.`;
+    countText = `${articleCount} from the ${localSearchSource}. Search could not refresh.`;
   else if (items.length && (indexFailed || (!resultsComplete && !indexHydrating)))
     countText = `${articleCount} from available sources.`;
   else if (noPartialMatches && !searchPending && !searchError)
@@ -1094,8 +1148,9 @@ function renderArticles({ keepFocus = true } = {}) {
 }
 
 function focusArticleIndex(id) {
-  if (id) {
-    const index = articleIndexItems(trimArticleSearch($("search").value)).findIndex((item) => item.id === id);
+  const query = trimArticleSearch($("search").value);
+  if (id && (!indexPage || query)) {
+    const index = articleIndexItems(query).findIndex((item) => item.id === id);
     const page = Math.floor(index / articlePageSize);
     if (page >= 0 && page !== articlePage) {
       articlePage = page;
@@ -1117,6 +1172,31 @@ function articleIndexItems(query) {
   return query ? filterArticles(visible, query) : visible;
 }
 function moveArticlePage(direction) {
+  if (indexPage && !trimArticleSearch($("search").value)) {
+    const offset = indexPage.offset + direction * articlePageSize;
+    const selected = scope();
+    const load = () => {
+      if (access !== "owned" || $("catalog").hidden || !sameScope(selected, scope()) ||
+          trimArticleSearch($("search").value) || pendingIndexPage?.current() ||
+          !indexPage || offset < 0 || offset >= indexPage.total) return;
+      return operation(async (g) => {
+        pendingIndexPage = g;
+        try {
+          await loadArticles(g, "", { offset });
+        } catch (error) {
+          if (g.current() && error.status === 404) {
+            clearProtected();
+            show("welcome");
+            renderPurchase();
+          }
+          throw error;
+        } finally {
+          if (pendingIndexPage === g) pendingIndexPage = null;
+        }
+      }, () => indexPage ? load() : restoreRoute());
+    };
+    return load();
+  }
   articlePage = Math.max(0, articlePage + direction);
   renderArticles({ keepFocus: false });
 }
@@ -1693,7 +1773,8 @@ function openArticle(id, indexLink = null, { refreshOnly = false } = {}) {
     articleIndexOrigin = params && !params.has("article") && !params.has("order") &&
       params.get("configuration") === vehicle?.id && params.get("region") === vehicle?.region &&
       access === "owned" && session.state.authenticated && session.state.csrf
-      ? { indexURL, readerURL: location.href, indexLink, articleID: id, configuration: scope(), csrf: session.state.csrf }
+      ? { indexURL, readerURL: location.href, indexLink, articleID: id, configuration: scope(), csrf: session.state.csrf,
+          paged: Boolean(indexPage && !params.has("q")) }
       : null;
   }
   operation(
@@ -2300,9 +2381,11 @@ async function signIn() {
       async confirmSelectedIndex(exchangeCSRF, signal) {
         if (!canConfirmIndex() || signal.aborted) return null;
         const selected = scope();
-        const prefer = validQuote(quote, selected) && purchaseConfigured()
-          ? `${selectedIndexSessionPreference}, workshop-purchase-quote`
-          : selectedIndexSessionPreference;
+        const prefer = [
+          selectedIndexSessionPreference,
+          validQuote(quote, selected) && purchaseConfigured() && "workshop-purchase-quote",
+          "workshop-index-pages",
+        ].filter(Boolean).join(", ");
         let expiresAt;
         const firstIndex = await requestJSON(articleRequestPath(), {
           signal: AbortSignal.any([generation.signal, signal]),
@@ -2374,7 +2457,7 @@ function checkAccount(initial) {
   sessionRequest = accountCheck;
   return accountCheck;
 }
-async function restoreRoute(initialYears = null, { focusArticle = "", initialSelectors = null } = {}) {
+async function restoreRoute(initialYears = null, { focusArticle = "", indexAnchor = "", initialSelectors = null } = {}) {
   invalidate();
   show("welcome");
   const params = new URLSearchParams(location.search);
@@ -2413,7 +2496,7 @@ async function restoreRoute(initialYears = null, { focusArticle = "", initialSel
         return;
       }
       const articleID = params.get("article") || "";
-      const indexOptions = focusArticle ? { quoteMode: "if-needed", focusArticle } : {};
+      const indexOptions = focusArticle ? { quoteMode: "if-needed", focusArticle, indexAnchor } : {};
       const exact = { configuration_id: params.get("configuration"), region: params.get("region") };
       const hasHierarchy = Boolean(params.get("year"));
       const savedQuery = hasHierarchy && !openDemo && !articleID && validScope(exact) &&
@@ -2530,11 +2613,15 @@ $("check-order").addEventListener("click", checkPaymentStatus);
 $("article-prev").addEventListener("click", () => moveArticlePage(-1));
 $("article-next").addEventListener("click", () => moveArticlePage(1));
 $("search").addEventListener("input", () => {
+  if (pendingIndexPage?.current()) {
+    navigation.clear();
+    showArticleIndexStatus();
+  }
   updateURL({ replace: true });
-  const loadFullIndex = !trimArticleSearch($("search").value) && !indexLoaded && access === "owned";
-  if (loadFullIndex) indexComplete = false;
+  const loadIndex = !trimArticleSearch($("search").value) && !indexLoaded && access === "owned";
+  if (loadIndex) indexComplete = false;
   scheduleArticleSearch();
-  if (loadFullIndex) void operation((g) => loadArticles(g), () => restoreRoute());
+  if (loadIndex) void operation((g) => loadArticles(g), () => restoreRoute());
 });
 $("retry").addEventListener("click", () => retryAction?.());
 $("cancel").addEventListener("click", () => {
@@ -2577,7 +2664,10 @@ function restoreHistoryEntry() {
   if (sameIndex && origin.returning) {
     return showReturnedArticleIndex(origin.indexLink);
   }
-  return restoreRoute(null, { focusArticle: sameIndex ? origin.articleID : "" });
+  return restoreRoute(null, {
+    focusArticle: sameIndex ? origin.articleID : "",
+    indexAnchor: sameIndex && origin.paged && uuid(origin.articleID) ? origin.articleID : "",
+  });
 }
 function showReturnedArticleIndex(indexLink = null) {
   navigation.clear();

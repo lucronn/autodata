@@ -55,12 +55,30 @@ paths:
         description: Optional exact case-insensitive match of the displayed article
           title after trimming surrounding whitespace. Matches title metadata only
           and returns descriptors in index order. Cannot be combined with q.
+      - name: offset
+        in: query
+        schema:
+          type: string
+          pattern: ^(0|[1-9][0-9]*00)$
+        description: Optional zero-based offset with workshop-index-pages. Offsets
+          that exceed the authorized index select its last page. Mutually exclusive
+          with anchor, q, and title.
+      - name: anchor
+        in: query
+        schema:
+          type: string
+          format: uuid
+        description: Optional exact lowercase canonical article UUID with
+          workshop-index-pages. Selects the page containing that authorized
+          descriptor, or the first page when the descriptor is absent. Mutually
+          exclusive with offset, q, and title.
       - name: Prefer
         in: header
         schema:
           type: string
-        description: Workshop can request workshop-confirm-session and
-          workshop-purchase-quote on the exact selected configuration and region.
+        description: Workshop can request workshop-index-pages for an unfiltered
+          paid index, and workshop-confirm-session and workshop-purchase-quote on
+          the exact selected configuration and region.
       - name: X-CSRF-Token
         in: header
         schema:
@@ -84,7 +102,8 @@ paths:
               schema:
                 type: string
               description: Acknowledges workshop-confirm-session after checking the
-                exchanged cookie and current Firebase account.
+                exchanged cookie and current Firebase account, and acknowledges
+                workshop-index-pages when page metadata is returned.
             Workshop-Session-Expires:
               schema:
                 type: string
@@ -116,6 +135,11 @@ paths:
         purchasing for the checked configuration. The workshop-confirm-session
         preference confirms the exchanged cookie for the exact unfiltered index
         and returns Workshop-Session-Expires alongside the usual grant outcome.
+        Pages apply to authorized nondemo, unfiltered indexes with more than
+        100 eligible descriptors when progress is complete or has failed with
+        retryable false. A page contains 100 descriptors or the final remainder.
+        Each request checks the current grant. Requests without the paging
+        preference retain the full index and ignore offset and anchor.
   /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}:
     get:
       tags:
@@ -2283,6 +2307,26 @@ components:
             $ref: '#/components/schemas/CatalogArticle'
         configuration:
           $ref: '#/components/schemas/CatalogConfiguration'
+        page:
+          $ref: '#/components/schemas/CatalogArticleIndexPage'
+    CatalogArticleIndexPage:
+      type: object
+      description: Coordinates and revision of the complete ordered, authorized
+        descriptor snapshot. Present when workshop-index-pages is applied.
+      required: [offset, total, revision]
+      properties:
+        offset:
+          type: integer
+          minimum: 0
+          multipleOf: 100
+        total:
+          type: integer
+          minimum: 101
+        revision:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          description: SHA-256 of the complete ordered index metadata. The same
+            current descriptor snapshot has the same revision on every page.
     CatalogConfiguration:
       type: object
       description: Exact configuration admitted by the server for the paid catalog request.
