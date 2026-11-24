@@ -22,6 +22,7 @@ REQUIRED = (
     "test_source_only_rewrite_worker.py",
     "test_source_bound_correction_recovery.py",
     "test_source_bound_sentence_worker.py",
+    "test_source_bound_sentence_recovery.py",
     "test_first_draft_recovery_worker.py",
     "test_procedure_rewrite.py", "test_mercury2.py",
     "test_catalog_service.py", "test_http_service.py",

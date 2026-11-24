@@ -8,7 +8,8 @@ import pytest
 
 from autodata_ingestion.article_lifecycle_types import digest_json
 from autodata_ingestion.procedure_rewrite_sentence_correction import (
-    MAX_SENTENCE_CORRECTION_CALLS, SENTENCE_CORRECTION_METHOD, correct_sentence_draft,
+    MAX_SENTENCE_CORRECTION_CALLS, SENTENCE_CORRECTION_METHOD, SENTENCE_RECOVERY_METHOD,
+    correct_sentence_draft, recover_sentence_correction,
 )
 from test_procedure_rewrite_full import document, response
 
@@ -136,6 +137,41 @@ def test_local_inspection_equivalent_cannot_reorder_an_action():
     assert result.document is None
     assert result.error_code == "REWRITE_UNCHANGED"
     assert len(replies.exchanges) == 2
+
+
+@pytest.mark.parametrize("verb,recovered", [("does not communicate", True), ("communicates", False)])
+def test_sentence_archive_recovery_preserves_wiring_and_communication_state(verb, recovered):
+    text = f"The two receivers are not wired to the central controller, thus the monitor {verb} directly on a service data network."
+    source, previous = document(text), response(text)
+    replies = Replies(echo_passages, echo_statements)
+    archive = []
+
+    def record(prompt):
+        reply = replies.complete(prompt)
+        archive.append({**replies.exchanges[-1], "response": reply})
+        return reply
+
+    original = correct_sentence_draft(source, previous, complete_json=record, model_call_budget=2)
+    result = recover_sentence_correction(source, previous, model_call_budget=2, attempts=archive)
+
+    assert original.document is None
+    assert original.error_code == "REWRITE_UNCHANGED"
+    assert result.evidence["method"] == SENTENCE_RECOVERY_METHOD
+    assert result.evidence["original_error_code"] == original.error_code
+    assert result.evidence["base_draft_hash"] == original.evidence["draft_hash"]
+    assert result.evidence["exchanges"] == original.evidence["exchanges"]
+    if recovered:
+        assert result.error_code is None
+        assert result.document["blocks"][1]["text"] == (
+            "The monitor has no direct communication on a service data network because no wiring "
+            "links the two receivers to the central controller."
+        )
+        assert result.evidence["draft_hash"] != original.evidence["draft_hash"]
+    else:
+        assert result.document is None and result.error_code == original.error_code
+    archive[-1]["response_hash"] = "0" * 64
+    with pytest.raises(ValueError, match="^REWRITE_CORRECTION_EVIDENCE_INVALID$"):
+        recover_sentence_correction(source, previous, model_call_budget=2, attempts=archive)
 
 
 def test_single_call_budget_keeps_unresolved_source():

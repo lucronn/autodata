@@ -716,7 +716,9 @@ def _correction_round_bindings(rounds):
 def resolve_source_bound_correction(cur, job, candidate):
     """Rebuild a correction and bind every provider round to its publication."""
     from .article_document import project_ordered_document
-    from .procedure_rewrite_correction import _CORRECTION_METHOD, replay_retained_correction
+    from .procedure_rewrite_correction import (
+        _CORRECTION_METHOD, correction_recovery_for_method, replay_retained_correction,
+    )
 
     source = candidate["normalized_source_document"]
     binding, previous = _bound_correction_draft(cur, job, source)
@@ -751,15 +753,14 @@ def resolve_source_bound_correction(cur, job, candidate):
             method=scheduled_method,
         )
     else:
-        from .procedure_rewrite_recovery import RECOVERY_METHOD, recover_retained_correction
-
+        recovery_method, recover = correction_recovery_for_method(scheduled_method)
         recovery = metadata.get("correction_recovery")
-        if (scheduled_method != _CORRECTION_METHOD or method != RECOVERY_METHOD
+        if (method != recovery_method
             or not rounds or not isinstance(recovery, dict)
             or recovery != job["checkpoint"].get("correction_recovery")
             or recovery.get("attempts") != _correction_round_bindings(rounds)):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
-        result = recover_retained_correction(
+        result = recover(
             source, previous, model_call_budget=binding["model_call_budget"], attempts=rounds,
         )
         if (not recovery.get("terminal_error")
@@ -818,7 +819,7 @@ def _stage_correction_candidate(cur, job, document, result, *, model, token, att
 
 def recover_source_bound_correction(repo, article_id, *, expected_job_id, expected_source_revision_id, actor, reason):
     """Stage a validated correction from the exact current terminal job's archived replies."""
-    from .procedure_rewrite_recovery import RECOVERY_METHOD, recover_retained_correction
+    from .procedure_rewrite_correction import _CORRECTION_METHOD, correction_recovery_for_method
 
     article_id, expected_job_id, expected_source_revision_id = (
         UUID(str(value)) for value in (article_id, expected_job_id, expected_source_revision_id)
@@ -855,8 +856,7 @@ def recover_source_bound_correction(repo, article_id, *, expected_job_id, expect
         _require_source_bound_rewrite_rights(cur, job, article)
         document = job["checkpoint"].get("normalized_document")
         binding, previous = _bound_correction_draft(cur, job, document)
-        if "correction_method" in binding:
-            raise ValueError("SOURCE_BOUND_CORRECTION_RECOVERY_STALE")
+        recovery_method, recover = correction_recovery_for_method(binding.get("correction_method", _CORRECTION_METHOD))
         if cur.execute("SELECT 1 FROM canonical_article_revisions WHERE transformation_key=%s",
                        (job["transformation_key"],)).fetchone():
             raise ValueError("SOURCE_BOUND_CORRECTION_RECOVERY_STALE")
@@ -870,10 +870,10 @@ def recover_source_bound_correction(repo, article_id, *, expected_job_id, expect
             rounds, limit=binding["model_call_budget"], model=model, token=token,
             input_hash=job["checkpoint"]["normalized_hash"], revision=None,
         )
-        result = recover_retained_correction(
+        result = recover(
             document, previous, model_call_budget=binding["model_call_budget"], attempts=rounds,
         )
-        if (result.evidence.get("method") != RECOVERY_METHOD
+        if (result.evidence.get("method") != recovery_method
             or result.evidence.get("original_error_code") != job["error_code"]):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
         _require_source_bound_rewrite_rights(cur, job, article)
