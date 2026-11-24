@@ -690,6 +690,8 @@ func (s *postgresCatalogStore) Models(ctx context.Context, _ Principal, year int
 	return result, rows.Err()
 }
 
+// Order each limited evidence probe by its existing index so rechecking a
+// source-less selector does not scan the whole article catalog.
 const catalogConfigurationFields = `vc.vehicle_configuration_id::text, vc.vehicle_id::text,
 		       vib.model_year, vib.make, vib.model, vib.region,
 		       COALESCE(vc.trim, ''), COALESCE(vc.engine_displacement_l::text, ''), COALESCE(vc.engine_variant, ''),
@@ -711,18 +713,22 @@ const catalogConfigurationFields = `vc.vehicle_configuration_id::text, vc.vehicl
 		             HAVING count(DISTINCT mapping.provider_id) = 1
 		               AND bool_and(mapping.provider_id ~ '[^[:space:]]')
 		           )
-		           OR EXISTS (
-		             SELECT 1 FROM catalog_article_provider_scopes scope
+		           OR COALESCE((
+		             SELECT true FROM catalog_article_provider_scopes scope
 		             WHERE scope.scope_key = 'configuration:' || vc.vehicle_configuration_id::text
 		               AND scope.provider_slug IN ('bankone','banktwo')
 		               AND scope.source_vehicle_ref ~ '[^[:space:]]'
-		           )
-		           OR EXISTS (
-		             SELECT 1 FROM canonical_articles article
+		             ORDER BY scope.scope_key, scope.provider_slug
+		             LIMIT 1
+		           ), false)
+		           OR COALESCE((
+		             SELECT true FROM canonical_articles article
 		             WHERE article.scope_key = 'configuration:' || vc.vehicle_configuration_id::text
 		               AND article.provider_slug IN ('bankone','banktwo')
 		               AND article.membership_status = 'active' AND article.takedown_status = 'active'
-		           )
+		             ORDER BY article.provider_slug, article.scope_key, article.source_vehicle_ref, article.source_article_ref
+		             LIMIT 1
+		           ), false)
 		         )
 		       END`
 

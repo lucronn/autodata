@@ -25,7 +25,7 @@ _CONFIGURATION_LABEL_SQL = (
     "concat_ws(' ',b.model_year::text,b.make,b.model,c.trim,c.engine_displacement_l::text || ' L',c.engine_variant,"
     "NULLIF(btrim(b.body_style),''),NULLIF(btrim(b.drivetrain),''))"
 )
-# Keep this in sync with the configuration selector in catalog_coverage.py and the Go picker.
+# Match the catalog selector and bound article evidence probes to this scope.
 _CONFIGURATION_RESOLVED_SQL = """
     CASE WHEN c.trim ~ '[^[:space:]]' OR c.engine_displacement_l IS NOT NULL
       OR c.engine_variant ~ '[^[:space:]]' OR b.drivetrain ~ '[^[:space:]]' THEN true
@@ -37,17 +37,21 @@ _CONFIGURATION_RESOLVED_SQL = """
         GROUP BY mapping.provider
         HAVING count(DISTINCT mapping.provider_id)=1 AND bool_and(mapping.provider_id ~ '[^[:space:]]')
     )
-    OR EXISTS (
-        SELECT 1 FROM catalog_article_provider_scopes scope
+    OR COALESCE((
+        SELECT true FROM catalog_article_provider_scopes scope
         WHERE scope.scope_key='configuration:' || c.vehicle_configuration_id::text
           AND scope.provider_slug IN ('bankone','banktwo') AND scope.source_vehicle_ref ~ '[^[:space:]]'
-    )
-    OR EXISTS (
-        SELECT 1 FROM canonical_articles article
+        ORDER BY scope.scope_key, scope.provider_slug
+        LIMIT 1
+    ), false)
+    OR COALESCE((
+        SELECT true FROM canonical_articles article
         WHERE article.scope_key='configuration:' || c.vehicle_configuration_id::text
           AND article.provider_slug IN ('bankone','banktwo')
           AND article.membership_status='active' AND article.takedown_status='active'
-    )
+        ORDER BY article.provider_slug, article.scope_key, article.source_vehicle_ref, article.source_article_ref
+        LIMIT 1
+    ), false)
     END
 """
 READ_ONLY_COMMERCE_PATHS = frozenset('/internal/commerce/' + path for path in

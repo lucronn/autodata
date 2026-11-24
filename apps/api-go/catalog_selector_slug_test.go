@@ -203,7 +203,8 @@ func TestPostgresUnresolvedConfigurationRequiresExactEvidence(t *testing.T) {
 		CREATE TEMP TABLE vehicle_provider_mappings (vehicle_id uuid, vehicle_configuration_id uuid,
 		  provider text, entity_type text, mapping_status text, provider_id text);
 		CREATE TEMP TABLE catalog_article_provider_scopes (scope_key text, provider_slug text, source_vehicle_ref text);
-		CREATE TEMP TABLE canonical_articles (scope_key text, provider_slug text, membership_status text, takedown_status text);
+		CREATE TEMP TABLE canonical_articles (scope_key text, provider_slug text, membership_status text, takedown_status text,
+		  source_vehicle_ref text, source_article_ref text);
 		INSERT INTO vehicle_identity_bases VALUES
 		  (1, '44444444-4444-4444-8444-444444444444', 2024, 'Buick Truck', 'Envision AWD', 'US', 'approved', NULL, NULL);
 		INSERT INTO vehicle_configurations
@@ -220,7 +221,7 @@ func TestPostgresUnresolvedConfigurationRequiresExactEvidence(t *testing.T) {
 		    ON right(vehicle_configuration_id::text, 1) = refs.suffix;
 		INSERT INTO catalog_article_provider_scopes VALUES
 		  ('configuration:00000000-0000-4000-8000-000000000004','bankone','bound');
-		INSERT INTO canonical_articles VALUES
+		INSERT INTO canonical_articles (scope_key, provider_slug, membership_status, takedown_status) VALUES
 		  ('configuration:00000000-0000-4000-8000-000000000005','banktwo','active','active'),
 		  ('configuration:00000000-0000-4000-8000-000000000007','banktwo','retired','active');
 	`)
