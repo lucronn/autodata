@@ -423,16 +423,6 @@ func catalogErrorMessage(code string) string {
 	}
 }
 
-const legacyCatalogEligibilitySQL = `ca.article_id NOT LIKE 'L:%' AND ss.takedown_status='active'
-	AND NOT EXISTS (
-		SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved'
-			AND review.source_snapshot_ids ? ca.source_snapshot_id::text
-	) AND NOT EXISTS (
-		SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id
-		WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id
-			AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id
-	)`
-
 func (s *postgresCatalogStore) Articles(ctx context.Context, p Principal, v string) ([]CatalogArticle, error) {
 	// Descriptor-only selection never reads a source document or performs work.
 	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''), c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status FROM canonical_articles a JOIN catalog_article_current c USING(canonical_article_id) WHERE `+lifecycleScopeSQL+` AND `+lifecycleEligibleSQL+` AND c.takedown_status='active' ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, v)
@@ -460,12 +450,7 @@ func (s *postgresCatalogStore) Articles(ctx context.Context, p Principal, v stri
 	if rows.Err() != nil {
 		return nil, rows.Err()
 	}
-	legacy, err := s.pool.Query(ctx, `SELECT ca.catalog_article_id::text,COALESCE(ca.title,''),COALESCE(ca.content_kind,''),COALESCE(ca.component,'')
-		FROM catalog_articles ca JOIN source_snapshots ss USING(source_snapshot_id)
-		WHERE (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1
-		  AND EXISTS(SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id)
-		    WHERE vc.vehicle_configuration_id=ca.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected'))
-		AND `+legacyCatalogEligibilitySQL+` ORDER BY ca.title COLLATE "C",ca.catalog_article_id`, v)
+	legacy, err := s.pool.Query(ctx, `SELECT ca.catalog_article_id::text,COALESCE(ca.title,''),COALESCE(ca.content_kind,''),COALESCE(ca.component,'') FROM catalog_articles ca JOIN source_snapshots ss USING(source_snapshot_id) WHERE (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1 AND EXISTS(SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=ca.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected')) AND ca.article_id NOT LIKE 'L:%' AND ss.takedown_status='active' AND NOT EXISTS(SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text) AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id) ORDER BY ca.title COLLATE "C",ca.catalog_article_id`, v)
 	if err != nil {
 		return nil, err
 	}
