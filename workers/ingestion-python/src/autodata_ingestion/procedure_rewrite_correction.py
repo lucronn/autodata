@@ -243,6 +243,20 @@ def correction_for_method(method):
     raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
 
 
+def correction_recovery_for_method(method):
+    from .procedure_rewrite_recovery import RECOVERY_METHOD, recover_retained_correction
+    from .procedure_rewrite_sentence_correction import (
+        SENTENCE_CORRECTION_METHOD, SENTENCE_RECOVERY_METHOD, recover_sentence_correction,
+    )
+
+    if method == _CORRECTION_METHOD:
+        return RECOVERY_METHOD, recover_retained_correction
+    if method == SENTENCE_CORRECTION_METHOD:
+        return SENTENCE_RECOVERY_METHOD, recover_sentence_correction
+    raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
+
+
+
 def replay_retained_correction(source, previous, *, model_call_budget, evidence, attempts,
                                method=_CORRECTION_METHOD):
     """Rebuild the draft from pinned prompt hashes and original provider replies."""
@@ -256,6 +270,12 @@ def replay_retained_correction(source, previous, *, model_call_budget, evidence,
 
 def rebuild_retained_correction(source, previous, *, model_call_budget, attempts, method=_CORRECTION_METHOD):
     """Reproduce the original method, including the prompts in a failed archive."""
+    return _replay_transcript(
+        correction_for_method(method), source, previous, model_call_budget=model_call_budget, attempts=attempts,
+    )
+
+
+def _replay_transcript(correct, source, previous, *, model_call_budget, attempts):
     rounds = iter(attempts)
 
     def from_saved(prompt):
@@ -267,9 +287,7 @@ def rebuild_retained_correction(source, previous, *, model_call_budget, attempts
             raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
         return attempt["response"]
 
-    result = correction_for_method(method)(
-        source, previous, complete_json=from_saved, model_call_budget=model_call_budget,
-    )
+    result = correct(source, previous, complete_json=from_saved, model_call_budget=model_call_budget)
     if next(rounds, None) is not None:
         raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
     return result

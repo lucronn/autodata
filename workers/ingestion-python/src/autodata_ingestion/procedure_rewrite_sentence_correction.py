@@ -10,12 +10,13 @@ from . import procedure_rewrite_full as full
 from .article_lifecycle_types import digest_json
 from .procedure_rewrite_correction import (
     CorrectionResult, _MARKER, _MAX_PROMPT_BYTES, _MAX_REPLY_BYTES, _apply_variants,
-    _initial_draft, _mask_literals, _passage_errors, _validated_document, _variants,
+    _initial_draft, _mask_literals, _passage_errors, _replay_transcript, _validated_document, _variants,
 )
 from .procedure_rewrite_recovery import _equivalent_wording
 
 
 SENTENCE_CORRECTION_METHOD = "source-bound-sentence-correction-v1"
+SENTENCE_RECOVERY_METHOD = "source-bound-sentence-recovery-v1"
 MAX_SENTENCE_CORRECTION_CALLS = 2
 _MAX_STATEMENTS = 60
 _MAX_COMBINATIONS = 27
@@ -23,6 +24,11 @@ _ALTERNATIVES = 3
 _CONDITIONAL_INSTALLATION = re.compile(
     r"(?P<condition>If [^,.;!?]{1,85}),? check to make sure "
     r"(?P<subject>the [^,.;!?]{1,95}?) is installed\.", re.I,
+)
+_NOUN_PHRASE = r"[\w-]+(?: [\w-]+){0,8}"
+_WIRING_EXPLANATION = re.compile(
+    rf"(?P<subject>{_NOUN_PHRASE}) are not wired to (?P<target>the {_NOUN_PHRASE}), thus "
+    rf"the (?P<component>{_NOUN_PHRASE}) does not communicate directly on a (?P<network>{_NOUN_PHRASE})\."
 )
 
 
@@ -139,6 +145,15 @@ def _conditional_equivalent(statement):
     return f'Check to confirm {match["subject"]} is installed {condition[:1].lower()}{condition[1:]}.'
 
 
+def _wiring_equivalent(statement):
+    match = _WIRING_EXPLANATION.fullmatch(statement)
+    if match is None:
+        return None
+    return (f'{match["subject"]} lack wiring to {match["target"]}, so the {match["component"]} '
+            f'has no direct communication on a {match["network"]}.')
+
+
+
 def _statement_options(source, alternatives):
     def acceptable(wording):
         return (_bound_wording(source, wording)
@@ -170,7 +185,12 @@ def _statement_variants(reply, texts, literals):
         yield restored
 
 
-def _correct_sentences(source, slots, draft, failures, complete_json, exchanges):
+def _combined_options(original, options):
+    combined = (" ".join(parts) for parts in islice(product(*options), _MAX_COMBINATIONS))
+    return [wording for wording in combined if _bound_wording(original, wording)]
+
+
+def _correct_sentences(source, slots, draft, failures, complete_json, exchanges, *, recover=False):
     groups, texts, literals, statements = [], [], [], []
     for index in failures:
         pieces = _sentences(slots[index]["text"])
@@ -200,33 +220,72 @@ def _correct_sentences(source, slots, draft, failures, complete_json, exchanges)
     }, complete_json, exchanges)
     variants = _statement_variants(reply, texts, literals)
     options = [_statement_options(text, rows) for text, rows in zip(texts, variants, strict=True)]
+    recovery = {}
     offset = 0
     for index, count in groups:
-        combined = (" ".join(parts) for parts in islice(product(*options[offset:offset + count]), _MAX_COMBINATIONS))
-        bounded = [wording for wording in combined if _bound_wording(slots[index]["text"], wording)]
-        offset += count
-        if bounded:
+        original = slots[index]["text"]
+        group = options[offset:offset + count]
+        if bounded := _combined_options(original, group):
             _apply_variants(source, slots, draft, [index], [bounded])
+        if recover:
+            for position, text in enumerate(texts[offset:offset + count]):
+                wording = _wiring_equivalent(text)
+                if wording and wording in _statement_options(text, [wording]):
+                    recovery[index] = _combined_options(
+                        original, [*group[:position], [wording], *group[position + 1:]],
+                    )
+                    break
+        offset += count
+    return recovery
 
 
 def correct_sentence_draft(source, previous, *, complete_json, model_call_budget):
     """Keep valid retained prose and correct failed passages with at most two calls."""
+    return _correct_sentence_draft(
+        source, previous, complete_json=complete_json, model_call_budget=model_call_budget,
+    )
+
+
+def _validate_sentence_draft(source, slots, draft, version):
+    document, error_code = _validated_document(source, slots, draft, version)
+    if document is not None and (failures := _remaining_passage_errors(source, slots, draft)):
+        return None, next(iter(failures.values()))
+    return document, error_code
+
+
+def _correct_sentence_draft(source, previous, *, complete_json, model_call_budget, recover=False):
     if type(model_call_budget) is not int or not 1 <= model_call_budget <= MAX_SENTENCE_CORRECTION_CALLS:
         raise ValueError("REWRITE_CORRECTION_BUDGET_INVALID")
     version, slots, draft = _initial_draft(source, previous)
     exchanges = []
+    recovery = {}
     failures = _remaining_passage_errors(source, slots, draft)
     if failures:
         _correct_passages(source, slots, draft, failures, complete_json, exchanges)
         if model_call_budget == MAX_SENTENCE_CORRECTION_CALLS:
             failures = _remaining_passage_errors(source, slots, draft)
             if failures:
-                _correct_sentences(source, slots, draft, failures, complete_json, exchanges)
-    document, error_code = _validated_document(source, slots, draft, version)
-    if document is not None and (failures := _remaining_passage_errors(source, slots, draft)):
-        document, error_code = None, next(iter(failures.values()))
-    return CorrectionResult(draft, document, error_code, {
+                recovery = _correct_sentences(source, slots, draft, failures, complete_json, exchanges, recover=recover)
+    document, error_code = _validate_sentence_draft(source, slots, draft, version)
+    evidence = {
         "method": SENTENCE_CORRECTION_METHOD, "input_hash": digest_json(source),
         "guard_version": version, "prior_response_hash": digest_json(previous),
         "model_call_budget": model_call_budget, "exchanges": exchanges, "draft_hash": digest_json(draft),
-    })
+    }
+    if recover:
+        evidence.update(method=SENTENCE_RECOVERY_METHOD, base_draft_hash=evidence["draft_hash"],
+                        original_error_code=error_code)
+        for index in _remaining_passage_errors(source, slots, draft):
+            if options := recovery.get(index):
+                _apply_variants(source, slots, draft, [index], [options])
+        document, error_code = _validate_sentence_draft(source, slots, draft, version)
+        evidence["draft_hash"] = digest_json(draft)
+    return CorrectionResult(draft, document, error_code, evidence)
+
+
+def recover_sentence_correction(source, previous, *, model_call_budget, attempts):
+    """Replay the terminal draft and reframe proven wiring explanations without dispatch."""
+    def recover(source, previous, **options):
+        return _correct_sentence_draft(source, previous, recover=True, **options)
+
+    return _replay_transcript(recover, source, previous, model_call_budget=model_call_budget, attempts=attempts)
