@@ -8,7 +8,10 @@ import pytest
 
 from autodata_ingestion import article_lifecycle_store as store
 from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE, NORMALIZATION_VERSION, digest_json
-from autodata_ingestion.procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHOD
+from autodata_ingestion.procedure_rewrite_recovery import (
+    FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
+    FIRST_DRAFT_RECOVERY_METHOD,
+)
 from autodata_ingestion.published_media_publication import _publication_evidence
 from autodata_ingestion.source_job_persistence import ensure_article_job
 from lifecycle_support import fresh_database, runtime
@@ -47,7 +50,7 @@ class EchoedDraft:
         return result
 
 
-def queue_article(runtime, *, figure=False):
+def queue_article(runtime, *, figure=False, instruction=COVER):
     connector = runtime.servers["bankone"]
     illustration = ""
     resource = {}
@@ -59,7 +62,7 @@ def queue_article(runtime, *, figure=False):
         image = BytesIO()
         Image.new("RGB", (10, 8), (23, 89, 132)).save(image, format="PNG")
         connector.body(image.getvalue(), media_type="image/png", ref="figure", kind="asset")
-    connector.body((f"<h2>Upper Cover Service</h2><ol start='3'><li>{COVER}</li></ol>"
+    connector.body((f"<h2>Upper Cover Service</h2><ol start='3'><li>{instruction}</li></ol>"
                     f"{illustration}<p>{TORQUE}</p>").encode(), **resource)
     with runtime.repo.connect() as conn:
         conn.execute("UPDATE canonical_articles SET target_rewrite_profile_version=%s WHERE canonical_article_id=%s",
@@ -156,3 +159,52 @@ def test_echoed_draft_does_not_relax_other_rewrite_guards(runtime, variant, erro
     assert not run_job(runtime, None, model)
     with runtime.repo.connect() as conn:
         assert conn.execute("SELECT 1 FROM publication_events").fetchone() is None
+
+
+def test_worker_replays_recovery_with_its_original_response_and_media(runtime):
+    instruction = "Install the guide plate. For additional information, refer to Section 410-07C ."
+    job_id = queue_article(runtime, figure=True, instruction=instruction)
+
+    class ChangedReference:
+        _model = "fixture-auto"
+
+        def complete_json(self, prompt):
+            slots = json.loads(prompt)["slots"]
+            assert [(s["text"], s["required_action"]) for s in slots] == [
+                (instruction, "rewrite"), (TORQUE, "retain"),
+            ]
+            self.raw = {
+                "introduction": "This article covers the service sequence for the cover.",
+                "replacements": [
+                    {
+                        "block_id": s["block_id"], "path": s["path"],
+                        "action": s["required_action"], "text": s["text"],
+                        "reason": "Keep the technical value." if s["required_action"] == "retain" else "",
+                    }
+                    for s in slots
+                ],
+            }
+            self.raw["replacements"][0]["text"] = "Put the guide plate in place. See Section 510-07C."
+            return self.raw
+
+    model = ChangedReference()
+    assert run_job(runtime, job_id, model, registry=runtime.registry)
+    current = runtime.read_current()
+    assert current["content_origin"] == "canonical"
+    assert "Fit the guide plate. Details are in Section 410-07C." in current["body"]
+    assert "510-07C" not in current["body"]
+    assert current["images"][0]["status"] == "available"
+
+    [archived] = attempt_rows(runtime, job_id)
+    binding = store.load_source_revision(runtime.repo, current["source_revision_id"])
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (runtime.article_id,)).fetchone()
+        revision, _, _, attempt, effective, _, _ = _publication_evidence(
+            cur, article, binding, fixture_mode=True, lock=False,
+        )
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
+    assert attempt == archived and archived["response"] == model.raw
+    assert revision["model_metadata"]["transformation_method"] == FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD
+    assert revision["model_metadata"]["first_draft_recovery"]["raw_response_hash"] == digest_json(model.raw)
+    assert effective["replacements"][0]["text"] == "Fit the guide plate. Details are in Section 410-07C."

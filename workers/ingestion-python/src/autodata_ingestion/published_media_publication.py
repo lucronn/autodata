@@ -34,7 +34,7 @@ from .procedure_rewrite_auto import (
     build_source_preserving_candidate,
 )
 from .procedure_rewrite_full import PROFILE as REVIEW_PROFILE, validate_full
-from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHOD
+from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHODS
 from .published_media_repair import (
     MEDIA_METHOD, ORDINAL_METHOD, SVG_RECOVERY_METHOD, TABLE_SPAN_METHOD, TECHNICAL_V1, TECHNICAL_V2,
     PublishedMediaRepair, repair_published_media,
@@ -196,7 +196,7 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
                 profile_version=profile,
             )
             response = attempt["response"]
-            if row["model_metadata"].get("transformation_method") == FIRST_DRAFT_RECOVERY_METHOD:
+            if row["model_metadata"].get("transformation_method") in FIRST_DRAFT_RECOVERY_METHODS:
                 response = resolve_first_draft_recovery(row, attempt, prompt_version=prompt_version).response
         else:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_ATTEMPT_REQUIRED")
