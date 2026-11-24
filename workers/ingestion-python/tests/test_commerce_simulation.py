@@ -13,7 +13,7 @@ from autodata_ingestion.article_lifecycle_types import ArticleKey, scope_key
 from autodata_ingestion.http_service import dispatch_commerce
 from autodata_ingestion.payment_reconciliation import revoke_entitlement
 from autodata_ingestion.stripe_adapter import StripePaymentProvider
-from lifecycle_support import fresh_database, insert_descriptor, seed_configuration, seed_vehicle
+from lifecycle_support import fresh_database, insert_descriptor, seed_configuration, seed_snapshot, seed_vehicle
 
 
 ORIGIN = 'https://autodata.cars.tk'
@@ -354,3 +354,51 @@ def test_empty_configuration_requires_its_own_evidence_for_new_offer(fresh_datab
     assert call(service, 'library', dict(buyer, cursor='', limit=20))['items'][0]['library_item_id'] == receipt['order_id']
     with pytest.raises(commerce.CommerceError, match='CONFIGURATION_UNRESOLVED'):
         checkout(other)
+
+
+def test_empty_configuration_uses_visible_exact_legacy_articles(fresh_database, monkeypatch):
+    repo = fresh_database()
+    setup_env(monkeypatch)
+    service = commerce.configured_commerce(connection_factory=repo.connect)
+    buyer = account(repo)
+    vehicle = seed_vehicle(repo)
+    configuration, sibling = seed_configuration(repo, vehicle), seed_configuration(repo, vehicle)
+    scope = dict(buyer, configuration_id=str(configuration), region='US')
+    request = dict(scope, expected_mode='simulation', terms_version=commerce.TERMS,
+                   idempotency_key=str(uuid.uuid4()))
+    public_source = seed_snapshot(repo, b'legacy visible source')
+    quarantine = seed_snapshot(repo, b'legacy quarantined source')
+    withdrawn = seed_snapshot(repo, b'legacy withdrawn source')
+    retired = insert_descriptor(repo, ArticleKey('bankone', vehicle, configuration, 'legacy-ref', 'aliased'))
+    with repo.connect() as conn:
+        conn.execute("UPDATE canonical_articles SET membership_status='retired' WHERE canonical_article_id=%s", (retired,))
+        conn.execute("UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=%s", (withdrawn,))
+        conn.execute("""INSERT INTO source_review_items(source_review_item_id,item_key,item_kind,reason_code,source_snapshot_ids)
+            VALUES (gen_random_uuid(),'legacy-commerce-source','quarantine','FIXTURE',jsonb_build_array(%s::text))""", (quarantine,))
+        for config, article, snapshot in (
+            (None, 'model-wide', public_source),
+            (sibling, 'sibling', public_source),
+            (configuration, 'L:link-only', public_source),
+            (configuration, 'quarantined', quarantine),
+            (configuration, 'withdrawn', withdrawn),
+            (configuration, 'aliased', public_source),
+        ):
+            conn.execute("""INSERT INTO catalog_articles(vehicle_id,vehicle_configuration_id,article_id,source_snapshot_id,
+                evidence_locator,evidence_confidence) VALUES (%s,%s,%s,%s,'fixture',1)""", (vehicle, config, article, snapshot))
+        conn.execute("""INSERT INTO canonical_article_aliases(catalog_article_id,canonical_article_id,proof)
+            SELECT catalog_article_id,%s,'{"fixture": true}' FROM catalog_articles
+            WHERE vehicle_configuration_id=%s AND article_id='aliased'""", (retired, configuration))
+
+    offer = call(service, 'quote', scope)
+    assert offer['purchasable'] is False and offer['configuration_unresolved'] is True
+    with pytest.raises(commerce.CommerceError, match='CONFIGURATION_UNRESOLVED'):
+        call(service, 'checkouts', request)
+
+    with repo.connect() as conn:
+        conn.execute("UPDATE source_review_items SET status='approved' WHERE item_key='legacy-commerce-source'")
+
+    offer = call(service, 'quote', scope)
+    assert offer['purchasable'] is True and 'configuration_unresolved' not in offer
+    receipt = call(service, 'checkouts', request)
+    assert receipt['state'] == 'owned'
+    assert call(service, 'grants/check', scope)['order_id'] == receipt['order_id']

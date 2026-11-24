@@ -729,6 +729,13 @@ const catalogConfigurationFields = `vc.vehicle_configuration_id::text, vc.vehicl
 		             ORDER BY article.provider_slug, article.scope_key, article.source_vehicle_ref, article.source_article_ref
 		             LIMIT 1
 		           ), false)
+		           OR COALESCE((
+		             SELECT true FROM catalog_articles ca JOIN source_snapshots ss USING(source_snapshot_id)
+		             WHERE ca.vehicle_configuration_id = vc.vehicle_configuration_id AND ca.vehicle_id = vc.vehicle_id
+		               AND ` + legacyCatalogEligibilitySQL + `
+		             ORDER BY ca.vehicle_id, ca.bucket
+		             LIMIT 1
+		           ), false)
 		         )
 		       END`
 

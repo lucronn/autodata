@@ -204,13 +204,18 @@ func TestPostgresUnresolvedConfigurationRequiresExactEvidence(t *testing.T) {
 		  provider text, entity_type text, mapping_status text, provider_id text);
 		CREATE TEMP TABLE catalog_article_provider_scopes (scope_key text, provider_slug text, source_vehicle_ref text);
 		CREATE TEMP TABLE canonical_articles (scope_key text, provider_slug text, membership_status text, takedown_status text,
-		  source_vehicle_ref text, source_article_ref text);
+		  source_vehicle_ref text, source_article_ref text, canonical_article_id uuid, vehicle_id uuid, vehicle_configuration_id uuid);
+		CREATE TEMP TABLE catalog_articles (catalog_article_id uuid, vehicle_id uuid, vehicle_configuration_id uuid,
+		  article_id text, source_snapshot_id uuid, bucket text);
+		CREATE TEMP TABLE source_snapshots (source_snapshot_id uuid, takedown_status text);
+		CREATE TEMP TABLE source_review_items (item_kind text, status text, source_snapshot_ids jsonb);
+		CREATE TEMP TABLE canonical_article_aliases (catalog_article_id uuid, canonical_article_id uuid);
 		INSERT INTO vehicle_identity_bases VALUES
 		  (1, '44444444-4444-4444-8444-444444444444', 2024, 'Buick Truck', 'Envision AWD', 'US', 'approved', NULL, NULL);
 		INSERT INTO vehicle_configurations
 		  SELECT ('00000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, vehicle_id, 1,
 		    CASE WHEN n=1 THEN chr(9) || ' ' END, CASE WHEN n=2 THEN 2.0 END, 'pending', NULL, false
-		  FROM generate_series(1, 7) n CROSS JOIN vehicle_identity_bases;
+		  FROM generate_series(1, 12) n CROSS JOIN vehicle_identity_bases;
 		-- A vehicle-wide mapping and an empty or ambiguous exact mapping do not verify a scope.
 		INSERT INTO vehicle_provider_mappings
 		  SELECT vehicle_id, NULL, 'bankone', 'car', 'verified', 'vehicle-wide' FROM vehicle_identity_bases;
@@ -224,13 +229,31 @@ func TestPostgresUnresolvedConfigurationRequiresExactEvidence(t *testing.T) {
 		INSERT INTO canonical_articles (scope_key, provider_slug, membership_status, takedown_status) VALUES
 		  ('configuration:00000000-0000-4000-8000-000000000005','banktwo','active','active'),
 		  ('configuration:00000000-0000-4000-8000-000000000007','banktwo','retired','active');
+		INSERT INTO catalog_articles (catalog_article_id, vehicle_id, vehicle_configuration_id, article_id, source_snapshot_id)
+		  SELECT gen_random_uuid(), vehicle_id, vehicle_configuration_id,
+		    CASE WHEN right(vehicle_configuration_id::text, 2)='09' THEN 'L:excluded' ELSE 'visible-id' END, gen_random_uuid()
+		  FROM vehicle_configurations WHERE right(vehicle_configuration_id::text,2) BETWEEN '08' AND '12';
+		INSERT INTO source_snapshots
+		  SELECT source_snapshot_id, CASE WHEN right(vehicle_configuration_id::text, 2)='11'
+		    THEN 'takedown' ELSE 'active' END FROM catalog_articles;
+		INSERT INTO source_review_items
+		  SELECT 'quarantine','pending',jsonb_build_array(source_snapshot_id::text) FROM catalog_articles
+		  WHERE right(vehicle_configuration_id::text, 2)='10';
+		INSERT INTO canonical_articles (scope_key, provider_slug, membership_status, takedown_status, canonical_article_id,
+		  vehicle_id, vehicle_configuration_id)
+		  SELECT 'configuration:' || vehicle_configuration_id::text, 'banktwo', 'retired', 'active',
+		    gen_random_uuid(), vehicle_id, vehicle_configuration_id FROM vehicle_configurations
+		  WHERE right(vehicle_configuration_id::text, 2)='12';
+		INSERT INTO canonical_article_aliases
+		  SELECT catalog_article_id, canonical_article_id FROM catalog_articles JOIN canonical_articles
+		  USING(vehicle_configuration_id) WHERE right(vehicle_configuration_id::text, 2)='12';
 	`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	store := &postgresCatalogStore{pool: pool}
 	rows, err := store.Configurations(ctx, Principal{}, 2024, "buick-truck", "envision-awd", "US")
-	wantUnresolved := []bool{true, false, false, false, false, true, true}
+	wantUnresolved := []bool{true, false, false, false, false, true, true, false, true, true, true, true}
 	if err != nil || len(rows) != len(wantUnresolved) {
 		t.Fatalf("configurations = %#v, %v", rows, err)
 	}

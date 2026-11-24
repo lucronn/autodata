@@ -52,6 +52,26 @@ _CONFIGURATION_RESOLVED_SQL = """
         ORDER BY article.provider_slug, article.scope_key, article.source_vehicle_ref, article.source_article_ref
         LIMIT 1
     ), false)
+    OR COALESCE((
+        SELECT true FROM catalog_articles legacy
+        JOIN source_snapshots snapshot USING(source_snapshot_id)
+        WHERE legacy.vehicle_configuration_id=c.vehicle_configuration_id
+          AND legacy.vehicle_id=c.vehicle_id AND legacy.article_id NOT LIKE 'L:%%'
+          AND snapshot.takedown_status='active'
+          AND NOT EXISTS (
+              SELECT 1 FROM source_review_items review
+              WHERE review.item_kind='quarantine' AND review.status<>'approved'
+                AND review.source_snapshot_ids ? legacy.source_snapshot_id::text
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM canonical_article_aliases alias
+              JOIN canonical_articles owner USING(canonical_article_id)
+              WHERE alias.catalog_article_id=legacy.catalog_article_id AND owner.vehicle_id=legacy.vehicle_id
+                AND owner.vehicle_configuration_id IS NOT DISTINCT FROM legacy.vehicle_configuration_id
+          )
+        ORDER BY legacy.vehicle_id, legacy.bucket
+        LIMIT 1
+    ), false)
     END
 """
 READ_ONLY_COMMERCE_PATHS = frozenset('/internal/commerce/' + path for path in
