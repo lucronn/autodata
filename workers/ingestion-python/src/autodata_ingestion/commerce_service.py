@@ -25,6 +25,31 @@ _CONFIGURATION_LABEL_SQL = (
     "concat_ws(' ',b.model_year::text,b.make,b.model,c.trim,c.engine_displacement_l::text || ' L',c.engine_variant,"
     "NULLIF(btrim(b.body_style),''),NULLIF(btrim(b.drivetrain),''))"
 )
+# Keep this in sync with the configuration selector in catalog_coverage.py and the Go picker.
+_CONFIGURATION_RESOLVED_SQL = """
+    CASE WHEN c.trim ~ '[^[:space:]]' OR c.engine_displacement_l IS NOT NULL
+      OR c.engine_variant ~ '[^[:space:]]' OR b.drivetrain ~ '[^[:space:]]' THEN true
+    ELSE EXISTS (
+        SELECT 1 FROM vehicle_provider_mappings mapping
+        WHERE mapping.vehicle_id=c.vehicle_id AND mapping.vehicle_configuration_id=c.vehicle_configuration_id
+          AND mapping.provider IN ('bankone','banktwo') AND mapping.entity_type='car'
+          AND mapping.mapping_status='verified'
+        GROUP BY mapping.provider
+        HAVING count(DISTINCT mapping.provider_id)=1 AND bool_and(mapping.provider_id ~ '[^[:space:]]')
+    )
+    OR EXISTS (
+        SELECT 1 FROM catalog_article_provider_scopes scope
+        WHERE scope.scope_key='configuration:' || c.vehicle_configuration_id::text
+          AND scope.provider_slug IN ('bankone','banktwo') AND scope.source_vehicle_ref ~ '[^[:space:]]'
+    )
+    OR EXISTS (
+        SELECT 1 FROM canonical_articles article
+        WHERE article.scope_key='configuration:' || c.vehicle_configuration_id::text
+          AND article.provider_slug IN ('bankone','banktwo')
+          AND article.membership_status='active' AND article.takedown_status='active'
+    )
+    END
+"""
 READ_ONLY_COMMERCE_PATHS = frozenset('/internal/commerce/' + path for path in
     ('purchase-config', 'quote', 'library', 'grants/check'))
 SIMULATION_COMMERCE_PATHS = READ_ONLY_COMMERCE_PATHS | {
@@ -205,10 +230,12 @@ class CommerceService:
         if not cursor.fetchone():
             raise CommerceError('CUSTOMER_ACCESS_REQUIRED', 403)
 
-    def _scope(self, cursor, configuration_id, region):
+    def _scope(self, cursor, configuration_id, region, *, for_offer=False):
         validate_uuid(configuration_id); validate_region(region)
+        offer = f', ({_CONFIGURATION_RESOLVED_SQL}) AS configuration_resolved' if for_offer else ''
         cursor.execute(f"""SELECT c.vehicle_configuration_id, {_CONFIGURATION_LABEL_SQL} AS label,
             c.engine_variant IS NOT NULL AND NOT c.engine_variant_market_verified AS engine_variant_market_unverified
+            {offer}
             FROM vehicle_configurations c JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
             WHERE c.vehicle_configuration_id=%s AND b.region=%s
               AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'""", (configuration_id, region))
@@ -234,14 +261,17 @@ class CommerceService:
             return self._quote(cursor, configuration_id, region, purchasable=True)
 
     def _quote(self, cursor, configuration_id, region, *, purchasable):
-        scope = self._scope(cursor, configuration_id, region)
+        scope = self._scope(cursor, configuration_id, region, for_offer=True)
         self._product(cursor)
         market_unverified = scope['engine_variant_market_unverified']
+        resolved = scope['configuration_resolved']
         result = CommerceResult(dict(version='v1', product_key=PRODUCT, configuration_id=configuration_id,
             region=region, configuration_label=scope['label'], amount_minor=2000, currency='USD',
-            purchase_terms_version=TERMS, purchasable=purchasable and not market_unverified))
+            purchase_terms_version=TERMS, purchasable=purchasable and resolved and not market_unverified))
         if market_unverified:
             result['engine_variant_market_unverified'] = True
+        if not resolved:
+            result['configuration_unresolved'] = True
         return result
 
     def _product(self, cursor):
@@ -348,9 +378,11 @@ class CommerceService:
         if live:
             order = self._order(cursor, live['order_id'])
         else:
-            configuration = self._scope(cursor, configuration_id, region)
+            configuration = self._scope(cursor, configuration_id, region, for_offer=True)
             if configuration['engine_variant_market_unverified']:
                 raise CommerceError('CONFIGURATION_MARKET_UNVERIFIED', 409)
+            if not configuration['configuration_resolved']:
+                raise CommerceError('CONFIGURATION_UNRESOLVED', 409)
             order_id = str(uuid.uuid4())
             operation = 'simulation' if self.config.mode == 'simulation' else 'checkout'
             cursor.execute("""INSERT INTO workshop_orders(order_id,customer_account_id,organization_id,configuration_id,

@@ -9,10 +9,11 @@ from psycopg import OperationalError, sql
 
 from autodata_ingestion import catalog_index_worker
 from autodata_ingestion import commerce_service as commerce
+from autodata_ingestion.article_lifecycle_types import ArticleKey, scope_key
 from autodata_ingestion.http_service import dispatch_commerce
 from autodata_ingestion.payment_reconciliation import revoke_entitlement
 from autodata_ingestion.stripe_adapter import StripePaymentProvider
-from lifecycle_support import fresh_database, seed_configuration, seed_vehicle
+from lifecycle_support import fresh_database, insert_descriptor, seed_configuration, seed_vehicle
 
 
 ORIGIN = 'https://autodata.cars.tk'
@@ -84,7 +85,8 @@ def test_catalog_worker_prepares_simulated_purchase_without_stripe(fresh_databas
     monkeypatch.setenv('AUTODATA_POSTGRES_USER', 'lifecycle_test')
     monkeypatch.setenv('AUTODATA_POSTGRES_PASSWORD', 'lifecycle_test_only')
     owner = account(repo)
-    scope = {'configuration_id': str(seed_configuration(repo, seed_vehicle(repo))), 'region': 'US'}
+    configuration = seed_configuration(repo, seed_vehicle(repo), engine_displacement_l=2.0)
+    scope = {'configuration_id': str(configuration), 'region': 'US'}
     simulation = commerce.configured_commerce(connection_factory=repo.connect)
     receipt = call(simulation, 'checkouts', dict(scope, **owner, expected_mode='simulation',
         terms_version=commerce.TERMS, idempotency_key=str(uuid.uuid4())))
@@ -137,7 +139,8 @@ def seed_existing_paid_order(repo, owner, scope):
 
 def test_simulated_order_is_atomic_owned_and_separate_from_stripe(fresh_database, monkeypatch):
     repo = fresh_database()
-    scope = {'configuration_id': str(seed_configuration(repo, seed_vehicle(repo))), 'region': 'US'}
+    configuration = seed_configuration(repo, seed_vehicle(repo), engine_displacement_l=2.0)
+    scope = {'configuration_id': str(configuration), 'region': 'US'}
     tester, other = account(repo), account(repo)
     existing_order = seed_existing_paid_order(repo, other, scope)
     outsider = account(repo)
@@ -240,7 +243,8 @@ def test_failed_notification_leaves_simulated_purchase_owned(fresh_database, mon
     repo = fresh_database()
     setup_env(monkeypatch)
     owner = account(repo)
-    scope = {'configuration_id': str(seed_configuration(repo, seed_vehicle(repo))), 'region': 'US'}
+    configuration = seed_configuration(repo, seed_vehicle(repo), engine_displacement_l=2.0)
+    scope = {'configuration_id': str(configuration), 'region': 'US'}
     service = commerce.configured_commerce(connection_factory=repo.connect)
 
     with monkeypatch.context() as offline:
@@ -254,3 +258,99 @@ def test_failed_notification_leaves_simulated_purchase_owned(fresh_database, mon
 
     assert receipt['state'] == 'owned'
     assert call(service, 'grants/check', {**scope, **owner})['order_id'] == receipt['order_id']
+
+
+def test_empty_configuration_requires_its_own_evidence_for_new_offer(fresh_database, monkeypatch):
+    repo = fresh_database()
+    setup_env(monkeypatch)
+    service = commerce.configured_commerce(connection_factory=repo.connect)
+    buyer, other = account(repo), account(repo)
+    vehicle, other_vehicle = seed_vehicle(repo), seed_vehicle(repo)
+    configuration = seed_configuration(repo, vehicle)
+    sibling = seed_configuration(repo, vehicle, engine_displacement_l=2.0)
+    scope = {'configuration_id': str(configuration), 'region': 'US'}
+    request = dict(scope, expected_mode='simulation', terms_version=commerce.TERMS)
+
+    def checkout(owner, key=None):
+        return call(service, 'checkouts', dict(request, **owner, idempotency_key=key or str(uuid.uuid4())))
+
+    def quote():
+        return call(service, 'quote', dict(scope, **buyer))
+
+    def assert_unresolved():
+        offer = quote()
+        assert offer['amount_minor'] == 2000
+        assert offer['purchasable'] is False and offer['configuration_unresolved'] is True
+        assert 'engine_variant_market_unverified' not in offer
+
+    insert_descriptor(repo, ArticleKey('banktwo', vehicle, None, 'model-ref', 'model-article'))
+    insert_descriptor(repo, ArticleKey('bankone', vehicle, sibling, 'sibling-ref', 'sibling-article'))
+    with repo.connect() as conn:
+        base = conn.execute("""UPDATE vehicle_configurations SET trim=%s WHERE vehicle_configuration_id=%s
+            RETURNING vehicle_identity_base_id""", ('\t ', configuration)).fetchone()['vehicle_identity_base_id']
+        conn.execute("UPDATE vehicle_identity_bases SET body_style='SUV',drivetrain=%s WHERE vehicle_identity_base_id=%s",
+                     (' \n', base))
+        for mapping_key, config, owner, provider, ref, status in (
+            ('model', None, vehicle, 'bankone', 'model-ref', 'verified'),
+            ('sibling', sibling, vehicle, 'banktwo', 'sibling-ref', 'verified'),
+            ('other_vehicle', configuration, other_vehicle, 'banktwo', 'foreign-ref', 'verified'),
+            ('alias', configuration, vehicle, 'autoapi', 'unpromoted-ref', 'verified'),
+            ('pending', configuration, vehicle, 'banktwo', 'pending-ref', 'pending'),
+            ('blank', configuration, vehicle, 'banktwo', '\t ', 'verified'),
+            ('mapped', configuration, vehicle, 'bankone', 'ref-1', 'verified'),
+            ('mapped_duplicate', configuration, vehicle, 'bankone', 'ref-1', 'verified'),
+            ('ambiguous', configuration, vehicle, 'bankone', 'ref-2', 'verified'),
+        ):
+            conn.execute("""INSERT INTO vehicle_provider_mappings(mapping_key,vehicle_id,vehicle_configuration_id,
+                provider,entity_type,provider_id,source_snapshot_id,extraction_evidence_id,source_locator,
+                evidence_locator,evidence_confidence,mapping_status)
+                SELECT %s,%s,%s,%s,'car',%s,source_snapshot_id,extraction_evidence_id,'fixture','fixture',1,%s
+                FROM vehicle_configurations WHERE vehicle_configuration_id=%s""",
+                (mapping_key, owner, config, provider, ref, status, configuration))
+        conn.execute("""INSERT INTO catalog_article_provider_scopes(catalog_provider_scope_id,vehicle_id,
+            scope_key,provider_slug,source_vehicle_ref) VALUES (%s,%s,%s,'bankone','model-ref')""",
+            (uuid.uuid4(), vehicle, scope_key(vehicle)))
+
+    assert_unresolved()
+    with pytest.raises(commerce.CommerceError) as refused:
+        checkout(buyer)
+    assert (refused.value.code, refused.value.http_status) == ('CONFIGURATION_UNRESOLVED', 409)
+    with repo.connect() as conn:
+        for table in ('workshop_orders', 'workshop_checkout_requests', 'payment_events', 'entitlements'):
+            assert conn.execute(f'SELECT count(*) AS n FROM {table}').fetchone()['n'] == 0
+        conn.execute("UPDATE vehicle_provider_mappings SET mapping_status='rejected' WHERE mapping_key='ambiguous'")
+
+    assert quote()['purchasable'] is True
+    with repo.connect() as conn:
+        conn.execute("UPDATE vehicle_provider_mappings SET mapping_status='pending' WHERE mapping_key LIKE 'mapped%'")
+        exact_scope = scope_key(vehicle, configuration)
+        conn.execute("""INSERT INTO catalog_article_provider_scopes(catalog_provider_scope_id,vehicle_id,
+            vehicle_configuration_id,scope_key,provider_slug,source_vehicle_ref)
+            VALUES (%s,%s,%s,%s,'banktwo','exact-ref')""", (uuid.uuid4(), vehicle, configuration, exact_scope))
+
+    assert quote()['purchasable'] is True
+    with repo.connect() as conn:
+        conn.execute('UPDATE catalog_article_provider_scopes SET source_vehicle_ref=NULL WHERE scope_key=%s', (exact_scope,))
+    assert_unresolved()
+    article = insert_descriptor(repo, ArticleKey('banktwo', vehicle, configuration, 'exact-ref', 'exact-article'))
+    with repo.connect() as conn:
+        conn.execute("UPDATE canonical_articles SET takedown_status='takedown' WHERE canonical_article_id=%s", (article,))
+    assert_unresolved()
+    with repo.connect() as conn:
+        conn.execute("UPDATE canonical_articles SET takedown_status='active' WHERE canonical_article_id=%s", (article,))
+
+    offer = quote()
+    assert offer['purchasable'] is True and 'configuration_unresolved' not in offer
+    order_key = str(uuid.uuid4())
+    receipt = checkout(buyer, order_key)
+    assert receipt['state'] == 'owned'
+    with repo.connect() as conn:
+        conn.execute("UPDATE canonical_articles SET membership_status='retired' WHERE canonical_article_id=%s", (article,))
+
+    assert_unresolved()
+    assert checkout(buyer, order_key) == receipt
+    assert checkout(buyer) == receipt
+    assert call(service, 'grants/check', dict(scope, **buyer))['order_id'] == receipt['order_id']
+    assert call(service, 'library', dict(buyer, cursor='', limit=20))['items'][0]['library_item_id'] == receipt['order_id']
+    with pytest.raises(commerce.CommerceError, match='CONFIGURATION_UNRESOLVED'):
+        checkout(other)

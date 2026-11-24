@@ -232,6 +232,30 @@ func TestCommerceUnverifiedEngineMarketDoesNotOfferCheckout(t *testing.T) {
 	}
 }
 
+func TestCommerceUnresolvedConfigurationDoesNotOfferCheckout(t *testing.T) {
+	s, cookie, csrf := commerceTestAPI(t, commerceFixture(func(_ context.Context, operation string, _ []byte, _ string) (int, []byte, error) {
+		switch operation {
+		case "quote":
+			return 200, []byte(`{"version":"v1","product_key":"workshop-configuration-v1","configuration_id":"` + commerceConfigID + `","region":"US","configuration_label":"2016 Ford Truck Expedition 4WD","amount_minor":2000,"currency":"USD","purchase_terms_version":"workshop-v1","purchasable":false,"configuration_unresolved":true}`), nil
+		case "checkouts":
+			return 409, []byte(`{"error":{"code":"CONFIGURATION_UNRESOLVED"}}`), nil
+		}
+		t.Fatalf("unexpected operation %s", operation)
+		return 0, nil, nil
+	}))
+	quote := customerHTTP(t, s.Handler(), "GET", "/v1/workshop/quote?configuration_id="+commerceConfigID+"&region=US", "", nil, cookie)
+	var offer commerceQuote
+	if quote.Code != 200 || json.Unmarshal(quote.Body.Bytes(), &offer) != nil || offer.Purchasable ||
+		strings.Contains(quote.Body.String(), "configuration_unresolved") {
+		t.Fatalf("public quote = %d %s", quote.Code, quote.Body.String())
+	}
+	headers := map[string]string{"Content-Type": "application/json", "Origin": "https://cars.example", "X-CSRF-Token": csrf, "Idempotency-Key": commerceOrderID}
+	checkout := customerHTTP(t, s.Handler(), "POST", "/v1/workshop/checkout-sessions", commerceCheckoutBody, headers, cookie)
+	if checkout.Code != 409 || commerceErrorCode(checkout.Body.Bytes()) != "CONFIGURATION_UNRESOLVED" {
+		t.Fatalf("checkout = %d %s", checkout.Code, checkout.Body.String())
+	}
+}
+
 func TestCommerceOrderResumeLinkRequiresOwnerAndValidOpenPair(t *testing.T) {
 	hosted := "https://checkout.stripe.com/c/pay/fixture#opaque%2Ffragment"
 	future := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)

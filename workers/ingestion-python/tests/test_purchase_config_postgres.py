@@ -41,7 +41,7 @@ def purchase_fixture(task59_required):
     fresh = next(databases)
     try:
         repo = fresh()
-        config = str(seed_configuration(repo, seed_vehicle(repo)))
+        config = str(seed_configuration(repo, seed_vehicle(repo), engine_displacement_l=2.0))
         stripe = StripeFixture()
         now = [datetime.now(UTC)]
         enabled = PurchaseConfig.from_public(dict(enabled=True, terms_version='workshop-v1',
@@ -166,7 +166,7 @@ def test_late_settlement_refund_and_reconciliation_while_paused(purchase_fixture
     from autodata_ingestion.payment_reconciliation import reconcile_pending_payments
     from autodata_ingestion.catalog_service import _ensure_lifecycle_catalog
     f=purchase_fixture;first=checkout(f)
-    other=str(seed_configuration(f['repo'],seed_vehicle(f['repo'])))
+    other=str(seed_configuration(f['repo'],seed_vehicle(f['repo']),engine_displacement_l=2.0))
     second=checkout(f,configuration=other)
     pause(f);calls=len(f['stripe'].create_attempts);sid=settle(f,first)
     sid2=settle(f,second)
@@ -197,7 +197,7 @@ def test_stale_public_config_rejected_through_go_authority_bridge(purchase_fixtu
     f=purchase_fixture;artifact=Path(os.environ['AUTODATA_PURCHASE_CONFIG_ARTIFACT_DIR'])
     go=shutil.which('go');assert go,'pinned Go binary missing'
     open_key=str(uuid.uuid4());opened=checkout(f,open_key)
-    other=str(seed_configuration(f['repo'],seed_vehicle(f['repo'])))
+    other=str(seed_configuration(f['repo'],seed_vehicle(f['repo']),engine_displacement_l=2.0))
     creating_key=str(uuid.uuid4());f['stripe'].lose_once=True;creating=checkout(f,creating_key,other)
     assert row(f,opened['order_id'])['status']=='open' and row(f,creating['order_id'])['status']=='creating'
     token='task59-fixture-'+uuid.uuid4().hex

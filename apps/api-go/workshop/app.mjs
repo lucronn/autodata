@@ -390,8 +390,11 @@ function pickerChoice(name, item) {
   return {
     value: String(item.id ?? item.year),
     label: selectorLabel(name, item),
-    disabled: name === "configuration" && item.engine_variant_market_unverified === true,
+    disabled: name === "configuration" && configurationChoiceDisabled(item),
   };
+}
+function configurationChoiceDisabled(item) {
+  return item.configuration_unresolved === true || item.engine_variant_market_unverified === true;
 }
 function pickerOption({ value, label, disabled }) {
   const option = new Option(label, value);
@@ -462,13 +465,12 @@ async function refreshPicker(name) {
         if (!data.items.length) return;
         picker.incomplete = data.complete !== true;
         rememberSelector(picker.path, name, data);
-        if (name === "configuration" && rows[name].some((item) => item.engine_variant_market_unverified === true)) {
+        if (name === "configuration" && rows[name].some(configurationChoiceDisabled)) {
           const refreshed = new Map(data.items.map((item) => [String(item.id), item]));
           const options = new Map(Array.from(select.options, (option) => [option.value, option]));
           rows[name] = rows[name].map((item) => {
             const current = refreshed.get(String(item.id));
-            if (item.engine_variant_market_unverified !== true || !current ||
-                current.engine_variant !== item.engine_variant || current.engine_variant_market_unverified === true)
+            if (!configurationChoiceDisabled(item) || !current || current.engine_variant !== item.engine_variant)
               return item;
             const choice = pickerChoice(name, current);
             const option = options.get(choice.value);
@@ -591,6 +593,15 @@ async function loadOptions(name, g, desired = "", initial = null) {
     throw new Error(
       "This saved vehicle choice is unavailable. Choose another vehicle.",
     );
+  if (name === "configuration") {
+    const desiredChoice = desired && result.items.find(choice);
+    if (desiredChoice && configurationChoiceDisabled(desiredChoice))
+      throw new Error("This saved configuration is unverified. Choose an available engine or trim.");
+    if (result.items.length && result.items.every(configurationChoiceDisabled)) {
+      status("No verified engine or trim is available for this vehicle. Choose another vehicle.");
+      return;
+    }
+  }
   status(
     result.items.length
       ? "Choose your vehicle to continue."

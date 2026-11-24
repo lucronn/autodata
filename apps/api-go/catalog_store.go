@@ -65,6 +65,7 @@ type CatalogConfiguration struct {
 	Engine                        string `json:"engine,omitempty"`
 	EngineVariant                 string `json:"engine_variant,omitempty"`
 	EngineVariantMarketUnverified bool   `json:"engine_variant_market_unverified,omitempty"`
+	ConfigurationUnresolved       bool   `json:"configuration_unresolved,omitempty"`
 	BodyStyle                     string `json:"body_style,omitempty"`
 	Drivetrain                    string `json:"drivetrain,omitempty"`
 	Complete                      bool   `json:"complete"`
@@ -689,14 +690,45 @@ func (s *postgresCatalogStore) Models(ctx context.Context, _ Principal, year int
 	return result, rows.Err()
 }
 
-func (s *postgresCatalogStore) Configurations(ctx context.Context, _ Principal, year int, makeName, model, region string) ([]CatalogConfiguration, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT vc.vehicle_configuration_id::text, vc.vehicle_id::text,
+const catalogConfigurationFields = `vc.vehicle_configuration_id::text, vc.vehicle_id::text,
 		       vib.model_year, vib.make, vib.model, vib.region,
 		       COALESCE(vc.trim, ''), COALESCE(vc.engine_displacement_l::text, ''), COALESCE(vc.engine_variant, ''),
 		       vc.engine_variant IS NOT NULL AND NOT vc.engine_variant_market_verified,
 		       COALESCE(btrim(vib.body_style), ''), COALESCE(btrim(vib.drivetrain), ''),
-		       vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
+		       vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected',
+		       CASE
+		         WHEN COALESCE(vc.trim, '') ~ '[^[:space:]]' OR vc.engine_displacement_l IS NOT NULL
+		           OR COALESCE(vc.engine_variant, '') ~ '[^[:space:]]'
+		           OR COALESCE(vib.drivetrain, '') ~ '[^[:space:]]' THEN false
+		         ELSE NOT (
+		           EXISTS (
+		             SELECT 1 FROM vehicle_provider_mappings mapping
+		             WHERE mapping.vehicle_id = vc.vehicle_id
+		               AND mapping.vehicle_configuration_id = vc.vehicle_configuration_id
+		               AND mapping.provider IN ('bankone','banktwo')
+		               AND mapping.entity_type = 'car' AND mapping.mapping_status = 'verified'
+		             GROUP BY mapping.provider
+		             HAVING count(DISTINCT mapping.provider_id) = 1
+		               AND bool_and(mapping.provider_id ~ '[^[:space:]]')
+		           )
+		           OR EXISTS (
+		             SELECT 1 FROM catalog_article_provider_scopes scope
+		             WHERE scope.scope_key = 'configuration:' || vc.vehicle_configuration_id::text
+		               AND scope.provider_slug IN ('bankone','banktwo')
+		               AND scope.source_vehicle_ref ~ '[^[:space:]]'
+		           )
+		           OR EXISTS (
+		             SELECT 1 FROM canonical_articles article
+		             WHERE article.scope_key = 'configuration:' || vc.vehicle_configuration_id::text
+		               AND article.provider_slug IN ('bankone','banktwo')
+		               AND article.membership_status = 'active' AND article.takedown_status = 'active'
+		           )
+		         )
+		       END`
+
+func (s *postgresCatalogStore) Configurations(ctx context.Context, _ Principal, year int, makeName, model, region string) ([]CatalogConfiguration, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+catalogConfigurationFields+`
 		FROM vehicle_configurations vc
 		JOIN vehicle_identity_bases vib ON vib.vehicle_identity_base_id = vc.vehicle_identity_base_id
 		WHERE vib.model_year = $1 AND (LOWER(vib.make) = LOWER($2) OR ($5 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(vib.make), '[^a-z0-9]+', '-', 'g')) = $5))
@@ -714,6 +746,7 @@ func (s *postgresCatalogStore) Configurations(ctx context.Context, _ Principal, 
 		if err := rows.Scan(
 			&record.ID, &record.VehicleID, &record.Year, &record.Make, &record.Model, &record.Region,
 			&record.Trim, &record.Engine, &record.EngineVariant, &record.EngineVariantMarketUnverified, &record.BodyStyle, &record.Drivetrain, &record.Complete,
+			&record.ConfigurationUnresolved,
 		); err != nil {
 			return nil, err
 		}
@@ -799,12 +832,7 @@ func (s *postgresCatalogStore) ConfigurationByVehicle(ctx context.Context, _ Pri
 	}
 	var record CatalogConfiguration
 	err := s.pool.QueryRow(ctx, `
-		SELECT vc.vehicle_configuration_id::text, vc.vehicle_id::text,
-		       vib.model_year, vib.make, vib.model, vib.region,
-		       COALESCE(vc.trim, ''), COALESCE(vc.engine_displacement_l::text, ''), COALESCE(vc.engine_variant, ''),
-		       vc.engine_variant IS NOT NULL AND NOT vc.engine_variant_market_verified,
-		       COALESCE(btrim(vib.body_style), ''), COALESCE(btrim(vib.drivetrain), ''),
-		       vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
+		SELECT `+catalogConfigurationFields+`
 		FROM vehicle_configurations vc
 		JOIN vehicle_identity_bases vib ON vib.vehicle_identity_base_id = vc.vehicle_identity_base_id
 		WHERE (vc.vehicle_id = $1::uuid OR vc.vehicle_configuration_id = $1::uuid)
@@ -813,6 +841,7 @@ func (s *postgresCatalogStore) ConfigurationByVehicle(ctx context.Context, _ Pri
 		Scan(
 			&record.ID, &record.VehicleID, &record.Year, &record.Make, &record.Model, &record.Region,
 			&record.Trim, &record.Engine, &record.EngineVariant, &record.EngineVariantMarketUnverified, &record.BodyStyle, &record.Drivetrain, &record.Complete,
+			&record.ConfigurationUnresolved,
 		)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return CatalogConfiguration{}, ErrCatalogNotFound
