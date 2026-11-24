@@ -655,6 +655,29 @@ def _bound_correction_draft(cur, job, document):
     return binding, attempt["response"]
 
 
+def _validate_correction_rounds(rounds, *, limit, model, token, input_hash, revision):
+    if len(rounds) > limit or not isinstance(model, str) or not model.strip():
+        raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+    for number, attempt in enumerate(rounds, 1):
+        if (attempt["lease_token"] != token or attempt["attempt_number"] != number
+            or attempt["profile_version"] != SOURCE_BOUND_CORRECTION_PROFILE
+            or attempt["provider"] != "inception" or attempt["model"] != model
+            or attempt["input_hash"] != input_hash
+            or attempt["status"] != "succeeded" or attempt["error_code"] is not None
+            or attempt["dispatched_at"] is None or attempt["completed_at"] is None
+            or attempt["dispatched_at"] > attempt["completed_at"]
+            or attempt["canonical_article_revision_id"] != (revision if number == len(rounds) else None)):
+            raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+
+
+def _correction_round_bindings(rounds):
+    return [
+        {"attempt_id": str(row["rewrite_attempt_id"]), "prompt_hash": row["prompt_hash"],
+         "response_hash": row["response_hash"]}
+        for row in rounds
+    ]
+
+
 def resolve_source_bound_correction(cur, job, candidate):
     """Rebuild a correction and bind every provider round to its publication."""
     from .article_document import project_ordered_document
@@ -664,6 +687,7 @@ def resolve_source_bound_correction(cur, job, candidate):
     binding, previous = _bound_correction_draft(cur, job, source)
     metadata = candidate["model_metadata"]
     evidence = metadata.get("correction_evidence")
+    method = metadata.get("transformation_method")
     token = metadata.get("model_lease_token")
     revision = candidate["canonical_article_revision_id"]
     if (candidate["normalized_source_hash"] != digest_json(source)
@@ -671,34 +695,40 @@ def resolve_source_bound_correction(cur, job, candidate):
             "canonical_article_id", "source_revision_id", "normalization_version",
             "rewrite_profile_version", "transformation_key",
         ))
-        or metadata.get("transformation_method") != _CORRECTION_METHOD
         or metadata.get("profile_version") != SOURCE_BOUND_CORRECTION_PROFILE
         or not isinstance(evidence, dict) or type(token) is not int or not 1 <= token <= job["lease_token"]):
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
     rounds = cur.execute("""SELECT * FROM canonical_article_rewrite_attempts
         WHERE source_fetch_job_id=%s ORDER BY attempt_number,lease_token""", (job["source_fetch_job_id"],)).fetchall()
-    if len(rounds) > binding["model_call_budget"]:
-        raise ValueError(_CORRECTION_EVIDENCE_INVALID)
     if rounds:
-        model = metadata.get("model")
-        if metadata.get("provider") != "inception" or not isinstance(model, str) or not model.strip():
+        if metadata.get("provider") != "inception":
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
-        for number, attempt in enumerate(rounds, 1):
-            if (attempt["lease_token"] != token or attempt["attempt_number"] != number
-                or attempt["profile_version"] != SOURCE_BOUND_CORRECTION_PROFILE
-                or attempt["provider"] != metadata["provider"] or attempt["model"] != metadata["model"]
-                or attempt["input_hash"] != candidate["normalized_source_hash"]
-                or attempt["status"] != "succeeded" or attempt["error_code"] is not None
-                or attempt["dispatched_at"] is None or attempt["completed_at"] is None
-                or attempt["dispatched_at"] > attempt["completed_at"]
-                or attempt["canonical_article_revision_id"] != (revision if number == len(rounds) else None)):
-                raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+        _validate_correction_rounds(
+            rounds, limit=binding["model_call_budget"], model=metadata.get("model"), token=token,
+            input_hash=candidate["normalized_source_hash"], revision=revision,
+        )
     elif metadata.get("provider") != "server" or metadata.get("model") != _CORRECTION_SERVER:
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
-    result = replay_retained_correction(
-        source, previous, model_call_budget=binding["model_call_budget"], evidence=evidence, attempts=rounds,
-    )
+    if method == _CORRECTION_METHOD:
+        result = replay_retained_correction(
+            source, previous, model_call_budget=binding["model_call_budget"], evidence=evidence, attempts=rounds,
+        )
+    else:
+        from .procedure_rewrite_recovery import RECOVERY_METHOD, recover_retained_correction
+
+        recovery = metadata.get("correction_recovery")
+        if (method != RECOVERY_METHOD or not rounds or not isinstance(recovery, dict)
+            or recovery != job["checkpoint"].get("correction_recovery")
+            or recovery.get("attempts") != _correction_round_bindings(rounds)):
+            raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+        result = recover_retained_correction(
+            source, previous, model_call_budget=binding["model_call_budget"], attempts=rounds,
+        )
+        if (not recovery.get("terminal_error")
+            or result.evidence.get("original_error_code") != recovery["terminal_error"]):
+            raise ValueError(_CORRECTION_EVIDENCE_INVALID)
     if (result.error_code is not None or result.document is None
+        or result.evidence != evidence
         or result.document != candidate["canonical_document"]
         or digest_json(result.document) != candidate["rewrite_result_hash"]
         or project_ordered_document(result.document) != {
@@ -709,9 +739,122 @@ def resolve_source_bound_correction(cur, job, candidate):
     return result
 
 
+def _stage_correction_candidate(cur, job, document, result, *, model, token, attempts, recovery=None):
+    from .article_document import project_ordered_document
+
+    if result.error_code is not None or result.document is None:
+        raise ValueError(result.error_code or _CORRECTION_EVIDENCE_INVALID)
+    projection = project_ordered_document(result.document)
+    revision = uuid4()
+    metadata = {
+        "transformation_method": result.evidence["method"], "profile_version": SOURCE_BOUND_CORRECTION_PROFILE,
+        "provider": "inception" if attempts else "server", "model": model if attempts else _CORRECTION_SERVER,
+        "model_lease_token": token, "correction_evidence": result.evidence,
+    }
+    if recovery is not None:
+        metadata["correction_recovery"] = recovery
+    candidate = cur.execute("""INSERT INTO canonical_article_revisions
+        (canonical_article_revision_id,canonical_article_id,source_revision_id,transformation_key,
+         normalization_version,rewrite_profile_version,status,normalized_source_document,normalized_source_hash,
+         canonical_document,canonical_body,canonical_steps,canonical_images,validation_report,validation_hash,
+         rewrite_result_hash,model_metadata)
+        VALUES (%s,%s,%s,%s,%s,%s,'building',%s,%s,%s,%s,%s,%s,'{}',%s,%s,%s) RETURNING *""",
+        (revision, job["canonical_article_id"], job["source_revision_id"], job["transformation_key"],
+         job["normalization_version"], job["rewrite_profile_version"], Jsonb(document), digest_json(document),
+         Jsonb(result.document), projection["body"], Jsonb(projection["steps"]), Jsonb(projection["images"]),
+         digest_json({}), digest_json(result.document), Jsonb(metadata))).fetchone()
+    if attempts:
+        linked = cur.execute("""UPDATE canonical_article_rewrite_attempts SET canonical_article_revision_id=%s
+            WHERE rewrite_attempt_id=%s AND source_fetch_job_id=%s AND lease_token=%s AND status='succeeded'
+              AND canonical_article_revision_id IS NULL RETURNING rewrite_attempt_id""",
+            (revision, attempts[-1]["rewrite_attempt_id"], job["source_fetch_job_id"], token)).fetchone()
+        if linked is None:
+            raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+    validation = automatic_candidate_validation(cur, job, candidate, require_current=True)
+    validation_hash = digest_json(validation.report)
+    cur.execute("""UPDATE canonical_article_revisions
+        SET status='validated',validation_report=%s,validation_hash=%s WHERE canonical_article_revision_id=%s""",
+        (Jsonb(validation.report), validation_hash, revision))
+    return revision, validation_hash
+
+
+def recover_source_bound_correction(repo, article_id, *, expected_job_id, expected_source_revision_id, actor, reason):
+    """Stage a validated correction from the exact current terminal job's archived replies."""
+    from .procedure_rewrite_recovery import RECOVERY_METHOD, recover_retained_correction
+
+    article_id, expected_job_id, expected_source_revision_id = (
+        UUID(str(value)) for value in (article_id, expected_job_id, expected_source_revision_id)
+    )
+    if not all(
+        isinstance(value, str) and value.strip() and len(value) <= limit
+        and not any(ord(char) < 32 or ord(char) == 127 for char in value)
+        for value, limit in ((actor, 256), (reason, 2048))
+    ):
+        raise ValueError("SOURCE_BOUND_CORRECTION_RECOVERY_AUDIT_INVALID")
+    with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+        job = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s FOR UPDATE",
+                          (expected_job_id,)).fetchone()
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE",
+                              (article_id,)).fetchone()
+        if (job is None or article is None or job["canonical_article_id"] != article_id
+            or article["current_job_id"] != expected_job_id
+            or article["current_source_revision_id"] != expected_source_revision_id
+            or job["source_revision_id"] != expected_source_revision_id
+            or article["request_generation"] != job["request_generation"]
+            or article["target_normalization_version"] != job["normalization_version"]
+            or article["target_rewrite_profile_version"] != SOURCE_BOUND_CORRECTION_PROFILE
+            or job["rewrite_profile_version"] != SOURCE_BOUND_CORRECTION_PROFILE
+            or any(job[job_field] != article[article_field] for job_field, article_field in (
+                ("canonical_vehicle_id", "vehicle_id"), ("provider_slug", "provider_slug"),
+                ("source_vehicle_ref", "source_vehicle_ref"), ("source_article_ref", "source_article_ref"),
+            ))
+            or job["status"] != "dead_letter" or job["phase"] != "rewriting" or job["retryable"]
+            or not job["error_code"] or job["lease_owner"] is not None or job["next_attempt_at"] is not None
+            or article["current_canonical_revision_id"] is not None
+            or job["checkpoint"].get("candidate_revision_id") is not None
+            or "correction_recovery" in job["checkpoint"] or "new_article_rollout" in job["checkpoint"]):
+            raise ValueError("SOURCE_BOUND_CORRECTION_RECOVERY_STALE")
+        _require_source_bound_rewrite_rights(cur, job, article)
+        document = job["checkpoint"].get("normalized_document")
+        binding, previous = _bound_correction_draft(cur, job, document)
+        if cur.execute("SELECT 1 FROM canonical_article_revisions WHERE transformation_key=%s",
+                       (job["transformation_key"],)).fetchone():
+            raise ValueError("SOURCE_BOUND_CORRECTION_RECOVERY_STALE")
+        rounds = cur.execute("""SELECT * FROM canonical_article_rewrite_attempts
+            WHERE source_fetch_job_id=%s ORDER BY attempt_number,lease_token FOR UPDATE""",
+            (expected_job_id,)).fetchall()
+        if not rounds:
+            raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+        model, token = rounds[0]["model"], job["lease_token"]
+        _validate_correction_rounds(
+            rounds, limit=binding["model_call_budget"], model=model, token=token,
+            input_hash=job["checkpoint"]["normalized_hash"], revision=None,
+        )
+        result = recover_retained_correction(
+            document, previous, model_call_budget=binding["model_call_budget"], attempts=rounds,
+        )
+        if (result.evidence.get("method") != RECOVERY_METHOD
+            or result.evidence.get("original_error_code") != job["error_code"]):
+            raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+        _require_source_bound_rewrite_rights(cur, job, article)
+        recovery = {
+            "actor": actor, "reason": reason, "terminal_error": job["error_code"],
+            "attempts": _correction_round_bindings(rounds),
+        }
+        job["checkpoint"] = {**job["checkpoint"], "correction_recovery": recovery}
+        revision, validation_hash = _stage_correction_candidate(
+            cur, job, document, result, model=model, token=token, attempts=rounds, recovery=recovery,
+        )
+        cur.execute("""UPDATE source_fetch_jobs SET status='pending',phase='publishing',error_code=NULL,
+            checkpoint=(checkpoint-'rewrite_error_code')||%s,updated_at=clock_timestamp()
+            WHERE source_fetch_job_id=%s""",
+            (Jsonb({"candidate_revision_id": str(revision), "validation_hash": validation_hash,
+                    "correction_recovery": recovery}), expected_job_id))
+        return revision
+
+
 def run_source_bound_correction(repo, lease, document, *, model_client, hooks=None):
     """Durably dispatch and validate a corrective chain inside one lease."""
-    from .article_document import project_ordered_document
     from .procedure_rewrite_correction import correct_retained_draft
 
     input_hash = digest_json(document)
@@ -798,37 +941,11 @@ def run_source_bound_correction(repo, lease, document, *, model_client, hooks=No
     )
     if result.error_code is not None or result.document is None:
         raise ValueError(result.error_code or _CORRECTION_EVIDENCE_INVALID)
-    projection = project_ordered_document(result.document)
-    revision = uuid4()
-    metadata = {
-        "transformation_method": result.evidence["method"], "profile_version": SOURCE_BOUND_CORRECTION_PROFILE,
-        "provider": "inception" if attempts else "server", "model": model if attempts else _CORRECTION_SERVER,
-        "model_lease_token": lease.token, "correction_evidence": result.evidence,
-    }
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
         job = fence(cur)
-        candidate = cur.execute("""INSERT INTO canonical_article_revisions
-            (canonical_article_revision_id,canonical_article_id,source_revision_id,transformation_key,
-             normalization_version,rewrite_profile_version,status,normalized_source_document,normalized_source_hash,
-             canonical_document,canonical_body,canonical_steps,canonical_images,validation_report,validation_hash,
-             rewrite_result_hash,model_metadata)
-            VALUES (%s,%s,%s,%s,%s,%s,'building',%s,%s,%s,%s,%s,%s,'{}',%s,%s,%s) RETURNING *""",
-            (revision, job["canonical_article_id"], job["source_revision_id"], job["transformation_key"],
-             job["normalization_version"], job["rewrite_profile_version"], Jsonb(document), input_hash,
-             Jsonb(result.document), projection["body"], Jsonb(projection["steps"]), Jsonb(projection["images"]),
-             digest_json({}), digest_json(result.document), Jsonb(metadata))).fetchone()
-        if attempts:
-            linked = cur.execute("""UPDATE canonical_article_rewrite_attempts SET canonical_article_revision_id=%s
-                WHERE rewrite_attempt_id=%s AND source_fetch_job_id=%s AND lease_token=%s AND status='succeeded'
-                  AND canonical_article_revision_id IS NULL RETURNING rewrite_attempt_id""",
-                (revision, attempts[-1]["rewrite_attempt_id"], lease.job_id, lease.token)).fetchone()
-            if linked is None:
-                raise ValueError(_CORRECTION_EVIDENCE_INVALID)
-        validation = automatic_candidate_validation(cur, job, candidate, require_current=True)
-        validation_hash = digest_json(validation.report)
-        cur.execute("""UPDATE canonical_article_revisions
-            SET status='validated',validation_report=%s,validation_hash=%s WHERE canonical_article_revision_id=%s""",
-            (Jsonb(validation.report), validation_hash, revision))
+        revision, validation_hash = _stage_correction_candidate(
+            cur, job, document, result, model=model, token=lease.token, attempts=attempts,
+        )
         cur.execute("UPDATE source_fetch_jobs SET phase='publishing',checkpoint=checkpoint||%s WHERE source_fetch_job_id=%s",
             (Jsonb({"candidate_revision_id": str(revision), "rewrite_error_code": None,
                     "validation_hash": validation_hash}), lease.job_id))

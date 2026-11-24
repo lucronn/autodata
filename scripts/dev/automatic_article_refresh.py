@@ -8,6 +8,7 @@ With --source-bound-from, select one unpublished article to draft from its exist
 source revision and supply the UUID of its previous rejected job. Run
 article_worker.py --job-id with the returned job ID to process that exact job.
 Use --correct-from with a failed v2 job and a model-call budget for passage correction.
+Use --recover-from with a terminal v3 job to stage a correction from its saved replies.
 """
 import argparse
 import json
@@ -16,6 +17,7 @@ import sys
 from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "workers/ingestion-python/src"))
+from autodata_ingestion.article_lifecycle_store import recover_source_bound_correction
 from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILES, MAX_CORRECTION_CALLS
 from autodata_ingestion.procedure_rewrite_auto import PROFILE
 from autodata_ingestion.source_job_persistence import (
@@ -79,13 +81,15 @@ def main(argv=None, *, repo=None):
                           help="schedule one new draft from the selected article's retained source")
     drafting.add_argument("--correct-from", type=UUID, metavar="FAILED_V2_JOB_ID",
                           help="correct a failed draft against the same retained source")
+    drafting.add_argument("--recover-from", type=UUID, metavar="FAILED_V3_JOB_ID",
+                          help="stage a correction using this job's archived model replies")
     parser.add_argument("--model-call-budget", type=int, metavar=f"1-{MAX_CORRECTION_CALLS}")
     args = parser.parse_args(argv)
     if args.selection.stat().st_size > 64 * 1024:
         raise ValueError("AUTOMATIC_SELECTION_LIMIT")
     targets = selection(json.loads(args.selection.read_text()))
-    prior_job = args.source_bound_from or args.correct_from
-    if prior_job is not None and (len(targets) != 1 or not args.apply):
+    retained_job = args.source_bound_from or args.correct_from or args.recover_from
+    if retained_job is not None and (len(targets) != 1 or not args.apply):
         parser.error("retained-source drafting requires one selected article and --apply")
     if args.correct_from is not None and (
         args.model_call_budget is None or not 1 <= args.model_call_budget <= MAX_CORRECTION_CALLS
@@ -96,19 +100,23 @@ def main(argv=None, *, repo=None):
     if repo is None:
         from autodata_ingestion.worker import ArticleRepository
         repo = ArticleRepository()
-    if prior_job is not None:
+    if retained_job is not None:
         target, = targets
         arguments = dict(
-            expected_job_id=prior_job, expected_source_revision_id=UUID(target["expected_source_revision_id"]),
+            expected_job_id=retained_job, expected_source_revision_id=UUID(target["expected_source_revision_id"]),
             actor=args.actor, reason=args.reason,
         )
         article_id = UUID(target["canonical_article_id"])
-        if args.correct_from is not None:
-            job = schedule_source_bound_correction(repo, article_id, model_call_budget=args.model_call_budget,
-                                                   **arguments)
+        if args.recover_from is not None:
+            revision = recover_source_bound_correction(repo, article_id, **arguments)
+            results = [{**target, "job_id": str(retained_job), "revision_id": str(revision), "action": "recovered"}]
         else:
-            job = schedule_source_bound_rewrite(repo, article_id, **arguments)
-        results = [{**target, "job_id": str(job.job_id), "action": "scheduled" if job.created else "joined_existing"}]
+            if args.correct_from is not None:
+                job = schedule_source_bound_correction(repo, article_id, model_call_budget=args.model_call_budget,
+                                                       **arguments)
+            else:
+                job = schedule_source_bound_rewrite(repo, article_id, **arguments)
+            results = [{**target, "job_id": str(job.job_id), "action": "scheduled" if job.created else "joined_existing"}]
     else:
         results = refresh_selected(repo, targets, actor=args.actor, reason=args.reason, apply=args.apply)
     print(json.dumps({"mode":"apply" if args.apply else "preview", "items":results}, sort_keys=True))
