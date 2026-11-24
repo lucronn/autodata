@@ -249,6 +249,7 @@ function resetReaderContent() {
   $("reader-vehicle").textContent = "";
   $("reader-engine").textContent = "";
   $("print").disabled = true;
+  $("print-status").hidden = true;
   document.body.dataset.printable = "false";
 }
 function clearUnavailableArticle() {
@@ -1285,35 +1286,21 @@ function addImage(parent, image, reference, g, figures = null, useAltCaption = f
     figure.append(element("figcaption", visibleCaption));
   parent.append(figure);
 }
-function startArticleFigures(figures, g) {
-  if (new Set(figures.map(({ url }) => url)).size < 7) {
-    for (const { img, url } of figures) img.src = url;
-    return null;
+function startArticleFigures(figures) {
+  const loadNearViewport = new Set(figures.map(({ url }) => url)).size >= 7;
+  for (const { img, url } of figures) {
+    if (loadNearViewport) {
+      img.loading = "lazy";
+      img.dataset.figurePending = "";
+      img.addEventListener("load", () => { delete img.dataset.figurePending; }, { once: true });
+    }
+    img.src = url;
   }
-  // Give the first figures a short head start on a shared connection. Every
-  // remaining figure still loads eagerly once the lead figure arrives.
-  const leading = new Set();
-  const remaining = [];
-  const first = figures[0].img;
-  const release = () => {
-    clearTimeout(timer);
-    first.removeEventListener("load", release);
-    window.removeEventListener("beforeprint", release);
-    g.signal.removeEventListener("abort", release);
-    for (const { img, url } of remaining.splice(0))
-      if (g.current() && img.isConnected) img.src = url;
-  };
-  const timer = setTimeout(release, 250);
-  first.addEventListener("load", release, { once: true });
-  window.addEventListener("beforeprint", release, { once: true });
-  g.signal.addEventListener("abort", release, { once: true });
-  for (const figure of figures) {
-    if (leading.size < 2 || leading.has(figure.url)) {
-      leading.add(figure.url);
-      figure.img.src = figure.url;
-    } else remaining.push(figure);
-  }
-  return { figures, release, printing: false };
+  return figures.length ? { figures, printing: false } : null;
+}
+function releaseArticleFigures(group) {
+  for (const { img } of group?.figures || [])
+    if (img.isConnected && img.loading === "lazy") img.loading = "eager";
 }
 function appendSource(parent, block, review, g) {
   const href = sourceReferenceURL(review, block);
@@ -1589,12 +1576,12 @@ function renderArticle(article, g, redraw = false) {
   }
   if (rebuildArticle) {
     const fragment = document.createDocumentFragment();
-    const figures = !openDemo && session.state.mode === "firebase" && article.content_origin === "canonical" &&
-      !processing && article.document?.blocks?.length ? [] : null;
+    const figures = !openDemo && session.state.mode === "firebase" && article.document?.blocks?.length ? [] : null;
     renderContent(fragment, article, g, figures);
     if (!g.current()) return;
     $("article-content").replaceChildren(fragment);
-    deferredArticleFigures = figures ? startArticleFigures(figures, g) : null;
+    deferredArticleFigures = figures ? startArticleFigures(figures) : null;
+    $("print-status").hidden = true;
     articleImageRefresh = null;
     sourceImageRefresh = null;
     renderedRevision = revision;
@@ -1882,12 +1869,14 @@ async function loadSource(value, g, blockID = null, { focusSource = false } = {}
     let targets = mountedSource?.targets;
     if (!keep) {
       const fragment = document.createDocumentFragment();
+      const figures = !openDemo && session.state.mode === "firebase" ? [] : null;
       targets = stable || blockID !== null ? new Map() : null;
-      if (blocks?.length) renderBlocks(fragment, blocks, images, null, g, targets);
+      if (blocks?.length) renderBlocks(fragment, blocks, images, null, g, targets, figures);
       else if (data.source?.format === "json")
         fragment.append(element("pre", data.content ?? ""));
       else fragment.append(element("p", "Stored source is unavailable."));
       $("source-review-frame").replaceChildren(fragment);
+      if (figures) startArticleFigures(figures);
       mountedSource = stable ? { key, signal: g.signal, articleRevision: renderedRevision, revision, assets, targets } : null;
       sourceImageRefresh = null;
       displayedSourceRevision = selected;
@@ -1920,6 +1909,12 @@ function handleSourceError(error, g) {
     resetSourceReview();
   }
   status(error.message || "Stored source is unavailable.", { error: true });
+}
+function recentImageRefresh(previous, refresh) {
+  const startedAt = Date.now();
+  // Offscreen figures may first load long after the previous renewal's signed URLs have expired.
+  return previous && startedAt >= previous.startedAt && startedAt - previous.startedAt < 30_000
+    ? previous : { startedAt, images: refresh() };
 }
 async function renewMedia(g, failed) {
   if (!g.current() || !currentArticle || !failed.isConnected) return;
@@ -1979,11 +1974,11 @@ async function renewMedia(g, failed) {
       return [];
     }
   };
-  // Later failures can reuse the same authorized response within this view.
+  // Coalesce a burst of failed figures while keeping later scrolls eligible for a fresh read.
   const pending = stored
-    ? (sourceImageRefresh ??= refresh())
-    : (articleImageRefresh ??= refresh());
-  const images = await pending;
+    ? (sourceImageRefresh = recentImageRefresh(sourceImageRefresh, refresh))
+    : (articleImageRefresh = recentImageRefresh(articleImageRefresh, refresh));
+  const images = await pending.images;
   if (!visible() || failed.dataset.replacement === "1") return;
   if (!current()) {
     // Media issued for the pre-publication view has a stale anchor.
@@ -2820,16 +2815,26 @@ async function printArticle() {
   const g = viewGeneration;
   if (!g?.current()) return;
   deferred.printing = true;
+  const message = $("print-status");
   try {
-    deferred.release();
-    const pending = deferred.figures.filter(({ img }) => !img.complete);
+    releaseArticleFigures(deferred);
+    const pending = deferred.figures.filter(({ img }) => img.isConnected && !img.complete);
     if (pending.length) {
+      message.textContent = "Loading illustrations for printing…";
+      message.hidden = false;
       await Promise.race([
         Promise.allSettled(pending.map(({ img }) => img.decode())),
-        delay(3000, g.signal),
+        delay(15_000, g.signal),
       ]);
     }
-    if (g.current() && deferred === deferredArticleFigures && session.state.authenticated) window.print();
+    if (!g.current() || deferred !== deferredArticleFigures || !session.state.authenticated) return;
+    if (deferred.figures.some(({ img }) => img.isConnected && (!img.complete || !img.naturalWidth))) {
+      message.textContent = "Some illustrations are still unavailable. Try printing again.";
+      message.hidden = false;
+      return;
+    }
+    message.hidden = true;
+    window.print();
   } catch (error) {
     if (!g.signal.aborted) throw error;
   } finally {
@@ -2837,6 +2842,9 @@ async function printArticle() {
   }
 }
 $("print").addEventListener("click", printArticle);
+window.addEventListener("beforeprint", () => {
+  if (document.body.dataset.printable === "true") releaseArticleFigures(deferredArticleFigures);
+});
 window.addEventListener("popstate", () => void restoreHistoryEntry());
 window.addEventListener("pagehide", () => invalidate());
 let lifecycleCheck = null;

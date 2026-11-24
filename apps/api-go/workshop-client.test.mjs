@@ -6185,7 +6185,7 @@ function articleMediaHarness(overrides = {}) {
   const body = new ArticleMediaNode('body'), nodes = new Map();
   const ids = ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items',
     'article-title', 'catalog-count', 'article-pages', 'article-page-range', 'article-prev', 'article-next',
-    'article-note', 'source-review-meta', 'source-review', 'source-review-title', 'print',
+    'article-note', 'source-review-meta', 'source-review', 'source-review-title', 'print', 'print-status',
     'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase', 'purchase-selection',
     'article-kind', 'article-reference', 'source-review-load', 'open-original', 'original-error', 'back-to-article', 'check-order',
     'library-more', 'library-message', 'library-title'];
@@ -6230,14 +6230,12 @@ function articleMediaHarness(overrides = {}) {
 }
 
 function warmFigureHarness({ count = 7, origin = 'canonical', repeated = false } = {}) {
-  const timers = new Map(), timeout = deferredAuthOperation(), printed = [];
+  const timeout = deferredAuthOperation(), printed = [];
   const window = Object.assign(new EventTarget(), { print() { printed.push(true); } });
   const h = articleMediaHarness({
     session: { state: { authenticated: true, mode: 'firebase' } }, window,
-    setTimeout(callback, duration) { timers.set(callback, duration); return callback; },
-    clearTimeout(callback) { timers.delete(callback); },
     delay(ms, signal) {
-      assert.equal(ms, 3000);
+      assert.equal(ms, 15_000);
       signal.addEventListener('abort', () => timeout.reject(signal.reason), { once: true });
       return timeout.promise;
     },
@@ -6247,49 +6245,54 @@ function warmFigureHarness({ count = 7, origin = 'canonical', repeated = false }
   const blocks = assets.map(({ id }) => ({ type: 'image', asset_id: id }));
   const content = h.render(mediaArticle(blocks, assets, { content_origin: origin }));
   const images = mediaDescendants(content, 'img');
-  runInNewContext(appSection('async function printArticle()', '$("print").addEventListener'), h.context);
-  return { ...h, window, timers, timeout, printed, images,
-    starts: () => images.flatMap(node => node.src ? [node.dataset.assetId] : []) };
+  runInNewContext(appSection('async function printArticle()', '$("print").addEventListener') +
+    appSection('window.addEventListener("beforeprint"', 'window.addEventListener("popstate"'), h.context);
+  return { ...h, window, timeout, printed, images };
 }
 
-test('many settled paid figures give the leading pair first use of the connection', () => {
-  for (const action of ['lead load', 'timeout', 'browser print', 'navigate', 'new revision']) {
-    const h = warmFigureHarness();
-    assert.deepEqual(h.starts(), ['figure-0', 'figure-1'], action);
-    assert.deepEqual([...h.timers.values()], [250], action);
-    const [release] = h.timers.keys();
-    if (action === 'lead load') h.images[0].dispatch('load');
-    else if (action === 'browser print') h.window.dispatchEvent(new Event('beforeprint'));
-    else if (action === 'navigate') h.navigation.clear();
-    else {
-      if (action === 'new revision') h.render(mediaArticle([{ type: 'paragraph', text: 'New view' }], [], { view_revision: 'replacement' }));
-      release();
-    }
-    assert.equal(h.timers.size, 0, action);
-    assert.equal(h.starts().length, ['navigate', 'new revision'].includes(action) ? 2 : 7, action);
+test('paid documents with many distinct figures load near the viewport and keep a placeholder until decode', () => {
+  for (const origin of ['canonical', 'source']) {
+    const h = warmFigureHarness({ origin });
+    assert.ok(h.images.every(image => image.src && image.loading === 'lazy' && Object.hasOwn(image.dataset, 'figurePending')));
+    h.images[0].dispatch('load');
+    assert.equal(Object.hasOwn(h.images[0].dataset, 'figurePending'), false);
+    assert.ok(Object.hasOwn(h.images[1].dataset, 'figurePending'));
+    h.window.dispatchEvent(new Event('beforeprint'));
+    assert.ok(h.images.every(image => image.loading === 'eager'));
   }
-
-  for (const options of [{ count: 6 }, { origin: 'source' }, { repeated: true }]) {
+  for (const options of [{ count: 6 }, { repeated: true }]) {
     const h = warmFigureHarness(options);
-    assert.equal(h.starts().length, h.images.length);
-    assert.equal(h.timers.size, 0);
+    assert.ok(h.images.every(image => image.src && image.loading !== 'lazy' && !Object.hasOwn(image.dataset, 'figurePending')));
   }
 });
 
-test('early reader Print releases all selected images and remains bounded on decode failure', async () => {
-  for (const finish of ['decoded', 'failed', 'timeout', 'navigate']) {
+test('reader Print releases offscreen images and waits for loaded figures or a visible failure marker', async () => {
+  for (const finish of ['decoded', 'marked unavailable', 'failed', 'timeout', 'navigate']) {
     const h = warmFigureHarness();
     const decoding = deferredAuthOperation();
     for (const image of h.images) image.decode = () => decoding.promise;
     const printing = h.context.printArticle();
-    assert.equal(h.starts().length, 7, finish);
+    assert.ok(h.images.every(image => image.loading === 'eager'), finish);
     assert.deepEqual(h.printed, [], finish);
+    assert.match(h.nodes.get('print-status').textContent, /Loading illustrations/, finish);
     if (finish === 'navigate') h.navigation.clear();
     else if (finish === 'timeout') h.timeout.resolve();
     else if (finish === 'failed') decoding.reject(new Error('Image could not be decoded'));
-    else decoding.resolve();
+    else {
+      for (const image of h.images) {
+        image.complete = true;
+        image.naturalWidth = 200;
+      }
+      if (finish === 'marked unavailable') {
+        h.images[0].naturalWidth = 0;
+        h.context.showUnavailableImage(h.images[0]);
+      }
+      decoding.resolve();
+    }
     await printing;
-    assert.deepEqual(h.printed, finish === 'navigate' ? [] : [true], finish);
+    const ready = finish === 'decoded' || finish === 'marked unavailable';
+    assert.deepEqual(h.printed, ready ? [true] : [], finish);
+    if (finish !== 'navigate') assert.equal(h.nodes.get('print-status').hidden, ready, finish);
   }
 });
 
@@ -7920,6 +7923,38 @@ test('a figure that fails later reuses the refreshed article links', async () =>
   assert.equal(later.isConnected, true);
   assert.equal(requests, 1);
 });
+
+for (const stored of [false, true]) {
+  test(`a delayed ${stored ? 'Original' : 'article'} figure renews expired media with a fresh scoped read`, async () => {
+    let now = 1000, reads = 0;
+    let openedSource = false;
+    function nextImages() {
+      const revision = ++reads;
+      return ['list', 'callout'].map(id => ({ id, url: mediaURL(`${id}-${revision}`) }));
+    }
+    const article = renewalFixture();
+    const h = articleMediaHarness({
+      Date: { now: () => now },
+      requestArticleJSON: async () => ({ status: 200, data: { article: { ...article, images: nextImages() } } }),
+      requestJSON: async () => {
+        const images = openedSource ? nextImages() : article.images;
+        openedSource = true;
+        return { source: { url: mediaSourceURL }, document: article.document, images };
+      },
+    });
+    const publisher = h.render(article);
+    if (stored) await h.context.loadSource(mediaSourceURL, h.g);
+    const body = stored ? h.nodes.get('source-review-frame') : publisher;
+    const [first, late] = mediaDescendants(body, 'img');
+    await h.context.renewMedia(h.g, first);
+    assert.ok(first.src.endsWith('list-1'));
+    now += 301_000;
+    await h.context.renewMedia(h.g, late);
+    assert.equal(reads, 2);
+    assert.ok(late.src.endsWith('callout-2'));
+    assert.ok(late.isConnected);
+  });
+}
 
 test('a pinned source figure refreshes only the selected source after article media have refreshed', async () => {
   let articleRequests = 0, sourceRequests = 0;
