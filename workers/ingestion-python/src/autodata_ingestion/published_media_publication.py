@@ -108,7 +108,8 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
     )
 
 
-def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fixture_mode, lock):
+def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fixture_mode, lock, expected_profile=None):
+    from .retained_procedure_repair import METHOD as RETAINED_PROCEDURE_REPAIR_METHOD, resolve_retained_procedure_repair
     from .staged_media_reply_recovery import METHOD as STAGED_MEDIA_REPLY_RECOVERY_METHOD
 
     article_id = article["canonical_article_id"]
@@ -126,7 +127,7 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
 
     profile = row["rewrite_profile_version"]
     if (profile not in (*AUTOMATIC_REWRITE_PROFILES, REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2)
-        or profile != article["target_rewrite_profile_version"]
+        or profile != (expected_profile or article["target_rewrite_profile_version"])
         or row["normalization_version"] != article["target_normalization_version"]):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PROFILE_UNSUPPORTED")
     job = cur.execute("""
@@ -163,6 +164,11 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
             authors.add(correction["actor"])
         if set(reason["retention_reviews"]) != set(validation.report.get("retained_paths", [])):
             raise ValueError("PUBLISHED_MEDIA_REPAIR_REVIEW_REQUIRED")
+    elif row["model_metadata"].get("transformation_method") == RETAINED_PROCEDURE_REPAIR_METHOD:
+        recovered = resolve_retained_procedure_repair(cur, job, article, row)
+        validation, attempt, response, prompt_version = (
+            recovered.validation, recovered.attempt, recovered.response, recovered.prompt_version,
+        )
     elif profile in AUTOMATIC_REWRITE_PROFILES:
         validation = automatic_candidate_validation(cur, job, row)
         attempt = _saved_attempt(cur, revision_id, job["source_fetch_job_id"])

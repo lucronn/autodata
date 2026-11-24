@@ -1515,6 +1515,7 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
     from .article_lifecycle_types import digest_json
     from .article_document import project_ordered_document
     from .procedure_rewrite import validate_article_rewrite
+    from .retained_procedure_repair import METHOD as RETAINED_PROCEDURE_REPAIR_METHOD, resolve_retained_procedure_repair
     from .staged_media_reply_recovery import METHOD, verify_staged_media_reply_recovery
     job=cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s FOR UPDATE",(lease.job_id,)).fetchone()
     if job is None or job["lease_token"]!=lease.token: raise LeaseLost("publication owner changed")
@@ -1532,9 +1533,12 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
     if row is None: raise ValueError("missing candidate")
     projection=project_ordered_document(row["canonical_document"])
     profile = job["rewrite_profile_version"]
-    archived_reply_recovery = row["model_metadata"].get("transformation_method") == METHOD
-    if archived_reply_recovery:
+    method = row["model_metadata"].get("transformation_method")
+    archived_reply_recovery = method in (METHOD, RETAINED_PROCEDURE_REPAIR_METHOD)
+    if method == METHOD:
         validation = verify_staged_media_reply_recovery(cur, job, article, row)
+    elif method == RETAINED_PROCEDURE_REPAIR_METHOD:
+        validation = resolve_retained_procedure_repair(cur, job, article, row, publishing=True).validation
     elif profile in AUTOMATIC_REWRITE_PROFILES:
         validation = automatic_candidate_validation(cur, job, row, require_current=True)
     elif profile == "full-prose-review-v1":
