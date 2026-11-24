@@ -1,6 +1,16 @@
+from copy import deepcopy
+import json
+
 import pytest
 
-from autodata_ingestion.procedure_rewrite_recovery import _equivalent_wording
+from autodata_ingestion.article_lifecycle_types import digest_json
+from autodata_ingestion.procedure_rewrite_auto import build_auto_prompt
+from autodata_ingestion.procedure_rewrite_recovery import (
+    FIRST_DRAFT_RECOVERY_METHOD,
+    _equivalent_wording,
+    recover_first_draft,
+)
+from test_procedure_rewrite_full import document, response
 
 
 @pytest.mark.parametrize(("original", "expected"), [
@@ -30,3 +40,42 @@ def test_equivalent_wording_keeps_source_parts_conditions_and_references(origina
 ])
 def test_equivalent_wording_leaves_unrecognized_passages_to_the_original_checks(original):
     assert _equivalent_wording(original) is None
+
+
+def test_first_draft_recovers_an_echo_with_the_saved_reply_unchanged():
+    source = document("Remove the left-side shield.", "Tighten the bolts to 25 Nm.")
+    raw = response("Remove the left-side shield.", "Tighten the bolts to 25 Nm.")
+    raw["replacements"][1].update(action="retain", reason="Preserve the torque value.")
+    saved = deepcopy(raw)
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+
+    result = recover_first_draft(source, raw, prompt_version=version)
+
+    assert raw == saved
+    assert result.evidence["method"] == FIRST_DRAFT_RECOVERY_METHOD
+    assert result.evidence["original_error_code"] == "REWRITE_UNCHANGED"
+    assert result.evidence["raw_response_hash"] == digest_json(saved)
+    assert result.evidence["draft_hash"] == digest_json(result.response)
+    assert result.evidence["output_hash"] == digest_json(result.document)
+    assert result.evidence["corrected_paths"] == [raw["replacements"][0]["path"]]
+    assert result.response["replacements"][0]["text"] == "The left-side shield must be removed."
+    assert result.response["replacements"][1] == raw["replacements"][1]
+
+
+@pytest.mark.parametrize("unsafe", [
+    "Tighten the bolts to 20 Nm.",
+    "Loosen the bolts to 25 Nm.",
+])
+def test_first_draft_cannot_hide_a_second_row_failure_behind_a_copied_row(unsafe):
+    source = document("Remove the cover.", "Tighten the bolts to 25 Nm.")
+    raw = response("Remove the cover.", unsafe)
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    assert recover_first_draft(source, raw, prompt_version=version) is None
+
+
+def test_first_draft_keeps_a_retention_decision_for_the_normal_validator():
+    source = document("Remove the cover.")
+    raw = response("Remove the cover.")
+    raw["replacements"][0].update(action="retain", reason="Preserve the wording.")
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    assert recover_first_draft(source, raw, prompt_version=version) is None

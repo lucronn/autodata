@@ -28,12 +28,15 @@ class CopiedSource:
     _model = "fixture-original"
 
     def complete_json(self, prompt):
+        request = json.loads(prompt)
         return {
             "introduction": "This article describes service information.",
             "replacements": [{
                 "block_id": slot["block_id"], "path": slot["path"], "text": slot["text"],
-                "action": slot["required_action"], "reason": "Keep the protected source wording.",
-            } for slot in json.loads(prompt)["slots"]],
+                # Leave the first draft unresolved so this fixture can reach v2/v3.
+                "action": "retain" if request["profile_version"] == AUTOMATIC_REWRITE_PROFILE else slot["required_action"],
+                "reason": "Keep the protected source wording.",
+            } for slot in request["slots"]],
         }
 
 
