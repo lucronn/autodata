@@ -9,6 +9,9 @@ test('HTML starts only the isolated bootstrap', () => {
   assert.match(source('index.html'), /Test checkout — no real charge/);
   assert.match(source('index.html'), /Sample — fictional content/);
 });
+test('the entry page preloads the catalog helper before starting bootstrap', () => {
+  assert.match(source('index.html'), /rel="modulepreload" href="\/workshop\/catalog\.mjs"[\s\S]*src="\/workshop\/bootstrap\.mjs"/);
+});
 test('sign-in is inert in initial HTML until async app readiness', () => {
   const button = source('index.html').match(/<button\b[^>]*\bid="signin"[^>]*>/)?.[0];
   assert.ok(button, 'the sign-in button must be present');
