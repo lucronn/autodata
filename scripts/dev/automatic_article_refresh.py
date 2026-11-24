@@ -8,6 +8,7 @@ With --source-bound-from, select one unpublished article to draft from its exist
 source revision and supply the UUID of its previous rejected job. Run
 article_worker.py --job-id with the returned job ID to process that exact job.
 Use --correct-from with a failed v2 job and a model-call budget for passage correction.
+Add --by-sentence to try a sentence pass on the remaining rejected prose.
 Use --recover-from with a terminal v3 job to stage a correction from its saved replies.
 """
 import argparse
@@ -20,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "workers/ingestion-
 from autodata_ingestion.article_lifecycle_store import recover_source_bound_correction
 from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILES, MAX_CORRECTION_CALLS
 from autodata_ingestion.procedure_rewrite_auto import PROFILE
+from autodata_ingestion.procedure_rewrite_sentence_correction import MAX_SENTENCE_CORRECTION_CALLS
 from autodata_ingestion.source_job_persistence import (
     refresh_article_job, schedule_source_bound_correction, schedule_source_bound_rewrite,
 )
@@ -84,6 +86,7 @@ def main(argv=None, *, repo=None):
     drafting.add_argument("--recover-from", type=UUID, metavar="FAILED_V3_JOB_ID",
                           help="stage a correction using this job's archived model replies")
     parser.add_argument("--model-call-budget", type=int, metavar=f"1-{MAX_CORRECTION_CALLS}")
+    parser.add_argument("--by-sentence", action="store_true", help="use sentence correction for the selected failed draft")
     args = parser.parse_args(argv)
     if args.selection.stat().st_size > 64 * 1024:
         raise ValueError("AUTOMATIC_SELECTION_LIMIT")
@@ -97,6 +100,8 @@ def main(argv=None, *, repo=None):
         parser.error(f"--correct-from requires --model-call-budget from 1 through {MAX_CORRECTION_CALLS}")
     if args.correct_from is None and args.model_call_budget is not None:
         parser.error("--model-call-budget requires --correct-from")
+    if args.by_sentence and (args.correct_from is None or args.model_call_budget > MAX_SENTENCE_CORRECTION_CALLS):
+        parser.error(f"--by-sentence requires --correct-from and a budget of 1 through {MAX_SENTENCE_CORRECTION_CALLS}")
     if repo is None:
         from autodata_ingestion.worker import ArticleRepository
         repo = ArticleRepository()
@@ -113,6 +118,7 @@ def main(argv=None, *, repo=None):
         else:
             if args.correct_from is not None:
                 job = schedule_source_bound_correction(repo, article_id, model_call_budget=args.model_call_budget,
+                                                       by_sentence=args.by_sentence,
                                                        **arguments)
             else:
                 job = schedule_source_bound_rewrite(repo, article_id, **arguments)
