@@ -217,17 +217,25 @@ class CacheFirstCatalogService:
 
 _HYDRATION_LOCK = RLock()
 _HYDRATION_RESULTS: dict[str, tuple[float, dict[str, Any]]] = {}
-# Incomplete or failed hydration results are only replayed briefly so a
+# Incomplete, failed, or nondurable hydration results are only replayed briefly so a
 # polling caller does not re-traverse providers on every request, while a
 # transient source failure (rate limit, upstream outage) must never brick
 # the scope for the lifetime of the process.
 _HYDRATION_INCOMPLETE_TTL_SECONDS = 20.0
 
 
+def _configuration_completion_cached(result: Mapping[str, Any]) -> bool:
+    coverage = result.get("coverage")
+    return bool(result.get("complete")) and (
+        result.get("status") == "cache_hit"
+        or (isinstance(coverage, Mapping) and coverage.get("status") == "persisted")
+    )
+
+
 def _remember_configuration_result(key: str, result: dict[str, Any]) -> None:
     with _HYDRATION_LOCK:
         previous = _HYDRATION_RESULTS.get(key)
-        if result["complete"] or previous is None or not previous[1].get("complete"):
+        if previous is None or _configuration_completion_cached(result) or not _configuration_completion_cached(previous[1]):
             _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
 
 
@@ -341,9 +349,9 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
         previous = _HYDRATION_RESULTS.get(key)
         if previous is not None:
             cached_at, cached_result = previous
-            if cached_result.get("complete") or (
-                time.monotonic() - cached_at < _HYDRATION_INCOMPLETE_TTL_SECONDS
-            ):
+            complete = (_configuration_completion_cached(cached_result) if scope == "configurations"
+                        else cached_result.get("complete"))
+            if complete or time.monotonic() - cached_at < _HYDRATION_INCOMPLETE_TTL_SECONDS:
                 return deepcopy(cached_result)
 
     cached = request.get("cache")
@@ -425,15 +433,14 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             coverage = {"status": "not_complete"}
             if not resolved.rows or persistence.get("status") == "persisted":
                 coverage = _persist_hydration_scope(request, resolved)
-            complete = resolved.complete and coverage.get("status") == "persisted"
-            if not complete:
+            if not (isinstance(coverage, Mapping) and coverage.get("status") == "persisted"):
                 _configuration_diagnostic(request, stage="coverage_persistence", outcome="not_persisted", row_count=len(resolved.rows))
             result = {
                 "status": "cache_hit" if resolved.cache_hit else "hydrated",
                 "hydration_key": key,
                 "scope": scope,
-                "complete": complete,
-                "missing_scopes": [] if complete else list(resolved.missing_scopes or (scope,)),
+                "complete": resolved.complete,
+                "missing_scopes": list(resolved.missing_scopes),
                 "rows": list(resolved.rows),
                 "provenance": list(resolved.provenance),
                 "persistence": persistence,

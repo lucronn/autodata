@@ -162,7 +162,7 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 	storedOnly := catalogStoredSelector(request)
 	// Check before reading the rows. In-flight work can finish and persist rows
 	// while this request is reading, in which case another stored read is safe.
-	running := storedOnly && s.catalogHydrationRunning(payload)
+	running := s.catalogHydrationRunning(payload)
 	complete, providerComplete, statusErr := s.catalogConfigurationCoverage(request, principal, year, makeName, modelName, region)
 	items, err := s.catalog.Configurations(request.Context(), principal, year, makeName, modelName, region)
 	if err != nil {
@@ -179,6 +179,11 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 	// Keep recorded rows visible, and let current provider coverage settle a
 	// raw-only picker even when discovery finds no additional configuration.
 	scopeComplete := complete && (usable || len(items) == 0 || (rowsComplete && providerComplete))
+	// A new choice from the first provider must not let a legacy completion
+	// marker hide an in-flight check of the remaining providers.
+	if running && !providerComplete {
+		scopeComplete = false
+	}
 	discoveryInstance := ""
 	if !scopeComplete && s.ingestionClient != nil {
 		discoveryInstance = catalogDiscoveryInstance

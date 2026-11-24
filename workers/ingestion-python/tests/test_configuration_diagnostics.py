@@ -192,7 +192,7 @@ def _assert_configuration_marker(repo, providers, monkeypatch, caplog, outcome):
            'AUTODATA_SOURCE_BUCKET': 'configuration-diagnostic-' + uuid.uuid4().hex}
     for k, v in env.items():
         monkeypatch.setenv(k, v)
-    monkeypatch.setattr(catalog, '_configured_catalog_providers', lambda: tuple(providers))
+    monkeypatch.setattr(catalog, '_configured_catalog_providers', lambda **_: tuple(providers))
     if outcome == 'persistence_failure':
         monkeypatch.setattr(catalog, '_persist_resolved_catalog_rows', Mock(side_effect=ValueError(SECRET)))
     with repo.connect() as conn:

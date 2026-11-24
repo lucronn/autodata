@@ -271,43 +271,46 @@ func TestLegacyRawOnlyConfigurationsResumeDiscoveryAndSettle(t *testing.T) {
 	server := catalogServer(store)
 	server.ingestionClient = client
 	path := "/v1/catalog/years/2024/makes/acme/models/legacy-roadster/configurations?region=US"
-	assertState := func(suffix string, complete, hydrating bool, count int) {
+	assertState := func(suffix string, complete, hydrating, discovering bool, count int) {
 		t.Helper()
 		response := catalogRequest(server, path+suffix)
 		var body CatalogConfigurationsResponse
 		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || response.Code != http.StatusOK ||
-			body.Complete != complete || body.Hydrating != hydrating || body.Discovering ||
+			body.Complete != complete || body.Hydrating != hydrating || body.Discovering != discovering ||
 			len(body.Items) != count || !slices.Contains(body.Items, raw) {
 			t.Fatalf("state %q = %d %s (%v)", suffix, response.Code, response.Body, err)
 		}
 	}
 
-	assertState("&stored_only=1", false, false, 1)
-	assertState("", false, true, 1)
+	assertState("&stored_only=1", false, false, false, 1)
+	assertState("", false, true, false, 1)
 	select {
 	case <-client.started:
 	case <-time.After(time.Second):
 		t.Fatal("legacy raw configuration suppressed discovery")
 	}
-	assertState("&stored_only=1", false, true, 1)
-	assertState("", false, true, 1)
+	assertState("&stored_only=1", false, true, false, 1)
+	assertState("", false, true, false, 1)
+
+	store.PutConfiguration(CatalogConfiguration{ID: "verified-option", Year: 2024, Make: "Acme", Model: "Legacy Roadster",
+		Region: "US", Engine: "2.0", Complete: true})
+	assertState("&stored_only=1", false, false, true, 2)
+	assertState("", false, false, true, 2)
 
 	store.providerComplete = true
 	close(client.release)
 	released = true
-	assertState("&stored_only=1", true, false, 1)
+	assertState("&stored_only=1", true, false, false, 2)
 	// A later request must not schedule even after the first ensure exits.
 	payload := map[string]any{"scope": "configurations", "year": 2024, "make": "acme", "model": "legacy roadster", "region": "US"}
 	deadline := time.Now().Add(time.Second)
 	for server.catalogHydrationRunning(payload) && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	assertState("", true, false, 1)
+	assertState("", true, false, false, 2)
 
 	store.providerComplete = false
-	store.PutConfiguration(CatalogConfiguration{ID: "verified-option", Year: 2024, Make: "Acme", Model: "Legacy Roadster",
-		Region: "US", Engine: "2.0", Complete: true})
-	assertState("", true, false, 2)
+	assertState("", true, false, false, 2)
 }
 
 func TestCatalogMakesDeduplicateProviderLabelVariants(t *testing.T) {
