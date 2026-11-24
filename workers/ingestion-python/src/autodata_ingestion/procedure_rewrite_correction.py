@@ -234,15 +234,27 @@ def _validated_document(source, slots, draft, version):
     return candidate, None
 
 
-def replay_retained_correction(source, previous, *, model_call_budget, evidence, attempts):
+def correction_for_method(method):
+    if method == _CORRECTION_METHOD:
+        return correct_retained_draft
+    from .procedure_rewrite_sentence_correction import SENTENCE_CORRECTION_METHOD, correct_sentence_draft
+    if method == SENTENCE_CORRECTION_METHOD:
+        return correct_sentence_draft
+    raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
+
+
+def replay_retained_correction(source, previous, *, model_call_budget, evidence, attempts,
+                               method=_CORRECTION_METHOD):
     """Rebuild the draft from pinned prompt hashes and original provider replies."""
-    result = rebuild_retained_correction(source, previous, model_call_budget=model_call_budget, attempts=attempts)
+    result = rebuild_retained_correction(
+        source, previous, model_call_budget=model_call_budget, attempts=attempts, method=method,
+    )
     if result.evidence != evidence:
         raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
     return result
 
 
-def rebuild_retained_correction(source, previous, *, model_call_budget, attempts):
+def rebuild_retained_correction(source, previous, *, model_call_budget, attempts, method=_CORRECTION_METHOD):
     """Reproduce the original method, including the prompts in a failed archive."""
     rounds = iter(attempts)
 
@@ -255,7 +267,7 @@ def rebuild_retained_correction(source, previous, *, model_call_budget, attempts
             raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
         return attempt["response"]
 
-    result = correct_retained_draft(
+    result = correction_for_method(method)(
         source, previous, complete_json=from_saved, model_call_budget=model_call_budget,
     )
     if next(rounds, None) is not None:

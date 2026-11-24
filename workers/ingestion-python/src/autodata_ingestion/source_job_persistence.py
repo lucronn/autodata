@@ -294,21 +294,25 @@ def source_bound_correction_prior_attempt(cur, prior_job):
 
 def schedule_source_bound_correction(
     repo, canonical_article_id, *, expected_job_id, expected_source_revision_id, actor, reason, model_call_budget,
+    by_sentence=False,
 ):
     """Queue an explicit correction of an unchanged source and its bound failed v2 draft."""
-    if type(model_call_budget) is not int or not 1 <= model_call_budget <= MAX_CORRECTION_CALLS:
+    from .procedure_rewrite_sentence_correction import MAX_SENTENCE_CORRECTION_CALLS
+    limit = MAX_SENTENCE_CORRECTION_CALLS if by_sentence else MAX_CORRECTION_CALLS
+    if (type(by_sentence) is not bool or type(model_call_budget) is not int
+        or not 1 <= model_call_budget <= limit):
         raise ValueError("SOURCE_BOUND_CORRECTION_BUDGET_INVALID")
     return _schedule_source_bound_job(
         repo, canonical_article_id, expected_job_id=expected_job_id,
         expected_source_revision_id=expected_source_revision_id, actor=actor, reason=reason,
         prior_profile=SOURCE_BOUND_REWRITE_PROFILE, next_profile=SOURCE_BOUND_CORRECTION_PROFILE,
-        model_call_budget=model_call_budget,
+        model_call_budget=model_call_budget, by_sentence=by_sentence,
     )
 
 
 def _schedule_source_bound_job(
     repo, canonical_article_id, *, expected_job_id, expected_source_revision_id, actor, reason,
-    prior_profile, next_profile, model_call_budget=None,
+    prior_profile, next_profile, model_call_budget=None, by_sentence=False,
 ):
     canonical_article_id, expected_job_id, expected_source_revision_id = (
         UUID(str(value)) for value in (canonical_article_id, expected_job_id, expected_source_revision_id)
@@ -381,6 +385,11 @@ def _schedule_source_bound_job(
         ):
             raise ValueError("SOURCE_BOUND_REWRITE_PRIOR_JOB_CHANGED")
         if model_call_budget is not None:
+            if by_sentence:
+                from .article_lifecycle_store import _require_source_bound_rewrite_rights
+                from .procedure_rewrite_sentence_correction import SENTENCE_CORRECTION_METHOD
+                _require_source_bound_rewrite_rights(cur, prior, article)
+                binding["correction_method"] = SENTENCE_CORRECTION_METHOD
             attempt = source_bound_correction_prior_attempt(cur, prior)
             binding.update(
                 version=2, prior_attempt_id=str(attempt["rewrite_attempt_id"]),
@@ -570,6 +579,8 @@ def _claim_review_resume(cur, worker_id, job_id=None):
 def _claim_automatic_resume(cur, worker_id, job_id=None):
     """Saved successful auto output consumes publication leases, not model attempts."""
     from .article_lifecycle_store import automatic_candidate_validation
+    from .procedure_rewrite_correction import _CORRECTION_METHOD
+    from .procedure_rewrite_sentence_correction import SENTENCE_CORRECTION_METHOD
     job = cur.execute(f"""SELECT j.* FROM source_fetch_jobs j
         JOIN canonical_article_revisions r ON r.transformation_key=j.transformation_key
         WHERE j.job_kind='article' AND NOT (j.checkpoint ? 'bankone_exact_recovery') AND j.rewrite_profile_version=ANY(%s) AND (%s::uuid IS NULL OR j.source_fetch_job_id=%s)
@@ -577,7 +588,7 @@ def _claim_automatic_resume(cur, worker_id, job_id=None):
           AND (EXISTS (SELECT 1 FROM canonical_article_rewrite_attempts a WHERE a.canonical_article_revision_id=r.canonical_article_revision_id AND a.status='succeeded')
             OR r.model_metadata->>'transformation_method'='source-preserving-zero-slot-v1'
             OR (j.rewrite_profile_version='{SOURCE_BOUND_CORRECTION_PROFILE}'
-                AND r.model_metadata->>'transformation_method'='source-bound-passage-correction-v1'
+                AND r.model_metadata->>'transformation_method' IN ('{_CORRECTION_METHOD}','{SENTENCE_CORRECTION_METHOD}')
                 AND r.model_metadata->'correction_evidence'->'exchanges'='[]'::jsonb))
           AND r.status IN ('building','validated') AND j.checkpoint->>'rewrite_error_code' IS NULL
           AND j.checkpoint->>'candidate_revision_id'=r.canonical_article_revision_id::text

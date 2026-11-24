@@ -549,6 +549,23 @@ def _require_source_bound_rewrite_rights(cur, job, article):
                 )
             except (AttributeError, KeyError, TypeError, ValueError):
                 raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID") from None
+        if marker_version == 2 and "correction_method" in marker:
+            from .procedure_rewrite_sentence_correction import SENTENCE_CORRECTION_METHOD
+            if marker["correction_method"] != SENTENCE_CORRECTION_METHOD:
+                raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID")
+            try:
+                prior_id = UUID(marker["prior_job_id"])
+            except (AttributeError, KeyError, TypeError, ValueError):
+                raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID") from None
+            prior = cur.execute("""SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s
+                AND canonical_article_id=%s AND source_revision_id=%s AND rewrite_profile_version=%s""",
+                (prior_id, job["canonical_article_id"], job["source_revision_id"], SOURCE_BOUND_REWRITE_PROFILE),
+            ).fetchone()
+            if prior is None:
+                raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID")
+            # A v2 draft can be tied to a specific source-only observation.
+            _require_source_bound_rewrite_rights(cur, prior, article)
+            return
     if marker_version is not None:
         from .source_job_persistence import source_bound_rewrite_source_allowed
         if not source_bound_rewrite_source_allowed(
@@ -635,6 +652,11 @@ def _bound_correction_draft(cur, job, document):
         or checkpoint.get("normalized_document") != document
         or checkpoint.get("normalized_hash") != digest_json(document)):
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+    if "correction_method" in binding:
+        from .procedure_rewrite_sentence_correction import MAX_SENTENCE_CORRECTION_CALLS, SENTENCE_CORRECTION_METHOD
+        if (binding["correction_method"] != SENTENCE_CORRECTION_METHOD
+            or binding["model_call_budget"] > MAX_SENTENCE_CORRECTION_CALLS):
+            raise ValueError(_CORRECTION_EVIDENCE_INVALID)
     try:
         prior_id = UUID(binding["prior_job_id"])
     except (TypeError, ValueError, KeyError, AttributeError):
@@ -701,6 +723,7 @@ def resolve_source_bound_correction(cur, job, candidate):
     metadata = candidate["model_metadata"]
     evidence = metadata.get("correction_evidence")
     method = metadata.get("transformation_method")
+    scheduled_method = binding.get("correction_method", _CORRECTION_METHOD)
     token = metadata.get("model_lease_token")
     revision = candidate["canonical_article_revision_id"]
     if (candidate["normalized_source_hash"] != digest_json(source)
@@ -722,15 +745,17 @@ def resolve_source_bound_correction(cur, job, candidate):
         )
     elif metadata.get("provider") != "server" or metadata.get("model") != _CORRECTION_SERVER:
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
-    if method == _CORRECTION_METHOD:
+    if method == scheduled_method:
         result = replay_retained_correction(
             source, previous, model_call_budget=binding["model_call_budget"], evidence=evidence, attempts=rounds,
+            method=scheduled_method,
         )
     else:
         from .procedure_rewrite_recovery import RECOVERY_METHOD, recover_retained_correction
 
         recovery = metadata.get("correction_recovery")
-        if (method != RECOVERY_METHOD or not rounds or not isinstance(recovery, dict)
+        if (scheduled_method != _CORRECTION_METHOD or method != RECOVERY_METHOD
+            or not rounds or not isinstance(recovery, dict)
             or recovery != job["checkpoint"].get("correction_recovery")
             or recovery.get("attempts") != _correction_round_bindings(rounds)):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
@@ -830,6 +855,8 @@ def recover_source_bound_correction(repo, article_id, *, expected_job_id, expect
         _require_source_bound_rewrite_rights(cur, job, article)
         document = job["checkpoint"].get("normalized_document")
         binding, previous = _bound_correction_draft(cur, job, document)
+        if "correction_method" in binding:
+            raise ValueError("SOURCE_BOUND_CORRECTION_RECOVERY_STALE")
         if cur.execute("SELECT 1 FROM canonical_article_revisions WHERE transformation_key=%s",
                        (job["transformation_key"],)).fetchone():
             raise ValueError("SOURCE_BOUND_CORRECTION_RECOVERY_STALE")
@@ -868,7 +895,7 @@ def recover_source_bound_correction(repo, article_id, *, expected_job_id, expect
 
 def run_source_bound_correction(repo, lease, document, *, model_client, hooks=None):
     """Durably dispatch and validate a corrective chain inside one lease."""
-    from .procedure_rewrite_correction import correct_retained_draft
+    from .procedure_rewrite_correction import _CORRECTION_METHOD, correction_for_method
 
     input_hash = digest_json(document)
     model = getattr(model_client, "_model", "mercury-2")
@@ -949,7 +976,7 @@ def run_source_bound_correction(repo, lease, document, *, model_client, hooks=No
         attempts.append(saved)
         return reply
 
-    result = correct_retained_draft(
+    result = correction_for_method(binding.get("correction_method", _CORRECTION_METHOD))(
         document, previous, complete_json=complete_json, model_call_budget=binding["model_call_budget"],
     )
     if result.error_code is not None or result.document is None:
