@@ -11,8 +11,28 @@ export function selectorLabel(name, item) {
   return item.market_unverified === true ? `${item.name} · market unverified` : item.name;
 }
 
+const articleSearchWhitespace = /\p{White_Space}+/u;
+
+export function trimArticleSearch(value) {
+  return value.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '');
+}
+
+export function articleSearchParams(value) {
+  const query = trimArticleSearch(value);
+  return [...query].length > 120 || query.split(articleSearchWhitespace).length > 8
+    ? { title: query }
+    : { q: query };
+}
+
 export function filterArticles(items, query) {
-  const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const { title, q } = articleSearchParams(query);
+  if (title) {
+    // The API compares the full title with Unicode simple case folding.
+    const literal = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const exact = new RegExp(`^${literal}$`, 'iu');
+    return items.filter(item => exact.test(trimArticleSearch(item.title || '')));
+  }
+  const words = q.toLocaleLowerCase().split(articleSearchWhitespace).filter(Boolean);
   return items.filter(item => {
     const text = `${item.title || ''} ${item.component || ''} ${item.kind || ''}`.toLocaleLowerCase();
     return words.every(word => text.includes(word));

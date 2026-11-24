@@ -22,6 +22,7 @@ import {
 
 const {
   articlePresentation,
+  articleSearchParams,
   configurationLabel,
   selectorLabel,
   delay,
@@ -34,6 +35,7 @@ const {
   requestStoredSelector,
   selectedIndexSessionPreference,
   sourceReferenceURL,
+  trimArticleSearch,
   vehicleSelectorPath,
 } = catalog;
 
@@ -675,7 +677,7 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
   const authorizedLink = savedLink && !openDemo && session.state.authenticated &&
     session.state.mode === "firebase";
   const directArticle = authorizedLink && uuid(articleID);
-  const savedQuery = authorizedLink && !articleID ? $("search").value.trim() : "";
+  const savedQuery = authorizedLink && !articleID ? trimArticleSearch($("search").value) : "";
   const loadQuote = async () => {
     if (openDemo) return;
     if (merchantRequest) await merchantRequest;
@@ -731,7 +733,7 @@ async function loadSavedSearch(g, query, focusArticle = "") {
   $("completion-status").textContent = "";
   stage("articles");
   status("Searching your articles…", { busy: true });
-  const result = await requestJSON(articleRequestPath(undefined, "", { q: query }), { signal: g.signal })
+  const result = await requestJSON(articleRequestPath(undefined, "", articleSearchParams(query)), { signal: g.signal })
     .catch((error) => {
       if ([401, 403, 410].includes(error.status)) throw error;
       // Let the ordinary index remain usable if standalone search is unavailable.
@@ -800,7 +802,7 @@ async function loadArticles(g, articleID = "", { focusOnShow = false, focusArtic
         access = "owned";
         renderPurchase();
         show("catalog");
-        const query = $("search").value.trim();
+        const query = trimArticleSearch($("search").value);
         if (query && (searchQuery !== query ||
           (!searchPending && searchItems === null && !searchError) ||
           indexChanged ||
@@ -875,7 +877,7 @@ function searchHitsOnCurrentIndex(items) {
 }
 
 function scheduleArticleSearch({ fromIndex = false, restoreFocus } = {}) {
-  const query = $("search").value.trim();
+  const query = trimArticleSearch($("search").value);
   const refresh = fromIndex && query === searchQuery;
   if (refresh && searchPending) {
     searchRefreshPending = true;
@@ -900,11 +902,11 @@ function scheduleArticleSearch({ fromIndex = false, restoreFocus } = {}) {
   const vehicleID = vehicle.id;
   const region = vehicle.region;
   const current = () => generation.current() && vehicle?.id === vehicleID &&
-    vehicle?.region === region && $("search").value.trim() === query;
+    vehicle?.region === region && trimArticleSearch($("search").value) === query;
   const startSearch = () => {
     searchTimer = null;
     searchRefreshPending = false;
-    void requestJSON(articleRequestPath(undefined, "", { q: query }), {
+    void requestJSON(articleRequestPath(undefined, "", articleSearchParams(query)), {
       signal: generation.signal,
     }).then((result) => {
       if (!current()) return;
@@ -994,7 +996,7 @@ function renderArticleLinks(items) {
 function renderArticles({ keepFocus = true } = {}) {
   $("vehicle-caption").textContent =
     quote?.configuration_label || $("purchase-selection").textContent;
-  const query = $("search").value.trim();
+  const query = trimArticleSearch($("search").value);
   const searching = Boolean(query && searchQuery === query);
   const localSearch = searching && searchItems === null;
   const items = articleIndexItems(query);
@@ -1068,7 +1070,7 @@ function renderArticles({ keepFocus = true } = {}) {
 
 function focusArticleIndex(id) {
   if (id) {
-    const index = articleIndexItems($("search").value.trim()).findIndex((item) => item.id === id);
+    const index = articleIndexItems(trimArticleSearch($("search").value)).findIndex((item) => item.id === id);
     const page = Math.floor(index / articlePageSize);
     if (page >= 0 && page !== articlePage) {
       articlePage = page;
@@ -2487,7 +2489,7 @@ $("article-prev").addEventListener("click", () => moveArticlePage(-1));
 $("article-next").addEventListener("click", () => moveArticlePage(1));
 $("search").addEventListener("input", () => {
   updateURL({ replace: true });
-  const loadFullIndex = !$("search").value.trim() && !indexLoaded && access === "owned";
+  const loadFullIndex = !trimArticleSearch($("search").value) && !indexLoaded && access === "owned";
   if (loadFullIndex) indexComplete = false;
   scheduleArticleSearch();
   if (loadFullIndex) void operation((g) => loadArticles(g), () => restoreRoute());

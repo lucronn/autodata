@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
 import { pollOrder, purchaseConfiguration, readOrder, resumableCheckoutURL, sameScope, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
-import { articlePresentation, CatalogRequestError, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, vehicleSelectorPath } from './workshop/catalog.mjs';
+import { articlePresentation, articleSearchParams, CatalogRequestError, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, trimArticleSearch, vehicleSelectorPath } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 // The app sections below run without the module bootstrap. Model the ordinary
@@ -14,6 +14,8 @@ function runInNewContext(code, context) {
   context.resumableCheckoutURL ??= resumableCheckoutURL;
   context.sameScope ??= sameScope;
   context.demoPath ??= path => path;
+  context.articleSearchParams ??= articleSearchParams;
+  context.trimArticleSearch ??= trimArticleSearch;
   context.requestInitialYears ??= params => requestInitialYears(params, context.requestJSON);
   context.requestStoredSelector ??= requestStoredSelector;
   context.vehicleSelectorPath ??= vehicleSelectorPath;
@@ -276,6 +278,27 @@ test('search matches all words without changing catalog order or IDs', () => {
   assert.equal(configurationLabel({ engine: '2.0 L', trim: 'Sport' }), '2.0 L / Sport');
   assert.equal(configurationLabel({ engine: 'Hybrid' }), 'Hybrid');
   assert.equal(configurationLabel({}), 'Base configuration');
+});
+
+const longArticleTitle = 'Rear axle (A+B) [R.*] alignment and torque specifications after replacing the right side drive shaft';
+
+test('search switches to exact title beyond the protected keyword bounds', () => {
+  const eight = 'one two three four five six seven eight';
+  const nine = `${eight}\u0085nine`;
+  assert.deepEqual(articleSearchParams(`\u0085${eight}\u00a0`), { q: eight });
+  assert.deepEqual(articleSearchParams(nine), { title: nine });
+  assert.deepEqual(articleSearchParams('𐐀'.repeat(120)), { q: '𐐀'.repeat(120) });
+  assert.deepEqual(articleSearchParams('𐐀'.repeat(121)), { title: '𐐀'.repeat(121) });
+  assert.deepEqual(articleSearchParams('𐐀'.repeat(1000)), { title: '𐐀'.repeat(1000) });
+});
+
+test('local exact title matching trims and folds the whole literal title', () => {
+  const query = `ς ${longArticleTitle.toLowerCase()}`;
+  const exact = { id: 'exact', title: `\u0085Σ ${longArticleTitle}\u00a0` };
+  const extended = { id: 'extended', title: `${query} update` };
+  const component = { id: 'component', title: 'Other article', component: query };
+  const spacing = { id: 'spacing', title: query.replace('alignment and', 'alignment  and') };
+  assert.deepEqual(filterArticles([extended, component, exact, spacing], ` ${query} `), [exact]);
 });
 
 const scope = { configuration_id: '11111111-1111-4111-8111-111111111111', region: 'US' };
@@ -4295,6 +4318,29 @@ test('saved search still treats a grant denial as an authorization error', async
   assert.deepEqual(h.shown, []);
 });
 
+test('a saved long title uses one protected exact search and retains its article link', async () => {
+  const title = { id: 'long-title', title: longArticleTitle };
+  const h = articleIndexHarness([{
+    ...indexResponse('completed', { complete: true, items: [title] }),
+    configuration: { id: 'B', region: 'US' },
+  }]);
+  h.context.location = new URL(`https://cars.example/workshop/?configuration=B&region=US&q=${encodeURIComponent(longArticleTitle)}`);
+  h.$('search').value = h.context.location.searchParams.get('q');
+  const generation = h.navigation.next();
+  assert.equal(await h.context.loadSavedSearch(generation, h.$('search').value, title.id), true);
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.requests[0].signal, generation.signal);
+  assert.deepEqual(Object.fromEntries(new URL(h.requests[0].path, h.context.location).searchParams), {
+    title: longArticleTitle, region: 'US',
+  });
+  assert.equal(h.context.indexLoaded, false);
+  const link = h.context.document.activeElement;
+  const route = new URL(link.href, h.context.location).searchParams;
+  assert.equal(route.get('article'), title.id);
+  assert.equal(route.get('q'), longArticleTitle);
+  assert.equal(route.has('title'), false);
+});
+
 test('complete saved search can show an exact no-match result before the full index', async () => {
   const h = articleIndexHarness([{
     ...indexResponse('completed', { complete: true }), configuration: { id: 'B', region: 'US' },
@@ -4640,6 +4686,43 @@ test('Workshop input searches owned article content through protected index quer
   assert.equal(h.$('catalog-count').textContent, '1 articles');
 });
 
+test('pasting a long title immediately finds only its exact off-page match', async () => {
+  const article = { id: 'exact-title', title: longArticleTitle };
+  const others = Array.from({ length: 101 }, (_, index) => ({ id: `other-${index}`, title: `Service article ${index}` }));
+  others[0].title = `${longArticleTitle} supplement`;
+  others[1].component = longArticleTitle;
+  const response = deferredAuthOperation();
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [...others, article] }),
+    () => response.promise,
+  ]);
+  h.context.location = new URL('https://cars.example/workshop/?configuration=B&region=US');
+  h.context.names = [];
+  h.context.history = { replaceState(_state, _title, url) { h.context.location = new URL(url, h.context.location); } };
+  runInNewContext(appSection('function updateURL(', 'function rememberOrderRoute('), h.context);
+  await h.load();
+  assert.equal(h.$('article-page-range').textContent, '1–100 of 102');
+  const paste = ` ${longArticleTitle.toLowerCase()} `;
+  h.$('search').value = paste;
+  h.$('search').events.input();
+  const list = h.$('articles').firstElementChild;
+  assert.deepEqual(list.children.map(row => row.dataset.articleId), [article.id]);
+  assert.equal(h.$('article-pages').hidden, true);
+  assert.equal(h.context.location.searchParams.get('q'), paste);
+  assert.equal(h.context.location.searchParams.has('title'), false);
+  assert.deepEqual(Object.fromEntries(new URL(h.requests[1].path, h.context.location).searchParams), {
+    title: paste.trim(), region: 'US',
+  });
+  response.resolve(indexResponse('completed', { complete: true, items: [article] }));
+  await new Promise(setImmediate);
+  assert.deepEqual(list.children.map(row => row.dataset.articleId), [article.id]);
+  assert.equal(h.requests.length, 2);
+  h.$('search').value = '';
+  h.$('search').events.input();
+  assert.equal(h.$('article-page-range').textContent, '1–100 of 102');
+  assert.equal(h.requests.length, 2);
+});
+
 test('open demo content search keeps its access marker and excludes unreadable hits', async () => {
   const h = articleIndexHarness([
     indexResponse('completed', { complete: true, items: [
@@ -4844,7 +4927,7 @@ test('a complete index becoming incomplete retracts a definitive search no-match
   assert.doesNotMatch(h.$('no-results').textContent, /no articles match/i);
 });
 
-test('Workshop content search ignores a stale response after a newer query', async () => {
+test('Workshop aborts a stale exact title search after a newer keyword query', async () => {
   let resolveOld;
   const h = articleIndexHarness([
     indexResponse('completed', { complete: true, items: [{ id: 'index', title: 'Service notes' }] }),
@@ -4852,12 +4935,14 @@ test('Workshop content search ignores a stale response after a newer query', asy
     indexResponse('completed', { complete: true, items: [{ id: 'new', title: 'Battery service' }] }),
   ]);
   await h.load();
-  h.$('search').value = 'old';
+  h.$('search').value = longArticleTitle;
   h.$('search').events.input();
   h.$('search').value = 'battery';
   h.$('search').events.input();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.requests[1].signal.aborted, true);
+  assert.equal(new URL(h.requests[1].path, 'https://cars.example').searchParams.get('title'), longArticleTitle);
+  assert.equal(h.requests[2].path, '/v1/catalog/vehicles/B/articles?q=battery&region=US');
   assert.equal(h.$('articles').children[0].children[0].children[0].children[0].textContent, 'Battery service');
   resolveOld(indexResponse('completed', { complete: true, items: [{ id: 'old', title: 'Old result' }] }));
   await new Promise(resolve => setImmediate(resolve));
@@ -4882,14 +4967,14 @@ test('Workshop content search cannot publish after selected vehicle changes', as
   assert.equal(h.context.searchItems, null);
 });
 
-test('Workshop content search revocation clears private rows and returns to welcome', async () => {
+test('Workshop exact title search revocation clears private rows and returns to welcome', async () => {
   const denied = Object.assign(new Error('Grant revoked'), { status: 403 });
   const h = articleIndexHarness([
-    indexResponse('completed', { complete: true, items: [{ id: 'private', title: 'Private repair' }] }),
+    indexResponse('completed', { complete: true, items: [{ id: 'private', title: longArticleTitle }] }),
     () => Promise.reject(denied),
   ]);
   await h.load();
-  h.$('search').value = 'repair';
+  h.$('search').value = longArticleTitle;
   h.$('search').events.input();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.context.articles.length, 0);

@@ -6,10 +6,12 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // Catalog selector reads must remain responsive while a missing scope is
@@ -207,8 +209,9 @@ func (s *Server) catalogCanServeRows(response http.ResponseWriter, request *http
 
 func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http.Request, principal Principal) {
 	vehicleID := request.PathValue("vehicle_id")
-	queryValues := request.URL.Query()["q"]
-	if len(queryValues) > 1 {
+	filters, parseErr := url.ParseQuery(request.URL.RawQuery)
+	queryValues, titleValues := filters["q"], filters["title"]
+	if parseErr != nil || len(queryValues) > 1 || len(titleValues) > 1 || (len(queryValues) != 0 && len(titleValues) != 0) {
 		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "article search query is invalid", false)
 		return
 	}
@@ -220,6 +223,14 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 			return
 		}
 	}
+	title := ""
+	if len(titleValues) == 1 {
+		title = strings.TrimSpace(titleValues[0])
+		if title == "" || !utf8.ValidString(title) || utf8.RuneCountInString(title) > 1000 || strings.ContainsRune(title, 0) {
+			writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "article search title is invalid", false)
+			return
+		}
+	}
 	// Read progress before the rows. A completion committed after the row
 	// snapshot must not make that older snapshot look complete.
 	statusCtx, cancelStatus := context.WithTimeout(request.Context(), catalogStatusReadTimeout)
@@ -227,7 +238,8 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 	cancelStatus()
 	var items []CatalogArticle
 	var err error
-	if s.paidCatalogEnabled() {
+	paid := s.paidCatalogEnabled()
+	if paid {
 		if query == "" {
 			repository, ok := s.catalog.(paidArticleDescriptorStore)
 			if !ok {
@@ -253,7 +265,10 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	if scope, ok := request.Context().Value(paidCatalogContextKey{}).(paidCatalogContext); ok && scope.openDemo && query != "" {
+	if title != "" {
+		items = filterCatalogArticleTitle(items, title)
+	}
+	if scope, ok := request.Context().Value(paidCatalogContextKey{}).(paidCatalogContext); ok && scope.openDemo && (query != "" || title != "") {
 		available := make([]CatalogArticle, 0, len(items))
 		for _, item := range items {
 			if item.Availability == "available" {
@@ -262,10 +277,10 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		}
 		items = available
 	}
-	if s.paidCatalogEnabled() {
+	if paid || title != "" {
 		descriptors := make([]CatalogArticle, 0, len(items))
 		for _, item := range items {
-			if item.CanonicalArticleID == nil || item.ID != *item.CanonicalArticleID {
+			if paid && (item.CanonicalArticleID == nil || item.ID != *item.CanonicalArticleID) {
 				continue
 			}
 			item.Document, item.Body, item.Steps, item.Images = nil, "", nil, []CatalogImage{}
@@ -287,7 +302,7 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 	hydrating := progress != nil && !progress.Complete &&
 		(progress.Status == "pending" || progress.Status == "running" ||
 			(progress.Status == "failed" && progress.Retryable))
-	if !s.paidCatalogEnabled() && (progress == nil || !progress.Complete) && s.ingestionClient != nil {
+	if !paid && (progress == nil || !progress.Complete) && s.ingestionClient != nil {
 		ctx, cancel := context.WithTimeout(request.Context(), catalogStatusReadTimeout)
 		configuration, configurationErr := s.catalog.ConfigurationByVehicle(ctx, principal, vehicleID)
 		cancel()
