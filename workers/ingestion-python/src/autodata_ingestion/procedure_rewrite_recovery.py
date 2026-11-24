@@ -17,6 +17,12 @@ from .procedure_rewrite_correction import (
 
 RECOVERY_METHOD = "source-bound-correction-recovery-v1"
 FIRST_DRAFT_RECOVERY_METHOD = "source-bound-first-draft-recovery-v1"
+FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v2"
+FIRST_DRAFT_RECOVERY_METHODS = (FIRST_DRAFT_RECOVERY_METHOD, FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD)
+FIRST_DRAFT_RECOVERABLE_ERRORS = frozenset({
+    "REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR", "REWRITE_ACTION_MUTATION",
+    "REWRITE_QUALIFIER_MUTATION", "REWRITE_TECHNICAL_MUTATION",
+})
 _PART_WORD = r"[a-z]+(?:-[a-z]+)*"
 _PART = rf"{_PART_WORD}(?: {_PART_WORD}){{0,9}}"
 _REFERENCE = r"\([0-9]{1,4}\)"
@@ -33,6 +39,27 @@ _TIGHTEN_AFTER_CONTACT = re.compile(
     rf"the gasket makes contact with the (?P<surface>{_PART}) on the (?P<owner>{_PART})"
     rf"(?P<suffix>\.(?: ?{_REFERENCE})?)",
     re.I,
+)
+_INSTALL = re.compile(rf"Install (?P<article>the|a new) (?P<parts>{_PART})\.", re.I)
+_INSTALL_SECTION = re.compile(
+    rf"Install the (?P<part>{_PART})\. For additional information, refer to "
+    rf"(?:(?P<number>Section [0-9]{{3}}-[0-9]{{2}}[A-Z]?)|(?P<name>{_PART}) in this section) *\.",
+    re.I,
+)
+_COUNT = r"(?:[2-9]|[1-9][0-9]{1,2})"
+_FASTENERS = r"(?:bolts|nuts|screws|fasteners)"
+_POSITION_AND_INSTALL = re.compile(
+    rf"Position the (?P<part>{_PART}) and install the (?P<count>{_COUNT}) bolts finger tight\.", re.I,
+)
+_TIGHTEN_COUNTED = re.compile(
+    rf"Tighten the (?P<count>{_COUNT}) (?P<part>{_PART} )?(?P<fasteners>{_FASTENERS})\.", re.I,
+)
+_DIRECTIVE_LABEL_EXCLUSIONS = auto._TARGET_DELIMITERS | frozenset(
+    "against down during facing finger inside instead last must never no not only outside should tight together up".split()
+)
+_COMPONENT_ENDINGS = frozenset(
+    "belt bolt bolts bracket cover duct fasteners gasket housing mount nut nuts pipe plate pulley pump retainer "
+    "ring screw screws seal shield spacer tube".split()
 )
 
 
@@ -62,38 +89,40 @@ def _equivalent_wording(text):
     return None
 
 
-def recover_first_draft(source, raw, *, prompt_version):
-    """Recover verbatim echoes in one saved first draft through unchanged guards."""
-    if (not full._source_valid(source) or not isinstance(raw, dict)
-            or set(raw) != {"introduction", "replacements"}
-            or not isinstance(raw["introduction"], str) or not isinstance(raw["replacements"], list)):
-        return None
-    slots = full.prose_slots(source, include_cell_blocks=auto._include_cell_blocks(prompt_version))
-    if (prompt_version is None or not auto._uses_prose_guards(prompt_version, len(slots))
-            or len(raw["replacements"]) != len(slots)):
-        return None
-    draft = deepcopy(raw)
-    corrected_paths = []
-    for slot, row in zip(slots, draft["replacements"], strict=True):
-        if (not isinstance(row, dict) or set(row) != {"block_id", "path", "action", "text", "reason"}
-                or not all(isinstance(value, str) for value in row.values())
-                or row["block_id"] != slot["block_id"] or row["path"] != slot["path"]
-                or row["action"] not in {"retain", "rewrite"} or not row["text"].strip()):
-            return None
-        if row["action"] == "rewrite" and row["text"] == slot["text"]:
-            wording = _equivalent_wording(slot["text"])
-            if wording is None:
-                return None
-            row.update(text=wording, reason="Distinct source-bound prose.")
-            corrected_paths.append(slot["path"])
+def _plain_label(text):
+    return _DIRECTIVE_LABEL_EXCLUSIONS.isdisjoint(re.split(r"[\s-]+", text.casefold()))
+
+
+def _part_label(text):
+    return _plain_label(text) and text.casefold().split()[-1] in _COMPONENT_ENDINGS
+
+
+def _equivalent_directive(text):
+    """Recast complete instruction forms, keeping their parts and quantities literal."""
+    if match := _INSTALL_SECTION.fullmatch(text):
+        part, number, name = match["part"], match["number"], match["name"]
+        if _part_label(part) and (name is None or _plain_label(name)):
+            if number:
+                return f"Fit the {part}. Details are in {number}."
+            return f"Fit the {part}. See {name} in this section for details."
+    if match := _POSITION_AND_INSTALL.fullmatch(text):
+        if _part_label(match["part"]):
+            return f"Bring the {match['part']} into position. Install the {match['count']} bolts finger tight."
+    if match := _TIGHTEN_COUNTED.fullmatch(text):
+        part = match["part"] or ""
+        if _part_label(part + match["fasteners"]):
+            return f"Tighten each of the {match['count']} {part}{match['fasteners']}."
+    if match := _INSTALL.fullmatch(text):
+        article, parts = match["article"], match["parts"]
+        labels = [re.sub(r"^the ", "", part, flags=re.I) for part in re.split(r" and ", parts, flags=re.I)]
+        if (len(labels) <= 2 and all(_part_label(label) for label in labels)
+                and auto._execution_order(text) == ("install",)):
+            return f"{article.capitalize()} {parts} must be installed."
+    return None
+
+
+def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version, method, original_error):
     if not corrected_paths:
-        return None
-    try:
-        auto.render_auto(source, raw, prompt_version=prompt_version)
-    except ValueError as error:
-        if str(error) != "REWRITE_UNCHANGED":
-            return None
-    else:
         return None
     try:
         document = auto.render_auto(source, draft, prompt_version=prompt_version)
@@ -104,8 +133,8 @@ def recover_first_draft(source, raw, *, prompt_version):
     except ValueError:
         return None
     return CorrectionResult(draft, document, None, {
-        "method": FIRST_DRAFT_RECOVERY_METHOD,
-        "original_error_code": "REWRITE_UNCHANGED",
+        "method": method,
+        "original_error_code": original_error,
         "guard_version": prompt_version,
         "input_hash": digest_json(source),
         "raw_response_hash": digest_json(raw),
@@ -113,6 +142,69 @@ def recover_first_draft(source, raw, *, prompt_version):
         "output_hash": digest_json(document),
         "corrected_paths": corrected_paths,
     })
+
+
+def recover_first_draft(source, raw, *, prompt_version, method=None):
+    """Rebuild an automatic draft from the saved reply and source-only recasts."""
+    if (not full._source_valid(source) or not isinstance(raw, dict)
+            or set(raw) != {"introduction", "replacements"}
+            or not isinstance(raw["introduction"], str) or not isinstance(raw["replacements"], list)):
+        return None
+    if method is not None and method not in FIRST_DRAFT_RECOVERY_METHODS:
+        return None
+    slots = full.prose_slots(source, include_cell_blocks=auto._include_cell_blocks(prompt_version))
+    if (prompt_version is None or not auto._uses_prose_guards(prompt_version, len(slots))
+            or len(raw["replacements"]) != len(slots)):
+        return None
+    for slot, row in zip(slots, raw["replacements"], strict=True):
+        if (not isinstance(row, dict) or set(row) != {"block_id", "path", "action", "text", "reason"}
+                or not all(isinstance(value, str) for value in row.values())
+                or row["block_id"] != slot["block_id"] or row["path"] != slot["path"]
+                or row["action"] not in {"retain", "rewrite"} or not row["text"].strip()):
+            return None
+    try:
+        auto.render_auto(source, raw, prompt_version=prompt_version)
+    except ValueError as error:
+        original_error = str(error)
+    else:
+        return None
+    if original_error not in FIRST_DRAFT_RECOVERABLE_ERRORS:
+        return None
+    if method != FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD and original_error == "REWRITE_UNCHANGED":
+        draft = deepcopy(raw)
+        corrected = []
+        for slot, row in zip(slots, draft["replacements"], strict=True):
+            if row["action"] == "rewrite" and row["text"] == slot["text"]:
+                if wording := _equivalent_wording(slot["text"]):
+                    row.update(text=wording, reason="Distinct source-bound prose.")
+                    corrected.append(slot["path"])
+        legacy = _validate_first_draft(
+            source, raw, draft, corrected, prompt_version=prompt_version,
+            method=FIRST_DRAFT_RECOVERY_METHOD, original_error=original_error,
+        )
+        if legacy is not None:
+            return legacy
+    if method == FIRST_DRAFT_RECOVERY_METHOD:
+        return None
+    invalid = {issue["path"]: issue["code"] for issue in auto.failed_rewrite_passages(
+        source, raw, prompt_version=prompt_version,
+    )}
+    draft = deepcopy(raw)
+    corrected = []
+    for slot, row in zip(slots, draft["replacements"], strict=True):
+        error = invalid.get(slot["path"])
+        if row["action"] != "rewrite" or error not in FIRST_DRAFT_RECOVERABLE_ERRORS:
+            continue
+        wording = _equivalent_directive(slot["text"])
+        if wording is None and row["text"] == slot["text"]:
+            wording = _equivalent_wording(slot["text"])
+        if wording is not None:
+            row.update(text=wording, reason="Distinct source-bound prose.")
+            corrected.append(slot["path"])
+    return _validate_first_draft(
+        source, raw, draft, corrected, prompt_version=prompt_version,
+        method=FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD, original_error=original_error,
+    )
 
 
 def recover_retained_correction(source, previous, *, model_call_budget, attempts, preserve_notes=False):

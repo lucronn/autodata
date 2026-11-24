@@ -1188,11 +1188,12 @@ def _require_full_approval(cur, job, article, candidate):
 
 def resolve_first_draft_recovery(candidate, attempt, *, prompt_version):
     """Replay a recovered v1 candidate from its original, unchanged provider reply."""
-    from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHOD, recover_first_draft
+    from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHODS, recover_first_draft
 
     source = candidate["normalized_source_document"]
     metadata = candidate["model_metadata"]
-    if (metadata.get("transformation_method") != FIRST_DRAFT_RECOVERY_METHOD
+    method = metadata.get("transformation_method")
+    if (method not in FIRST_DRAFT_RECOVERY_METHODS
         or candidate["rewrite_profile_version"] != AUTOMATIC_REWRITE_PROFILE
         or prompt_version is None or attempt is None
         or attempt["profile_version"] != AUTOMATIC_REWRITE_PROFILE
@@ -1207,7 +1208,7 @@ def resolve_first_draft_recovery(candidate, attempt, *, prompt_version):
         or attempt["input_hash"] != candidate["normalized_source_hash"]
         or attempt["prompt_hash"] != metadata.get("prompt_hash")):
         raise ValueError("FIRST_DRAFT_RECOVERY_BINDING_INVALID")
-    recovered = recover_first_draft(source, attempt["response"], prompt_version=prompt_version)
+    recovered = recover_first_draft(source, attempt["response"], prompt_version=prompt_version, method=method)
     if (recovered is None or recovered.error_code is not None
         or recovered.evidence != metadata.get("first_draft_recovery")
         or recovered.document != candidate["canonical_document"]
@@ -1292,10 +1293,10 @@ def automatic_candidate_validation(cur, job, candidate, *, require_current=False
     )
     if prompt_version is None:
         raise ValueError("automatic saved prompt binding mismatch")
-    from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHOD
+    from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHODS
 
     response = attempt["response"]
-    if candidate["model_metadata"].get("transformation_method") == FIRST_DRAFT_RECOVERY_METHOD:
+    if candidate["model_metadata"].get("transformation_method") in FIRST_DRAFT_RECOVERY_METHODS:
         response = resolve_first_draft_recovery(candidate, attempt, prompt_version=prompt_version).response
     validation = validate_auto(
         source, candidate["canonical_document"], response=response, prompt_version=prompt_version,
@@ -1379,6 +1380,7 @@ def store_rewrite_result(repo,lease,result):
 def _store_rewrite_result(repo,lease,result):
     from .article_lifecycle_types import digest_json
     from .article_document import project_ordered_document
+    from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERABLE_ERRORS
     from hashlib import sha256
     import json
     projection = None
@@ -1408,9 +1410,9 @@ def _store_rewrite_result(repo,lease,result):
             raise ValueError("rewrite input/output binding mismatch")
         recovered = None
         prompt_version = None
-        if result.profile_version == AUTOMATIC_REWRITE_PROFILE and result.error_code == "REWRITE_UNCHANGED":
+        if result.profile_version == AUTOMATIC_REWRITE_PROFILE and result.error_code in FIRST_DRAFT_RECOVERABLE_ERRORS:
             from .procedure_rewrite_auto import _auto_prompt_version
-            from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHOD, recover_first_draft
+            from .procedure_rewrite_recovery import recover_first_draft
 
             source = job["checkpoint"]["normalized_document"]
             if (result.document != source or result.input_hash != digest_json(source)
@@ -1430,7 +1432,7 @@ def _store_rewrite_result(repo,lease,result):
             if prompt_version is not None:
                 recovered = recover_first_draft(source, result.raw_response, prompt_version=prompt_version)
             if recovered is not None and (recovered.document is None or recovered.error_code is not None
-                    or recovered.evidence.get("method") != FIRST_DRAFT_RECOVERY_METHOD):
+                    or recovered.evidence.get("original_error_code") != result.error_code):
                 raise ValueError("FIRST_DRAFT_RECOVERY_BINDING_INVALID")
         if result.profile_version == "full-prose-review-v1" and not result.error_code:
             from .procedure_rewrite_full import render_full, validate_full
@@ -1457,7 +1459,7 @@ def _store_rewrite_result(repo,lease,result):
                 result = replace(
                     result, document=document, output_hash=output_hash, error_code=None,
                     changed_slots=tuple(validation.report["changed_slots"]),
-                    model_metadata={**result.model_metadata, "transformation_method": FIRST_DRAFT_RECOVERY_METHOD,
+                    model_metadata={**result.model_metadata, "transformation_method": recovered.evidence["method"],
                                     "first_draft_recovery": recovered.evidence},
                 )
                 projection = project_ordered_document(document)

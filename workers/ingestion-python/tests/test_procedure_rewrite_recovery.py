@@ -6,7 +6,9 @@ import pytest
 from autodata_ingestion.article_lifecycle_types import digest_json
 from autodata_ingestion.procedure_rewrite_auto import build_auto_prompt
 from autodata_ingestion.procedure_rewrite_recovery import (
+    FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
     FIRST_DRAFT_RECOVERY_METHOD,
+    _equivalent_directive,
     _equivalent_wording,
     recover_first_draft,
 )
@@ -78,4 +80,71 @@ def test_first_draft_keeps_a_retention_decision_for_the_normal_validator():
     raw = response("Remove the cover.")
     raw["replacements"][0].update(action="retain", reason="Preserve the wording.")
     version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    assert recover_first_draft(source, raw, prompt_version=version) is None
+
+
+def test_recovers_installation_directives_without_reusing_the_model_mutations():
+    source = document(
+        "Install a new reservoir gasket and spacer.",
+        "Install the mounting ring and the bolts.",
+        "Position the bracket and install the 3 bolts finger tight.",
+        "Install the outlet shield. For additional information, refer to Section 410-07C .",
+        "Install the return duct. For additional information, refer to Duct Routing in this section.",
+        "Tighten the 3 return bracket nuts.",
+    )
+    raw = response(
+        "Put in a new reservoir gasket and spacer.",
+        "Place the mounting ring and the bolts.",
+        "Position the bracket and install the 4 bolts finger tight.",
+        "Put the outlet shield in place. Consult Section 310-07C.",
+        "Put the return duct in place and see the next section.",
+        "Tighten the 3 return bracket nuts.",
+        introduction="This procedure covers the assembly instructions.",
+    )
+    preserved = deepcopy(raw)
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    result = recover_first_draft(source, raw, prompt_version=version)
+
+    assert result is not None
+    assert [row["text"] for row in result.response["replacements"]] == [
+        "A new reservoir gasket and spacer must be installed.",
+        "The mounting ring and the bolts must be installed.",
+        "Bring the bracket into position. Install the 3 bolts finger tight.",
+        "Fit the outlet shield. Details are in Section 410-07C.",
+        "Fit the return duct. See Duct Routing in this section for details.",
+        "Tighten each of the 3 return bracket nuts.",
+    ]
+    assert raw == preserved
+    assert result.evidence["method"] == FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD
+    assert result.evidence["raw_response_hash"] == digest_json(raw)
+    assert result.evidence["corrected_paths"] == [row["path"] for row in raw["replacements"]]
+    assert recover_first_draft(source, raw, prompt_version=version, method=FIRST_DRAFT_RECOVERY_METHOD) is None
+    assert recover_first_draft(
+        source, raw, prompt_version=version, method=FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
+    ) == result
+
+
+@pytest.mark.parametrize("original", [
+    "Install the cover only after the adhesive sets.",
+    "Install the cover or shim.",
+    "Install the seal and tighten the ring.",
+    "Install the ring during removal.",
+    "Install the captive washer flat side down.",
+    "Install the backing plate last.",
+    "Install the new bracket only-if fitted.",
+    "Position the bracket and install the 3 bolts finger tight before lowering it.",
+    "Tighten the 3 return bracket nuts to 8 N·m.",
+    "Tighten the 1 nut.",
+])
+def test_directive_recovery_leaves_conditional_or_unrecognized_forms_unedited(original):
+    assert _equivalent_directive(original) is None
+
+
+def test_directive_recovery_rejects_an_unbound_introduction_and_misaligned_rows():
+    source = document("Tighten the 3 return bracket nuts.")
+    raw = response("Tighten the 4 return bracket nuts.", introduction="Apply 18 N·m as instructed.")
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    assert recover_first_draft(source, raw, prompt_version=version) is None
+    raw["introduction"] = "This procedure describes the fastener work."
+    raw["replacements"][0]["block_id"] = "unrelated-block"
     assert recover_first_draft(source, raw, prompt_version=version) is None
