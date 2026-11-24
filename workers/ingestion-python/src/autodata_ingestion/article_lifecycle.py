@@ -71,7 +71,7 @@ def _capture_context(repo,lease):
         vehicle={"make":row["make"],"model":row["model"],"year":row["model_year"],"model_year":row["model_year"],"region":row["region"]}
         evidence=[str(row["descriptor_source_snapshot_id"]),str(row["resolution_source_snapshot_id"])]
         if row["vehicle_configuration_id"] is not None:
-            configuration=cur.execute("""SELECT c.trim,c.engine_displacement_l,b.body_style,b.drivetrain,
+            configuration=cur.execute("""SELECT c.trim,c.engine_displacement_l,c.engine_variant,b.body_style,b.drivetrain,b.region,
                 c.source_snapshot_id,c.extraction_evidence_id,b.source_snapshot_id AS base_snapshot_id,
                 b.extraction_evidence_id AS base_evidence_id FROM vehicle_configurations c
                 JOIN vehicle_identity_bases b ON b.vehicle_identity_base_id=c.vehicle_identity_base_id AND b.vehicle_id=c.vehicle_id
@@ -82,9 +82,13 @@ def _capture_context(repo,lease):
                 if configuration[name] is not None:vehicle[name]=configuration[name]
             displacement=configuration["engine_displacement_l"]
             if displacement is not None:vehicle["engine_displacement_l"]=float(displacement)
+            variant = configuration["engine_variant"]
+            if variant is not None:
+                vehicle["engine_variant"] = variant
+                vehicle["region"] = configuration["region"]
             label=" ".join(str(value).strip() for value in (
                 configuration["trim"],f"{displacement:.1f}L" if displacement is not None else None,
-                configuration["drivetrain"]) if value not in (None,""))
+                variant,configuration["drivetrain"]) if value not in (None,""))
             if label:vehicle["configuration"]=label
             evidence.extend(str(configuration[name]) for name in ("source_snapshot_id","extraction_evidence_id","base_snapshot_id","base_evidence_id"))
         key=ArticleKey(row["provider_slug"],row["vehicle_id"],row["vehicle_configuration_id"],row["source_vehicle_ref"],row["source_article_ref"])

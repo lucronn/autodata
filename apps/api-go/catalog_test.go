@@ -369,6 +369,32 @@ func TestCatalogSourceJSONIsEscapedForBrowserRendering(t *testing.T) {
 	}
 }
 
+func TestLegacyArticleListKeepsVariantRowsWithoutGenericHydration(t *testing.T) {
+	configuration := CatalogConfiguration{
+		ID: "cfg-cng", VehicleID: "vehicle-cng", Year: 2020, Make: "Chevy Truck", Model: "Express 4500",
+		Region: "US", Engine: "6.0", EngineVariant: "CNG",
+	}
+	store := newMemoryCatalogStore()
+	store.PutConfiguration(configuration)
+	store.PutArticle(CatalogArticle{ID: "existing-article", VehicleID: configuration.VehicleID, Title: "Service information"})
+	server := catalogServer(store)
+	capture := &blockingCatalogHydrationClient{started: make(chan struct{}), release: make(chan struct{}), finished: make(chan struct{})}
+	defer close(capture.release)
+	server.ingestionClient = capture
+
+	response := catalogRequest(server, "/v1/catalog/vehicles/vehicle-cng/articles")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Service information") {
+		t.Fatalf("legacy article list = %d %s", response.Code, response.Body.String())
+	}
+	if server.catalogHydrationRunning(map[string]any{
+		"scope": "articles", "vehicle_id": configuration.VehicleID, "year": configuration.Year,
+		"make": configuration.Make, "model": configuration.Model, "region": configuration.Region,
+		"trim": configuration.Trim, "engine": configuration.Engine,
+	}) {
+		t.Fatal("qualified configuration initiated a generic legacy source read")
+	}
+}
+
 func TestCatalogArticleAliasUsesCachedDetailWithoutHydratingAgain(t *testing.T) {
 	store := newMemoryCatalogStore()
 	store.PutConfiguration(CatalogConfiguration{

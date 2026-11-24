@@ -327,7 +327,8 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 			!s.catalogCanServeRows(response, request, len(items), configurationErr) {
 			return
 		}
-		if configurationErr == nil {
+		if configurationErr == nil && configuration.EngineVariant == "" {
+			// The legacy hydration request has no engine-variant field.
 			s.scheduleCatalogHydration(request, map[string]any{
 				"scope": "articles", "vehicle_id": vehicleID,
 				"year": configuration.Year, "make": configuration.Make, "model": configuration.Model,

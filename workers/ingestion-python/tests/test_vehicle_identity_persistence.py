@@ -82,6 +82,35 @@ class VehicleIdentityPersistenceTests(unittest.TestCase):
         self.assertIn("INSERT INTO schema_migrations (version)", migration)
         self.assertIn("015_vehicle_identity_resolution", migration)
 
+    def test_variant_replay_keeps_distinct_configuration_and_observation_ids(self):
+        module = self._module()
+        source = {"year": 2020, "make": "Chevy Truck", "model": "Express 4500", "region": "US", "engine": "6.0L"}
+        evidence = dict(
+            source_snapshot_id="snapshot", extraction_evidence_id="evidence",
+            source_locator="vehicle-list[0]", evidence_locator="vehicle-list[0]",
+            evidence_confidence=1, reviewer_state="pending", source_watermark="original",
+        )
+        plain_cursor, alternate_cursor = RecordingCursor(), RecordingCursor()
+        plain = module.persist_vehicle_identity_resolution(
+            plain_cursor, module.canonicalize_vehicle_observation(source), **evidence,
+        )
+        alternate = module.canonicalize_vehicle_observation({**source, "engine_label": "V8-6.0L CNG"})
+        cng = module.persist_vehicle_identity_resolution(
+            alternate_cursor, alternate, engine_variant_market_verified=True, **evidence,
+        )
+        replay = module.persist_vehicle_identity_resolution(RecordingCursor(), alternate, **evidence)
+
+        self.assertEqual(plain.vehicle_id, cng.vehicle_id)
+        self.assertNotEqual(plain.vehicle_configuration_id, cng.vehicle_configuration_id)
+        self.assertNotEqual(plain.vehicle_identity_observation_id, cng.vehicle_identity_observation_id)
+        self.assertEqual(replay.vehicle_configuration_id, cng.vehicle_configuration_id)
+        self.assertEqual(replay.vehicle_identity_observation_id, cng.vehicle_identity_observation_id)
+        _, config_params = _first_call_containing(alternate_cursor, "INSERT INTO vehicle_configurations")
+        self.assertEqual(config_params[-2:], ("CNG", True))
+        _, observation_params = _first_call_containing(alternate_cursor, "INSERT INTO vehicle_identity_observations")
+        self.assertEqual(observation_params[12]["engine_variant"], "CNG")
+        self.assertIs(observation_params[12]["engine_variant_market_verified"], True)
+
     def test_provider_mapping_migration_allows_one_aces_id_on_many_vehicles(self):
         migration = (ROOT / "db/migrations/028_vehicle_provider_mappings.sql").read_text()
 

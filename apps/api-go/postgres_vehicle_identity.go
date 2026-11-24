@@ -63,7 +63,7 @@ func (s *postgresVehicleIdentityStore) Selectors(_ Principal) (VehicleIdentitySe
 		       vc.engine_displacement_l, vc.vehicle_configuration_id::text
 		FROM vehicle_identity_bases vib
 		LEFT JOIN vehicle_configurations vc
-		  ON vc.vehicle_identity_base_id = vib.vehicle_identity_base_id
+		  ON vc.vehicle_identity_base_id = vib.vehicle_identity_base_id AND vc.engine_variant IS NULL
 		WHERE vib.reviewer_state <> 'rejected'
 		ORDER BY vib.make, vib.model, vib.model_year,
 		         vib.drivetrain, vc.trim, vc.engine_displacement_l`)

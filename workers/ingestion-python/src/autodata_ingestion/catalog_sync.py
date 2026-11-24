@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 import os
+import re
 from threading import Thread
 from typing import Any, Iterator
 
@@ -129,6 +130,15 @@ def _iter_catalog_rows(connector: SourceConnectorClient) -> Iterator[dict[str, o
                     "provider_label": item["label"],
                 }],
             }
+            source_region = str(item.get("region") or "").strip().upper()
+            if re.fullmatch(r"[A-Z]{2}", source_region) and source_region not in {"NA", "EU", "ZZ"}:
+                row["source_region"] = source_region
+                row["provider_mappings"][0].update(
+                    source_provider=page.provider,
+                    source_region=source_region,
+                    source_uri=row["source_locator"],
+                    source_version=row["source_revision"],
+                )
             for key in ("engine", "drivetrain"):
                 if item.get(key):
                     row[key] = item[key]
@@ -161,6 +171,7 @@ def _persist_batch(
         source_uri=snapshot_uri,
         source_version=snapshot_version,
         region=os.getenv("AUTODATA_SOURCE_REGION", "US"),
+        trusted_source_markets=True,
     )
     _record_scopes(sync_id, rows)
 

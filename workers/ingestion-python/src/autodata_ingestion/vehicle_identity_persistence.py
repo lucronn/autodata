@@ -14,6 +14,7 @@ from .vehicle_identity import (
     canonicalize_vehicle_observation,
     persisted_vehicle_key,
     stable_vehicle_identity_id,
+    vehicle_configuration_key,
 )
 
 
@@ -61,6 +62,7 @@ def persist_vehicle_identity_resolution(
     reviewer_state: str,
     source_watermark: str,
     raw_observation: Any | None = None,
+    engine_variant_market_verified: bool = False,
     resolution: VehicleReviewState | None = None,
     provider_mappings: list[dict[str, Any]] | None = None,
     jsonb: JsonAdapter = lambda value: value,
@@ -187,10 +189,11 @@ def persist_vehicle_identity_resolution(
         ),
     )
 
-    configuration_key = _configuration_key(
+    configuration_key = vehicle_configuration_key(
         vehicle_key,
         observation.trim,
         observation.engine_displacement_l,
+        observation.engine_variant,
     )
     configuration_id = _upsert_returning_id(
         cursor,
@@ -199,8 +202,8 @@ def persist_vehicle_identity_resolution(
             (vehicle_configuration_id, configuration_key, vehicle_identity_base_id,
              vehicle_id, trim, engine_displacement_l, source_snapshot_id,
              extraction_evidence_id, source_locator, evidence_locator,
-             evidence_confidence, reviewer_state)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             evidence_confidence, reviewer_state, engine_variant, engine_variant_market_verified)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (configuration_key)
         DO UPDATE SET source_snapshot_id = EXCLUDED.source_snapshot_id,
                       extraction_evidence_id = EXCLUDED.extraction_evidence_id,
@@ -208,6 +211,8 @@ def persist_vehicle_identity_resolution(
                       evidence_locator = EXCLUDED.evidence_locator,
                       evidence_confidence = EXCLUDED.evidence_confidence,
                       reviewer_state = EXCLUDED.reviewer_state,
+                      engine_variant_market_verified = vehicle_configurations.engine_variant_market_verified
+                          OR EXCLUDED.engine_variant_market_verified,
                       updated_at = now()
         RETURNING vehicle_configuration_id
         """,
@@ -224,6 +229,8 @@ def persist_vehicle_identity_resolution(
             evidence_locator,
             evidence_confidence,
             reviewer_state,
+            observation.engine_variant,
+            bool(observation.engine_variant and engine_variant_market_verified),
         ),
     )
 
@@ -243,6 +250,7 @@ def persist_vehicle_identity_resolution(
                           evidence_confidence = EXCLUDED.evidence_confidence,
                           reviewer_state = EXCLUDED.reviewer_state,
                           updated_at = now()
+            WHERE NOT %s OR vehicle_aliases.vehicle_configuration_id = EXCLUDED.vehicle_configuration_id
             """,
             (
                 _stable_uuid(
@@ -261,6 +269,7 @@ def persist_vehicle_identity_resolution(
                 evidence_locator,
                 evidence_confidence,
                 reviewer_state,
+                bool(observation.engine_variant),
             ),
         )
 
@@ -277,6 +286,8 @@ def persist_vehicle_identity_resolution(
         else []
     )
     observation_payload = observation.to_dict()
+    if observation.engine_variant and engine_variant_market_verified:
+        observation_payload["engine_variant_market_verified"] = True
     observation_key = _observation_key(source_snapshot_id, source_locator, observation_payload)
     observation_id = _persist_identity_observation(
         cursor,
@@ -599,6 +610,8 @@ def _observation_key(
         str(canonical_observation.get("drivetrain") or ""),
         str(canonical_observation.get("engine_displacement_l") or ""),
     ]
+    if variant := canonical_observation.get("engine_variant"):
+        parts.append(variant)
     return "|".join(parts)
 
 
@@ -642,8 +655,12 @@ def _persist_identity_observation(
                       evidence_locator = EXCLUDED.evidence_locator,
                       evidence_confidence = EXCLUDED.evidence_confidence,
                       reviewer_state = EXCLUDED.reviewer_state,
-                      raw_observation = EXCLUDED.raw_observation,
-                      canonical_observation = EXCLUDED.canonical_observation,
+                      raw_observation = CASE
+                          WHEN vehicle_identity_observations.canonical_observation->'engine_variant_market_verified' = 'true'::jsonb
+                          THEN vehicle_identity_observations.raw_observation ELSE EXCLUDED.raw_observation END,
+                      canonical_observation = CASE
+                          WHEN vehicle_identity_observations.canonical_observation->'engine_variant_market_verified' = 'true'::jsonb
+                          THEN vehicle_identity_observations.canonical_observation ELSE EXCLUDED.canonical_observation END,
                       resolution_status = EXCLUDED.resolution_status,
                       resolution_reason = EXCLUDED.resolution_reason,
                       selected_candidate_key = EXCLUDED.selected_candidate_key,
@@ -708,19 +725,6 @@ def _upsert_returning_id(cursor: Any, sql: str, params: tuple[Any, ...]) -> str:
 
 def _stable_uuid(value: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"autodata-vehicle-identity:{value}"))
-
-
-def _configuration_key(
-    vehicle_key: str,
-    trim: str | None,
-    engine_displacement_l: float | None,
-) -> str:
-    parts = [vehicle_key]
-    if trim:
-        parts.extend(("trim", _slug(trim)))
-    if engine_displacement_l is not None:
-        parts.extend(("engine", _slug(f"{engine_displacement_l:.1f}L")))
-    return "-".join(parts)
 
 
 def _slug(value: str) -> str:

@@ -400,11 +400,28 @@ def test_library_is_owner_only_and_paginated(commerce, monkeypatch):
                 'UPDATE vehicle_identity_bases SET body_style=%s, drivetrain=%s WHERE vehicle_identity_base_id=%s',
                 (body_style, drivetrain, base),
             )
+    with repo.connect() as conn:
+        conn.execute("UPDATE vehicle_configurations SET engine_variant='CNG' WHERE vehicle_configuration_id=%s",
+                     (second_configuration,))
+    unverified = service.quote(second_configuration, 'US')
+    assert unverified['configuration_label'] == '2024 Example Car SPORT 2.0 L CNG Sedan AWD'
+    assert unverified['purchasable'] is False and unverified['engine_variant_market_unverified'] is True
+    initial_counts = counts(c)
+    with pytest.raises(CommerceError) as denied:
+        checkout(c, config=second_configuration)
+    assert (denied.value.http_status, denied.value.code) == (409, 'CONFIGURATION_MARKET_UNVERIFIED')
+    assert counts(c) == initial_counts
+    with repo.connect() as conn:
+        conn.execute("UPDATE vehicle_configurations SET engine_variant_market_verified=true WHERE vehicle_configuration_id=%s",
+                     (second_configuration,))
+
     orders = []
     for configuration, body_style, drivetrain in variants:
-        label = f'2024 Example Car SPORT 2.0 L {body_style} {drivetrain}'
+        engine = '2.0 L CNG' if configuration == second_configuration else '2.0 L'
+        label = f'2024 Example Car SPORT {engine} {body_style} {drivetrain}'
         result = checkout(c, config=configuration)
-        assert service.quote(configuration, 'US')['configuration_label'] == label
+        quote = service.quote(configuration, 'US')
+        assert quote['configuration_label'] == label and quote['purchasable'] is True
         assert service.order_status(*owner, result['order_id'])['configuration_label'] == label
         settle(c, result)
         orders.append((result, label))

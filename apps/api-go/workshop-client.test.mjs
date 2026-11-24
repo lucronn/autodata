@@ -306,6 +306,8 @@ test('search matches all words without changing catalog order or IDs', () => {
   assert.equal(configurationLabel({ engine: '2.0', trim: 'Base' }), '2.0 L / Base');
   assert.equal(configurationLabel({ engine: '2.0 L', trim: 'Sport' }), '2.0 L / Sport');
   assert.equal(configurationLabel({ engine: 'Hybrid' }), 'Hybrid');
+  assert.equal(configurationLabel({ engine: '6.0', engine_variant: 'CNG', trim: 'Base' }), '6.0 L CNG / Base');
+  assert.equal(configurationLabel({ engine_variant: 'LPG' }), 'LPG');
   assert.equal(configurationLabel({}), 'Base configuration');
 });
 
@@ -2390,6 +2392,24 @@ test('the engine picker distinguishes configurations that share a displacement a
     ['2.0 L / Sport / Sedan / AWD', previousConfiguration],
   ]);
   assert.equal(h.element('configuration').value, previousConfiguration);
+});
+
+test('the engine picker displays an unverified variant without allowing selection', () => {
+  const h = loginRouteHarness('');
+  const common = { engine: '6.0', trim: 'Base' };
+  const legacy = { ...common, id: routeConfiguration };
+  const variant = { ...common, id: previousConfiguration, engine_variant: 'CNG' };
+  h.context.populate('configuration', [legacy, { ...variant, engine_variant_market_unverified: true }], previousConfiguration);
+  const select = h.element('configuration');
+  assert.deepEqual(Array.from(select.options.slice(1), ({ text, value, disabled }) => [text, value, disabled]), [
+    ['6.0 L / Base', routeConfiguration, false],
+    ['6.0 L CNG / Base · market unverified', previousConfiguration, true],
+  ]);
+  assert.equal(select.value, '');
+  h.context.populate('configuration', [legacy, variant], previousConfiguration);
+  assert.equal(select.options[2].text, '6.0 L CNG / Base');
+  assert.equal(select.options[2].disabled, false);
+  assert.equal(select.value, previousConfiguration);
 });
 
 test('checkout return checks sooner only for the matching, unexpired checkout', async () => {
@@ -8167,14 +8187,17 @@ function selectorOptionsHarness(response) {
   },
   recordStatus:(text,options={})=>statuses.push({text,...options}), restoreRoute(){},
  };
- runInNewContext(appSection('function status(', 'function stage(')+appSection('async function operation(', 'function updateURL(')+appSection('function cachedSelector(', 'function renderPurchase(')+
+ runInNewContext(appSection('function status(', 'function stage(')+appSection('async function operation(', 'function updateURL(')+
+  appSection('function pickerChoice(', 'function selectorPath(')+appSection('function cachedSelector(', 'function renderPurchase(')+
   'const actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',context);
  return {context,$,statuses,displayed,requests,waits,load:(desired='',current,initial=null,name='configuration')=>context.operation(g=>context.loadOptions(name,current?{...g,current}:g,desired,initial),()=>context.restoreRoute())};
 }
 
-test('an incomplete picker shares a stored reopen read and keeps the exact selected option', async () => {
-  const first = { id: 'engine-a', engine: '3.5', complete: true };
-  const sibling = { id: 'engine-b', engine: '2.7', complete: true };
+test('a delayed unverified engine variant appends disabled and keeps the exact selected option', async () => {
+  const first = { id: 'engine-a', engine: '6.0', complete: true };
+  const sibling = {
+    ...first, id: 'engine-b', engine_variant: 'CNG', engine_variant_market_unverified: true,
+  };
   const pending = deferredAuthOperation();
   const h = selectorOptionsHarness(path => path.includes('stored_only') ? pending.promise
     : { items: [first], complete: false });
@@ -8193,9 +8216,33 @@ test('an incomplete picker shares a stored reopen read and keeps the exact selec
   await reopening;
   assert.deepEqual(select.options.map(choice => choice.value), [first.id, sibling.id]);
   assert.equal(select.options[0], option);
+  assert.equal(select.options[1].text, '6.0 L CNG · market unverified');
+  assert.equal(select.options[1].disabled, true);
   assert.equal(select.value, first.id);
   assert.equal(h.statuses.length, statuses);
   await h.context.refreshPicker('configuration');
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
+});
+
+test('a picker refresh enables the same engine variant when its market is verified', async () => {
+  const first = { id: 'engine-a', engine: '6.0', complete: true };
+  const variant = { ...first, id: 'engine-b', engine_variant: 'CNG' };
+  const h = selectorOptionsHarness(path => path.includes('stored_only')
+    ? { items: [first, variant], complete: true }
+    : { items: [first, { ...variant, engine_variant_market_unverified: true }], complete: false });
+  await h.load();
+  const select = h.$('configuration');
+  select.value = first.id;
+  const originalOption = select.options[1];
+
+  assert.equal(originalOption.text, '6.0 L CNG · market unverified');
+  await h.context.refreshPicker('configuration');
+
+  assert.equal(select.value, first.id);
+  assert.equal(select.options.length, 2);
+  assert.equal(select.options[1], originalOption);
+  assert.equal(originalOption.text, '6.0 L CNG');
+  assert.equal(originalOption.disabled, false);
   assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
 });
 

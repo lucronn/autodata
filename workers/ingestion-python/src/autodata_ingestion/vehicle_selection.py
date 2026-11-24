@@ -9,6 +9,7 @@ from .vehicle_identity import (
     CanonicalVehicleObservation,
     VehicleAlias,
     canonicalize_vehicle_observation,
+    vehicle_configuration_key,
 )
 
 
@@ -142,7 +143,9 @@ def _merge_family(family: dict[str, Any], observation: CanonicalVehicleObservati
             conflict = {"field": field, "existing": current, "incoming": incoming}
             if conflict not in family["conflicts"]:
                 family["conflicts"].append(conflict)
-    configuration_key = _configuration_key(family["vehicle_key"], observation)
+    configuration_key = vehicle_configuration_key(
+        family["vehicle_key"], observation.trim, observation.engine_displacement_l, observation.engine_variant
+    )
     family["configurations"].setdefault(
         configuration_key,
         {
@@ -150,6 +153,7 @@ def _merge_family(family: dict[str, Any], observation: CanonicalVehicleObservati
             "trim": observation.trim,
             "engine_displacement_l": observation.engine_displacement_l,
             "drivetrain": family["drivetrain"],
+            **({"engine_variant": observation.engine_variant} if observation.engine_variant else {}),
         },
     )
     family["aliases"].extend(alias for alias in observation.aliases if alias not in family["aliases"])
@@ -174,16 +178,6 @@ def _record_from_family(family: dict[str, Any]) -> VehicleSelectionRecord:
         configurations=tuple(configurations),
         aliases=tuple(family["aliases"]),
     )
-
-
-def _configuration_key(vehicle_key: str, observation: CanonicalVehicleObservation) -> str:
-    parts = [vehicle_key]
-    if observation.trim:
-        parts.extend(("trim", _slug(observation.trim)))
-    if observation.engine_displacement_l is not None:
-        engine_key = f"{observation.engine_displacement_l:.1f}".replace(".", "-") + "l"
-        parts.extend(("engine", engine_key))
-    return "-".join(parts)
 
 
 def _slug(value: str) -> str:

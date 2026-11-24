@@ -342,6 +342,135 @@ def test_configuration_resolution_sends_human_selector_in_exact_scope(
     )
 
 
+@pytest.mark.parametrize(
+    "case,variant,label,can_bind",
+    [
+        ("exact_market", "CNG", "2020 Chevrolet Express 4500 V8-6.0L CNG", True),
+        ("unspecified_market", "CNG", "V8-6.0L CNG", False),
+        ("wrong_market", "CNG", "V8-6.0L CNG", False),
+        ("other_reference", "CNG", "V8-6.0L CNG", False),
+        ("other_provider", "CNG", "V8-6.0L CNG", False),
+        ("untrusted", "CNG", "V8-6.0L CNG", False),
+        ("review_rejected", "CNG", "V8-6.0L CNG", False),
+        ("no_variant", "CNG", "V8-6.0L", False),
+        ("different_variant", "CNG", "V8-6.0L LPG", False),
+        ("missing_displacement", "CNG", "CNG", False),
+        ("different_displacement", "CNG", "V8-5.3L CNG", False),
+        ("legacy_cannot_infer_fuel", None, "V8-6.0L CNG", False),
+        ("legacy_ambiguous_fuels", None, "V8-6.0L CNG/LPG", False),
+        ("legacy_generic_candidate", None, "V8-6.0L", True),
+        ("verified_mapping", "CNG", "Fixture car", True),
+    ],
+)
+def test_scoped_configuration_binding_requires_exact_source_evidence(
+    fresh_database, capture_fixture, case, variant, label, can_bind
+):
+    from psycopg.types.json import Jsonb
+    from lifecycle_support import seed_configuration
+    from autodata_ingestion.article_lifecycle import _capture_context
+    from autodata_ingestion.catalog_coverage import (
+        ensure_article_catalog_jobs,
+        read_catalog_coverage,
+        run_catalog_index_job,
+    )
+    from autodata_ingestion.source_job_persistence import ensure_article_job
+
+    repo = fresh_database()
+    vehicle = seed_vehicle(repo)
+    configuration = seed_configuration(repo, vehicle)
+    ref = "vehicle:fixture"
+    provider = "banktwo"
+    server = capture_fixture.servers[provider]
+    server.candidates = [{"opaque_ref": ref, "label": label, "confidence": 1}]
+    server.pages = [page("pump")]
+    canonical = {"engine_variant": variant, "region": "US"}
+    if case != "untrusted":
+        canonical["engine_variant_market_verified"] = True
+    mapping = {
+        "provider": "autoapitwo",
+        "source_provider": "bankone" if case == "other_provider" else provider,
+        "provider_id": "vehicle:other" if case == "other_reference" else ref,
+        "source_uri": "fixture://catalog/configurations",
+        "source_version": "fixture-v1",
+    }
+    if case != "unspecified_market":
+        mapping["source_region"] = "CA" if case == "wrong_market" else "US"
+
+    with repo.connect() as conn:
+        conn.execute(
+            "UPDATE vehicle_configurations SET engine_displacement_l=6,engine_variant=%s WHERE vehicle_configuration_id=%s",
+            (variant, configuration),
+        )
+        conn.execute(
+            """INSERT INTO vehicle_identity_observations
+                (observation_key,vehicle_id,vehicle_identity_base_id,vehicle_configuration_id,
+                 source_snapshot_id,extraction_evidence_id,source_locator,evidence_locator,
+                 evidence_confidence,reviewer_state,raw_observation,canonical_observation,resolution_status)
+                SELECT %s,vehicle_id,vehicle_identity_base_id,vehicle_configuration_id,
+                    source_snapshot_id,extraction_evidence_id,'fixture','fixture',1,'pending',%s,%s,'matched'
+                FROM vehicle_configurations WHERE vehicle_configuration_id=%s""",
+            (uuid.uuid4().hex, Jsonb({"provider_mappings": [mapping]}), Jsonb(canonical), configuration),
+        )
+        if case in ("review_rejected", "verified_mapping"):
+            conn.execute(
+                """INSERT INTO vehicle_provider_mappings
+                    (mapping_key,vehicle_id,vehicle_configuration_id,provider,entity_type,provider_id,
+                     source_snapshot_id,extraction_evidence_id,source_locator,evidence_locator,
+                     evidence_confidence,mapping_status)
+                    SELECT %s,vehicle_id,vehicle_configuration_id,%s,'car',%s,
+                        source_snapshot_id,extraction_evidence_id,'fixture','fixture',1,%s
+                    FROM vehicle_configurations WHERE vehicle_configuration_id=%s""",
+                (uuid.uuid4().hex, provider, ref,
+                 "verified" if case == "verified_mapping" else "rejected", configuration),
+            )
+
+    ensure_article_catalog_jobs(repo, vehicle_id=vehicle, vehicle_configuration_id=configuration)
+    with repo.connect() as conn:
+        index_job = conn.execute(
+            "SELECT source_fetch_job_id FROM source_fetch_jobs WHERE provider_slug=%s",
+            (provider,),
+        ).fetchone()["source_fetch_job_id"]
+    lease = claim_source_job(repo, worker_id=uuid.uuid4(), job_id=index_job)
+    run_catalog_index_job(
+        repo, lease, registry=capture_fixture.registry, object_store=capture_fixture.objects
+    )
+    expected_selector = {
+        "year": 2024,
+        "make": "Example",
+        "model": "Car",
+        "region": "US",
+        "configuration": f"6.0L {variant}" if variant else "6.0L",
+    }
+    assert server.resolution_requests == ([] if case == "verified_mapping" else [expected_selector])
+    assert any(call.endswith("/articles") for call in server.calls) is can_bind
+
+    state = read_catalog_coverage(repo, vehicle_id=vehicle, vehicle_configuration_id=configuration)
+    provider_state = state["coverage"][provider]
+    assert provider_state["status"] == ("complete" if can_bind else "needs_review")
+    assert provider_state["error_code"] == (None if can_bind else "UNRESOLVED_CONFIGURATION")
+    assert provider_state["resolution_source_snapshot_id"] is not None
+    with repo.connect() as conn:
+        articles = conn.execute(
+            "SELECT * FROM canonical_articles WHERE vehicle_configuration_id=%s",
+            (configuration,),
+        ).fetchall()
+    assert len(articles) == int(can_bind)
+    if can_bind:
+        article = articles[0]
+        assert article["source_vehicle_ref"] == ref
+        job = ensure_article_job(
+            repo, article["canonical_article_id"],
+            normalization_version=article["target_normalization_version"],
+            rewrite_profile_version=article["target_rewrite_profile_version"],
+        )
+        capture_lease = claim_source_job(repo, worker_id=uuid.uuid4(), job_id=job.job_id)
+        context = _capture_context(repo, capture_lease)
+        assert context.key.vehicle_configuration_id == configuration
+        assert context.vehicle["configuration"] == expected_selector["configuration"]
+        assert context.vehicle["region"] == expected_selector["region"]
+        assert context.vehicle.get("engine_variant") == variant
+
+
 @pytest.mark.parametrize("verified_mapping", [False, True])
 def test_configuration_without_selector_is_never_widened(
     fresh_database, capture_fixture, verified_mapping

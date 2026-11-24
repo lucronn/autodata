@@ -22,7 +22,7 @@ TERMS = "workshop-v1"
 STRIPE_API_VERSION = '2025-08-27.basil'
 LIVE = ('creating', 'open', 'processing', 'paid', 'reconciliation_required')
 _CONFIGURATION_LABEL_SQL = (
-    "concat_ws(' ',b.model_year::text,b.make,b.model,c.trim,c.engine_displacement_l::text || ' L',"
+    "concat_ws(' ',b.model_year::text,b.make,b.model,c.trim,c.engine_displacement_l::text || ' L',c.engine_variant,"
     "NULLIF(btrim(b.body_style),''),NULLIF(btrim(b.drivetrain),''))"
 )
 READ_ONLY_COMMERCE_PATHS = frozenset('/internal/commerce/' + path for path in
@@ -207,7 +207,8 @@ class CommerceService:
 
     def _scope(self, cursor, configuration_id, region):
         validate_uuid(configuration_id); validate_region(region)
-        cursor.execute(f"""SELECT c.vehicle_configuration_id, {_CONFIGURATION_LABEL_SQL} AS label
+        cursor.execute(f"""SELECT c.vehicle_configuration_id, {_CONFIGURATION_LABEL_SQL} AS label,
+            c.engine_variant IS NOT NULL AND NOT c.engine_variant_market_verified AS engine_variant_market_unverified
             FROM vehicle_configurations c JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
             WHERE c.vehicle_configuration_id=%s AND b.region=%s
               AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'""", (configuration_id, region))
@@ -235,9 +236,13 @@ class CommerceService:
     def _quote(self, cursor, configuration_id, region, *, purchasable):
         scope = self._scope(cursor, configuration_id, region)
         self._product(cursor)
-        return CommerceResult(dict(version='v1', product_key=PRODUCT, configuration_id=configuration_id,
+        market_unverified = scope['engine_variant_market_unverified']
+        result = CommerceResult(dict(version='v1', product_key=PRODUCT, configuration_id=configuration_id,
             region=region, configuration_label=scope['label'], amount_minor=2000, currency='USD',
-            purchase_terms_version=TERMS, purchasable=purchasable))
+            purchase_terms_version=TERMS, purchasable=purchasable and not market_unverified))
+        if market_unverified:
+            result['engine_variant_market_unverified'] = True
+        return result
 
     def _product(self, cursor):
         cursor.execute("SELECT dataset_product_id FROM dataset_products WHERE product_key=%s AND product_version=1 AND active AND price_minor=2000 AND currency='USD'", (PRODUCT,))
@@ -343,7 +348,9 @@ class CommerceService:
         if live:
             order = self._order(cursor, live['order_id'])
         else:
-            self._scope(cursor, configuration_id, region)
+            configuration = self._scope(cursor, configuration_id, region)
+            if configuration['engine_variant_market_unverified']:
+                raise CommerceError('CONFIGURATION_MARKET_UNVERIFIED', 409)
             order_id = str(uuid.uuid4())
             operation = 'simulation' if self.config.mode == 'simulation' else 'checkout'
             cursor.execute("""INSERT INTO workshop_orders(order_id,customer_account_id,organization_id,configuration_id,

@@ -1441,6 +1441,14 @@
                           "engine": {
                             "type": "string"
                           },
+                          "engine_variant": {
+                            "type": "string",
+                            "enum": ["CNG", "LNG", "LPG", "FLEX FUEL"]
+                          },
+                          "engine_variant_market_unverified": {
+                            "type": "boolean",
+                            "description": "The engine designation is listed before its market is confirmed."
+                          },
                           "body_style": {
                             "type": "string"
                           },
@@ -2212,7 +2220,7 @@
             }
           },
           "409": {
-            "description": "Idempotency/terms/payment conflict.",
+            "description": "Idempotency, terms, payment, or unverified engine market conflict.",
             "headers": {
               "Cache-Control": {
                 "schema": {
@@ -3363,6 +3371,8 @@
           "model": {"type": "string"},
           "region": {"type": "string"},
           "engine": {"type": "string"},
+          "engine_variant": {"type": "string", "enum": ["CNG", "LNG", "LPG", "FLEX FUEL"]},
+          "engine_variant_market_unverified": {"type": "boolean"},
           "trim": {"type": "string"},
           "body_style": {"type": "string"},
           "drivetrain": {"type": "string"},
@@ -3866,9 +3876,7 @@
           },
           "purchasable": {
             "type": "boolean",
-            "enum": [
-              true
-            ]
+            "description": "False when Workshop cannot offer checkout for this configuration."
           }
         },
         "required": [
@@ -4404,6 +4412,7 @@
                   "COMMERCE_UNAVAILABLE",
                   "NOT_FOUND",
                   "CONFIGURATION_NOT_FOUND",
+                  "CONFIGURATION_MARKET_UNVERIFIED",
                   "ORDER_NOT_FOUND",
                   "CUSTOMER_ACCESS_REQUIRED",
                   "ENTITLEMENT_REQUIRED",

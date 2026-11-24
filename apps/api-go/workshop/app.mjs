@@ -371,21 +371,32 @@ function populate(name, items, desired = "") {
   const select = $(name);
   const selected = desired || select.value;
   rows[name] = name === "year" ? [...items].sort((a, b) => b.year - a.year) : items;
-  const options = rows[name].map((item) => [
-    String(item.id ?? item.year),
-    selectorLabel(name, item),
-  ]);
-  const unchanged = select.options.length === options.length + 1 && options.every(([value, label], index) =>
-    select.options[index + 1].value === value && select.options[index + 1].text === label);
+  const options = rows[name].map((item) => pickerChoice(name, item));
+  const unchanged = select.options.length === options.length + 1 && options.every(({ value, label, disabled }, index) => {
+    const option = select.options[index + 1];
+    return option.value === value && option.text === label && option.disabled === disabled;
+  });
   if (!unchanged) {
     select.replaceChildren(
       new Option(`Choose ${name === "configuration" ? "engine / trim" : name}`, ""),
-      ...options.map(([value, label]) => new Option(label, value)),
+      ...options.map(pickerOption),
     );
   }
-  const nextValue = options.some(([value]) => value === selected) ? selected : "";
+  const nextValue = options.some(({ value, disabled }) => value === selected && !disabled) ? selected : "";
   if (select.value !== nextValue) select.value = nextValue;
   select.disabled = !items.length;
+}
+function pickerChoice(name, item) {
+  return {
+    value: String(item.id ?? item.year),
+    label: selectorLabel(name, item),
+    disabled: name === "configuration" && item.engine_variant_market_unverified === true,
+  };
+}
+function pickerOption({ value, label, disabled }) {
+  const option = new Option(label, value);
+  option.disabled = disabled;
+  return option;
 }
 function selectorPath(name, selection = { year: $("year").value, make: $("make").value, model: $("model").value }) {
   return vehicleSelectorPath(name, selection);
@@ -451,6 +462,23 @@ async function refreshPicker(name) {
         if (!data.items.length) return;
         picker.incomplete = data.complete !== true;
         rememberSelector(picker.path, name, data);
+        if (name === "configuration" && rows[name].some((item) => item.engine_variant_market_unverified === true)) {
+          const refreshed = new Map(data.items.map((item) => [String(item.id), item]));
+          const options = new Map(Array.from(select.options, (option) => [option.value, option]));
+          rows[name] = rows[name].map((item) => {
+            const current = refreshed.get(String(item.id));
+            if (item.engine_variant_market_unverified !== true || !current ||
+                current.engine_variant !== item.engine_variant || current.engine_variant_market_unverified === true)
+              return item;
+            const choice = pickerChoice(name, current);
+            const option = options.get(choice.value);
+            if (option) {
+              option.text = choice.label;
+              option.disabled = choice.disabled;
+            }
+            return current;
+          });
+        }
         const known = new Set(rows[name].map((item) => String(item.id ?? item.year)));
         const additional = data.items.filter((item) => !known.has(String(item.id ?? item.year)));
         if (!additional.length) return;
@@ -459,7 +487,7 @@ async function refreshPicker(name) {
           return;
         }
         rows[name] = [...rows[name], ...additional];
-        select.append(...additional.map((item) => new Option(selectorLabel(name, item), String(item.id))));
+        select.append(...additional.map((item) => pickerOption(pickerChoice(name, item))));
       },
     });
   } catch {
@@ -679,7 +707,7 @@ function vehicleIdentityLabel() {
     vehicle?.year,
     vehicle?.make,
     vehicle?.model,
-    (vehicle?.engine || vehicle?.trim || vehicle?.body_style || vehicle?.drivetrain) &&
+    (vehicle?.engine || vehicle?.engine_variant || vehicle?.trim || vehicle?.body_style || vehicle?.drivetrain) &&
       configurationLabel(vehicle),
   ].filter(Boolean).join(" / ") || vehicle?.orderLabel || vehicle?.publicLabel || "";
 }

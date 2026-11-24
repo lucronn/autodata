@@ -66,6 +66,25 @@ class VehicleIdentityTests(unittest.TestCase):
             ],
         )
 
+    def test_exact_alternate_fuel_identity_preserves_legacy_displacement_key(self):
+        module = self._module()
+        source = {"year": 2020, "make": "Chevy Truck", "model": "Express 4500", "region": "US", "engine": "6.0L"}
+        plain = module.canonicalize_vehicle_observation(source)
+        cng = module.canonicalize_vehicle_observation({**source, "engine_label": "V8-6.0L CNG"})
+        same_fuel = module.canonicalize_vehicle_observation({**source, "engine": "6.0L compressed natural gas"})
+
+        self.assertEqual(cng.engine_displacement_l, plain.engine_displacement_l)
+        self.assertEqual(cng.engine_variant, "CNG")
+        self.assertEqual(same_fuel.engine_variant, cng.engine_variant)
+        self.assertNotIn("engine_variant", plain.to_dict())
+        old_key = module.build_vehicle_configuration(plain).configuration_key
+        self.assertEqual(old_key, "chevy-truck-express-4500-2020-us-engine-6-0l")
+        self.assertEqual(module.build_vehicle_configuration(cng).configuration_key, old_key + ":engine-variant:cng")
+        ranked = module.review_vehicle_candidates(cng, [source, {**source, "engine_label": "6.0L CNG"}])
+        self.assertEqual(ranked.selected_candidate_key, old_key + ":engine-variant:cng")
+        self.assertIsNone(module.engine_variant_for_row({**source, "engine_label": "5.3L CNG"}))
+        self.assertIsNone(module.engine_variant_for_row({**source, "engine_label": "6.0L CNG/LPG"}))
+
     def test_mapping_input_uses_populated_fallback_when_preferred_alias_is_empty(self):
         module = self._module()
 

@@ -26,6 +26,22 @@ from autodata_ingestion.catalog_service import (
 
 
 class CatalogServiceTests(unittest.TestCase):
+    def test_configuration_cache_keeps_distinct_fuel_labels_and_declared_provider_market(self):
+        from autodata_ingestion.catalog_service import _canonical_rows
+
+        row = {"year": 2020, "make": "Chevy Truck", "model": "Express 4500", "region": "US", "engine": "6.0L"}
+        unmarked = {"provider": "banktwo", "entity_type": "car", "provider_id": "cng"}
+        explicit = {**unmarked, "source_region": "US", "source_uri": "https://banktwo.test/catalog", "source_version": "source-v2"}
+        plain, alternate = _canonical_rows([
+            {**row, "engine_label": "V8-6.0L"},
+            {**row, "engine_label": "V8-6.0L CNG", "provider_mappings": [unmarked]},
+            {**row, "engine_label": "6.0L compressed natural gas", "source_region": "US", "provider_mappings": [explicit]},
+        ])
+
+        self.assertEqual(plain["catalog_id"], canonical_catalog_id(row))
+        self.assertNotEqual(alternate["catalog_id"], plain["catalog_id"])
+        self.assertEqual(alternate["provider_mappings"], [explicit])
+
     def test_catalog_provider_configuration_ignores_legacy_base_urls(self):
         with patch("autodata_ingestion.source_connector_client.source_connector_registry", return_value={}), \
                 patch.dict(os.environ, {
