@@ -882,7 +882,8 @@ def _adapt_pdf_resource(
             yield index, page, text
 
     page_inputs = read_pages()
-    if on_native_text is not None:
+    if (on_native_text is not None and len(pages) <= _MAX_BOUND_EMBEDDED_PDF_PAGES
+            and len(resource.payload) <= _MAX_BOUND_EMBEDDED_PDF_BYTES):
         # Scan the text layer once. OCR-needed or uncertain pages cannot
         # contribute to a provisional native-text document.
         page_inputs = list(page_inputs)
@@ -1910,6 +1911,7 @@ def adapt_bound_article(
     lazy_image_alts: dict[tuple[int, int], str] | None = None,
     declared_image_refs: frozenset[str] = frozenset(),
     step_parser=None, resolved_pdf_refs: frozenset[str] = frozenset(),
+    on_primary_pdf_text=None,
 ) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
     from .banktwo_connector import ArticleParser
@@ -2222,6 +2224,7 @@ def adapt_bound_article(
             keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
             keep_compact_pdf_figures=keep_compact_pdf_figures,
             step_parser=step_parser,
+            on_native_text=on_primary_pdf_text,
         ), "asset_resource_refs": []}
     raise ValueError("unsupported article media")
 

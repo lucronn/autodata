@@ -222,31 +222,45 @@ def test_linked_pdf_preview_precedes_figures_and_unrelated_assets(runtime, monke
     assert current_preview() is None
 
 
-@pytest.mark.parametrize("inferred", [False, True])
-def test_linked_native_pdf_preview_precedes_figure_decode(runtime, monkeypatch, inferred):
+@pytest.mark.parametrize(("provider", "mode"), [
+    ("bankone", "iframe"), ("bankone", "anchor"), ("bankone", "primary"), ("banktwo", "primary"),
+])
+def test_native_pdf_preview_precedes_figure_decode(runtime, monkeypatch, provider, mode):
     from test_article_lifecycle_integration import scoped_runtime_article
 
-    scoped_runtime_article(runtime)
-    connector = runtime.servers["bankone"]
-    pdf, _ = _pdf_with_fixture_figure(trailing_text="0.5 mm maximum clearance.", blank_page=True)
-    marked = (
-        f'<a href="{_PDF_LOCATOR}">Service bulletin</a>' if inferred else f'<iframe src="{_PDF_LOCATOR}"></iframe>'
-    )
-    body = f"<p>Remove the pump.</p>{marked}<p>Install the replacement.</p>".encode()
-    connector.body(body, assets=[_PDF_REF],
-                   asset_bindings=[{"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF}])
-    connector.body(pdf, "application/pdf", ref=_PDF_REF, kind="binary")
+    configuration = scoped_runtime_article(runtime)
+    if provider == "banktwo":
+        with runtime.repo.connect() as conn:
+            runtime.article_id = conn.execute("""
+                SELECT canonical_article_id FROM canonical_articles
+                WHERE vehicle_configuration_id=%s AND provider_slug='banktwo'
+            """, (configuration,)).fetchone()["canonical_article_id"]
+    primary = mode == "primary"
+    expected_pages = 1 if primary else 2
+    connector = runtime.servers[provider]
+    pdf, _ = _pdf_with_fixture_figure(trailing_text="0.5 mm maximum clearance.", blank_page=not primary)
+    if primary:
+        connector.body(pdf, "application/pdf", kind="binary")
+    else:
+        marked = (
+            f'<a href="{_PDF_LOCATOR}">Service bulletin</a>' if mode == "anchor" else f'<iframe src="{_PDF_LOCATOR}"></iframe>'
+        )
+        body = f"<p>Remove the pump.</p>{marked}<p>Install the replacement.</p>".encode()
+        connector.body(body, assets=[_PDF_REF],
+                       asset_bindings=[{"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF}])
+        connector.body(pdf, "application/pdf", ref=_PDF_REF, kind="binary")
     job = refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="initial native PDF",
                               rewrite_profile_version=AUTO_PROFILE)
     decode_started, decode_release = Event(), Event()
     original_decode = source_adapters._extract_pdf_page_images
     original_extract = PageObject.extract_text
-    client = runtime.registry["bankone"]
+    client = runtime.registry[provider]
     downloaded = []
     native_pages = []
 
     class CountPDFReads:
-        provider = "bankone"
+        def __init__(self):
+            self.provider = provider
 
         def read_resource(self, ref, **kwargs):
             downloaded.append(ref)
@@ -263,33 +277,40 @@ def test_linked_native_pdf_preview_precedes_figure_decode(runtime, monkeypatch, 
             assert decode_release.wait(12)
         return original_decode(*args, **kwargs)
 
-    def find_linked_preview():
+    def find_preview():
         with runtime.repo.connect() as conn:
             row = conn.execute("""
-                SELECT source_revision_id,checkpoint->'source_body_preview'->'linked_preview' AS preview
+                SELECT source_revision_id,checkpoint->'source_body_preview' AS preview
                 FROM source_fetch_jobs WHERE source_fetch_job_id=%s
             """, (job.job_id,)).fetchone()
         assert row["source_revision_id"] is None
-        return row["preview"]
+        preview = row["preview"] or {}
+        if primary:
+            assert "linked_preview" not in preview
+            return preview if "document" in preview else None
+        return preview.get("linked_preview")
 
     monkeypatch.setattr(source_adapters, "_extract_pdf_page_images", hold_decode)
     monkeypatch.setattr(PageObject, "extract_text", read_native_text)
     with ThreadPoolExecutor(max_workers=1) as executor:
         worker = executor.submit(run_article_worker_once, runtime.repo, worker_id=uuid4(), job_id=job.job_id,
-                                 registry={"bankone": CountPDFReads()}, object_store=runtime.objects, model_client=None)
+                                 registry={provider: CountPDFReads()}, object_store=runtime.objects, model_client=None)
         try:
             assert decode_started.wait(5)
-            preview = runtime.wait_for(find_linked_preview)
-            assert not decode_release.is_set() and len(native_pages) == 2
+            preview = runtime.wait_for(find_preview)
+            assert not decode_release.is_set() and len(native_pages) == expected_pages
             assert not validate_ordered_document(preview["document"])
             layout = _layout(preview["document"])
             assert all(kind != "image" for kind, _ in layout)
             assert ("paragraph", "0.5 mm maximum clearance.") in layout
             texts = [text for _, text in layout]
-            assert texts.index("Remove the pump.") < texts.index("Inspect the seal.")
             assert texts.index("Inspect the seal.") < texts.index("0.5 mm maximum clearance.")
-            assert texts.index("0.5 mm maximum clearance.") < texts.index("Install the replacement.")
-            [snapshot] = preview["snapshot_ids"]
+            if primary:
+                snapshot = preview["snapshot_id"]
+            else:
+                assert texts.index("Remove the pump.") < texts.index("Inspect the seal.")
+                assert texts.index("0.5 mm maximum clearance.") < texts.index("Install the replacement.")
+                [snapshot] = preview["snapshot_ids"]
             with runtime.repo.connect() as conn:
                 artifact = conn.execute("""
                     SELECT s.takedown_status,a.media_type,a.content_sha256 FROM source_snapshots s
@@ -302,13 +323,20 @@ def test_linked_native_pdf_preview_precedes_figure_decode(runtime, monkeypatch, 
             decode_release.set()
         assert worker.result(timeout=10)
     final = runtime.read_current()
-    assert final["source_revision_id"] and downloaded.count(_PDF_REF) == 1 and len(native_pages) == 2
+    assert final["source_revision_id"] and len(native_pages) == expected_pages
+    if primary:
+        assert len(downloaded) == 1
+        retained = load_source_revision(runtime.repo, final["source_revision_id"])
+        assert retained.resource_manifest[0]["sha256"] == sha256(pdf).hexdigest()
+    else:
+        assert downloaded.count(_PDF_REF) == 1
     final_layout = _layout(final["document"])
     assert any(kind == "image" for kind, _ in final_layout)
     assert [(kind, text) for kind, text in final_layout if kind != "image"] == layout
 
 
-def test_linked_pdf_does_not_signal_incomplete_native_text_when_ocr_is_needed(monkeypatch):
+@pytest.mark.parametrize("primary", [False, True])
+def test_pdf_does_not_signal_incomplete_native_text_when_ocr_is_needed(monkeypatch, primary):
     pdf, _ = _linked_pdf("middle")
     resource = source_adapters.SourceResource.from_bytes("https://fixture.invalid/bulletin", "fixture",
                                                          pdf, "application/pdf")
@@ -320,9 +348,15 @@ def test_linked_pdf_does_not_signal_incomplete_native_text_when_ocr_is_needed(mo
         raise OCRUnavailable("synthetic OCR unavailable")
 
     monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", require_ocr)
-    with pytest.raises(ValueError, match="pages requiring unavailable OCR"):
-        source_adapters.adapt_bound_pdf_embed(resource, require_complete_ocr=True, skip_blank_pages=True,
-                                             on_native_text=native_documents.append)
+    if primary:
+        final = source_adapters._adapt_bound_pdf(resource, keep_pdf_figure_order=True, on_native_text=native_documents.append)
+        assert [block["text"] for block in final["blocks"] if block.get("text")] == [
+            "Inspect the harness connector.", "Seat the terminal in the connector.",
+        ]
+    else:
+        with pytest.raises(ValueError, match="pages requiring unavailable OCR"):
+            source_adapters.adapt_bound_pdf_embed(resource, require_complete_ocr=True, skip_blank_pages=True,
+                                                 on_native_text=native_documents.append)
     assert native_documents == [] and ocr_pages == [(2, 2)]
 
 
