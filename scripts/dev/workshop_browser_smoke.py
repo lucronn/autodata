@@ -1658,7 +1658,8 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
                 source_link = page.locator(nested_item + ' table td figure + .source-reference').last
                 await source_link.press('Enter')
             else:
-                await page.locator('#article-reference summary').click();await page.locator('#source-review-load').click()
+                await expect(page.locator('#article-reference')).to_have_js_property('open', False)
+                await page.locator('#open-original').click()
             await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
             await expect(page.locator('#source-review-frame')).to_contain_text('Remove the cover while the ignition is off.')
             await expect(page.locator('#source-review-frame')).to_contain_text('Install a new oil seal after the flange is dry.')
@@ -1673,6 +1674,9 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
                     '#source-review-frame ol[start="4"] > li[value="9"] table td figure img[alt="Drive alignment"]'
                 )
                 await expect(stored_figure).to_have_count(1)
+                await expect(page.locator('#source-review-title')).to_be_focused()
+                await page.locator('#back-to-article').click()
+                await expect(page.locator('#article-title')).to_be_focused()
             source_path=await page.locator('#source-review-link').get_attribute('href')
             assert parse_qs(urlsplit(source_path).query).get('source_revision_id')
             assertions['paid_source_and_actual_s3_image']=True
