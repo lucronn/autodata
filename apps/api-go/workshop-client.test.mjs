@@ -4232,7 +4232,7 @@ test('stale order status 404 does not clear newer checkout or action', async () 
   assert.equal(checkoutClears, 0);
 });
 
-function articleIndexHarness(responses, { wait = async () => {}, openDemo = false } = {}) {
+function articleIndexHarness(responses, { wait = async () => {}, now = () => performance.now(), openDemo = false } = {}) {
   const navigation = new NavigationGeneration();
   const searchNavigation = new NavigationGeneration();
   const nodes = new Map();
@@ -4285,19 +4285,19 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
     articleImageRefresh: null, sourceImageRefresh: null, libraryPageRequest: null, libraryCursor: null,
     currentOrder: '', paidOrder: null, unconfirmedOrder: null, viewGeneration: null,
     clearOrderRoute(id) { clearedOrders.push(id); },
-    session: { clear() {}, async bootstrap() {} },
+    session: { state: { mode: 'firebase' }, clear() {}, async bootstrap() {} },
     setTimeout(callback) { callback(); return 1; }, clearTimeout() {}, updateURL() {},
     stage() {}, renderPurchase() {}, show(id) { shown.push(id); },
     articlePath: () => `/v1/catalog/vehicles/${context.vehicle.id}/articles`,
     scope: () => ({ configuration_id: context.vehicle.id, region: context.vehicle.region }),
     requestJSON(path, options) {
-      requests.push({ path, signal: options.signal, prefer: options.headers?.Prefer });
+      requests.push({ path, signal: options.signal, prefer: options.headers?.Prefer, timeout: options.timeout });
       const response = responses[Math.min(requests.length - 1, responses.length - 1)];
       return typeof response === 'function' ? response() : Promise.resolve(response);
     },
     async readCollection(read, options) {
       const result = await readCollection(read, {
-        ...options, attempts: 3, wait,
+        ...options, attempts: 3, wait, now,
         onUpdate(data, meta) {
           options.onUpdate(data, meta);
           updates.push({ complete: data.complete, count: $('articles').children[0]?.children.length ?? 0,
@@ -4661,7 +4661,7 @@ test('actual article index flow polls until explicit current completion', async 
 test('actual article index flow keeps terminal, timed out, and nonhydrating outcomes incomplete', async () => {
   for (const [response, reads, text] of [
     [indexResponse('failed'), 1, /could not be prepared/],
-    [indexResponse('pending', { hydrating: true }), 3, /still being prepared/],
+    [indexResponse('pending', { hydrating: true }), 4, /still being prepared/],
     [indexResponse('pending'), 1, /still being prepared/],
     [indexResponse(null), 1, /still being prepared/],
   ]) {
@@ -4671,8 +4671,68 @@ test('actual article index flow keeps terminal, timed out, and nonhydrating outc
     assert.equal(h.statuses.some(s => s.complete === true), false);
     assert.match(h.$('activity-text').textContent, text);
     assert.equal(h.$('completion-status').textContent, '');
-    assert.equal(h.results[0].timedOut === true, reads === 3);
+    assert.equal(h.results[0].timedOut === true, reads === 4);
     assert.equal(typeof h.context.retryAction, response.progress?.status === 'failed' ? 'object' : 'function');
+  }
+});
+
+test('the first rows of an empty owned index appear on a short authenticated check', async () => {
+  const empty = indexResponse('running', { hydrating: true });
+  const first = { id: 'first-article', title: 'Oil pump repair' };
+  const partial = indexResponse('running', { hydrating: true, items: [first] });
+  const waitAfterFirstRows = deferredAuthOperation();
+  let clock = 0;
+  const h = articleIndexHarness([empty, partial, indexResponse('completed', { complete: true, items: [first] })], {
+    now: () => clock,
+    wait(ms) {
+      clock += ms;
+      if (ms === 1150) return waitAfterFirstRows.promise;
+    },
+  });
+  const opening = h.load();
+  await new Promise(setImmediate);
+  assert.deepEqual(h.updates.map(update => update.count), [0, 1]);
+  assert.equal(h.$('catalog').hidden, false);
+  assert.equal(h.$('loading-progress').hidden, true);
+  assert.match(h.$('activity-text').textContent, /open the articles below while more sources load/i);
+  assert.equal(h.requests.length, 2);
+  assert.equal(h.requests[0].path, h.requests[1].path);
+  assert.equal(h.requests[0].signal, h.requests[1].signal);
+  assert.equal(h.requests[0].prefer, paidPagePreferences);
+  assert.equal(h.requests[1].prefer, paidPagePreferences);
+  assert.equal(h.requests[1].timeout, 500);
+  waitAfterFirstRows.resolve();
+  await opening;
+  assert.equal(h.requests.length, 3);
+  assert.equal(h.$('completion-status').textContent, 'Article index ready.');
+});
+
+test('a timed-out empty owned-index check keeps the ordinary polling deadline', async () => {
+  const empty = indexResponse('running', { hydrating: true });
+  const done = indexResponse('completed', { complete: true });
+  let clock = 0;
+  const reads = [];
+  const h = articleIndexHarness([
+    () => { reads.push(clock); return empty; },
+    () => { reads.push(clock); clock += 500; throw new CatalogRequestError('Timed out'); },
+    () => { reads.push(clock); return done; },
+  ], { now: () => clock, wait: async (ms) => { clock += ms; } });
+  await h.load();
+  assert.deepEqual(reads, [0, 350, 1500]);
+  assert.equal(h.requests[1].timeout, 500);
+  assert.equal(h.$('completion-status').textContent, 'Article index ready. No articles are currently available.');
+});
+
+test('an empty owned-index check propagates access denial immediately', async () => {
+  for (const status of [401, 403, 404, 410, 429]) {
+    const denied = new CatalogRequestError('Access unavailable', { status });
+    const h = articleIndexHarness([
+      indexResponse('running', { hydrating: true }),
+      () => { throw denied; },
+    ]);
+    await assert.rejects(h.load(), denied);
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.updates.every(update => update.count === 0), true);
   }
 });
 
