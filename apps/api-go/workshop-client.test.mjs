@@ -3286,7 +3286,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     names: ['year', 'make', 'model', 'configuration'],
     vehicle: { id: scope.configuration_id, region: scope.region }, quote,
     merchant: merchantFixture(), merchantRequest: null, access: 'missing', currentOrder: '', paidOrder: null, unconfirmedOrder: null,
-    articles: [], searchItems: null, searchQuery: '', searchPending: false,
+    articles: [], indexCatalogEmpty: false, searchItems: null, searchQuery: '', searchPending: false,
     searchComplete: false, searchError: false, searchTimer: null,
     sourceRevision: 0,
     clearTimeout() {},
@@ -4169,7 +4169,7 @@ async function ownedCheckoutHarness(indexResponses, { checkoutResponse = ownedCh
   const h = paidPurchaseLifecycleHarness([], { realArticleIndex: true, articleReadResponses: indexResponses });
   const requests = [];
   const storage = new Map();
-  Object.assign(h.context, { indexLoaded: false, indexComplete: false, indexHydrating: false, indexFailed: false });
+  Object.assign(h.context, { indexLoaded: false, indexComplete: false, indexCatalogEmpty: false, indexHydrating: false, indexFailed: false });
   h.$('check-order').hidden = true;
   h.context.checkout = createCheckout({
     storage: {
@@ -4290,6 +4290,22 @@ test('a checkout returning owned opens the exact index directly', async () => {
   assert.equal(h.$('check-order').hidden, true);
   assert.equal(h.context.paidOrder, null);
   assert.equal(h.location.search, `?configuration=${scope.configuration_id}&region=${scope.region}`);
+});
+
+test('a confirmed empty owned checkout offers one scoped availability check', async () => {
+  const empty = indexResponse('completed', { complete: true });
+  const h = await ownedCheckoutHarness([empty, checkoutReadyIndex]);
+  await h.context.purchase();
+  assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet]);
+  assert.equal(h.$('purchase-message').textContent, 'Owned. No articles are currently available for this vehicle.');
+  assert.equal(h.$('purchase-action').textContent, 'Check article availability');
+  assert.equal(h.$('purchase-action').disabled, false);
+  assert.equal(h.$('catalog-count').textContent, '0 articles');
+
+  await h.context.purchase();
+  assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet, checkoutIndexGet]);
+  assert.equal(h.$('purchase-action').textContent, 'Open articles');
+  assert.equal(h.$('catalog-count').textContent, '1 article');
 });
 
 test('an owned checkout keeps the confirmed payment on scoped index failures and can recheck', async () => {
@@ -4485,7 +4501,7 @@ function articleIndexHarness(responses, { wait = async () => {}, now = () => per
     $, element, URL, uuid, openDemo, demoPath: path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path,
     location: { href: `https://cars.example/workshop?vehicle=B${openDemo ? '&demo=1' : ''}` },
     document,
-    navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexLoaded: false, indexComplete: false, indexHydrating: false, indexFailed: false, access: '', retryAction: null, filterArticles,
+    navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexLoaded: false, indexComplete: false, indexCatalogEmpty: false, indexHydrating: false, indexFailed: false, access: '', retryAction: null, filterArticles,
     searchNavigation, searchItems: null, searchQuery: '', searchPending: false, searchComplete: false, searchError: false, searchTimer: null,
     currentArticle: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
     sourceDocumentRequest: null,
@@ -4734,7 +4750,7 @@ test('complete saved search uses its scoped response and loads the full index on
   assert.equal(h.context.vehicle.model, 'Touring');
   assert.equal(h.context.indexLoaded, false);
   assert.equal(h.context.access, 'owned');
-  assert.equal(h.$('catalog-count').textContent, '1 articles');
+  assert.equal(h.$('catalog-count').textContent, '1 article');
   assert.equal(h.$('articles').children[0].children.length, 1);
   assert.match(h.$('completion-status').textContent, /search ready/i);
 
@@ -4805,6 +4821,23 @@ test('complete saved search can show an exact no-match result before the full in
   assert.equal(h.requests.length, 1);
 });
 
+test('a saved search on a confirmed empty catalog shows availability without another read', async () => {
+  const empty = indexResponse('completed', { complete: true });
+  const h = articleIndexHarness([{
+    ...empty, configuration: { id: 'B', region: 'US' }, progress: { ...empty.progress, catalog_empty: true },
+  }]);
+  h.$('search').value = 'alternator';
+  assert.equal(await h.context.loadSavedSearch(h.navigation.next(), 'alternator'), true);
+  assert.equal(h.$('no-results').textContent, 'No articles are currently available for this vehicle.');
+  assert.equal(h.$('completion-status').textContent, 'No articles are currently available for this vehicle.');
+  h.$('search').value = 'starter';
+  h.$('search').events.input();
+  await new Promise(setImmediate);
+  assert.equal(h.$('catalog-count').textContent, '0 articles');
+  assert.equal(h.$('no-results').textContent, 'No articles are currently available for this vehicle.');
+  assert.equal(h.requests.length, 1);
+});
+
 test('partial saved search displays matches while waiting for the full index', async () => {
   const configuration = { id: 'B', region: 'US' };
   const hit = { id: 'a', title: 'Pump repair', availability: 'available', source_revision_id: 'first' };
@@ -4861,7 +4894,7 @@ test('actual article index flow polls until explicit current completion', async 
     assert.equal(h.requests.length, responses.length);
     assert.equal(h.statuses.filter(s => s.complete === true).length, 1);
     assert.equal(h.updates.slice(0, -1).every(u => u.completion === ''), true);
-    assert.equal(h.$('completion-status').textContent, 'Article index ready. No articles are currently available.');
+    assert.equal(h.$('completion-status').textContent, 'No articles are currently available for this vehicle.');
   }
 });
 
@@ -4944,7 +4977,7 @@ test('a timed-out empty owned-index check keeps the ordinary polling deadline', 
   await h.load();
   assert.deepEqual(reads, [0, 350, 1500]);
   assert.equal(h.requests[1].timeout, 500);
-  assert.equal(h.$('completion-status').textContent, 'Article index ready. No articles are currently available.');
+  assert.equal(h.$('completion-status').textContent, 'No articles are currently available for this vehicle.');
 });
 
 test('an empty owned-index check propagates access denial immediately', async () => {
@@ -5527,7 +5560,7 @@ test('Workshop input searches owned article content through protected index quer
   const list = h.$('articles').children[0];
   assert.deepEqual(list.children.map(row => row.children[0].children[0].textContent), ['Service notes']);
   assert.equal(new URL(list.children[0].children[0].href, 'https://cars.example').searchParams.get('article'), 'content-hit');
-  assert.equal(h.$('catalog-count').textContent, '1 articles');
+  assert.equal(h.$('catalog-count').textContent, '1 article');
 });
 
 test('pasting a long title immediately finds only its exact off-page match', async () => {
@@ -5720,7 +5753,6 @@ test('reopening an owned index removes a withdrawn content-search result', async
     indexResponse('completed', { complete: true, items: [privateItem] }),
     indexResponse('completed', { complete: true, items: [privateItem] }),
     indexResponse('completed', { complete: true, items: [] }),
-    indexResponse('completed', { complete: true, items: [] }),
   ]);
   await h.load();
   h.$('search').value = 'ground strap';
@@ -5729,7 +5761,8 @@ test('reopening an owned index removes a withdrawn content-search result', async
   assert.equal(h.$('articles').children[0].children.length, 1);
   await h.load();
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(h.requests.filter(request => request.path.includes('?q=')).length, 2);
+  assert.equal(h.requests.filter(request => request.path.includes('?q=')).length, 1);
+  assert.equal(h.requests.length, 3);
   assert.equal(h.$('articles').children[0].children.length, 0);
 });
 

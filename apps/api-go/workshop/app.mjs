@@ -79,6 +79,7 @@ let vehicle = null,
   pendingIndexPage = null,
   indexLoaded = false,
   indexComplete = false,
+  indexCatalogEmpty = false,
   indexHydrating = false,
   indexFailed = false,
   searchItems = null,
@@ -186,6 +187,7 @@ function clearProtected() {
   pendingIndexPage = null;
   indexLoaded = false;
   indexComplete = false;
+  indexCatalogEmpty = false;
   indexHydrating = false;
   indexFailed = false;
   resetReaderContent();
@@ -599,7 +601,9 @@ function renderPurchase() {
     access === "revoked"
       ? "Access revoked. Contact the published support address."
       : access === "owned"
-        ? "Owned. Open your articles without another purchase."
+        ? indexCatalogEmpty
+          ? "Owned. No articles are currently available for this vehicle."
+          : "Owned. Open your articles without another purchase."
         : paymentReceived
           ? simulation
             ? "Simulated purchase complete. Article access is still being checked."
@@ -625,7 +629,7 @@ function renderPurchase() {
   action.textContent = action.hidden ? "" : !session.state.authenticated
     ? "Sign in with Google"
     : access === "owned"
-      ? "Open articles"
+      ? (indexCatalogEmpty ? "Check article availability" : "Open articles")
       : paymentReceived
         ? (simulation ? "Simulation complete" : "Payment received")
         : canResume
@@ -790,13 +794,14 @@ async function loadSavedSearch(g, query, focusArticle = "") {
   searchItems = result.items;
   searchComplete = result.complete === true;
   indexComplete = searchComplete;
+  indexCatalogEmpty = searchComplete && result.items.length === 0 && result.progress?.catalog_empty === true;
   indexHydrating = !searchComplete;
   access = "owned";
   renderPurchase();
   show("catalog");
   renderArticles();
   if (focusArticle) focusArticleIndex(focusArticle);
-  if (searchComplete) status("Article search ready.", { complete: true });
+  if (searchComplete) showArticleIndexStatus();
   else await loadArticles(g);
   return true;
 }
@@ -896,6 +901,7 @@ async function loadArticles(g, articleID = "", {
         articles = result.items;
         indexLoaded = true;
         indexComplete = result.complete === true;
+        indexCatalogEmpty = indexComplete && articles.length === 0;
         indexHydrating = !indexComplete && result.hydrating === true;
         indexFailed =
           result.progress?.status === "failed" &&
@@ -954,8 +960,8 @@ async function loadArticles(g, articleID = "", {
 
 function showArticleIndexStatus(articleID = "", refreshFailed = false) {
   if (indexComplete) {
-    const ready = !indexLoaded && searchItems ? "Article search ready." :
-      articles.length ? "Article index ready." : "Article index ready. No articles are currently available.";
+    const ready = indexCatalogEmpty ? "No articles are currently available for this vehicle." :
+      !indexLoaded && searchItems ? "Article search ready." : "Article index ready.";
     status(ready, { complete: true });
   } else if (indexFailed) {
     status(articles.length
@@ -990,7 +996,7 @@ function searchHitsOnCurrentIndex(items) {
 function scheduleArticleSearch({ fromIndex = false, restoreFocus } = {}) {
   const query = trimArticleSearch($("search").value);
   const refresh = fromIndex && query === searchQuery;
-  if (refresh && searchPending) {
+  if (refresh && searchPending && !indexCatalogEmpty) {
     searchRefreshPending = true;
     renderArticles();
     return;
@@ -1005,7 +1011,7 @@ function scheduleArticleSearch({ fromIndex = false, restoreFocus } = {}) {
     searchItems = null;
     searchComplete = false;
   }
-  searchPending = Boolean(query && vehicle?.id && access === "owned");
+  searchPending = Boolean(query && vehicle?.id && access === "owned" && !indexCatalogEmpty);
   searchError = false;
   renderArticles({ keepFocus: refresh });
   if (!searchPending) return;
@@ -1025,7 +1031,12 @@ function scheduleArticleSearch({ fromIndex = false, restoreFocus } = {}) {
       // A newer index may retire or replace results from the older search.
       searchItems = searchRefreshPending ? searchHitsOnCurrentIndex(items) : items;
       searchComplete = result.complete === true;
-      if (!indexLoaded) indexComplete = searchComplete;
+      if (!indexLoaded) {
+        indexComplete = searchComplete;
+        indexCatalogEmpty = searchComplete && items.length === 0 && result.progress?.catalog_empty === true &&
+          result.configuration?.id === vehicleID && result.configuration.region === region;
+        renderPurchase();
+      }
       searchPending = false;
       if (searchRefreshPending) scheduleArticleSearch({ fromIndex: true, restoreFocus });
       else {
@@ -1111,7 +1122,7 @@ function renderArticles({ keepFocus = true } = {}) {
   const searching = Boolean(query && searchQuery === query);
   const localSearch = searching && searchItems === null;
   const page = query ? null : indexPage;
-  const items = articleIndexItems(query);
+  const items = indexCatalogEmpty ? [] : articleIndexItems(query);
   if (items.length && !localSearch && access === "owned" && paidOrder?.id === currentOrder &&
       vehicle?.id === paidOrder.configuration_id && vehicle?.region === paidOrder.region) {
     clearPaidOrderAction(currentOrder);
@@ -1139,7 +1150,7 @@ function renderArticles({ keepFocus = true } = {}) {
   const range = lastPage > 0 ? `${start + 1}–${end} of ${total}` : "";
   if ($("article-page-range").textContent !== range) $("article-page-range").textContent = range;
   const articleCount = `${total} ${total === 1 ? "article" : "articles"}`;
-  const resultsComplete = searching ? searchComplete && indexComplete : indexComplete;
+  const resultsComplete = indexComplete && (indexCatalogEmpty || !searching || searchComplete);
   const indexUnavailable = indexFailed && !articles.length;
   const noPartialMatches = searching && indexFailed && !indexUnavailable && !items.length;
   let countText = searching && searchPending
@@ -1152,7 +1163,7 @@ function renderArticles({ keepFocus = true } = {}) {
           ? `${total} articles so far. Article index is still being prepared.`
           : openDemo
             ? `${items.length} available articles · ${articles.length} indexed`
-            : `${total} articles`;
+            : articleCount;
   const localSearchSource = indexPage ? "loaded page" : "loaded index";
   if (items.length && searching && searchPending)
     countText = `${articleCount} from the ${localSearchSource}. Searching…`;
@@ -1164,21 +1175,23 @@ function renderArticles({ keepFocus = true } = {}) {
     countText = "0 articles from available sources.";
   // Avoid mutating the polite live region with the same pending text on every keystroke.
   if ($("catalog-count").textContent !== countText) $("catalog-count").textContent = countText;
-  $("no-results").textContent = searching && searchError
-    ? "Article search is unavailable. Try again."
-    : searching && searchPending
-      ? "Searching articles…"
-      : openDemo && articles.length > 0 && !articles.some((item) => item.availability === "available")
-        ? "No articles are readable yet for this vehicle. Choose another vehicle or check back later."
-        : indexUnavailable
-          ? "This article index could not be prepared. Check the status above."
-          : noPartialMatches
-            ? "No articles from available sources match this search."
-            : !resultsComplete
-              ? "This article index is still being prepared. Check again shortly."
-              : query && (articles.length > 0 || !indexLoaded)
-                ? "No articles match this search. Try a component name or a shorter phrase."
-                : "No articles are currently available for this vehicle.";
+  $("no-results").textContent = indexCatalogEmpty
+    ? "No articles are currently available for this vehicle."
+    : searching && searchError
+      ? "Article search is unavailable. Try again."
+      : searching && searchPending
+        ? "Searching articles…"
+        : openDemo && articles.length > 0 && !articles.some((item) => item.availability === "available")
+          ? "No articles are readable yet for this vehicle. Choose another vehicle or check back later."
+          : indexUnavailable
+            ? "This article index could not be prepared. Check the status above."
+            : noPartialMatches
+              ? "No articles from available sources match this search."
+              : !resultsComplete
+                ? "This article index is still being prepared. Check again shortly."
+                : query && (articles.length > 0 || !indexLoaded)
+                  ? "No articles match this search. Try a component name or a shorter phrase."
+                  : "No articles are currently available for this vehicle.";
   $("no-results").hidden = items.length > 0;
 }
 

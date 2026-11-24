@@ -282,6 +282,7 @@ type CatalogSourceContent struct {
 
 type CatalogArticleProgress struct {
 	Complete         bool   `json:"complete"`
+	CatalogEmpty     bool   `json:"catalog_empty,omitempty"`
 	Retryable        bool   `json:"retryable"`
 	Status           string `json:"status"`
 	Phase            string `json:"phase"`
@@ -755,6 +756,7 @@ func (s *postgresCatalogStore) CatalogScopeComplete(ctx context.Context, _ Princ
 func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Principal, vehicleID string) (*CatalogArticleProgress, error) {
 	// The scope check constraint binds each key to the corresponding vehicle or exact configuration.
 	var total, completed, active, failed, retryable int
+	var catalogEmpty bool
 	err := s.pool.QueryRow(ctx, `
   SELECT count(*),
     count(*) FILTER(WHERE scope.status='complete' AND scope.completed_generation=scope.generation),
@@ -762,15 +764,22 @@ func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Pri
     count(*) FILTER(WHERE scope.status IN ('partial','failed','needs_review','not_configured')
       OR job.status IN ('failed','needs_review','dead_letter')),
     count(*) FILTER(WHERE job.status='failed' AND job.retryable=true
-      AND job.retry_count < job.max_attempts)
+      AND job.retry_count < job.max_attempts),
+    CASE WHEN count(*) FILTER(WHERE scope.scope_key='configuration:'||$1
+      AND scope.status='complete' AND scope.completed_generation=scope.generation AND scope.row_count=0)=2
+    THEN NOT EXISTS (
+      SELECT 1 FROM canonical_articles a WHERE a.scope_key='configuration:'||$1
+        AND a.provider_slug IN ('bankone','banktwo') AND a.membership_status='active'
+    ) ELSE false END
   FROM catalog_article_provider_scopes scope
   LEFT JOIN source_fetch_jobs job ON job.source_fetch_job_id=scope.current_job_id
   WHERE scope.scope_key IN ('vehicle:'||$1, 'configuration:'||$1)
-    AND scope.provider_slug IN ('bankone','banktwo')`, vehicleID).Scan(&total, &completed, &active, &failed, &retryable)
+    AND scope.provider_slug IN ('bankone','banktwo')`, vehicleID).Scan(&total, &completed, &active, &failed, &retryable, &catalogEmpty)
 	if err != nil {
 		return nil, err
 	}
 	progress := &CatalogArticleProgress{Status: "pending", Phase: "indexing", Total: 2, Processed: completed, Percent: completed * 50, Complete: total == 2 && completed == 2, Retryable: retryable > 0}
+	progress.CatalogEmpty = progress.Complete && catalogEmpty
 	if progress.Complete {
 		progress.Status = "completed"
 	} else if active > 0 {
