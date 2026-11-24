@@ -6785,6 +6785,81 @@ test('clearing protected state also clears an earlier Library message and Load m
   assert.equal(message.textContent, '');
 });
 
+test('the retained Ford heading outline stays hierarchical in Published and Original', async () => {
+  const authoredLevels = [1, 2, 3, 3, 2, 3, 3];
+  const blocks = authoredLevels.map((level, index) => ({ type: 'heading', level, text: `Section ${index + 1}` }));
+  const requests = [];
+  const h = articleMediaHarness({
+    async requestJSON(path) {
+      requests.push(path);
+      return { source: { url: mediaSourceURL }, document: { blocks } };
+    },
+  });
+  const published = h.render(mediaArticle(blocks, [], { content_origin: 'canonical' }));
+  assert.deepEqual(mediaTags(published), ['h3', 'h4', 'h5', 'h5', 'h4', 'h5', 'h5']);
+  assert.deepEqual(published.children.map(node => node.dataset.headingStyle), Array(7).fill('3'));
+  assert.deepEqual(requests, []);
+
+  await h.context.loadSource(mediaSourceURL, h.g);
+  const original = h.nodes.get('source-review-frame');
+  assert.deepEqual(mediaTags(original), ['h4', 'h5', 'h6', 'h6', 'h5', 'h6', 'h6']);
+  assert.deepEqual(original.children.map(node => node.textContent), blocks.map(block => block.text));
+  assert.deepEqual(requests, [mediaSourceURL]);
+});
+
+test('nested article headings share the document outline and keep deep source targets', async () => {
+  const deep = { type: 'heading', level: 6, block_id: 'deep', text: 'Final checks' };
+  const blocks = [
+    { type: 'heading', level: 4, text: 'Components' },
+    { type: 'ordered_list', items: [{ blocks: [{
+      type: 'table',
+      columns: [{ blocks: [{ type: 'heading', level: 1, text: 'Service instructions' }] }],
+      rows: [{ cells: [{ blocks: [deep, { type: 'image', asset_id: 'drawing' }] }] }],
+    }] }] },
+  ];
+  const images = [{ id: 'drawing', url: mediaURL('drawing') }];
+  const h = articleMediaHarness({
+    requestJSON: async () => ({ source: { url: mediaSourceURL }, document: { blocks }, images }),
+  });
+  const published = h.render(mediaArticle(blocks, images, { content_origin: 'canonical' }));
+  assert.deepEqual(mediaTags(published), ['h6', 'ol']);
+  assert.deepEqual(mediaTags(mediaDescendants(published, 'th')[0]), ['h3']);
+  const publishedCell = mediaDescendants(published, 'td')[0];
+  assert.deepEqual(mediaTags(publishedCell), ['div', 'figure']);
+  assert.equal(publishedCell.children[0].getAttribute('role'), 'heading');
+  assert.equal(publishedCell.children[0].getAttribute('aria-level'), '8');
+  assert.equal(publishedCell.children[0].dataset.headingStyle, '6');
+
+  await h.context.loadSource(mediaSourceURL, h.g, 'deep');
+  const original = h.nodes.get('source-review-frame');
+  assert.deepEqual(mediaTags(original), ['div', 'ol']);
+  assert.equal(original.children[0].getAttribute('aria-level'), '7');
+  assert.deepEqual(mediaTags(mediaDescendants(original, 'th')[0]), ['h4']);
+  const sourceCell = mediaDescendants(original, 'td')[0];
+  assert.deepEqual(mediaTags(sourceCell), ['div', 'figure']);
+  assert.equal(sourceCell.children[0].getAttribute('role'), 'heading');
+  assert.equal(sourceCell.children[0].getAttribute('aria-level'), '9');
+  assert.equal(sourceCell.children[0].getAttribute('tabindex'), '-1');
+  assert.equal(sourceCell.children[0].focusCalls, 1);
+  assert.deepEqual(mediaIDs(original), ['drawing']);
+});
+
+test('headings without an authored level use the reader base without changing known ranks', async () => {
+  const blocks = [
+    { type: 'heading', text: 'Unnumbered heading' },
+    { type: 'heading', level: 4, text: 'Authored section' },
+    { type: 'heading', level: 6, text: 'Authored detail' },
+    { type: 'heading', level: 99, text: 'Invalid heading level' },
+  ];
+  const h = articleMediaHarness({
+    requestJSON: async () => ({ source: { url: mediaSourceURL }, document: { blocks } }),
+  });
+  const published = h.render(mediaArticle(blocks, [], { content_origin: 'canonical' }));
+  assert.deepEqual(mediaTags(published), ['h3', 'h3', 'h5', 'h3']);
+  await h.context.loadSource(mediaSourceURL, h.g);
+  assert.deepEqual(mediaTags(h.nodes.get('source-review-frame')), ['h4', 'h4', 'h6', 'h4']);
+});
+
 test('heading and paragraph illustrations keep their order, alt text, and caption', () => {
   const h = articleMediaHarness();
   const content = h.content(mediaArticle([

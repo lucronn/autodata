@@ -636,6 +636,27 @@ select:enabled:hover {
   margin: 0 0 18px;
   white-space: pre-wrap;
 }
+/* Keep the authored heading's appearance after rebasing its accessible level. */
+.article-heading[data-heading-style="3"] {
+  margin: 0;
+  font-size: 1.17em;
+  font-weight: 550;
+}
+.article-heading[data-heading-style="4"] {
+  margin: 1.33em 0;
+  font-size: 1em;
+  font-weight: bold;
+}
+.article-heading[data-heading-style="5"] {
+  margin: 1.67em 0;
+  font-size: 0.83em;
+  font-weight: bold;
+}
+.article-heading[data-heading-style="6"] {
+  margin: 2.33em 0;
+  font-size: 0.67em;
+  font-weight: bold;
+}
 .procedure-steps {
   list-style: none;
   margin: 0;
@@ -1069,7 +1090,8 @@ footer {
     max-height: 500px;
   }
   h2,
-  h3 {
+  h3:not(.article-heading),
+  .article-heading[data-heading-style="3"] {
     break-after: avoid;
   }
 }
@@ -1079,7 +1101,8 @@ footer {
   margin-top: 22px;
   padding-top: 18px;
 }
-.source-review h3 {
+.source-review h3,
+.source-review .article-heading[data-heading-style="3"] {
   font-size: 18px;
   color: var(--ink);
   margin: 0 0 7px;
