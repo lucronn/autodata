@@ -103,6 +103,63 @@ type commerceFixture func(context.Context, string, []byte, string) (int, []byte,
 func (f commerceFixture) Do(ctx context.Context, op string, b []byte, s string) (int, []byte, error) {
 	return f(ctx, op, b, s)
 }
+
+func TestWorkshopSessionLibraryRequiresVerifiedOwnerAndOptIn(t *testing.T) {
+	calls := 0
+	result := `{"version":"v1","items":[{"library_item_id":"` + commerceOrderID + `","configuration_id":"` + commerceConfigID + `","region":"US","label":"Exact vehicle","access_state":"paid","catalog_empty":true,"granted_at":"2026-11-23T00:00:00Z","private":"filtered"}],"next_cursor":"next-page"}`
+	s, cookie, csrf := commerceTestAPI(t, commerceFixture(func(_ context.Context, operation string, body []byte, _ string) (int, []byte, error) {
+		calls++
+		var input map[string]any
+		if operation != "library" || json.Unmarshal(body, &input) != nil ||
+			input["customer_account_id"] != "11111111-1111-4111-8111-111111111111" ||
+			input["organization_id"] != "44444444-4444-4444-8444-444444444444" ||
+			input["cursor"] != "" || input["limit"] != float64(20) {
+			t.Fatalf("unexpected Library request: %s %s", operation, body)
+		}
+		return http.StatusOK, []byte(result), nil
+	}))
+	handler := s.Handler()
+	preference := "workshop-session-mode, workshop-session-library"
+	var session struct {
+		CSRF    string           `json:"csrf_token"`
+		Mode    string           `json:"mode"`
+		Library *commerceLibrary `json:"workshop_library"`
+	}
+	read := func(prefer string, cookie *http.Cookie) *httptest.ResponseRecorder {
+		return customerHTTP(t, handler, http.MethodGet, "/auth/session", "", map[string]string{"Prefer": prefer}, cookie)
+	}
+	if w := read(preference, nil); w.Code != http.StatusUnauthorized || calls != 0 {
+		t.Fatalf("guest reached Library: status %d, calls %d", w.Code, calls)
+	}
+	verifier := s.customerAuth.verifier.(*customerVerifierFixture)
+	verifier.checkErr = ErrUnauthenticated
+	if w := read(preference, cookie); w.Code != http.StatusUnauthorized || calls != 0 {
+		t.Fatalf("denied session reached Library: status %d, calls %d", w.Code, calls)
+	}
+	verifier.checkErr = nil
+	for _, prefer := range []string{"", "workshop-session-mode", "workshop-session-library",
+		"workshop-session-mode, workshop-session-library=1"} {
+		w := read(prefer, cookie)
+		if w.Code != http.StatusOK || calls != 0 || strings.Contains(w.Body.String(), "workshop_library") {
+			t.Fatalf("normal session included Library: status %d, calls %d", w.Code, calls)
+		}
+	}
+	w := read(preference, cookie)
+	if w.Code != http.StatusOK || calls != 1 || json.Unmarshal(w.Body.Bytes(), &session) != nil ||
+		session.CSRF != csrf || session.Mode != "firebase" || session.Library == nil ||
+		len(session.Library.Items) != 1 || session.Library.Items[0].ConfigurationID != commerceConfigID ||
+		session.Library.Items[0].CatalogEmpty == nil || !*session.Library.Items[0].CatalogEmpty ||
+		session.Library.NextCursor == nil || *session.Library.NextCursor != "next-page" ||
+		strings.Contains(w.Body.String(), "filtered") {
+		t.Fatalf("valid Library was not attached to the verified session: %d %s", w.Code, w.Body.String())
+	}
+	result = `{"version":"v1","items":[]}`
+	w = read(preference, cookie)
+	if w.Code != http.StatusOK || calls != 2 || strings.Contains(w.Body.String(), "workshop_library") {
+		t.Fatalf("invalid Library changed the verification response: %d %s", w.Code, w.Body.String())
+	}
+}
+
 func TestCommerceQuoteLibraryStatusAndSafeErrors(t *testing.T) {
 	var operation string
 	var payload map[string]any

@@ -1979,12 +1979,15 @@ async function renewMedia(g, failed) {
   }
   if (!retryImage(failed, images)) showUnavailableImage(failed);
 }
-async function library(g, append = false, { focusOnShow = false } = {}) {
+async function library(g, append = false, { focusOnShow = false, initialAccountCheck = null } = {}) {
   if (!append) $("purchase").hidden = true;
-  if (sessionRequest) {
+  let initialPage;
+  const accountCheck = initialAccountCheck ?? sessionRequest;
+  if (accountCheck) {
     status("Checking your account…", { busy: true });
-    await sessionRequest;
+    const bundled = await accountCheck;
     if (!g.current()) return;
+    if (!append && validLibrary(bundled)) initialPage = bundled;
   }
   if (append && (!libraryCursor || libraryPageRequest)) return;
   if (!append) {
@@ -2000,7 +2003,7 @@ async function library(g, append = false, { focusOnShow = false } = {}) {
   status(append ? "Loading more vehicles…" : "Opening My vehicles…", { busy: true });
   const cursor = append ? libraryCursor : null;
   const more = $("library-more");
-  const request = requestJSON(
+  const request = initialPage ? Promise.resolve(initialPage) : requestJSON(
     `/v1/workshop/library?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
     { signal: g.signal, headers: { Prefer: "workshop-library-catalog-empty" } },
   );
@@ -2460,7 +2463,7 @@ export async function bootstrap(initialYears, initialAccount, { preservePicker =
   // The first route can restore public selectors while the account is checked.
   // Account actions wait for that same check and use the current navigation.
   if (sessionEstablished) await accountCheck;
-  await Promise.all([accountCheck, restoreRoute(years, { initialSelectors: early })]);
+  await Promise.all([accountCheck, restoreRoute(years, { initialSelectors: early, initialAccountCheck: accountCheck })]);
 }
 function loadPurchaseConfiguration() {
   const configRequest = requestJSON("/workshop/purchase-config.json").catch(() => null)
@@ -2474,10 +2477,11 @@ function loadPurchaseConfiguration() {
   merchantRequest = configRequest;
 }
 function checkAccount(initial) {
-  const accountCheck = session.bootstrap({ initial }).then(() => {
+  const accountCheck = session.bootstrap({ initial }).then((library) => {
     if (sessionRequest !== accountCheck) return;
     sessionRequest = null;
     sessionEstablished = true;
+    return library;
   });
   sessionRequest = accountCheck;
   return accountCheck;
@@ -2519,7 +2523,9 @@ async function finishSavedYears(g, pending, confirmed) {
   }
 }
 
-async function restoreRoute(initialYears = null, { focusArticle = "", indexAnchor = "", initialSelectors = null } = {}) {
+async function restoreRoute(initialYears = null, {
+  focusArticle = "", indexAnchor = "", initialSelectors = null, initialAccountCheck = null,
+} = {}) {
   invalidate();
   show("welcome");
   const params = new URLSearchParams(location.search);
@@ -2554,7 +2560,7 @@ async function restoreRoute(initialYears = null, { focusArticle = "", indexAncho
         return;
       }
       if (!openDemo && params.get("view") === "library") {
-        await library(g);
+        await library(g, false, { initialAccountCheck });
         return;
       }
       const articleID = params.get("article") || "";

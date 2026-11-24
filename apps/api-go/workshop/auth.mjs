@@ -45,7 +45,7 @@ export function authMessage(error) {
   if (error?.status === 401) return "Your session has expired. Sign in again.";
   return "Google sign-in is unavailable. You can keep browsing.";
 }
-export function readSessionBootstrap(request = requestJSON, { signal } = {}) {
+export function readSessionBootstrap(request = requestJSON, { signal, includeLibrary = false } = {}) {
   const read = async (path, headers) => {
     try {
       return { status: "fulfilled", value: await request(path, { signal, timeout: 10000, headers }) };
@@ -55,7 +55,8 @@ export function readSessionBootstrap(request = requestJSON, { signal } = {}) {
   };
   return [
     read("/auth/config"),
-    read("/auth/session", { Prefer: "workshop-session-mode" }),
+    read("/auth/session", { Prefer: includeLibrary
+      ? "workshop-session-mode, workshop-session-library" : "workshop-session-mode" }),
   ];
 }
 export function createSession({
@@ -182,7 +183,7 @@ export function createSession({
         state.csrf = data.csrf_token;
         state.message = "Signed in.";
         changed();
-        return;
+        return confirmedMode ? data.workshop_library : undefined;
       }
       const error = session.status === "rejected" ? session.reason : null;
       const guest = error?.status === 401;

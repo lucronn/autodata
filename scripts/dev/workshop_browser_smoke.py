@@ -1258,6 +1258,38 @@ async def api21_get(context,url,*,phase=None,actor='owner',**kwargs):
     return response
 
 
+async def reload_owner_library(page, context, origin, transport, phase):
+    from playwright.async_api import expect
+
+    observations = getattr(context, '_api21', None)
+    if observations:
+        observations.phase = phase
+    request_offset = len(transport.requests)
+    async with page.expect_response(lambda response: (
+        response.url == origin + '/auth/session' and response.request.method == 'GET'
+    )) as requested:
+        await page.reload()
+    response = await requested.value
+    assert response.status == 200
+    assert 'no-store' in (await response.header_value('cache-control') or '').lower()
+    preference = await response.request.header_value('prefer') or ''
+    assert 'workshop-session-library' in {value.strip() for value in preference.split(',')}
+    session = await response.json()
+    assert session.get('authenticated') is True and session.get('mode') == 'firebase'
+    library = session['workshop_library']
+    await expect(page.locator('#library-items > li')).to_have_count(1)
+    await expect(page.locator('#library-items h3')).to_have_text('2024 Example Car Paid selected 2.0 L / US')
+    assert {'method': 'GET', 'path': '/v1/workshop/library'} not in transport.requests[request_offset:]
+
+    # Keep the session response in memory. Retain the credential-free Library
+    # payload from a separate compatibility read using the same browser session.
+    standalone = await api21_get(context, origin + '/v1/workshop/library?limit=20', phase=phase)
+    assert standalone.status == 200 and await standalone.json() == library
+    if observations:
+        await observations.drain()
+        observations.require_window(phase)
+
+
 async def api_measure(context,origin,phase=None):
     response=await api21_get(context,origin+'/__fixture/measurement',phase=phase)
     assert response.status==200
@@ -1536,12 +1568,7 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
             await observations.drain();observations.require_window('owner-library-initial-http')
         await expect(page.locator('#library-items > li')).to_have_count(1)
         await expect(page.locator('#library-items h3')).to_have_text('2024 Example Car Paid selected 2.0 L / US')
-        if observations:observations.phase='owner-library-reload-http'
-        await page.reload()
-        if observations:
-            await expect(page.locator('#library-items > li')).to_have_count(1)
-            await observations.drain();observations.require_window('owner-library-reload-http')
-        await expect(page.locator('#library-items > li')).to_have_count(1)
+        await reload_owner_library(page, context, origin, transport, 'owner-library-reload-http')
         assert (await api_measure(context,origin,'library-reload-measurement'))['workshop_orders']==1
         assertions['permanent_owner_library_reload']=True
         restart_before=await api_measure(context,origin,'restart-before-measurement')
@@ -1556,12 +1583,7 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
                 if time.monotonic()>=deadline:raise
             assert time.monotonic()<deadline,'actual application restart did not finish'
             await asyncio.sleep(.05)
-        if observations:observations.phase='owner-library-restart-http'
-        await page.reload()
-        if observations:
-            await expect(page.locator('#library-items > li')).to_have_count(1)
-            await observations.drain();observations.require_window('owner-library-restart-http')
-        await expect(page.locator('#library-items > li')).to_have_count(1)
+        await reload_owner_library(page, context, origin, transport, 'owner-library-restart-http')
         restart_after=await api_measure(context,origin,'restart-after-measurement')
         durable=('workshop_orders','workshop_checkout_requests','entitlements','dataset_requests','dataset_projections','payment_events','orders','auth_sessions','hashed_sessions')
         assert {key:restart_before[key] for key in durable}=={key:restart_after[key] for key in durable}

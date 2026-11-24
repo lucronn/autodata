@@ -1290,6 +1290,9 @@ class API21FakeResponse:
     async def body(self):return self.data if isinstance(self.data,bytes) else json.dumps(self.data).encode()
     async def json(self):return self.data
     async def text(self):return (await self.body()).decode()
+    async def header_value(self, name):
+        if self.url.endswith('/auth/session') and name == 'cache-control':
+            return 'no-store'
 
 
 class API21FakeBrowser:
@@ -1326,6 +1329,11 @@ class API21FakeContext:
     async def new_page(self):self.page=API21FakePage(self);return self.page
     async def close(self):self.closed=True
     async def cookies(self,origin):return [dict(name='__Host-autodata_session',secure=True,httpOnly=True,sameSite='Lax')]
+    def library(self):
+        if self.other or not self.signed or not self.browser.paid:
+            return {'items': []}
+        return {'items': [dict(library_item_id=smoke.ORDER, configuration_id=smoke.CONFIG,
+                              region='US', access_state='paid')]}
     async def get(self,url,**kwargs):
         browser=self.browser;path=smoke.urlsplit(url).path
         phase=getattr(getattr(self,'_api21',None),'phase','')
@@ -1339,7 +1347,7 @@ class API21FakeContext:
         elif 'denial' in phase:
             status=404 if phase in ('other-image-denial','adjacent-denial','other-region-denial','unscoped-article-denial','legacy-vehicle-denial') else 401 if phase in ('logout-image-denial','disabled-image-denial') else 403
             data={'error':'denied'}
-        elif phase=='other-library-http':data={'items':[]}
+        elif path=='/v1/workshop/library':data=self.library()
         elif phase=='warm-page-http':
             assert path == f'/v1/catalog/vehicles/{smoke.CONFIG}/articles/{smoke.ARTICLE}'
             data={'article':{'content_origin':'canonical'}}
@@ -1372,7 +1380,7 @@ class API21FakePage:
         self.response_expectation=(predicate,response)
         try:
             yield SimpleNamespace(value=response)
-            assert response.done(), 'fixture search response did not match'
+            assert response.done(), 'fixture response did not match'
         finally:
             self.response_expectation=None
     def on(self,event,callback):self.handlers.setdefault(event,[]).append(callback)
@@ -1402,8 +1410,7 @@ class API21FakePage:
         self.dispatch('request',response.request)
         self.dispatch('response',response)
     def library(self):
-        self.emit('https://127.0.0.1:32001/v1/workshop/library?limit=20',dict(items=[dict(
-            library_item_id=smoke.ORDER,configuration_id=smoke.CONFIG,region='US',access_state='paid')]))
+        self.emit('https://127.0.0.1:32001/v1/workshop/library?limit=20', self.context.library())
     async def goto(self,url):
         self.url=url
         if 'article=' in url:
@@ -1411,8 +1418,13 @@ class API21FakePage:
         elif 'region=CA' in url:
             self.emit('https://127.0.0.1:32001/v1/catalog/vehicles/'+smoke.CONFIG+'/articles?region=CA',{'error':'denied'})
     async def reload(self):
-        phase=getattr(getattr(self.context,'_api21',None),'phase','')
-        if phase.startswith('owner-library-'):self.library()
+        url = 'https://127.0.0.1:32001/auth/session'
+        async def header_value(name):
+            if name == 'prefer':
+                return 'workshop-session-mode, workshop-session-library'
+        self.emit(url, dict(authenticated=self.context.signed, mode='firebase',
+                            csrf_token='fake-session-secret', workshop_library=self.context.library()),
+                  SimpleNamespace(url=url, method='GET', header_value=header_value))
     async def wait_for_url(self,pattern):pass
     async def evaluate(self,code):return []
     async def screenshot(self,**kwargs):raise RuntimeError('fake screenshot unavailable')
@@ -1694,6 +1706,7 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
                             patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}):
                         result=await smoke.api_case(browser,'https://127.0.0.1:32001',name,Path(temp),observations=buffer)
                         self.assertEqual(result['status'],'passed',buffer.snapshot())
+                        self.assertNotIn('fake-session-secret',json.dumps(result['observations']))
                         phases=list(dict.fromkeys(e['phase'] for e in result['observations']['events']))
                         self.assertEqual(phases,matrix[name])
                         self.assertTrue(all(c.closed for c in browser.contexts));count+=1
@@ -1959,7 +1972,7 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
         original_reload=API21FakePage.reload
         with TemporaryDirectory() as temp,patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}), \
                 patch.object(API21FakePage,'library',library),patch.object(API21FakePage,'reload',reload):
-            with self.assertRaises(smoke.APIObservationError):
+            with self.assertRaisesRegex(AssertionError, 'fixture response did not match'):
                 await smoke.api_case(browser,'https://127.0.0.1:32001',smoke.API_CASES[0],Path(temp),observations=buffer)
         self.assertEqual(sum(e['phase']=='owner-library-initial-http' and e['payload']['kind']=='http' for e in buffer.events),2)
         self.assertFalse(any(e['phase']=='owner-library-reload-http' and e['payload']['kind']=='http' for e in buffer.events))
