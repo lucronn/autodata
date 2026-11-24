@@ -11,6 +11,16 @@ import (
 // also reads stored images before a short-lived media URL has been minted.
 var catalogSearchImageURL = regexp.MustCompile(`^/v1/catalog/images/v2\.[a-zA-Z0-9_-]+$`)
 
+func filterCatalogArticleTitle(items []CatalogArticle, title string) []CatalogArticle {
+	matches := make([]CatalogArticle, 0)
+	for _, article := range items {
+		if strings.EqualFold(strings.TrimSpace(article.Title), title) {
+			matches = append(matches, article)
+		}
+	}
+	return matches
+}
+
 // Search only text the Workshop can display. IDs, locators, image URLs, and
 // source metadata are deliberately excluded from content search.
 func filterCatalogArticleSearch(items []CatalogArticle, query string) []CatalogArticle {

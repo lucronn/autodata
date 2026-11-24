@@ -606,6 +606,54 @@ func TestPostgresPaidCatalogExactScopeAndOwnerIsolation(t *testing.T) {
 	f.check("revoked_and_legacy_denied", true)
 	f.snapshot("isolated")
 }
+func TestPostgresPaidCatalogExactTitleSearch(t *testing.T) {
+	f := paidSetup(t)
+	title := "Removing and installing the high pressure fuel pump and checking the control wiring above the primary filter housing"
+	path := f.path("?title=" + url.QueryEscape(" "+strings.ToUpper(title)+" "))
+	f.exec(`UPDATE canonical_articles SET title=$1 WHERE canonical_article_id=$2::uuid`, " "+title+" ", f.article)
+	f.exec(`UPDATE canonical_articles SET title=$1 WHERE canonical_article_id=$2::uuid`, title+" cover", f.other)
+	f.expect(-1, "GET", path, "", 401)
+	f.expect(1, "GET", path, "", 403)
+	order := f.grant(0, f.configuration, "US")
+	f.grant(1, f.adjacent, "US")
+	f.expect(1, "GET", path, "", 403)
+	f.expect(0, "GET", path+"&region=CA", "", 404)
+	f.expect(0, "GET", f.path("?q="+url.QueryEscape(title)), "", 422)
+	f.expect(0, "GET", path+"&q=pump", "", 422)
+	results := func() []CatalogArticle {
+		var list CatalogArticlesResponse
+		if err := json.Unmarshal(f.expect(0, "GET", path, "", 200), &list); err != nil {
+			t.Fatal("invalid exact title response", err)
+		}
+		for _, item := range list.Items {
+			if item.CanonicalArticleID == nil || *item.CanonicalArticleID != item.ID ||
+				item.Document != nil || item.Body != "" || len(item.Steps) != 0 || len(item.Images) != 0 || item.SourceReview != nil {
+				t.Fatal("exact title response contained unmanaged identity or article content")
+			}
+		}
+		return list.Items
+	}
+	if items := results(); len(items) != 1 || items[0].ID != f.article {
+		t.Fatal("displayed long title did not match the exact entitled article")
+	}
+	f.exec(`UPDATE canonical_articles SET title=$1 WHERE canonical_article_id=$2::uuid`, title, f.other)
+	first := f.article
+	if f.provider == "banktwo" {
+		first = f.other
+	}
+	if items := results(); len(items) != 2 || items[0].ID != first {
+		t.Fatal("identical titles did not retain catalog order")
+	}
+	f.exec(`UPDATE canonical_articles SET title=$1 WHERE canonical_article_id=$2::uuid`, title+" cover", f.other)
+	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=(
+		SELECT descriptor_source_snapshot_id FROM canonical_articles WHERE canonical_article_id=$1::uuid)`, f.article)
+	if items := results(); len(items) != 0 {
+		t.Fatal("exact title search exposed a withdrawn descriptor")
+	}
+	f.exec(`UPDATE entitlements SET status='revoked',revoked_at=now(),revoke_reason='fixture' WHERE commerce_order_id=$1::uuid`, order)
+	f.expect(0, "GET", path, "", 403)
+}
+
 func TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse(t *testing.T) {
 	f := paidSetup(t)
 	f.grant(0, f.configuration, "US")

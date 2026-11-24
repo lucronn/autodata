@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -216,6 +217,18 @@ func TestOpenDemoReadsExactCatalogWithoutLoginOrGrant(t *testing.T) {
 	if search.Code != 200 || !strings.Contains(search.Body.String(), id) || strings.Contains(search.Body.String(), unavailableID) || strings.Contains(search.Body.String(), "private body") {
 		t.Fatalf("open demo search exposed unreadable content: %d %s", search.Code, search.Body.String())
 	}
+	for _, tc := range []struct{ title, expectedID string }{
+		{"stored procedure", id},
+		{"Index only", ""},
+	} {
+		w := request(root+"?demo=1&title="+url.QueryEscape(tc.title), "localhost:3013")
+		var result CatalogArticlesResponse
+		if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &result) != nil ||
+			(tc.expectedID == "" && len(result.Items) != 0) ||
+			(tc.expectedID != "" && (len(result.Items) != 1 || result.Items[0].ID != tc.expectedID)) {
+			t.Fatalf("open demo title search crossed the availability boundary: %d %s", w.Code, w.Body)
+		}
+	}
 	if grant.calls != 0 {
 		t.Fatal("open demo contacted purchase grant checker")
 	}
@@ -353,6 +366,47 @@ func TestPaidCatalogContentSearchUsesGrantAndReturnsOnlyMatchingDescriptors(t *t
 	s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles?q=ground", nil))
 	if w.Code != http.StatusForbidden || c.protected != 0 || c.searches != 0 {
 		t.Fatalf("revoked search read protected content: status=%d protected=%d searches=%d", w.Code, c.protected, c.searches)
+	}
+}
+
+func TestPaidCatalogExactTitleSearch(t *testing.T) {
+	s, catalog, grant := paidHTTPServer()
+	grant.err = nil
+	title := "Removing and installing the high pressure fuel pump and checking the control wiring above the primary filter housing"
+	matchID := "55555555-5555-4555-8555-555555555555"
+	otherID := "66666666-6666-4666-8666-666666666666"
+	catalog.PutArticle(CatalogArticle{ID: matchID, VehicleID: paidTestConfiguration, CanonicalArticleID: &matchID,
+		Title: "\u2002" + title + " ", Body: "Private procedure text."})
+	catalog.PutArticle(CatalogArticle{ID: otherID, VehicleID: paidTestConfiguration, CanonicalArticleID: &otherID,
+		Title: title + " cover", Body: title, Component: title})
+	handler := s.Handler()
+	request := func(filters string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles?"+filters, nil))
+		return w
+	}
+	path := "title=" + url.QueryEscape("  "+strings.ToUpper(title)+"\u00a0")
+	w := request(path)
+	var result CatalogArticlesResponse
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &result) != nil ||
+		len(result.Items) != 1 || result.Items[0].ID != matchID || result.Items[0].Body != "" || catalog.searches != 0 {
+		t.Fatalf("unexpected exact title result: status %d, content search calls %d, response %s", w.Code, catalog.searches, w.Body)
+	}
+	for _, query := range []string{
+		path + "&q=", path + "&title=duplicate", "title=+", "title=%GG", "title=%FF", "title=%00",
+		"title=" + url.QueryEscape(strings.Repeat("é", 1001)), "q=" + url.QueryEscape(title),
+	} {
+		if w := request(query); w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("invalid article search returned %d", w.Code)
+		}
+	}
+	if w := request("title=" + url.QueryEscape(strings.Repeat("é", 1000))); w.Code != http.StatusOK {
+		t.Fatalf("1,000 code-point title returned %d", w.Code)
+	}
+	grant.err = ErrVehicleGrantRevoked
+	catalog.protected = 0
+	if w := request(path); w.Code != http.StatusForbidden || catalog.protected != 0 {
+		t.Fatalf("revoked title search reached protected data: status %d, reads %d", w.Code, catalog.protected)
 	}
 }
 
