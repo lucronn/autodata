@@ -7822,6 +7822,22 @@ test('the first selector renders while checkout mode confirmation is pending', a
   assert.equal(banner.hidden, false);
 });
 
+test('simulation purchase settings are usable while the separate demo mode read is pending', async () => {
+  const mode = deferredAuthOperation();
+  const config = { enabled: true, checkout_mode: 'simulation' };
+  const context = {
+    URLSearchParams, location: { search: '?view=library' }, openDemo: false,
+    merchant: null, merchantRequest: null, sessionEstablished: false, sessionRequest: null,
+    session: { async bootstrap() {} }, invalidate() {}, async restoreRoute() {},
+    requestJSON: async () => config,
+  };
+  runInNewContext(appSection('async function bootstrap(', 'async function restoreRoute('), context);
+  await context.bootstrap(null, null, { testCheckout: mode.promise });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(context.merchant, config);
+  assert.equal(context.merchantRequest, null);
+});
+
 test('a late purchase configuration response cannot overwrite a newer refresh', async () => {
   const replies = [];
   const context = {
