@@ -1765,11 +1765,13 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
   const pendingDetail = (response) => response?.status === 202 &&
     response.data?.article?.id === id && matchesConfiguration(response.data.configuration) &&
     processingArticle(response.data.article);
-  const recoverDetail = (signal) => {
+  const recoverDetail = (signal, preferEarlySourceCheck = false) => {
     if (!detailRead) {
       detailStartedAt = performance.now();
       detailPending = true;
-      detailRead = requestArticleDetail(order, detailPath, { ...readOptions, signal, preferShortSourceCheck: true })
+      detailRead = requestArticleDetail(order, detailPath, {
+        ...readOptions, signal, preferShortSourceCheck: true, preferEarlySourceCheck,
+      })
         .catch((error) => {
           g.signal.throwIfAborted();
           if (deniesArticle(error.status)) throw error;
@@ -1827,7 +1829,7 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
   const retainedPrepareDelayMs = 250;
   const earlyRead = earlySignal && delay(retainedPrepareDelayMs, earlySignal).then(async () => {
     if (!preparing || !g.current() || earlySignal.aborted) return;
-    const response = await recoverDetail(earlySignal);
+    const response = await recoverDetail(earlySignal, true);
     if ((!preparing && !keepEarlyRead) || !g.current() || earlySignal.aborted) return;
     if (pendingDetail(response)) return response;
     const article = response?.data?.article;

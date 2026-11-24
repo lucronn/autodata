@@ -9152,6 +9152,7 @@ test('a slow paid prepare opens retained text before the POST finishes on saved 
     const opening = h.context.loadArticle('a', h.g, { savedLink });
     assert.deepEqual(h.calls.map(call => call.method), ['POST']);
     assert.equal(h.calls[0].headers['X-CSRF-Token'], 'csrf');
+    assert.equal(h.calls[0].preferEarlySourceCheck, undefined);
     assert.equal(h.nodes.get('article-content').textContent, '');
     h.gracePeriod.resolve();
     await new Promise(resolve => setImmediate(resolve));
@@ -9162,6 +9163,7 @@ test('a slow paid prepare opens retained text before the POST finishes on saved 
     assert.equal(h.calls.length, 2);
     assert.equal(h.calls[1].path, `/v1/catalog/vehicles/${h.configuration.id}/articles/a?region=US`);
     assert.equal(h.calls[1].headers, undefined);
+    assert.equal(h.calls[1].preferEarlySourceCheck, true);
     prepare.resolve({ status: 202, retryAfterSeconds: 2, data: { configuration: h.configuration,
       article: { id: 'a', processing: { job_id: 'queued', state: 'fetching_source' } },
     } });
@@ -9171,6 +9173,7 @@ test('a slow paid prepare opens retained text before the POST finishes on saved 
     poll.resolve();
     assert.equal(await opening, true);
     assert.equal(h.nodes.get('article-content').textContent, 'Published Ford procedure.');
+    assert.equal(h.calls[2].preferEarlySourceCheck, undefined);
     assert.deepEqual(h.calls.map(call => call.method || 'GET'), ['POST', 'GET', 'GET']);
   }
 });
@@ -9196,8 +9199,13 @@ test('a saved cold article reuses a started GET after its prepare returns 202', 
   let aborted = false;
   const h = retainedReaderHarness((path, options) => requestArticleJSON(path, {
     ...options,
-    async fetcher(_url, { method, signal }) {
-      if (method === 'POST') return prepare.promise;
+    async fetcher(_url, { method, signal, headers }) {
+      const marked = headers.Prefer.split(', ').includes('workshop-early-source-check');
+      if (method === 'POST') {
+        assert.equal(marked, false);
+        return prepare.promise;
+      }
+      assert.equal(marked, true);
       if (h.calls.length !== 2) assert.fail('the ordinary poll should reuse the first GET');
       signal.addEventListener('abort', () => { aborted = true; early.reject(signal.reason); }, { once: true });
       getStarted.resolve();
@@ -9305,8 +9313,13 @@ test('verified scheduling failures reuse a pending exact read and can recover wi
     const prepare = deferredAuthOperation(), detail = deferredAuthOperation(), reading = deferredAuthOperation();
     const h = retainedReaderHarness((path, options) => requestArticleJSON(path, {
       ...options,
-      fetcher: async (_url, { method }) => {
-        if (method === 'POST') return prepare.promise;
+      fetcher: async (_url, { method, headers }) => {
+        const marked = headers.Prefer.split(', ').includes('workshop-early-source-check');
+        if (method === 'POST') {
+          assert.equal(marked, false);
+          return prepare.promise;
+        }
+        assert.equal(marked, slow);
         reading.resolve();
         return detail.promise;
       },
