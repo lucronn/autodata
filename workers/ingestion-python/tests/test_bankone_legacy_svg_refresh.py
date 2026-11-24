@@ -9,14 +9,17 @@ from uuid import uuid4
 import pytest
 from PIL import ImageColor, Image
 from psycopg.errors import LockNotAvailable
+from psycopg.types.json import Jsonb
 
 from autodata_ingestion import article_lifecycle_store as store
-from autodata_ingestion.article_document import project_ordered_document
+from autodata_ingestion import procedure_rewrite_auto as auto
+from autodata_ingestion.article_document import build_ordered_document, project_ordered_document
 from autodata_ingestion.article_lifecycle import run_article_job, run_article_worker_once
 from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE, ArticleKey, SourceArticleContext, digest_json
 from autodata_ingestion.procedure_normalize import normalize_procedure_article
 from autodata_ingestion.procedure_rewrite import build_rewrite_prompt
 from autodata_ingestion.procedure_rewrite_auto import render_auto
+from autodata_ingestion.procedure_rewrite_full import prose_slots
 from autodata_ingestion.published_media_publication import _publication_evidence
 from autodata_ingestion.published_media_repair import _render_technical_v1
 from autodata_ingestion.source_article_capture import capture_source_article
@@ -25,6 +28,9 @@ from autodata_ingestion.source_job_persistence import (
     claim_source_job, ensure_article_job, refresh_article_job, source_bound_rewrite_source_allowed,
 )
 from autodata_ingestion.source_table_replay import load_table_replay_binding
+from autodata_ingestion.staged_media_reply_recovery import (
+    CHECKPOINT, METHOD, _combine, audit_published_staged_media_reply, recover_staged_media_reply,
+)
 from lifecycle_support import fresh_database, seed_configuration, seed_snapshot, seed_vehicle
 from test_article_transform import Model
 
@@ -449,3 +455,200 @@ def test_same_body_legacy_svg_refresh_keeps_published_pair_until_atomic_swap(fre
         reuse = _job(repo, retry.job_id)["checkpoint"]
         assert reuse["reused_terminal_result"] is True
         assert reuse["reused_transformation_job_id"] == str(refreshed.job_id)
+
+
+class FailedRefreshModel(RecordingModel):
+    def complete_json(self, prompt):
+        reply = super().complete_json(prompt)
+        reply["introduction"] = "Tighten the fasteners to 90 Nm."
+        reply["replacements"][0]["text"] = json.loads(prompt)["slots"][0]["text"]
+        return reply
+
+
+@pytest.mark.parametrize("heading", ["Removal", "Installation"])
+def test_staged_reply_replay_only_remaps_an_exact_authored_heading(heading):
+    article = {"article_id": "fixture", "evidence_ids": ["fixture-source"]}
+    instructions = [
+        {"kind": "paragraph", "text": "Remove the shield."},
+        {"kind": "paragraph", "text": "Install the cover."},
+    ]
+    prior = build_ordered_document(article, [{"kind": "paragraph", "text": "Removal"}, *instructions])
+    fresh = build_ordered_document(article, [{"kind": "heading", "level": 2, "text": heading}, *instructions])
+
+    def reply(source, intro, wording):
+        return {"introduction": intro, "replacements": [
+            {**slot, "action": "rewrite", "text": text, "reason": ""}
+            for slot, text in zip(prose_slots(source), wording, strict=True)
+        ]}
+
+    earlier = reply(prior, "This article describes service information.",
+                    ["Removal instructions", "Take off the shield.", "Fit the cover."])
+    failed = reply(fresh, "Tighten the cover to 90 Nm.", ["Remove the shield.", "Fit the cover."])
+    args = (prior, earlier, "full-prose-auto-prompt-v2", fresh, failed, "full-prose-auto-prompt-v55")
+    if heading != "Removal":
+        with pytest.raises(ValueError, match="^STAGED_MEDIA_REPLY_RECOVERY_SLOT_DRIFT$"):
+            _combine(*args)
+        return
+    document, validation, evidence = _combine(*args)
+    assert validation.passed and evidence["restored_source_heading"] is True
+    assert evidence["carried_slots"] == [{"prior_path": "/blocks/1/text", "replacement_path": "/blocks/1/text"}]
+    assert document["blocks"][1]["type"] == "heading" and document["blocks"][1]["text"] == "Removal"
+    assert document["blocks"][2]["text"] == "Take off the shield."
+
+
+@pytest.mark.parametrize("outcome", [
+    "publish", "stale-binding", "fresh-withdrawal", "prior-withdrawal",
+    "prior-transcript", "failed-transcript", "failed-origin",
+])
+def test_recover_staged_media_from_two_immutable_attempts(fresh_database, monkeypatch, outcome):
+    repo = fresh_database()
+    _localize_fixture(monkeypatch)
+    vehicle = seed_vehicle(repo)
+    configuration = seed_configuration(repo, vehicle)
+    key = ArticleKey("bankone", vehicle, configuration, "fixture-vehicle", "fixture-article")
+    descriptor_id = seed_snapshot(repo, b"fixture descriptor")
+    old_resolution = seed_snapshot(repo, b"fixture original resolution")
+    fresh_resolution = seed_snapshot(repo, b"fixture new resolution")
+    descriptor = {"resource_ref": "body", "title": "Fixture fastener inspection"}
+    article = store.upsert_article_descriptor(repo, key, descriptor, descriptor_id, 0)
+    context = SourceArticleContext(
+        key, {"make": "Example", "model": "Car", "year": 2024, "region": "US"},
+        descriptor, descriptor_id, old_resolution, (str(descriptor_id), str(old_resolution)),
+    )
+    objects = MemoryObjects()
+    old_connector = Connector(legacy=True)
+    baseline_job = ensure_article_job(
+        repo, article, normalization_version=NORMALIZATION, rewrite_profile_version=AUTOMATIC_REWRITE_PROFILE,
+    )
+    lease = claim_source_job(repo, worker_id=uuid4(), job_id=baseline_job.job_id)
+    old_source = store.store_captured_source(repo, lease, _legacy_capture(context, old_connector, objects))
+    old_model = RecordingModel()
+    with monkeypatch.context() as historical:
+        historical.setattr(auto, "build_auto_prompt", lambda document, *, context, profile_version:
+                           auto._build_auto_prompt_v2(document, context=context))
+        run_article_job(repo, lease, registry={"bankone": old_connector}, object_store=objects, model_client=old_model)
+    assert json.loads(old_model.calls[0])["prompt_version"] == "full-prose-auto-prompt-v2"
+    baseline = _state(repo, article)
+    assert baseline["source"] == old_source and baseline["canonical"] is not None
+    prior_review = uuid4()
+    with repo.connect() as conn:
+        conn.execute("""INSERT INTO canonical_article_reviews
+            (canonical_article_review_id,canonical_article_revision_id,authorized_reviewer_id,decision,reason)
+            VALUES (%s,%s,'fixture-reviewer','APPROVED','Fixture approval on the historical article.')""",
+            (prior_review, baseline["canonical"]))
+        conn.execute("""INSERT INTO catalog_article_provider_scopes
+            (catalog_provider_scope_id,vehicle_id,vehicle_configuration_id,scope_key,provider_slug,
+             source_vehicle_ref,resolution_source_snapshot_id)
+            VALUES (%s,%s,%s,%s,'bankone','fixture-vehicle',%s)""",
+            (uuid4(), vehicle, configuration, key.scope_key, fresh_resolution))
+    refreshed = refresh_article_job(
+        repo, article, actor="fixture", reason="restore the exact authored positions",
+        expected_source_revision_id=old_source, expected_published_revision_id=baseline["canonical"],
+    )
+    connector, failed_model = Connector(legacy=False), FailedRefreshModel()
+    assert run_article_worker_once(
+        repo, worker_id=uuid4(), registry={"bankone": connector}, object_store=objects,
+        model_client=failed_model, job_id=refreshed.job_id,
+    )
+    failed_job = _job(repo, refreshed.job_id)
+    assert (failed_job["status"], failed_job["phase"], failed_job["error_code"]) == (
+        "dead_letter", "validating", "REWRITE_TECHNICAL_MUTATION",
+    )
+    _assert_original_served(_state(repo, article), baseline)
+    arguments = dict(
+        expected_job_id=refreshed.job_id, expected_source_revision_id=failed_job["source_revision_id"],
+        expected_published_revision_id=baseline["canonical"], actor="fixture-operator", reason="reuse the exact archived replies",
+    )
+
+    def rows():
+        with repo.connect() as conn:
+            revision = conn.execute("SELECT * FROM canonical_article_revisions WHERE transformation_key=%s",
+                                    (failed_job["transformation_key"],)).fetchone()
+            attempts = conn.execute("""SELECT * FROM canonical_article_rewrite_attempts
+                WHERE source_fetch_job_id IN (%s,%s) ORDER BY created_at""",
+                (baseline_job.job_id, refreshed.job_id)).fetchall()
+            approvals = conn.execute("""SELECT * FROM canonical_article_reviews
+                WHERE canonical_article_revision_id IN (%s,%s) ORDER BY reviewed_at""",
+                (baseline["canonical"], revision["canonical_article_revision_id"])).fetchall()
+        return revision, attempts, approvals
+
+    with repo.connect() as conn:
+        if outcome == "stale-binding":
+            arguments["expected_published_revision_id"] = uuid4()
+        elif outcome == "fresh-withdrawal":
+            conn.execute("""UPDATE source_snapshots SET takedown_status='takedown' WHERE content_sha256=(
+                SELECT resource_manifest->1->>'sha256' FROM canonical_article_source_revisions WHERE source_revision_id=%s)""",
+                (failed_job["source_revision_id"],))
+        elif outcome == "prior-withdrawal":
+            conn.execute("UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=%s", (old_resolution,))
+        elif outcome in ("prior-transcript", "failed-transcript"):
+            owner = baseline_job.job_id if outcome == "prior-transcript" else refreshed.job_id
+            conn.execute("UPDATE canonical_article_rewrite_attempts SET response_hash=%s WHERE source_fetch_job_id=%s",
+                         ("f" * 64, owner))
+        elif outcome == "failed-origin":
+            # A self-consistent hash cannot transform a different terminal failure into the recorded one.
+            reply = FailedRefreshModel().complete_json(failed_model.calls[0])
+            reply["introduction"] = "This article describes service information."
+            conn.execute("""UPDATE canonical_article_rewrite_attempts
+                SET response=%s,response_hash=%s WHERE source_fetch_job_id=%s""",
+                (Jsonb(reply), digest_json(reply), refreshed.job_id))
+    original_rows = rows()
+    before_state = _state(repo, article)
+    connector_calls = connector.calls.copy()
+    if outcome != "publish":
+        with pytest.raises(ValueError):
+            recover_staged_media_reply(repo, article, **arguments)
+        assert rows() == original_rows
+        assert _job(repo, refreshed.job_id) == failed_job
+        assert _state(repo, article) == before_state
+        return
+
+    def interrupt(point):
+        assert point == "inside_publication"
+        assert _state(repo, article) == before_state
+        raise WorkerStopped
+
+    with pytest.raises(WorkerStopped):
+        recover_staged_media_reply(repo, article, hooks=interrupt, **arguments)
+    assert rows() == original_rows and _job(repo, refreshed.job_id) == failed_job
+    assert _state(repo, article) == before_state
+
+    revision_id = recover_staged_media_reply(repo, article, **arguments)
+    revision, attempts, approvals = rows()
+    assert revision_id == original_rows[0]["canonical_article_revision_id"]
+    assert (attempts, approvals) == original_rows[1:]
+    assert revision["model_metadata"]["transformation_method"] == METHOD
+    evidence = revision["model_metadata"][CHECKPOINT]
+    assert evidence["new_model_dispatches"] == 0 and evidence["carried_introduction"] is True
+    assert len(evidence["carried_slots"]) == 1 and evidence["archived_fresh_slots"] == 12
+    assert evidence["prior_attempt"]["attempt_id"] == str(attempts[0]["rewrite_attempt_id"])
+    assert evidence["staged_attempt"]["attempt_id"] == str(attempts[1]["rewrite_attempt_id"])
+    assert evidence["prior_prompt_version"] == "full-prose-auto-prompt-v2"
+    assert evidence["staged_prompt_version"] == "full-prose-auto-prompt-v55"
+    assert evidence["prior_review_id"] == str(prior_review)
+    assert evidence["prior_source_revision_id"] == str(old_source)
+    assert evidence["staged_source_revision_id"] == str(failed_job["source_revision_id"])
+    assert revision["review_status"] == "UNREVIEWED"
+    final = _state(repo, article)
+    assert final["source"] == final["served_source"] == failed_job["source_revision_id"]
+    assert final["canonical"] == final["served_canonical"] == revision_id and final["events"] == 2
+    assert len(final["images"]) == 12 and all(image["status"] == "available" for image in final["images"])
+    final_job = _job(repo, refreshed.job_id)
+    assert final_job["checkpoint"][CHECKPOINT]["evidence"] == evidence
+    assert final_job["retry_count"] == failed_job["retry_count"] == 1 and final_job["status"] == "completed"
+    assert len(old_model.calls) == len(failed_model.calls) == 1 and connector.calls == connector_calls
+    audit_request = dict(
+        expected_job_id=refreshed.job_id, expected_source_revision_id=failed_job["source_revision_id"],
+        expected_prior_source_revision_id=old_source, expected_prior_canonical_revision_id=baseline["canonical"],
+    )
+    assert audit_published_staged_media_reply(repo, article, **audit_request) == {
+        "status": "verified", "archived_attempts": 2, "publication_events": 1,
+        "archived_fresh_slots": 12, "new_model_dispatches": 0,
+        "carried_slots": 1, "carried_introductions": 1, "figures": 12,
+    }
+    audit_request["expected_prior_source_revision_id"] = uuid4()
+    with pytest.raises(ValueError, match="^STAGED_MEDIA_REPLY_RECOVERY_STALE$"):
+        audit_published_staged_media_reply(repo, article, **audit_request)
+    with pytest.raises(ValueError, match="^STAGED_MEDIA_REPLY_RECOVERY_STALE$"):
+        recover_staged_media_reply(repo, article, **arguments)
+    assert _state(repo, article) == final

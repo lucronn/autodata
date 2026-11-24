@@ -103,8 +103,15 @@ def _validate_technical_evidence(cur, job, row, attempt):
 
 
 def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
+    return _publication_evidence_for_revision(
+        cur, article, binding, article["current_canonical_revision_id"], fixture_mode=fixture_mode, lock=lock,
+    )
+
+
+def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fixture_mode, lock):
+    from .staged_media_reply_recovery import METHOD as STAGED_MEDIA_REPLY_RECOVERY_METHOD
+
     article_id = article["canonical_article_id"]
-    revision_id = article["current_canonical_revision_id"]
     row = cur.execute("""
         SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s
           AND canonical_article_id=%s AND source_revision_id=%s AND status='published'
@@ -113,7 +120,7 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_CURRENT_REVISION_REQUIRED")
 
     if row["model_metadata"].get("transformation_method") in (
-        MEDIA_METHOD, ORDINAL_METHOD, TABLE_SPAN_METHOD, SVG_RECOVERY_METHOD,
+        MEDIA_METHOD, ORDINAL_METHOD, TABLE_SPAN_METHOD, SVG_RECOVERY_METHOD, STAGED_MEDIA_REPLY_RECOVERY_METHOD,
     ):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PRIOR_REPAIR_UNSUPPORTED")
 
