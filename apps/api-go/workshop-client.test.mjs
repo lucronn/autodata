@@ -9122,8 +9122,8 @@ function retainedReaderHarness(request) {
   h.context.articlePath = id => `/v1/catalog/vehicles/${configuration.id}/articles/${id}`;
   h.context.renderPurchase = () => {};
   h.context.delay = (ms, signal) => {
+    if (probeSignal) return delay(ms, signal);
     assert.equal(ms, 250);
-    assert.equal(probeSignal, undefined, 'only one optional check is scheduled');
     probeSignal = signal;
     signal.addEventListener('abort', () => gracePeriod.reject(signal.reason), { once: true });
     return gracePeriod.promise;
@@ -9185,6 +9185,44 @@ test('a fast paid prepare cancels the optional check without adding a GET', asyn
   assert.equal(h.probeSignal.aborted, true);
   assert.equal(h.calls.length, 1);
   assert.equal(h.nodes.get('article-content').textContent, 'Ready Ford procedure.');
+});
+
+test('a saved cold article reuses a started GET after its prepare returns 202', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const prepare = deferredAuthOperation(), early = deferredAuthOperation(), getStarted = deferredAuthOperation();
+  const waiting = deferredAuthOperation(), wait = deferredAuthOperation();
+  const stored = mediaArticle([{ type: 'paragraph', text: 'Retained procedure.' }]);
+  let aborted = false;
+  const h = retainedReaderHarness((path, options) => requestArticleJSON(path, {
+    ...options,
+    async fetcher(_url, { method, signal }) {
+      if (method === 'POST') return prepare.promise;
+      if (h.calls.length !== 2) assert.fail('the ordinary poll should reuse the first GET');
+      signal.addEventListener('abort', () => { aborted = true; early.reject(signal.reason); }, { once: true });
+      getStarted.resolve();
+      return early.promise;
+    },
+  }));
+  h.context.readArticle = (read, options) => readArticle(read, {
+    ...options, wait: ms => { assert.equal(ms, 2000); waiting.resolve(); return wait.promise; },
+  });
+  const loading = h.context.loadArticle('a', h.g, { savedLink: true });
+  h.gracePeriod.resolve();
+  await getStarted.promise;
+  prepare.resolve(new Response(JSON.stringify({ configuration: h.configuration,
+    article: { id: 'a', processing: { job_id: 'durable', state: 'fetching_source' } },
+  }), { status: 202, headers: { 'Retry-After': '2' } }));
+  await waiting.promise;
+  assert.equal(h.probeSignal.aborted, false);
+  assert.equal(aborted, false);
+  early.resolve(new Response(JSON.stringify({ configuration: h.configuration, article: stored })));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.nodes.get('article-content').textContent, 'Retained procedure.');
+  assert.deepEqual(h.calls.map(call => call.method || 'GET'), ['POST', 'GET']);
+  wait.resolve();
+  assert.equal(await loading, true);
+  assert.deepEqual(h.calls.map(call => call.method || 'GET'), ['POST', 'GET']);
 });
 
 test('HTTP 200 headers suppress a second download while the prepare body is still streaming', async () => {

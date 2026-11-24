@@ -1759,17 +1759,22 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
   const earlyCheck = canCheckRetained && !refreshVisibleArticle ? new AbortController() : null;
   const earlySignal = earlyCheck && AbortSignal.any([g.signal, earlyCheck.signal]);
   let preparing = prepare;
+  let keepEarlyRead = false;
   let initialReadStartedAt = performance.now();
-  let detailRead, detailStartedAt;
+  let detailRead, detailStartedAt, detailPending = false;
+  const pendingDetail = (response) => response?.status === 202 &&
+    response.data?.article?.id === id && matchesConfiguration(response.data.configuration) &&
+    processingArticle(response.data.article);
   const recoverDetail = (signal) => {
     if (!detailRead) {
       detailStartedAt = performance.now();
+      detailPending = true;
       detailRead = requestArticleDetail(order, detailPath, { ...readOptions, signal, preferShortSourceCheck: true })
         .catch((error) => {
           g.signal.throwIfAborted();
           if (deniesArticle(error.status)) throw error;
           return null;
-        });
+        }).finally(() => { detailPending = false; });
     }
     return detailRead;
   };
@@ -1781,12 +1786,13 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
         preferShortSourceCheck: true,
         reportBodyNetworkError: true,
         onResponseStatus(status) {
-          if (status === 200 && !detailRead || deniesArticle(status)) earlyCheck?.abort();
+          if ((status === 200 || status === 202) && !detailRead || deniesArticle(status)) earlyCheck?.abort();
         },
         headers: { "X-CSRF-Token": session.state.csrf },
       })
     : requestArticleDetail(order, detailPath, readOptions)).then((response) => {
       preparing = false;
+      keepEarlyRead = Boolean(earlySignal && detailPending && pendingDetail(response));
       return response;
     }, async (error) => {
       const recover = preparing && g.current();
@@ -1822,20 +1828,23 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
   const earlyRead = earlySignal && delay(retainedPrepareDelayMs, earlySignal).then(async () => {
     if (!preparing || !g.current() || earlySignal.aborted) return;
     const response = await recoverDetail(earlySignal);
-    if (!preparing || !g.current() || earlySignal.aborted) return;
+    if ((!preparing && !keepEarlyRead) || !g.current() || earlySignal.aborted) return;
+    if (pendingDetail(response)) return response;
     const article = response?.data?.article;
     const configuration = response?.data?.configuration;
     if (response?.status !== 200 || !matchesConfiguration(configuration) ||
         article?.id !== id || !readableArticle(article)) return;
+    if (order.accepted?.[articleDetailSequence] > response[articleDetailSequence]) return;
     retained = response;
     if (savedLink) showSavedConfiguration(configuration);
     updateReader(response, true);
+    return response;
   }, () => {});
   const first = await (earlyRead ? Promise.race([primary, earlyRead.then(() => primary)]) : primary)
     .catch(handleReadError)
     .finally(() => {
       preparing = false;
-      earlyCheck?.abort();
+      if (!keepEarlyRead) earlyCheck?.abort();
     });
   if (!g.current()) return;
   if (savedLink) {
@@ -1847,17 +1856,31 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
     showSavedConfiguration(configuration);
   }
   let initial = first;
-  const result = await readArticle(
-    (options) => {
+  let reuseEarlyRead = keepEarlyRead;
+  const polling = readArticle(
+    async (options) => {
       if (initial) {
         const value = initial;
         initial = null;
         return value;
       }
+      if (reuseEarlyRead) {
+        reuseEarlyRead = false;
+        // Use the in-flight read at the next scheduled slot within its time budget.
+        const wait = Math.min(retainedPrepareDelayMs, Math.floor(options.timeout / 2));
+        if (wait > 0) {
+          const startedAt = performance.now();
+          const response = await Promise.race([earlyRead, delay(wait, earlySignal).then(() => null)]);
+          if (response) return response;
+          const elapsed = Math.ceil(performance.now() - startedAt);
+          options = { ...options, timeout: Math.max(1, options.timeout - elapsed),
+            readableBodyTimeout: options.readableBodyTimeout && Math.max(1, options.readableBodyTimeout - elapsed) };
+        }
+      }
       return requestArticleDetail(order, detailPath, options);
     },
     {
-      signal: g.signal,
+      signal: keepEarlyRead ? earlySignal : g.signal,
       initialReadStartedAt,
       selectResponse(response) {
         // An older prepare can confirm an active job without replacing the retained view.
@@ -1866,7 +1889,10 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
       },
       onUpdate: updateReader,
     },
-  ).catch(handleReadError);
+  );
+  const result = await (keepEarlyRead ? Promise.race([polling, earlyRead.then(() => polling)]) : polling)
+    .catch(handleReadError)
+    .finally(() => earlyCheck?.abort());
   if (!g.current()) return;
   showArticleReadStatus(id, retained ? currentArticle : result.data?.article, result.timedOut);
   return true;
