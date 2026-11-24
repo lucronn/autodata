@@ -10,6 +10,8 @@ article_worker.py --job-id with the returned job ID to process that exact job.
 Use --correct-from with a failed v2 job and a model-call budget for passage correction.
 Add --by-sentence to try a sentence pass on the remaining rejected prose.
 Use --recover-from with a terminal v3 job to stage a correction from its saved replies.
+Use --recover-staged-media-from with a failed positioned media refresh and its
+expected published revision to replay the exact archived replies and publish.
 """
 import argparse
 import json
@@ -25,6 +27,7 @@ from autodata_ingestion.procedure_rewrite_sentence_correction import MAX_SENTENC
 from autodata_ingestion.source_job_persistence import (
     refresh_article_job, schedule_source_bound_correction, schedule_source_bound_rewrite,
 )
+from autodata_ingestion.staged_media_reply_recovery import recover_staged_media_reply
 
 
 def selection(value):
@@ -85,13 +88,17 @@ def main(argv=None, *, repo=None):
                           help="correct a failed draft against the same retained source")
     drafting.add_argument("--recover-from", type=UUID, metavar="FAILED_V3_JOB_ID",
                           help="stage a correction using this job's archived model replies")
+    drafting.add_argument("--recover-staged-media-from", type=UUID, metavar="FAILED_REFRESH_JOB_ID",
+                          help="publish a positioned-media revision using the exact archived replies")
+    parser.add_argument("--expected-published-revision-id", type=UUID,
+                        help="bind staged-media replay to the exact served canonical revision")
     parser.add_argument("--model-call-budget", type=int, metavar=f"1-{MAX_CORRECTION_CALLS}")
     parser.add_argument("--by-sentence", action="store_true", help="use sentence correction for the selected failed draft")
     args = parser.parse_args(argv)
     if args.selection.stat().st_size > 64 * 1024:
         raise ValueError("AUTOMATIC_SELECTION_LIMIT")
     targets = selection(json.loads(args.selection.read_text()))
-    retained_job = args.source_bound_from or args.correct_from or args.recover_from
+    retained_job = args.source_bound_from or args.correct_from or args.recover_from or args.recover_staged_media_from
     if retained_job is not None and (len(targets) != 1 or not args.apply):
         parser.error("retained-source drafting requires one selected article and --apply")
     if args.correct_from is not None and (
@@ -102,6 +109,8 @@ def main(argv=None, *, repo=None):
         parser.error("--model-call-budget requires --correct-from")
     if args.by_sentence and (args.correct_from is None or args.model_call_budget > MAX_SENTENCE_CORRECTION_CALLS):
         parser.error(f"--by-sentence requires --correct-from and a budget of 1 through {MAX_SENTENCE_CORRECTION_CALLS}")
+    if (args.recover_staged_media_from is None) != (args.expected_published_revision_id is None):
+        parser.error("--recover-staged-media-from requires --expected-published-revision-id")
     if repo is None:
         from autodata_ingestion.worker import ArticleRepository
         repo = ArticleRepository()
@@ -112,7 +121,12 @@ def main(argv=None, *, repo=None):
             actor=args.actor, reason=args.reason,
         )
         article_id = UUID(target["canonical_article_id"])
-        if args.recover_from is not None:
+        if args.recover_staged_media_from is not None:
+            revision = recover_staged_media_reply(
+                repo, article_id, expected_published_revision_id=args.expected_published_revision_id, **arguments,
+            )
+            results = [{**target, "job_id": str(retained_job), "revision_id": str(revision), "action": "published"}]
+        elif args.recover_from is not None:
             revision = recover_source_bound_correction(repo, article_id, **arguments)
             results = [{**target, "job_id": str(retained_job), "revision_id": str(revision), "action": "recovered"}]
         else:

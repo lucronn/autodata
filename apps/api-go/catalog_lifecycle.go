@@ -27,10 +27,11 @@ type CatalogProcessing struct {
 	shortReadPreference string
 }
 type CatalogArticleView struct {
-	Article           CatalogArticle
-	CanSchedule       bool
-	Withdrawn         bool
-	sourceBodyPreview *CatalogDocument
+	Article              CatalogArticle
+	CanSchedule          bool
+	Withdrawn            bool
+	sourceBodyPreview    *CatalogDocument
+	originalSourceReview *CatalogSourceReview
 }
 type CatalogScheduleResult struct {
 	JobID              string  `json:"job_id"`
@@ -171,13 +172,20 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 		return CatalogArticleView{}, ErrCatalogNotFound
 	}
 	var raw, preview []byte
+	var originalRevision *string
+	var originalSnapshot, originalHash, originalVersion string
+	scope, paid := ctx.Value(paidCatalogContextKey{}).(paidCatalogContext)
 	// Resolve the direct ID and at most one proven alias before evaluating the
 	// effective article view. Direct IDs take precedence within the same scope.
-	err := s.pool.QueryRow(ctx, `SELECT to_jsonb(view_row), early.document FROM canonical_articles a
+	err := s.pool.QueryRow(ctx, `SELECT to_jsonb(view_row), early.document,
+		original.source_revision_id::text,COALESCE(original.body_source_snapshot_id::text,''),
+		COALESCE(original.content_sha256::text,''),COALESCE(original.body_provider_revision,'')
+		FROM canonical_articles a
 		JOIN LATERAL (
 			SELECT * FROM catalog_article_current WHERE canonical_article_id=a.canonical_article_id LIMIT 1
 		) view_row ON true
 		LEFT JOIN LATERAL (`+catalogSourceBodyPreviewSQL+`) early ON view_row.takedown_status='active'
+		LEFT JOIN LATERAL (`+catalogStagedOriginalSQL+` AND $3 AND a.vehicle_configuration_id::text=$1) original ON true
 		WHERE a.canonical_article_id IN ($2::uuid, (
 			SELECT alias.canonical_article_id FROM canonical_article_aliases alias
 			JOIN catalog_articles legacy USING(catalog_article_id)
@@ -185,7 +193,9 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 			WHERE alias.catalog_article_id=$2::uuid AND legacy.vehicle_id=owner.vehicle_id
 			AND legacy.vehicle_configuration_id IS NOT DISTINCT FROM owner.vehicle_configuration_id
 		)) AND `+lifecycleScopeSQL+` AND `+lifecycleEligibleSQL+`
-		ORDER BY (a.canonical_article_id=$2::uuid) DESC LIMIT 1`, v, id).Scan(&raw, &preview)
+		ORDER BY (a.canonical_article_id=$2::uuid) DESC LIMIT 1`, v, id, paid && !scope.openDemo).Scan(
+		&raw, &preview, &originalRevision, &originalSnapshot, &originalHash, &originalVersion,
+	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		legacy, e := s.legacyArticle(ctx, p, v, id)
 		if e != nil {
@@ -264,6 +274,12 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 	article.canonicalConfigurationID = row.ConfigurationID
 	article = lifecycleArticle(article)
 	view := CatalogArticleView{Article: article, Withdrawn: row.Takedown != "active", CanSchedule: row.JobID == nil && row.Takedown == "active"}
+	if originalRevision != nil && !view.Withdrawn {
+		view.originalSourceReview = &CatalogSourceReview{
+			Available: true, SnapshotID: originalSnapshot, Version: originalVersion,
+			ContentSHA256: originalHash, Format: "html", URL: catalogPinnedSourceURL(v, article.ID, originalRevision),
+		}
+	}
 	if len(preview) != 0 && !view.Withdrawn {
 		var document CatalogDocument
 		// A failed preview read must not prevent the current article view.
@@ -408,8 +424,8 @@ func (s *postgresCatalogStore) ArticleSource(ctx context.Context, p Principal, v
 	return s.ArticleSourceRevision(ctx, p, v, id, "")
 }
 
-// Staged media refreshes keep a private source revision before publishing.
-// The job marker survives failure and supersession. A published canonical
+// The general source lookup keeps staged revisions private before publishing.
+// Their job marker survives failure and supersession. A published canonical
 // record for the exact revision makes it eligible for historical review.
 const catalogSourceRevisionPublicationSQL = `NOT EXISTS (
 	SELECT 1 FROM source_fetch_jobs staged
@@ -472,7 +488,8 @@ func (s *postgresCatalogStore) paidCatalogImageView(ctx context.Context, configu
 			JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id
 			WHERE sr.canonical_article_id=a.canonical_article_id AND sr.source_revision_id=$3::uuid
 			AND CASE WHEN sr.source_revision_id=view_row.source_revision_id AND view_row.canonical_revision_id IS NOT NULL
-				THEN TRUE ELSE `+catalogSourceRevisionPublicationSQL+` END
+				THEN TRUE WHEN `+catalogSourceRevisionPublicationSQL+` THEN TRUE
+				ELSE NOT $4 AND EXISTS (`+catalogStagedOriginalSQL+` AND candidate.source_revision_id=sr.source_revision_id) END
 			AND `+catalogSourceRevisionEligibleSQL+`
 		) selected ON view_row.takedown_status='active' AND descriptor.takedown_status='active'
 		WHERE a.vehicle_configuration_id=$1::uuid AND a.canonical_article_id=$2::uuid AND `+lifecycleEligibleSQL,

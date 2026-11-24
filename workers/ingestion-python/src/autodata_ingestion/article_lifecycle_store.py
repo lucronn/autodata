@@ -1506,78 +1506,86 @@ def store_validation(repo,lease,validation):
                 checkpoint=checkpoint||%s WHERE source_fetch_job_id=%s""",(Jsonb({"content_review":checkpoint}),lease.job_id))
 
 
-def publish_article_revision(repo,lease,revision_id,*,hooks=None):
+def publish_article_revision(repo, lease, revision_id, *, hooks=None):
+    with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+        return _publish_article_revision(cur, lease, revision_id, hooks=hooks)
+
+
+def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
     from .article_lifecycle_types import digest_json
     from .article_document import project_ordered_document
     from .procedure_rewrite import validate_article_rewrite
-    with repo.connect() as conn,conn.cursor(row_factory=dict_row) as cur:
-        job=cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s FOR UPDATE",(lease.job_id,)).fetchone()
-        if job is None or job["lease_token"]!=lease.token: raise LeaseLost("publication owner changed")
-        if job["status"]=="completed":
-            published=cur.execute("""SELECT r.canonical_article_revision_id FROM canonical_article_revisions r
-                JOIN canonical_articles a ON a.current_canonical_revision_id=r.canonical_article_revision_id
-                WHERE r.canonical_article_revision_id=%s AND r.transformation_key=%s AND r.status='published'
-                  AND a.current_job_id=%s AND a.current_source_revision_id=r.source_revision_id
-                  AND a.request_generation=%s""",(revision_id,job["transformation_key"],lease.job_id,job["request_generation"])).fetchone()
-            if published: return published["canonical_article_revision_id"]
-            raise LeaseLost("completed publication no longer current")
-        job,article=_lock_transform(cur,lease)
-        _require_source_bound_rewrite_rights(cur, job, article)
-        row=cur.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s FOR UPDATE",(revision_id,)).fetchone()
-        if row is None: raise ValueError("missing candidate")
-        projection=project_ordered_document(row["canonical_document"])
-        profile = job["rewrite_profile_version"]
-        if profile in AUTOMATIC_REWRITE_PROFILES:
-            validation = automatic_candidate_validation(cur, job, row, require_current=True)
-        elif profile == "full-prose-review-v1":
-            validation = full_candidate_validation(cur, job, row)
-        else:
-            validation = validate_article_rewrite(
-                row["normalized_source_document"], row["canonical_document"], profile_version=profile,
-            )
-        if (job["rewrite_profile_version"] == "technical-prose-v2"
-            and digest_json(row["validation_report"]) != digest_json(validation.report)):
-            raise ValueError("publication binding validation failed")
-        if (row["status"]!="validated" or row["transformation_key"]!=job["transformation_key"]
-            or row["source_revision_id"]!=job["source_revision_id"] or row["canonical_article_id"]!=job["canonical_article_id"]
-            or row["normalization_version"]!=job["normalization_version"] or row["rewrite_profile_version"]!=job["rewrite_profile_version"]
-            or row["normalized_source_hash"]!=digest_json(row["normalized_source_document"])
-            or row["rewrite_result_hash"]!=digest_json(row["canonical_document"])
-            or not validation.passed or row["validation_report"]!=validation.report
-            or row["validation_hash"]!=digest_json(validation.report)
-            or projection!={"body":row["canonical_body"],"steps":row["canonical_steps"],"images":row["canonical_images"]}):
-            raise ValueError("publication binding validation failed")
-        from .procedure_rewrite_auto import SOURCE_PRESERVING_METHOD
-        server_candidate=(profile in AUTOMATIC_REWRITE_PROFILES
-            and row["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD)
-        # The v3 validator independently reconstructed the full correction
-        # from every raw round, including verifying the terminal attempt link.
-        if not server_candidate and profile != SOURCE_BOUND_CORRECTION_PROFILE:
-            if job["rewrite_profile_version"] == "full-prose-review-v1":
-                from .article_content_review import resolve_full_evidence
-                attempt, _, _, _ = resolve_full_evidence(cur,job,row)
-            else:
-                attempt=cur.execute("SELECT * FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s AND status='succeeded'",(revision_id,)).fetchone()
-            if (attempt is None or attempt["input_hash"]!=row["normalized_source_hash"]
-                or attempt["response_hash"]!=digest_json(attempt["response"])
-                or attempt["prompt_hash"]!=row["model_metadata"].get("prompt_hash")
-                or attempt["model"]!=row["model_metadata"].get("model")
-                or attempt["profile_version"]!=row["model_metadata"].get("profile_version")):
-                raise ValueError("publication attempt binding failed")
-        if job["rewrite_profile_version"] == "technical-prose-v2":
-            _bind_v2_operations(row["normalized_source_document"], row["canonical_document"], attempt["response"])
+    from .staged_media_reply_recovery import METHOD, verify_staged_media_reply_recovery
+    job=cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s FOR UPDATE",(lease.job_id,)).fetchone()
+    if job is None or job["lease_token"]!=lease.token: raise LeaseLost("publication owner changed")
+    if job["status"]=="completed":
+        published=cur.execute("""SELECT r.canonical_article_revision_id FROM canonical_article_revisions r
+            JOIN canonical_articles a ON a.current_canonical_revision_id=r.canonical_article_revision_id
+            WHERE r.canonical_article_revision_id=%s AND r.transformation_key=%s AND r.status='published'
+              AND a.current_job_id=%s AND a.current_source_revision_id=r.source_revision_id
+              AND a.request_generation=%s""",(revision_id,job["transformation_key"],lease.job_id,job["request_generation"])).fetchone()
+        if published: return published["canonical_article_revision_id"]
+        raise LeaseLost("completed publication no longer current")
+    job,article=_lock_transform(cur,lease)
+    _require_source_bound_rewrite_rights(cur, job, article)
+    row=cur.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s FOR UPDATE",(revision_id,)).fetchone()
+    if row is None: raise ValueError("missing candidate")
+    projection=project_ordered_document(row["canonical_document"])
+    profile = job["rewrite_profile_version"]
+    archived_reply_recovery = row["model_metadata"].get("transformation_method") == METHOD
+    if archived_reply_recovery:
+        validation = verify_staged_media_reply_recovery(cur, job, article, row)
+    elif profile in AUTOMATIC_REWRITE_PROFILES:
+        validation = automatic_candidate_validation(cur, job, row, require_current=True)
+    elif profile == "full-prose-review-v1":
+        validation = full_candidate_validation(cur, job, row)
+    else:
+        validation = validate_article_rewrite(
+            row["normalized_source_document"], row["canonical_document"], profile_version=profile,
+        )
+    if (job["rewrite_profile_version"] == "technical-prose-v2"
+        and digest_json(row["validation_report"]) != digest_json(validation.report)):
+        raise ValueError("publication binding validation failed")
+    if (row["status"]!="validated" or row["transformation_key"]!=job["transformation_key"]
+        or row["source_revision_id"]!=job["source_revision_id"] or row["canonical_article_id"]!=job["canonical_article_id"]
+        or row["normalization_version"]!=job["normalization_version"] or row["rewrite_profile_version"]!=job["rewrite_profile_version"]
+        or row["normalized_source_hash"]!=digest_json(row["normalized_source_document"])
+        or row["rewrite_result_hash"]!=digest_json(row["canonical_document"])
+        or not validation.passed or row["validation_report"]!=validation.report
+        or row["validation_hash"]!=digest_json(validation.report)
+        or projection!={"body":row["canonical_body"],"steps":row["canonical_steps"],"images":row["canonical_images"]}):
+        raise ValueError("publication binding validation failed")
+    from .procedure_rewrite_auto import SOURCE_PRESERVING_METHOD
+    server_candidate=(profile in AUTOMATIC_REWRITE_PROFILES
+        and row["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD)
+    # The v3 validator independently reconstructed the full correction
+    # from every raw round, including verifying the terminal attempt link.
+    if not server_candidate and not archived_reply_recovery and profile != SOURCE_BOUND_CORRECTION_PROFILE:
         if job["rewrite_profile_version"] == "full-prose-review-v1":
-            _require_full_approval(cur,job,article,row)
-        cur.execute("UPDATE canonical_article_revisions SET status='published',published_at=clock_timestamp() WHERE canonical_article_revision_id=%s",(revision_id,))
-        if hooks is not None:hooks("inside_publication")
-        cur.execute("""UPDATE canonical_articles SET current_source_revision_id=%s,
-            current_canonical_revision_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s""",
-            (job["source_revision_id"], revision_id, lease.canonical_article_id))
-        cur.execute("UPDATE source_fetch_jobs SET status='completed',phase='completed',retryable=false,error_code=NULL,next_attempt_at=NULL,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",(lease.job_id,))
-        cur.execute("""INSERT INTO publication_events(publication_event_id,event_type,event_version,canonical_article_id,canonical_article_revision_id,correlation_id,idempotency_key,payload,producer)
-            VALUES (%s,'catalog.article.published',1,%s,%s,%s,%s,%s,'ingestion-worker') ON CONFLICT(idempotency_key) DO NOTHING""",
-            (uuid4(),lease.canonical_article_id,revision_id,job["correlation_id"],"catalog.article.published:"+job["transformation_key"],Jsonb({"source_revision_id":str(job["source_revision_id"]),"review_status":"APPROVED" if job["rewrite_profile_version"] == "full-prose-review-v1" else "UNREVIEWED"})))
-        return revision_id
+            from .article_content_review import resolve_full_evidence
+            attempt, _, _, _ = resolve_full_evidence(cur,job,row)
+        else:
+            attempt=cur.execute("SELECT * FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s AND status='succeeded'",(revision_id,)).fetchone()
+        if (attempt is None or attempt["input_hash"]!=row["normalized_source_hash"]
+            or attempt["response_hash"]!=digest_json(attempt["response"])
+            or attempt["prompt_hash"]!=row["model_metadata"].get("prompt_hash")
+            or attempt["model"]!=row["model_metadata"].get("model")
+            or attempt["profile_version"]!=row["model_metadata"].get("profile_version")):
+            raise ValueError("publication attempt binding failed")
+    if job["rewrite_profile_version"] == "technical-prose-v2":
+        _bind_v2_operations(row["normalized_source_document"], row["canonical_document"], attempt["response"])
+    if job["rewrite_profile_version"] == "full-prose-review-v1":
+        _require_full_approval(cur,job,article,row)
+    cur.execute("UPDATE canonical_article_revisions SET status='published',published_at=clock_timestamp() WHERE canonical_article_revision_id=%s",(revision_id,))
+    if hooks is not None:hooks("inside_publication")
+    cur.execute("""UPDATE canonical_articles SET current_source_revision_id=%s,
+        current_canonical_revision_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s""",
+        (job["source_revision_id"], revision_id, lease.canonical_article_id))
+    cur.execute("UPDATE source_fetch_jobs SET status='completed',phase='completed',retryable=false,error_code=NULL,next_attempt_at=NULL,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",(lease.job_id,))
+    cur.execute("""INSERT INTO publication_events(publication_event_id,event_type,event_version,canonical_article_id,canonical_article_revision_id,correlation_id,idempotency_key,payload,producer)
+        VALUES (%s,'catalog.article.published',1,%s,%s,%s,%s,%s,'ingestion-worker') ON CONFLICT(idempotency_key) DO NOTHING""",
+        (uuid4(),lease.canonical_article_id,revision_id,job["correlation_id"],"catalog.article.published:"+job["transformation_key"],Jsonb({"source_revision_id":str(job["source_revision_id"]),"review_status":"APPROVED" if job["rewrite_profile_version"] == "full-prose-review-v1" else "UNREVIEWED"})))
+    return revision_id
 
 
 def record_rewrite_failure(repo,lease,*,code,ambiguous=False,failure=None):

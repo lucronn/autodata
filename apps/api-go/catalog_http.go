@@ -284,7 +284,7 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 				continue
 			}
 			item.Document, item.Body, item.Steps, item.Images = nil, "", nil, []CatalogImage{}
-			item.SourceReview = nil
+			item.SourceReview, item.OriginalSourceReview = nil, nil
 			descriptors = append(descriptors, item)
 		}
 		items = descriptors
@@ -473,6 +473,9 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 		response.Header().Set(publicationCheckHeader, "supported")
 	}
 	article.SourceReview = sourceReviewForArticle(article, vehicleID, article.ID)
+	if paid && !scope.openDemo {
+		article.OriginalSourceReview = view.originalSourceReview
+	}
 	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article, Configuration: configuration})
 }
 

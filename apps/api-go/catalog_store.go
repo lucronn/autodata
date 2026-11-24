@@ -243,6 +243,7 @@ type CatalogArticle struct {
 	Images                   []CatalogImage       `json:"images"`
 	Provenance               []CatalogProvenance  `json:"provenance,omitempty"`
 	SourceReview             *CatalogSourceReview `json:"source_review,omitempty"`
+	OriginalSourceReview     *CatalogSourceReview `json:"original_source_review,omitempty"`
 	SourceOriginal           json.RawMessage      `json:"-"`
 	canonicalVehicleID       string
 	canonicalConfigurationID *string

@@ -95,7 +95,7 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	selected := r.URL.Query().Get("source_revision_id")
-	identity, view, stored, err := s.readPaidCatalogSource(ctx, p, configuration, articleID, selected)
+	identity, view, stored, err := s.readPaidCatalogSource(ctx, p, configuration, articleID, selected, !scope.openDemo)
 	if err != nil {
 		s.writePaidCatalogError(w, r, err)
 		return
@@ -156,9 +156,9 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 	writeCatalogSourceHTML(w, review, content, r.URL.Query().Get("evidence_id"), r.URL.Query().Get("source_locator"))
 }
 
-func (s *Server) readPaidCatalogSource(ctx context.Context, p Principal, configuration CatalogConfiguration, article, revision string) (PaidArticleIdentity, CatalogArticleView, CatalogSourceContent, error) {
+func (s *Server) readPaidCatalogSource(ctx context.Context, p Principal, configuration CatalogConfiguration, article, revision string, allowStagedOriginal bool) (PaidArticleIdentity, CatalogArticleView, CatalogSourceContent, error) {
 	if store, ok := s.catalog.(paidCatalogSourceViewStore); ok {
-		return store.paidCatalogSourceView(ctx, configuration.ID, article, revision)
+		return store.paidCatalogSourceView(ctx, configuration.ID, article, revision, allowStagedOriginal)
 	}
 	identity, err := s.paidMediaIdentity(ctx, configuration, article)
 	if err != nil {
