@@ -1972,7 +1972,7 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
         original_reload=API21FakePage.reload
         with TemporaryDirectory() as temp,patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}), \
                 patch.object(API21FakePage,'library',library),patch.object(API21FakePage,'reload',reload):
-            with self.assertRaises(smoke.APIObservationError):
+            with self.assertRaisesRegex(AssertionError, 'fixture response did not match'):
                 await smoke.api_case(browser,'https://127.0.0.1:32001',smoke.API_CASES[0],Path(temp),observations=buffer)
         self.assertEqual(sum(e['phase']=='owner-library-initial-http' and e['payload']['kind']=='http' for e in buffer.events),2)
         self.assertFalse(any(e['phase']=='owner-library-reload-http' and e['payload']['kind']=='http' for e in buffer.events))
