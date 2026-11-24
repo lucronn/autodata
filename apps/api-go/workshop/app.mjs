@@ -420,8 +420,13 @@ function rememberSelector(path, name, response) {
   selectorCache.set(path, { response, expires: performance.now() + selectorCacheLifetime });
   if (selectorCache.size > selectorCacheSize) selectorCache.delete(selectorCache.keys().next().value);
 }
+function pickerHasChoices(name, items) {
+  return name === "configuration"
+    ? items.some(item => !configurationChoiceDisabled(item))
+    : items.length > 0;
+}
 function usableEngineChoices(name, response) {
-  return name === "configuration" && !response.hydrating && response.items.length > 0 &&
+  return name === "configuration" && !response.hydrating && pickerHasChoices(name, response.items) &&
     response.items.every((item) => item.complete !== false);
 }
 function readStoredSelector(path, signal, timeout) {
@@ -459,6 +464,7 @@ async function refreshPicker(name) {
       // Only configurations distinguish active discovery from incomplete coverage.
       attempts: name === "configuration" ? undefined : 1,
       backoffWithChoices: true,
+      hasChoices: data => pickerHasChoices(name, data.items),
       onUpdate(data) {
         if (pickerStates.get(name) !== picker || picker.path !== selectorPath(name) || select.disabled)
           return;
@@ -507,7 +513,7 @@ async function loadOptions(name, g, desired = "", initial = null) {
   const choice = (item) => String(item.id ?? item.year) === desired;
   const label = name === "configuration" ? "engine / trim" : name;
   const stopWithChoices = name !== "configuration" && !desired;
-  let showingPartial = false;
+  let loadingStatus = `Loading ${label} choices…`;
   let requestedConfiguration = false;
   function trackDiscovery(response) {
     if (name === "configuration" && g.current() && (response.hydrating || response.discovering))
@@ -520,14 +526,15 @@ async function loadOptions(name, g, desired = "", initial = null) {
       (data.complete !== true && Boolean(data.hydrating || data.discovering));
     populate(name, data.items, desired);
     if (!(data.hydrating || data.discovering)) return;
-    const hasChoices = data.items.length > 0;
-    if (hasChoices === showingPartial) return;
-    showingPartial = hasChoices;
-    if (hasChoices)
-      status(`More ${label} choices are loading. You can choose an available option.`, { cancelable: true });
-    else status(`Loading ${label} choices…`, { busy: true });
+    const hasChoices = pickerHasChoices(name, data.items);
+    const message = hasChoices
+      ? `More ${label} choices are loading. You can choose an available option.`
+      : data.items.length ? "Checking sources for a verified engine or trim…" : `Loading ${label} choices…`;
+    if (message === loadingStatus) return;
+    loadingStatus = message;
+    status(message, data.items.length ? { cancelable: true } : { busy: true });
   }
-  status(`Loading ${label} choices…`, { busy: true });
+  status(loadingStatus, { busy: true });
   stage(name);
   $(name).disabled = true;
   const result = await readCollection(
@@ -562,9 +569,12 @@ async function loadOptions(name, g, desired = "", initial = null) {
       desired,
       backoffWithChoices: true,
       stopWithChoices,
+      hasChoices: data => pickerHasChoices(name, data.items),
       async emptyProbe(timeout) {
         try {
-          return await readStoredSelector(path, g.signal, timeout);
+          return name === "configuration"
+            ? await readStoredPicker(picker, name, g.signal, timeout)
+            : await readStoredSelector(path, g.signal, timeout);
         } catch (error) {
           g.signal.throwIfAborted();
           if (error.status === 401 || error.status === 403) throw error;
@@ -580,7 +590,10 @@ async function loadOptions(name, g, desired = "", initial = null) {
   const choicesReady = stopWithChoices && result.items.length > 0;
   if (!selected && (result.refreshFailed || result.timedOut || (result.complete === false && !choicesReady))) {
     if (!desired && result.items.length) {
-      status(`Choose an available ${label}. Some choices could not be loaded.`, { retry: () => restoreRoute() });
+      const message = pickerHasChoices(name, result.items)
+        ? `Choose an available ${label}. Some choices could not be loaded.`
+        : "No verified engine or trim loaded. Try again.";
+      status(message, { retry: () => restoreRoute() });
       return;
     }
     throw new Error(

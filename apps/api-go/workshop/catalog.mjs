@@ -287,6 +287,7 @@ export async function readCollection(
     emptyProbe,
     backoffWithChoices = false,
     stopWithChoices = false,
+    hasChoices = data => data.items.length > 0,
     now = () => performance.now(),
   } = {},
 ) {
@@ -301,7 +302,7 @@ export async function readCollection(
     onUpdate(latest, { attempt: attempt + 1, attempts });
     const usable = desired
       ? latest.items.some(item => String(item.id ?? item.year) === desired)
-      : stopWithChoices && latest.items.length > 0;
+      : stopWithChoices && hasChoices(latest);
     return usable || !(latest.hydrating || latest.discovering) || latest.complete === true;
   }
   for (let attempt = 0; attempt < attempts; attempt++) {
@@ -321,7 +322,7 @@ export async function readCollection(
     }
     if (update(data, attempt)) return latest;
     if (attempt === attempts - 1 || now() >= pollUntil) break;
-    if (attempt === 0 && emptyProbe && !latest.items.length && interval > EMPTY_COLLECTION_PROBE_DELAY_MS) {
+    if (attempt === 0 && emptyProbe && !hasChoices(latest) && interval > EMPTY_COLLECTION_PROBE_DELAY_MS) {
       // Check newly stored options once without moving the regular polling schedule.
       const deadline = now() + interval;
       await wait(EMPTY_COLLECTION_PROBE_DELAY_MS, signal);
@@ -330,14 +331,14 @@ export async function readCollection(
         signal?.throwIfAborted();
         const early = await emptyProbe(timeout);
         signal?.throwIfAborted();
-        if (Array.isArray(early?.items) && (early.items.length || early.complete === true) && update(early, attempt)) return latest;
+        if (Array.isArray(early?.items) && (hasChoices(early) || early.complete === true) && update(early, attempt)) return latest;
       }
       await wait(Math.max(0, deadline - now()), signal);
     } else {
       const checkedAt = now();
       // The second supplier may follow the first by six seconds. Keep the
       // initial cadence through that interval, then slow optional refreshes.
-      if (backoffWithChoices && !desired && latest.items.length > 0) {
+      if (backoffWithChoices && !desired && hasChoices(latest)) {
         choicesSince ??= checkedAt;
         if (latest.discovering && !latest.hydrating)
           partialInterval = Math.max(partialInterval, ENGINE_DISCOVERY_INTERVAL_MS);

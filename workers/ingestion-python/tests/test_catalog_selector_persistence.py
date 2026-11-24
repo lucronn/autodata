@@ -1,4 +1,5 @@
 """Sparse selectors are durable without materializing synthetic vehicles."""
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -97,6 +98,68 @@ def test_sparse_scope_rows_and_version_upgrade(fresh_database, monkeypatch):
         _persist_hydration_scope(model_request, CatalogResult(rows=(
             {"year": 2020, "make": "Ford", "model": "Fiesta", "source_region": "CA"},
         ), complete=True))
+
+
+@pytest.mark.parametrize("outcome", ["options", "empty", "partial", "more_options"])
+def test_configuration_completion_upgrades_legacy_marker_after_row_commit(fresh_database, monkeypatch, outcome):
+    from autodata_ingestion import catalog_service as service
+
+    repo = fresh_database()
+    for name, value in {
+        "AUTODATA_DB_ADDRESS": "postgres:5432", "AUTODATA_POSTGRES_DB": repo.database_name,
+        "AUTODATA_POSTGRES_USER": "lifecycle_test", "AUTODATA_POSTGRES_PASSWORD": "lifecycle_test_only",
+        "AUTODATA_SOURCE_PERSIST": "1",
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(service, "_HYDRATION_RESULTS", {})
+    writes = []
+    monkeypatch.setattr("autodata_ingestion.vehicle_selection_persistence.store_source_artifacts", writes.append)
+
+    scope_key = "configurations|2024|ford|escape|US"
+    request = {"scope": "configurations", "year": 2024, "make": "Ford", "model": "Escape", "region": "US",
+               "idempotency_key": "configuration-version-fixture"}
+    provenance = {"provider": "autoapi", "source_uri": "fixture://configurations", "source_version": "v1"}
+    rows = [] if outcome == "empty" else [dict(year=2024, make="Ford", model="Escape", region="US", engine="2.0L")]
+    providers = (lambda _: {"complete": True, "rows": rows, "provenance": [provenance]},)
+    second_provenance = dict(provenance, provider="autoapitwo", source_uri="fixture://more-configurations")
+    seen_by_second = []
+    with repo.connect() as conn:
+        conn.execute("""INSERT INTO vehicle_catalog_hydration_scopes(scope_key,scope,model_year,make,model,region)
+            VALUES (%s,'configurations',2024,'Ford','Escape','US')""", (scope_key,))
+
+    if outcome in {"partial", "more_options"}:
+        def second(_):
+            with repo.connect() as conn:
+                count = conn.execute("SELECT count(*) AS n FROM vehicle_configurations").fetchone()["n"]
+                version = conn.execute("SELECT completion_version FROM vehicle_catalog_hydration_scopes").fetchone()["completion_version"]
+                seen_by_second.append((count, version))
+            if outcome == "partial":
+                raise TimeoutError("second fixture provider unavailable")
+            return {"complete": True, "rows": [dict(rows[0], engine="2.5L")], "provenance": [second_provenance]}
+
+        providers += (second,)
+    monkeypatch.setattr(service, "_configured_catalog_providers", lambda **_: providers)
+
+    def persist_coverage(request, result):
+        with repo.connect() as conn:
+            count = conn.execute("SELECT count(*) AS n FROM vehicle_configurations").fetchone()["n"]
+            assert count == len(rows) + int(outcome == "more_options")
+        return _persist_hydration_scope(request, result)
+
+    monkeypatch.setattr(service, "_persist_hydration_scope", persist_coverage)
+    result = service.ensure_catalog_hydration(json.dumps(request))
+    complete = outcome != "partial"
+    assert result["complete"] is complete
+    assert len(writes) == len(rows) + int(outcome == "more_options")
+    if outcome in {"partial", "more_options"}:
+        assert seen_by_second == [(1, 0)]
+    with repo.connect() as conn:
+        stored = conn.execute("""SELECT completion_version, provenance FROM vehicle_catalog_hydration_scopes
+            WHERE scope_key=%s""", (scope_key,)).fetchone()
+    expected_provenance = [provenance] if complete else []
+    if outcome == "more_options":
+        expected_provenance.append(second_provenance)
+    assert stored == {"completion_version": int(complete), "provenance": expected_provenance}
 
 
 def test_go_sparse_selector_store(fresh_database):

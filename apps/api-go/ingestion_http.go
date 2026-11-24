@@ -138,6 +138,11 @@ func catalogHydrationRequest(payload map[string]any) (string, []byte, error) {
 	if err != nil {
 		return "", nil, err
 	}
+	if payload["scope"] == "configurations" {
+		// Older workers cached completed configuration responses without
+		// recording current provider coverage.
+		keyPayload = append([]byte("configuration-coverage-v1\n"), keyPayload...)
+	}
 	digest := sha256.Sum256(keyPayload)
 	key := fmt.Sprintf("catalog-hydration:%x", digest[:12])
 	bodyPayload := make(map[string]any, len(payload)+1)

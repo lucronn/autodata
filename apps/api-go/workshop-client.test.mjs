@@ -8351,6 +8351,39 @@ test('an unresolved saved base choice displays the missing evidence and remains 
   assert.match(h.statuses.at(-1).text, /saved configuration is unverified/);
 });
 
+test('raw engine choices render while one discovery request looks for a verified option', async () => {
+  const unresolved = { id: 'base', configuration_unresolved: true, complete: true };
+  const verified = { id: 'exact', engine: '2.0', complete: true };
+  const preview = { items: [unresolved], complete: false, discovery_instance: 'scheduler' };
+  let h;
+  h = selectorOptionsHarness(path => {
+    const current = h.$('configuration').options;
+    assert.equal(current.length, 1);
+    assert.equal(current[0].text, 'Base configuration · unverified');
+    assert.equal(current[0].disabled, true);
+    if (path.includes('stored_only')) return { items: [unresolved, verified], complete: true };
+    return { ...preview, hydrating: true };
+  });
+  await h.load('', undefined, Promise.resolve(preview));
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
+  assert.deepEqual(h.waits, [350]);
+  assert.ok(h.statuses.some(entry => entry.text === 'Checking sources for a verified engine or trim…'));
+  assert.ok(!h.statuses.some(entry => entry.text.includes('You can choose an available option')));
+  assert.equal(h.$('configuration').options[1].disabled, false);
+});
+
+test('a completed empty provider check keeps a raw-only picker visible without retrying', async () => {
+  const unresolved = { id: 'base', configuration_unresolved: true, complete: true };
+  const h = selectorOptionsHarness(path => ({
+    items: [unresolved], complete: path.includes('stored_only'), hydrating: !path.includes('stored_only'),
+  }));
+  await h.load();
+  await h.context.refreshPicker('configuration');
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
+  assert.equal(h.$('configuration').options[0].disabled, true);
+  assert.match(h.statuses.at(-1).text, /No verified engine or trim is available/);
+});
+
 test('an engine reopen follows existing discovery through an idle peer using stored reads', async () => {
   const first = { id: 'engine-a', engine: '3.5', complete: true };
   const second = { id: 'engine-b', engine: '2.7', complete: true };
