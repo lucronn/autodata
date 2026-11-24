@@ -20,8 +20,8 @@ WIRING = (
     "on a service data network."
 )
 RECOVERED_WIRING = (
-    "The monitor has no direct communication on a service data network because no wiring links the two receivers "
-    "to the central controller."
+    "The two receivers lack wiring to the central controller, so the monitor has no direct communication "
+    "on a service data network."
 )
 
 

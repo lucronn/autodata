@@ -149,11 +149,8 @@ def _wiring_equivalent(statement):
     match = _WIRING_EXPLANATION.fullmatch(statement)
     if match is None:
         return None
-    subject = match["subject"]
-    if subject.startswith("The "):
-        subject = "the " + subject[4:]
-    return (f'The {match["component"]} has no direct communication on a {match["network"]} '
-            f'because no wiring links {subject} to {match["target"]}.')
+    return (f'{match["subject"]} lack wiring to {match["target"]}, so the {match["component"]} '
+            f'has no direct communication on a {match["network"]}.')
 
 
 

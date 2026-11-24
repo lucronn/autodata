@@ -139,9 +139,15 @@ def test_local_inspection_equivalent_cannot_reorder_an_action():
     assert len(replies.exchanges) == 2
 
 
-@pytest.mark.parametrize("verb,recovered", [("does not communicate", True), ("communicates", False)])
-def test_sentence_archive_recovery_preserves_wiring_and_communication_state(verb, recovered):
-    text = f"The two receivers are not wired to the central controller, thus the monitor {verb} directly on a service data network."
+@pytest.mark.parametrize(("subject", "verb", "recovered"), [
+    ("The two receivers", "does not communicate", True),
+    ("Only the spare modules", "does not communicate", True),
+    ("They", "does not communicate", True),
+    ("The two receivers", "communicates", False),
+])
+def test_sentence_archive_recovery_preserves_wiring_and_communication_state(subject, verb, recovered):
+    text = (f"{subject} are not wired to the central controller, thus the monitor "
+            f"{verb} directly on a service data network.")
     source, previous = document(text), response(text)
     replies = Replies(echo_passages, echo_statements)
     archive = []
@@ -163,8 +169,8 @@ def test_sentence_archive_recovery_preserves_wiring_and_communication_state(verb
     if recovered:
         assert result.error_code is None
         assert result.document["blocks"][1]["text"] == (
-            "The monitor has no direct communication on a service data network because no wiring "
-            "links the two receivers to the central controller."
+            f"{subject} lack wiring to the central controller, so the monitor "
+            "has no direct communication on a service data network."
         )
         assert result.evidence["draft_hash"] != original.evidence["draft_hash"]
     else:
