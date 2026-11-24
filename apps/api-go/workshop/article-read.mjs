@@ -88,6 +88,7 @@ export async function readArticle(
   let firstSourceProbePending = false;
   let confirmedSourceCapture = false;
   let regularSourceReadAt = 0;
+  let keepRegularSourceRead = false;
   let sourceConfirmationAt = 0;
   let publicationReadAt = 0;
   let publicationProbeJob;
@@ -109,7 +110,10 @@ export async function readArticle(
     scheduledPublicationCheck = undefined;
     if (firstReadAt <= startedAt) firstReadAt = 0;
     if (nextSourceProbeAt <= startedAt) nextSourceProbeAt = 0;
-    if (regularSourceReadAt <= startedAt) regularSourceReadAt = 0;
+    if (regularSourceReadAt <= startedAt) {
+      regularSourceReadAt = 0;
+      keepRegularSourceRead = false;
+    }
     if (sourceConfirmationAt <= startedAt) sourceConfirmationAt = 0;
     if (publicationReadAt <= startedAt) publicationReadAt = 0;
     const publicationCheck = statusProbe?.anchor ??
@@ -126,7 +130,7 @@ export async function readArticle(
     // the later probes one extra interval to finish without downloading twice.
     const sourceBodyDeadline = firstReadAt
       ? firstReadAt + (nextSourceProbeAt ? 0 : sourceProbeIntervalMs)
-      : regularSourceReadAt && regularSourceReadAt + sourceProbeIntervalMs;
+      : regularSourceReadAt && regularSourceReadAt + (keepRegularSourceRead ? 0 : sourceProbeIntervalMs);
     // A confirmed publication can use the ordinary body deadline even
     // when the probe had a short deadline for its headers.
     const finishBodyBy = statusProbe?.late ? statusProbe.regularReadAt : startedAt + maxArticleRequestMs;
@@ -241,8 +245,10 @@ export async function readArticle(
     }
     if (regularSourceReadAt) {
       const regularWait = Math.max(0, regularSourceReadAt - now());
+      const keepDeadline = keepRegularSourceRead;
       regularSourceReadAt = 0;
-      if (!readable) {
+      keepRegularSourceRead = false;
+      if (!readable || keepDeadline) {
         await wait(Math.min(remaining, Math.max(regularWait, retryAfter * 1000)), signal);
         continue;
       }
@@ -342,10 +348,13 @@ export async function readArticle(
       scheduledPublicationCheck = { anchor, regularReadAt: now() + backoff, late: checkLongBackoff };
       backoff = publicationStatusProbeDelayMs;
     }
-    // Check midway through the first long waits for a confirmed active capture.
-    // If the check misses, keep the next ordinary read and its backoff.
-    if ((backoff === 4000 || backoff === 8000) && fastPendingJob &&
-        latest.data.article.processing.state === "fetching_source") {
+    // A readable preview is still an active capture until it has a stored revision.
+    // Show newer content on a preview check while keeping the ordinary read slot.
+    const source = latest?.data?.article;
+    const preview = fastSource && source.source_body_preview === true && source.source_revision_id === null;
+    if ((backoff === 4000 || backoff === 8000) && (fastPendingJob || preview) &&
+        source.processing.state === "fetching_source") {
+      keepRegularSourceRead = preview;
       regularSourceReadAt = now() + backoff;
       backoff /= 2;
     }
