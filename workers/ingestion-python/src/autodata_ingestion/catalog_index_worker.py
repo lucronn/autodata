@@ -7,10 +7,10 @@ from time import monotonic
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from psycopg import OperationalError
+from psycopg import Error, OperationalError, sql
 
 from .article_lifecycle import run_article_worker_once
-from .commerce_service import reconcile_workshop_preparation
+from .commerce_service import WORKSHOP_PREPARATION_CHANNEL, reconcile_workshop_preparation
 
 
 def select_next_catalog_job(repo):
@@ -46,26 +46,58 @@ def dispatch_next(repo, *, worker_id, registry, object_store, stop=None):
     )
 
 
+def _listen_for_preparation(repo):
+    listener = None
+    try:
+        listener = repo.connect()
+        listener.autocommit = True
+        listener.execute(sql.SQL('LISTEN {}').format(sql.Identifier(WORKSHOP_PREPARATION_CHANNEL)))
+        return listener
+    except (Error, OSError):
+        if listener is not None:
+            listener.close()
+        return None
+
+
 def run_catalog_worker(repo, *, registry, object_store, once=False, prepare_orders=False, stop=None):
     """Signals stop between jobs; an active multi-page job may run much longer."""
     if stop is None:
         stop = Event()
     worker_id = uuid4()
     next_preparation = 0.0
-    while not stop.is_set():
-        if prepare_orders and monotonic() >= next_preparation:
-            try:
-                with repo.connect() as connection:
-                    reconcile_workshop_preparation(connection)
-            except OperationalError:
-                print('CATALOG_ORDER_PREPARATION_RETRY', flush=True)
-            next_preparation = monotonic() + 2
-        claimed = dispatch_next(repo, worker_id=worker_id, registry=registry,
-                                object_store=object_store, stop=stop)
-        if once:
-            break
-        if not claimed:
+    wake_on_checkout = prepare_orders and not once
+    listener = None
+    try:
+        while not stop.is_set():
+            if prepare_orders and monotonic() >= next_preparation:
+                # Subscribe before reading the durable queue, including on reconnect.
+                if wake_on_checkout and listener is None:
+                    listener = _listen_for_preparation(repo)
+                try:
+                    with repo.connect() as connection:
+                        reconcile_workshop_preparation(connection)
+                except OperationalError:
+                    print('CATALOG_ORDER_PREPARATION_RETRY', flush=True)
+                next_preparation = monotonic() + 2
+            claimed = dispatch_next(repo, worker_id=worker_id, registry=registry,
+                                    object_store=object_store, stop=stop)
+            if once or stop.is_set():
+                break
+            if claimed:
+                continue
+            if listener is not None:
+                try:
+                    for _ in listener.notifies(timeout=2, stop_after=1):
+                        next_preparation = 0.0
+                except (Error, OSError):
+                    listener.close()
+                    listener = None
+                else:
+                    continue
             stop.wait(2)
+    finally:
+        if listener is not None:
+            listener.close()
     return 0
 
 

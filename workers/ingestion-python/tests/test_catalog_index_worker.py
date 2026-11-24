@@ -5,7 +5,7 @@ from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
-from psycopg.errors import QueryCanceled
+from psycopg.errors import OperationalError, QueryCanceled
 
 from autodata_ingestion import catalog_index_worker as worker
 
@@ -88,6 +88,7 @@ def test_preparation_timeout_preserves_catalog_dispatch_and_retries(monkeypatch,
     stop = Event()
     prepare = Mock(side_effect=[QueryCanceled('private database diagnostics'), []])
     monkeypatch.setattr(worker, 'reconcile_workshop_preparation', prepare)
+    monkeypatch.setattr(worker, '_listen_for_preparation', lambda _: None)
     now = 0
 
     def dispatch(*args, **kwargs):
@@ -104,6 +105,56 @@ def test_preparation_timeout_preserves_catalog_dispatch_and_retries(monkeypatch,
     assert worker.run_catalog_worker(repo, registry={}, object_store=None, prepare_orders=True, stop=stop) == 0
     assert prepare.call_count == 2 and run.call_count == 3
     assert capsys.readouterr().out == 'CATALOG_ORDER_PREPARATION_RETRY\n'
+
+
+def test_checkout_notification_reconciles_before_poll_deadline(monkeypatch):
+    repo = Repository(None)
+    stop = Event()
+    reconcile = Mock()
+    listener = Mock()
+    subscribe = Mock(return_value=listener)
+    monkeypatch.setattr(worker, '_listen_for_preparation', subscribe)
+    monkeypatch.setattr(worker, 'reconcile_workshop_preparation', reconcile)
+    monkeypatch.setattr(worker, 'monotonic', lambda: 1)
+
+    def dispatch(*args, **kwargs):
+        subscribe.assert_called_once_with(repo)
+        if reconcile.call_count == 2:
+            stop.set()
+        return False
+
+    listener.notifies.return_value = iter([object()])
+    monkeypatch.setattr(worker, 'dispatch_next', dispatch)
+    worker.run_catalog_worker(repo, registry={}, object_store=None, prepare_orders=True, stop=stop)
+    assert reconcile.call_count == 2
+    listener.notifies.assert_called_once_with(timeout=2, stop_after=1)
+    listener.close.assert_called_once()
+
+
+def test_lost_listener_falls_back_to_poll_and_reconnects(monkeypatch):
+    repo = Repository(None)
+    stop = Event()
+    first, second = Mock(), Mock()
+    first.notifies.side_effect = OperationalError('disconnected')
+    subscribe = Mock(side_effect=[first, second])
+    reconcile = Mock()
+    monkeypatch.setattr(worker, '_listen_for_preparation', subscribe)
+    monkeypatch.setattr(worker, 'reconcile_workshop_preparation', reconcile)
+    monkeypatch.setattr(worker, 'monotonic', Mock(side_effect=[0, 0, 2, 2]))
+    wait = Mock()
+    monkeypatch.setattr(stop, 'wait', wait)
+
+    def dispatch(*args, **kwargs):
+        if reconcile.call_count == 2:
+            stop.set()
+        return False
+
+    monkeypatch.setattr(worker, 'dispatch_next', dispatch)
+    worker.run_catalog_worker(repo, registry={}, object_store=None, prepare_orders=True, stop=stop)
+    assert subscribe.call_count == reconcile.call_count == 2
+    wait.assert_called_once_with(2)
+    first.close.assert_called_once()
+    second.close.assert_called_once()
 
 
 def test_already_stopped_never_selects(monkeypatch):
