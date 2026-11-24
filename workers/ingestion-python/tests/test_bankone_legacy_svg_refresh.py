@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 from PIL import ImageColor, Image
+from psycopg.errors import LockNotAvailable
 
 from autodata_ingestion import article_lifecycle_store as store
 from autodata_ingestion.article_document import project_ordered_document
@@ -195,6 +196,7 @@ class WorkerStopped(Exception):
     pytest.param(AUTOMATIC_REWRITE_PROFILE, "capture-rights", id="automatic-capture-rights"),
     pytest.param(AUTOMATIC_REWRITE_PROFILE, "changed-body", id="exact-refresh-changed-body"),
     pytest.param(AUTOMATIC_REWRITE_PROFILE, "withdraw", id="automatic-withdrawal"),
+    pytest.param(AUTOMATIC_REWRITE_PROFILE, "concurrent-old-rights", id="automatic-locks-old-resolution"),
     pytest.param(AUTOMATIC_REWRITE_PROFILE, "stale", id="automatic-owner-changed"),
 ))
 def test_same_body_legacy_svg_refresh_keeps_published_pair_until_atomic_swap(fresh_database, monkeypatch, profile, outcome):
@@ -248,9 +250,16 @@ def test_same_body_legacy_svg_refresh_keeps_published_pair_until_atomic_swap(fre
         with repo.connect() as conn:
             conn.execute("UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=%s",
                          (withheld,))
+    if outcome == "concurrent-old-rights":
+        fresh_resolution_id = seed_snapshot(repo, b"fixture newer resolution")
+        with repo.connect() as conn:
+            conn.execute("""INSERT INTO catalog_article_provider_scopes(catalog_provider_scope_id,vehicle_id,
+                vehicle_configuration_id,scope_key,provider_slug,source_vehicle_ref,resolution_source_snapshot_id)
+                VALUES (%s,%s,%s,%s,'bankone',%s,%s)""",
+                (uuid4(), vehicle_id, configuration_id, key.scope_key, key.source_vehicle_ref, fresh_resolution_id))
 
     expected_pair = {}
-    if outcome in ("resume", "changed-body"):
+    if outcome in ("resume", "changed-body", "concurrent-old-rights"):
         expected_pair = {
             "expected_source_revision_id": old_source_id,
             "expected_published_revision_id": baseline["canonical"],
@@ -307,6 +316,14 @@ def test_same_body_legacy_svg_refresh_keeps_published_pair_until_atomic_swap(fre
         if point == "inside_publication":
             # This independent reader must see the original pair until the worker commits both pointers.
             _assert_original_served(_state(repo, article), baseline)
+            if outcome == "concurrent-old-rights":
+                _, (fresh_observation,) = _old_source_rows(repo, staged_jobs[0]["source_revision_id"])
+                assert old_source_rows[1][0]["resolution_source_snapshot_id"] == resolution_id
+                assert fresh_observation["resolution_source_snapshot_id"] == fresh_resolution_id != resolution_id
+                with pytest.raises(LockNotAvailable, match="lock timeout"), repo.connect() as withdrawal:
+                    withdrawal.execute("SET LOCAL lock_timeout = '150ms'")
+                    withdrawal.execute("""UPDATE source_snapshots SET takedown_status='takedown'
+                        WHERE source_snapshot_id=%s""", (resolution_id,))
             publication_checks.append(point)
 
     def run(model_client=model):
@@ -391,7 +408,7 @@ def test_same_body_legacy_svg_refresh_keeps_published_pair_until_atomic_swap(fre
     assert all(objects.data[key] == value for key, value in old_objects.items())
     assert published.pop(baseline["canonical"]) == old_event
 
-    if outcome in ("success", "resume"):
+    if outcome in ("success", "resume", "concurrent-old-rights"):
         assert final["source"] == final["served_source"] == new_source_id
         assert final["canonical"] == final["served_canonical"] and final["canonical"] != baseline["canonical"]
         assert final["origin"] == "canonical" and final["events"] == 2
@@ -405,6 +422,14 @@ def test_same_body_legacy_svg_refresh_keeps_published_pair_until_atomic_swap(fre
         assert [block["alt"] for block in canonical_blocks if block["type"] == "image"] == [
             figure["alt"] for figure in figures
         ]
+        if outcome == "concurrent-old-rights":
+            with repo.connect() as conn:
+                conn.execute("SET LOCAL lock_timeout = '150ms'")
+                revoked = conn.execute("""UPDATE source_snapshots SET takedown_status='takedown'
+                    WHERE source_snapshot_id=%s AND takedown_status='active' RETURNING source_snapshot_id""",
+                    (resolution_id,)).fetchone()
+            assert revoked == {"source_snapshot_id": resolution_id}
+            assert _state(repo, article) == final
     else:
         _assert_original_served(final, baseline)
         assert not publication_checks and not published

@@ -565,14 +565,22 @@ def _require_staged_media_refresh_rights(cur, job, article):
             or not source_bound_rewrite_source_allowed(cur, article, article["current_source_revision_id"])):
         raise ValueError(unavailable)
     row = cur.execute("""SELECT candidate.body_source_snapshot_id,candidate.resource_manifest,
-               observation.resource_provenance,observation.descriptor_source_snapshot_id,
-               observation.resolution_source_snapshot_id
+               prior.resource_manifest AS prior_manifest, prior_observation.resource_provenance AS prior_provenance,
+               prior_observation.descriptor_source_snapshot_id AS prior_descriptor,
+               prior_observation.resolution_source_snapshot_id AS prior_resolution,
+               observation.resource_provenance,observation.descriptor_source_snapshot_id,observation.resolution_source_snapshot_id
         FROM canonical_article_source_revisions candidate
         JOIN canonical_article_source_observations observation
           ON observation.source_revision_id=candidate.source_revision_id
           AND observation.canonical_article_id=candidate.canonical_article_id
         JOIN canonical_article_source_revisions prior
           ON prior.source_revision_id=%s AND prior.canonical_article_id=candidate.canonical_article_id
+        JOIN LATERAL (
+            SELECT resource_provenance,descriptor_source_snapshot_id,resolution_source_snapshot_id
+            FROM canonical_article_source_observations o
+            WHERE o.source_revision_id=prior.source_revision_id AND o.canonical_article_id=prior.canonical_article_id
+            ORDER BY captured_at,source_observation_id LIMIT 1
+        ) prior_observation ON true
         JOIN catalog_article_current served ON served.canonical_article_id=candidate.canonical_article_id
         WHERE candidate.source_revision_id=%s AND candidate.canonical_article_id=%s
           AND candidate.body_source_snapshot_id=prior.body_source_snapshot_id
@@ -586,19 +594,26 @@ def _require_staged_media_refresh_rights(cur, job, article):
         raise ValueError(unavailable)
     try:
         resources = {}
-        for entry, provenance in zip(row["resource_manifest"], row["resource_provenance"], strict=True):
-            checksum = entry.get("sha256")
-            if checksum:
-                if checksum != provenance["sha256"]:
-                    raise ValueError(unavailable)
-                resources[UUID(provenance["source_snapshot_id"])] = checksum
+        for manifest, provenance in ((row["resource_manifest"], row["resource_provenance"]),
+                                     (row["prior_manifest"], row["prior_provenance"])):
+            for entry, proof in zip(manifest, provenance, strict=True):
+                checksum = entry.get("sha256")
+                if checksum:
+                    snapshot = UUID(proof["source_snapshot_id"])
+                    if checksum != proof["sha256"] or resources.setdefault(snapshot, checksum) != checksum:
+                        raise ValueError(unavailable)
         if row["body_source_snapshot_id"] not in resources:
             raise ValueError(unavailable)
-        ids = set(resources) | {row["descriptor_source_snapshot_id"], row["resolution_source_snapshot_id"]}
+        ids = set(resources) | {row[field] for field in (
+            "descriptor_source_snapshot_id", "resolution_source_snapshot_id", "prior_descriptor", "prior_resolution",
+        )}
+        # Rights on either projection must stay held through a publication.
         snapshots = _load_snapshots(cur, ids, resource_ids=set(resources), lock=True)
         if any(snapshot.digest != resources[snapshot.id] for snapshot in snapshots if snapshot.id in resources):
             raise ValueError(unavailable)
         _check_review_quarantine(cur, ids, lock=True)
+        if not source_bound_rewrite_source_allowed(cur, article, article["current_source_revision_id"]):
+            raise ValueError(unavailable)
     except (AttributeError, KeyError, TypeError, ValueError):
         raise ValueError(unavailable) from None
 
