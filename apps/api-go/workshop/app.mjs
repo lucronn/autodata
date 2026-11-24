@@ -826,6 +826,17 @@ async function loadArticles(g, articleID = "", {
     busy: !visibleRows,
     cancelable: true,
   });
+  const requestIndex = (timeout) => {
+    const prefer = [
+      includePurchaseQuote && "workshop-purchase-quote",
+      offerPaging && articleIndexPagePreferences,
+    ].filter(Boolean).join(", ");
+    return requestJSON(articleRequestPath(undefined, "", offerPaging ? pageQuery : undefined), {
+      signal: g.signal,
+      headers: prefer ? { Prefer: prefer } : undefined,
+      timeout,
+    });
+  };
   const indexRead = await readCollection(
     () => {
       if (firstIndex) {
@@ -834,19 +845,25 @@ async function loadArticles(g, articleID = "", {
         if (Object.hasOwn(result, "error")) throw result.error;
         return result.value;
       }
-      const prefer = [
-        includePurchaseQuote && "workshop-purchase-quote",
-        offerPaging && articleIndexPagePreferences,
-      ].filter(Boolean).join(", ");
-      return requestJSON(articleRequestPath(undefined, "", offerPaging ? pageQuery : undefined), {
-        signal: g.signal,
-        headers: prefer ? { Prefer: prefer } : undefined,
-      });
+      return requestIndex();
     },
     {
       signal: g.signal,
       desired: articleID,
       backoffWithChoices: Boolean(offerPaging),
+      // An owned index may gain stored rows shortly after its first empty read.
+      // Keep the regular poll if this one short check misses them.
+      emptyProbe: !visibleRows && !articleID && !openDemo && session.state.mode === "firebase"
+        ? async (timeout) => {
+          try {
+            return await requestIndex(timeout);
+          } catch (error) {
+            g.signal.throwIfAborted();
+            if (error.status === 0 || error.status === 408 || error.status >= 500) return null;
+            throw error;
+          }
+        }
+        : undefined,
       onUpdate(result) {
         if (!g.current()) return;
         if (pageQuery && (result.configuration?.id !== selected.id || result.configuration.region !== selected.region))
@@ -876,11 +893,11 @@ async function loadArticles(g, articleID = "", {
         renderPurchase();
         show("catalog");
         if (pendingIndexPage === g) pendingIndexPage = null;
-        if (!showedAvailable && page && indexHydrating) {
+        const query = trimArticleSearch($("search").value);
+        if (!showedAvailable && !openDemo && !query && articles.length && indexHydrating) {
           showedAvailable = true;
           status("You can open the articles below while more sources load.", { cancelable: true });
         }
-        const query = trimArticleSearch($("search").value);
         if (query && (searchQuery !== query ||
           (!searchPending && searchItems === null && !searchError) ||
           indexChanged ||

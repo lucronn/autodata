@@ -431,7 +431,9 @@ export async function requestArticleJSON(path, {
       return null;
     });
     signal?.throwIfAborted();
-    combined.throwIfAborted();
+    // The HTTP status already establishes a denial or rate limit, even if
+    // the optional error details did not arrive before the body deadline.
+    if (![401, 403, 404, 410, 429].includes(response.status)) combined.throwIfAborted();
     if (!response.ok) {
       const error = data?.error;
       const code = typeof error?.code === 'string' ? error.code : 'HTTP_ERROR';
