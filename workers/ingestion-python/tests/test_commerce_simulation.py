@@ -5,6 +5,7 @@ from unittest.mock import Mock
 import uuid
 
 import pytest
+from psycopg import OperationalError, sql
 
 from autodata_ingestion import catalog_index_worker
 from autodata_ingestion import commerce_service as commerce
@@ -167,9 +168,14 @@ def test_simulated_order_is_atomic_owned_and_separate_from_stripe(fresh_database
     key = str(uuid.uuid4())
     assert call(service, 'checkouts', dict(request, **other, idempotency_key=key))['order_id'] == existing_order
     reject(service, 'checkouts', dict(request, **wrong_owner, idempotency_key=key), 'CUSTOMER_ACCESS_REQUIRED')
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        first, second = pool.map(lambda attempt_key: call(service, 'checkouts',
-            dict(request, **tester, idempotency_key=attempt_key)), [key, str(uuid.uuid4())])
+    with repo.connect() as listener:
+        listener.autocommit = True
+        listener.execute(sql.SQL('LISTEN {}').format(sql.Identifier(commerce.WORKSHOP_PREPARATION_CHANNEL)))
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first, second = pool.map(lambda attempt_key: call(service, 'checkouts',
+                dict(request, **tester, idempotency_key=attempt_key)), [key, str(uuid.uuid4())])
+        signals = list(listener.notifies(timeout=.2))
+        assert [signal.payload for signal in signals] == ['']
     assert first == second and first.http_status == 200 and first['state'] == 'owned'
     order_id = first['order_id']
     assert first['library_item_id'] == order_id and 'checkout_url' not in first
@@ -228,3 +234,23 @@ def test_simulated_order_is_atomic_owned_and_separate_from_stripe(fresh_database
         conn.execute("UPDATE workshop_orders SET expected_price_id='foreign_price' WHERE order_id=%s", (order_id,))
     with pytest.raises(commerce.CommerceError, match='COMMERCE_CONFIGURATION_INVALID'):
         commerce.configured_commerce(connection_factory=repo.connect)
+
+
+def test_failed_notification_leaves_simulated_purchase_owned(fresh_database, monkeypatch):
+    repo = fresh_database()
+    setup_env(monkeypatch)
+    owner = account(repo)
+    scope = {'configuration_id': str(seed_configuration(repo, seed_vehicle(repo))), 'region': 'US'}
+    service = commerce.configured_commerce(connection_factory=repo.connect)
+
+    with monkeypatch.context() as offline:
+        offline.setattr(service, 'connect', Mock(side_effect=[
+            repo.connect(), OperationalError('notification connection unavailable'),
+        ]))
+        receipt = call(service, 'checkouts', {
+            **scope, **owner, 'expected_mode': 'simulation',
+            'terms_version': commerce.TERMS, 'idempotency_key': str(uuid.uuid4()),
+        })
+
+    assert receipt['state'] == 'owned'
+    assert call(service, 'grants/check', {**scope, **owner})['order_id'] == receipt['order_id']

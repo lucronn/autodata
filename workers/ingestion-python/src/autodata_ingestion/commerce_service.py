@@ -33,6 +33,7 @@ SIMULATION_COMMERCE_PATHS = READ_ONLY_COMMERCE_PATHS | {
 SIMULATION_MERCHANT = 'workshop_simulation'
 SIMULATION_PRICE = 'workshop_no_charge'
 SIMULATION_PROVIDER = 'workshop_simulation'
+WORKSHOP_PREPARATION_CHANNEL = 'autodata_workshop_preparation'
 
 
 class CommerceError(ValueError):
@@ -790,7 +791,19 @@ class SimulationCommerceService(CommerceService):
                 (event_id, SIMULATION_PROVIDER, provider_event_id,
                  Jsonb({'order_id': order_id, 'amount_charged_minor': 0}), self.clock()))
             order = self._settle_order(cursor, order, event_id, provider_event_id)
+        self._notify_preparation()
         return self._response(order)
+
+    def _notify_preparation(self):
+        from psycopg import Error
+
+        # The durable order is committed. A failed wakeup must not affect the grant.
+        try:
+            with self.transaction(writable=True) as (_, cursor):
+                cursor.execute("SET LOCAL statement_timeout = '250ms'")
+                cursor.execute("SELECT pg_notify(%s, '')", (WORKSHOP_PREPARATION_CHANNEL,))
+        except (Error, OSError):
+            logging.getLogger(__name__).warning('Workshop preparation wakeup unavailable')
 
     _reconcile_expiry = reconcile_event = webhook = demo_mode_status = ReadOnlyCommerceService._payment_unavailable
 
