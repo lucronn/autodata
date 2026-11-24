@@ -16,8 +16,9 @@ import io
 import json
 import mimetypes
 import re
-from collections import Counter
+from collections import Counter, deque
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 from urllib.parse import unquote, urljoin, urlparse, urlsplit
@@ -709,19 +710,14 @@ def _adapt_document_resource(
     )
 
 
-def _extract_pdf_page_images(
-    page: Any, *, page_number: int, allow_compact_figure: bool = False,
-) -> tuple[list[dict[str, Any]], list[Any]]:
-    """Return browser-safe embedded images from one PDF page."""
-
+def _pdf_page_image_inputs(page, allow_compact_figure):
     try:
         virtual_images = getattr(page, "images", []) or []
         embedded = (list(virtual_images.items()) if hasattr(virtual_images, "items")
                     else [(None, image) for image in virtual_images])
     except Exception:
         return [], []
-    extracted: list[dict[str, Any]] = []
-    seen: set[str] = set()
+    inputs = []
     for index, (pdf_key, image) in enumerate(embedded, start=1):
         payload = getattr(image, "data", None)
         if not isinstance(payload, (bytes, bytearray)):
@@ -730,7 +726,14 @@ def _extract_pdf_page_images(
         compact = len(payload) < 2_048
         if compact and (not allow_compact_figure or len(embedded) != 1):
             continue
-        converted = _browser_safe_image_payload(payload)
+        inputs.append((index, pdf_key, getattr(image, "name", ""), compact, payload))
+    return inputs, [key for key, _ in embedded]
+
+
+def _pdf_page_image_records(page_number, images):
+    extracted: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, pdf_key, name, compact, converted in images:
         if converted is None:
             continue
         media_type, safe_payload = converted
@@ -738,7 +741,7 @@ def _extract_pdf_page_images(
         if digest in seen:
             continue
         seen.add(digest)
-        source_name = str(getattr(image, "name", "") or f"page-{page_number}-image-{index}")
+        source_name = str(name or f"page-{page_number}-image-{index}")
         extracted.append(
             {
                 "page": page_number,
@@ -756,7 +759,45 @@ def _extract_pdf_page_images(
                 ),
             }
         )
-    return extracted, [key for key, _ in embedded]
+    return extracted
+
+
+def _extract_pdf_page_images(
+    page: Any, *, page_number: int, allow_compact_figure: bool = False,
+) -> tuple[list[dict[str, Any]], list[Any]]:
+    """Return browser-safe embedded images from one PDF page."""
+    inputs, keys = _pdf_page_image_inputs(page, allow_compact_figure)
+    images = ((index, key, name, compact, _browser_safe_image_payload(payload))
+              for index, key, name, compact, payload in inputs)
+    return _pdf_page_image_records(page_number, images), keys
+
+
+def _pdf_page_figures(pages, *, parallel):
+    if not parallel:
+        for index, page, text, single_line, compact in pages:
+            images, keys = _extract_pdf_page_images(page, page_number=index, allow_compact_figure=compact)
+            yield index, page, text, single_line, images, keys
+        return
+
+    def finish(entry):
+        index, page, text, single_line, keys, work = entry
+        images = ((image_index, key, name, compact, future.result())
+                  for image_index, key, name, compact, future in work)
+        return index, page, text, single_line, _pdf_page_image_records(index, images), keys
+
+    # Keep PDF traversal on one thread. Only the independent image encoders
+    # run concurrently, and their results are consumed in authored order.
+    pending = deque()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        for index, page, text, single_line, compact in pages:
+            inputs, keys = _pdf_page_image_inputs(page, compact)
+            work = [(image_index, key, name, compact, pool.submit(_browser_safe_image_payload, payload))
+                    for image_index, key, name, compact, payload in inputs]
+            pending.append((index, page, text, single_line, keys, work))
+            if len(pending) == 3:
+                yield finish(pending.popleft())
+        while pending:
+            yield finish(pending.popleft())
 
 
 def _browser_safe_image_payload(payload: bytes) -> tuple[str, bytes] | None:
@@ -882,6 +923,7 @@ def _adapt_pdf_resource(
             yield index, page, text
 
     page_inputs = read_pages()
+    parallel_figures = False
     if (on_native_text is not None and len(pages) <= _MAX_BOUND_EMBEDDED_PDF_PAGES
             and len(resource.payload) <= _MAX_BOUND_EMBEDDED_PDF_BYTES):
         # Scan the text layer once. OCR-needed or uncertain pages cannot
@@ -889,15 +931,20 @@ def _adapt_pdf_resource(
         page_inputs = list(page_inputs)
         if page_texts and len(native_text_pages | blank_pages) == len(pages):
             on_native_text(tuple(page_texts))
-    for index, page, text in page_inputs:
-        single_line = bool(text) and "\n" not in text and keep_single_line_compact_figures
-        extracted_images, page_image_keys = _extract_pdf_page_images(
-            page, page_number=index,
-            allow_compact_figure=(
+            parallel_figures = True
+
+    def figure_pages():
+        for index, page, text in page_inputs:
+            single_line = bool(text) and "\n" not in text and keep_single_line_compact_figures
+            allow_compact = (
                 bool(text) and figure_gaps is not None and (keep_compact_pdf_figures or single_line)
                 or not text and keep_wordless_pdf_figures
-            ),
-        )
+            )
+            yield index, page, text, single_line, allow_compact
+
+    for index, page, text, single_line, extracted_images, page_image_keys in _pdf_page_figures(
+        figure_pages(), parallel=parallel_figures,
+    ):
         if extracted_images and extracted_images[0].get("_compact_pdf_figure") is True:
             [figure] = extracted_images
             if text:

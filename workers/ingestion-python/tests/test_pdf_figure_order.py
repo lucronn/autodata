@@ -1,18 +1,22 @@
 """Synthetic PDF fixtures for the optional Workshop figure placement pass."""
 
 import base64
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from io import BytesIO
 from hashlib import sha256
 import json
 from random import Random
+from threading import Event
 
 from PIL import Image, ImageDraw
+from pypdf import PdfReader
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 import pytest
 
 from autodata_ingestion.ocr import OCRTextBlock
+from autodata_ingestion import source_adapters
 from autodata_ingestion.article_lifecycle_types import PDF_COMPACT_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT
 from autodata_ingestion.source_adapters import SourceResource, adapt_bound_article
 from autodata_ingestion.source_article_capture import capture_source_article
@@ -21,6 +25,52 @@ from test_source_article_capture import capture_fixture
 
 def _image(seed):
     return ImageReader(Image.frombytes("RGB", (96, 96), Random(seed).randbytes(96 * 96 * 3)))
+
+
+def test_complete_native_pdf_encodes_two_pages_concurrently_in_source_order(monkeypatch):
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, invariant=True, pagesize=(612, 792))
+    for number in (1, 2):
+        pdf.drawString(72, 720, f"Inspect connector {number}.")
+        pdf.drawImage(_image(number), 72, 545, width=96, height=96)
+        pdf.drawString(72, 495, f"Note harness position {number}.")
+        pdf.showPage()
+    pdf.save()
+    data = buffer.getvalue()
+    resource = SourceResource.from_bytes("https://fixture.invalid/figures.pdf", "fixture", data, "application/pdf")
+    adapt = source_adapters.adapt_bound_pdf_embed
+    reference = adapt(resource, keep_pdf_figure_order=True)
+    assert sum(block.get("kind") == "image" for block in reference["blocks"]) == 2
+    first_page, second_page = PdfReader(BytesIO(data)).pages
+    first, second = first_page.images[0].data, second_page.images[0].data
+    assert first != second
+
+    release_first, entered_first, entered_second, native_ready = Event(), Event(), Event(), Event()
+    original_decode = source_adapters._browser_safe_image_payload
+
+    def decode(payload):
+        assert native_ready.is_set()
+        if payload == first:
+            entered_first.set()
+            assert release_first.wait(5)
+        elif payload == second:
+            entered_second.set()
+        return original_decode(payload)
+
+    def text_ready(pages):
+        assert [page for page, _ in pages] == [1, 2]
+        native_ready.set()
+
+    monkeypatch.setattr(source_adapters, "_browser_safe_image_payload", decode)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        result = pool.submit(adapt, resource, keep_pdf_figure_order=True, on_native_text=text_ready)
+        try:
+            assert entered_first.wait(3)
+            assert entered_second.wait(2)
+            assert not result.done()
+        finally:
+            release_first.set()
+        assert result.result(timeout=5) == reference
 
 
 def _compact_figure(size=96):
