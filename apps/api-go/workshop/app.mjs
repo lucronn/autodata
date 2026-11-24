@@ -1698,11 +1698,6 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
     for (const type of ["wheel", "touchmove", "keydown", "pointerdown"])
       window.addEventListener(type, keepPosition, { passive: true, signal });
   }
-  const handleReadError = (error) => {
-    if (g.current() && error.status === 404 && error.code === "CATALOG_NOT_FOUND")
-      clearUnavailableArticle();
-    throw error;
-  };
   const prepare = !refreshOnly && !openDemo && session.state.mode !== "local";
   const selected = vehicle;
   const matchesConfiguration = (configuration) =>
@@ -1710,46 +1705,148 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
   const order = articleDetailOrder(g, id);
   const detailPath = articleRequestPath(id);
   const readOptions = { signal: g.signal, preferShortPublicationCheck: true };
+  const deniesArticle = (status) => [401, 403, 404, 410].includes(status);
+  const showSavedConfiguration = (configuration) => {
+    vehicle = configuration;
+    access = "owned";
+    renderPurchase();
+  };
+  let retained = null;
+  const olderThanRetained = (response) =>
+    retained && retained[articleDetailSequence] > response[articleDetailSequence];
+  const handleReadError = (error) => {
+    if (g.current() && (retained && deniesArticle(error.status) ||
+        error.status === 404 && error.code === "CATALOG_NOT_FOUND"))
+      clearUnavailableArticle();
+    throw error;
+  };
+  let readingStatus = "";
+  const updateReader = (response, early = false) => {
+    if (!g.current()) return;
+    const article = response.data.article;
+    const readable = readableArticle(article);
+    if (retained && (!readable || olderThanRetained(response))) return;
+    renderArticle(article, g, refreshVisibleArticle);
+    refreshVisibleArticle = false;
+    if (readerAlignment && readable) {
+      const controller = readerAlignment;
+      readerAlignment = null;
+      requestAnimationFrame(() => {
+        if (controller.signal.aborted) return;
+        controller.abort();
+        if (!g.current() || document.activeElement !== heading) return;
+        if (heading.getBoundingClientRect().bottom > 0)
+          $("reader").scrollIntoView({ behavior: "instant", block: "start" });
+      });
+    }
+    if (paidOrder && article.id === id && readable &&
+        paidOrder.configuration_id === selected.id && paidOrder.region === selected.region)
+      completePaidOrder(paidOrder.id);
+    if (!early && !processingArticle(article)) return;
+    let ready = "";
+    if (readable) {
+      if (article.source_body_preview) ready = "Source text is ready.";
+      else if (article.content_origin === "source") ready = "Stored source is ready.";
+      else ready = "Article is readable.";
+    }
+    if (ready === readingStatus) return;
+    readingStatus = ready;
+    if (ready) status(ready, { complete: true, cancelable: true });
+    else status("Opening article…", { busy: true });
+  };
+  const canCheckRetained = prepare && session.state.mode === "firebase" &&
+    validScope({ configuration_id: selected.id, region: selected.region });
+  const earlyCheck = canCheckRetained && !refreshVisibleArticle ? new AbortController() : null;
+  const earlySignal = earlyCheck && AbortSignal.any([g.signal, earlyCheck.signal]);
+  let preparing = prepare;
   let initialReadStartedAt = performance.now();
-  const first = await (prepare
+  let detailRead, detailStartedAt;
+  const recoverDetail = (signal) => {
+    if (!detailRead) {
+      detailStartedAt = performance.now();
+      detailRead = requestArticleDetail(order, detailPath, { ...readOptions, signal, preferShortSourceCheck: true })
+        .catch((error) => {
+          g.signal.throwIfAborted();
+          if (deniesArticle(error.status)) throw error;
+          return null;
+        });
+    }
+    return detailRead;
+  };
+  const primary = (prepare
     ? requestArticleDetail(order, articleRequestPath(id, "/prepare"), {
         ...readOptions,
         method: "POST",
         body: {},
         preferShortSourceCheck: true,
         reportBodyNetworkError: true,
+        onResponseStatus(status) {
+          if (status === 200 && !detailRead || deniesArticle(status)) earlyCheck?.abort();
+        },
         headers: { "X-CSRF-Token": session.state.csrf },
       })
-    : requestArticleDetail(order, detailPath, readOptions)).catch(async (error) => {
-        if (prepare && g.current() && error.status === 0 && error.code === "NETWORK_UNAVAILABLE") {
-          // Prepare may have committed before the browser lost the response.
-          initialReadStartedAt = performance.now();
-          const recovered = await requestArticleDetail(order, detailPath, { ...readOptions, preferShortSourceCheck: true })
-            .catch((detailError) => {
-              g.signal.throwIfAborted();
-              if ([401, 403, 404, 410].includes(detailError.status)) return handleReadError(detailError);
-              return null;
-            });
-          if (!g.current()) return null;
-          const article = recovered?.data?.article;
-          const configuration = recovered?.data?.configuration;
-          if (article?.id === id && (matchesConfiguration(configuration) || !savedLink && !configuration) &&
-              (recovered.status === 200 && readableArticle(article) ||
-               recovered.status === 202 && processingArticle(article))) return recovered;
+    : requestArticleDetail(order, detailPath, readOptions)).then((response) => {
+      preparing = false;
+      return response;
+    }, async (error) => {
+      const recover = preparing && g.current();
+      preparing = false;
+      const transport = error.status === 0 && error.code === "NETWORK_UNAVAILABLE";
+      const scheduling = error.status === 503 && error.retryable === true &&
+        error.code === "CATALOG_SCHEDULING_UNAVAILABLE";
+      if (recover && (transport || canCheckRetained && scheduling)) {
+        // Reuse a check already in flight. Prepare may have committed despite the failure.
+        const exact = Boolean(detailRead) || scheduling || savedLink;
+        const recovered = await recoverDetail(g.signal);
+        initialReadStartedAt = detailStartedAt;
+        if (!g.current()) return null;
+        const article = recovered?.data?.article;
+        const configuration = recovered?.data?.configuration;
+        if (article?.id === id && (matchesConfiguration(configuration) || !exact && !configuration) &&
+            (recovered.status === 200 && readableArticle(article) ||
+             recovered.status === 202 && processingArticle(article))) {
+          return error.retryAfterSeconds > (recovered.retryAfterSeconds ?? 0)
+            ? { ...recovered, retryAfterSeconds: error.retryAfterSeconds }
+            : recovered;
         }
-        if (savedLink && error.status === 404) return null;
-        return handleReadError(error);
-      });
+      }
+      if (savedLink && error.status === 404) {
+        if (retained && g.current()) clearUnavailableArticle();
+        return null;
+      }
+      throw error;
+    });
+  // A fast prepare still supplies the first view. Only a slow, in-flight
+  // prepare can start the one optional exact read for an already stored body.
+  const retainedPrepareDelayMs = 250;
+  const earlyRead = earlySignal && delay(retainedPrepareDelayMs, earlySignal).then(async () => {
+    if (!preparing || !g.current() || earlySignal.aborted) return;
+    const response = await recoverDetail(earlySignal);
+    if (!preparing || !g.current() || earlySignal.aborted) return;
+    const article = response?.data?.article;
+    const configuration = response?.data?.configuration;
+    if (response?.status !== 200 || !matchesConfiguration(configuration) ||
+        article?.id !== id || !readableArticle(article)) return;
+    retained = response;
+    if (savedLink) showSavedConfiguration(configuration);
+    updateReader(response, true);
+  }, () => {});
+  const first = await (earlyRead ? Promise.race([primary, earlyRead.then(() => primary)]) : primary)
+    .catch(handleReadError)
+    .finally(() => {
+      preparing = false;
+      earlyCheck?.abort();
+    });
   if (!g.current()) return;
   if (savedLink) {
     const configuration = first?.data?.configuration;
-    if (!matchesConfiguration(configuration)) return false;
-    vehicle = configuration;
-    access = "owned";
-    renderPurchase();
+    if (!matchesConfiguration(configuration)) {
+      if (retained) clearUnavailableArticle();
+      return false;
+    }
+    showSavedConfiguration(configuration);
   }
   let initial = first;
-  let readingStatus = "";
   const result = await readArticle(
     (options) => {
       if (initial) {
@@ -1762,43 +1859,16 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
     {
       signal: g.signal,
       initialReadStartedAt,
-      selectResponse: (response) => acceptArticleDetail(order, response),
-      onUpdate(response) {
-        if (!g.current()) return;
-        const article = response.data.article;
-        const readable = readableArticle(article);
-        renderArticle(article, g, refreshVisibleArticle);
-        refreshVisibleArticle = false;
-        if (readerAlignment && readable) {
-          const controller = readerAlignment;
-          readerAlignment = null;
-          requestAnimationFrame(() => {
-            if (controller.signal.aborted) return;
-            controller.abort();
-            if (!g.current() || document.activeElement !== heading) return;
-            if (heading.getBoundingClientRect().bottom > 0)
-              $("reader").scrollIntoView({ behavior: "instant", block: "start" });
-          });
-        }
-        if (paidOrder && article.id === id && readable &&
-            paidOrder.configuration_id === selected.id && paidOrder.region === selected.region)
-          completePaidOrder(paidOrder.id);
-        if (!processingArticle(article)) return;
-        let ready = "";
-        if (readable) {
-          if (article.source_body_preview) ready = "Source text is ready.";
-          else if (article.content_origin === "source") ready = "Stored source is ready.";
-          else ready = "Article is readable.";
-        }
-        if (ready === readingStatus) return;
-        readingStatus = ready;
-        if (ready) status(ready, { complete: true, cancelable: true });
-        else status("Opening article…", { busy: true });
+      selectResponse(response) {
+        // An older prepare can confirm an active job without replacing the retained view.
+        const keepRetained = olderThanRetained(response) && !processingArticle(response.data?.article);
+        return acceptArticleDetail(order, keepRetained ? retained : response);
       },
+      onUpdate: updateReader,
     },
   ).catch(handleReadError);
   if (!g.current()) return;
-  showArticleReadStatus(id, result.data?.article, result.timedOut);
+  showArticleReadStatus(id, retained ? currentArticle : result.data?.article, result.timedOut);
   return true;
 }
 function openArticle(id, indexLink = null, { refreshOnly = false } = {}) {

@@ -372,7 +372,8 @@ export const selectedIndexSessionPreference = 'workshop-confirm-session';
 export async function requestArticleJSON(path, {
   signal, timeout = 10000, readableBodyTimeout = 0, fetcher = fetch, method = 'GET', body, headers = {},
   preferShortSourceCheck = false, preferShortPublicationCheck = false,
-  finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck, onResponseDate, onSelectedIndexSession,
+  finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck,
+  onResponseStatus, onResponseDate, onSelectedIndexSession,
 } = {}) {
   const preferences = [];
   if (preferShortSourceCheck) preferences.push(shortSourceCheckPreference);
@@ -410,6 +411,7 @@ export async function requestArticleJSON(path, {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
+    onResponseStatus?.(response.status);
     const applied = response.headers.get('Preference-Applied');
     if (onSelectedIndexSession && response.status !== 401 &&
         applied?.split(',').some(preference => preference.trim() === selectedIndexSessionPreference)) {
