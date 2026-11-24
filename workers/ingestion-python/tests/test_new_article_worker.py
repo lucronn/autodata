@@ -272,6 +272,7 @@ def test_continuous_quota_waits_and_resumes(continuous_state,monkeypatch):
     for _ in range(10):assert state.reserve(uuid4(),NOW)
     from threading import Event
     stop=Event();clock=[NOW];observed=[]
+    subscriptions = []
     class Stop:
         def is_set(self):return stop.is_set()
         def wait(self,seconds):
@@ -279,9 +280,72 @@ def test_continuous_quota_waits_and_resumes(continuous_state,monkeypatch):
             if clock[0]==NOW:clock[0]=NOW+timedelta(hours=24)
             else:stop.set()
     monkeypatch.setattr(worker,'database_now',lambda repo:clock[0])
+    monkeypatch.setattr(worker,'_subscribe_to_article_jobs',lambda repo: subscriptions.append(clock[0]))
     monkeypatch.setattr(worker,'dispatch_next',lambda *a,**k:observed.append(state.reserve(uuid4(),clock[0])))
     worker.run_new_article_worker(None,state,registry={},object_store=None,model_client=object(),stop=Stop())
     assert observed==[False,True] and len(state.read()['reservations'])==11
+    assert subscriptions == [NOW + timedelta(hours=24)]
+
+
+@pytest.mark.parametrize("listener_fails", [False, True])
+def test_continuous_waits_for_notifications_and_falls_back_if_listener_fails(
+    continuous_state, monkeypatch, listener_fails,
+):
+    state = continuous_state
+    state.set_enabled(True)
+    calls = []
+
+    class Stop:
+        stopped = False
+
+        def is_set(self):
+            return self.stopped
+
+        def wait(self, seconds):
+            if not self.stopped:
+                calls.append(("poll", seconds))
+
+    class Listener:
+        autocommit = False
+
+        def execute(self, statement):
+            assert self.autocommit
+            assert statement.as_string() == 'LISTEN "autodata_article_job"'
+            calls.append("subscribe")
+
+        def notifies(self, *, timeout, stop_after):
+            calls.append(("notify", timeout, stop_after))
+            if listener_fails:
+                raise OSError("fixture listener disconnected")
+            yield object()
+
+        def close(self):
+            calls.append("close")
+
+    class Repo:
+        def connect(self):
+            return Listener()
+
+    stop = Stop()
+    dispatches = 0
+
+    def dispatch(*args, **kwargs):
+        nonlocal dispatches
+        calls.append("queue")
+        dispatches += 1
+        stop.stopped = dispatches == 2
+        return False
+
+    monkeypatch.setattr(worker, "database_now", lambda repo: NOW)
+    monkeypatch.setattr(worker, "dispatch_next", dispatch)
+    assert worker.run_new_article_worker(
+        Repo(), state, registry={}, object_store=None, model_client=object(), stop=stop,
+    ) == 0
+    assert calls == [
+        "subscribe", "queue", ("notify", 2, 1),
+        *(["close", ("poll", 2), "subscribe"] if listener_fails else []),
+        "queue", "close",
+    ]
 
 
 def test_continuous_preview_unit_is_inert_and_throttled():
