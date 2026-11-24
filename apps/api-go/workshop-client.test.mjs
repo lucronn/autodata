@@ -5594,7 +5594,7 @@ test('early reader Print releases all selected images and remains bounded on dec
   }
 });
 
-test('reader refocus reauthorizes account, exact detail and pinned source together', async () => {
+test('reader refocus shows the authorized article while its open Original is still being checked', async () => {
   const configuration = { id: routeConfiguration, region: 'US' };
   const article = mediaArticle([{ type: 'paragraph', text: 'Authorized article' }], [], {
     id: routeArticle,
@@ -5623,29 +5623,43 @@ test('reader refocus reauthorizes account, exact detail and pinned source togeth
     show(id) { h.nodes.get('reader').hidden = id !== 'reader'; },
   });
   h.context.document.visibilityState = 'visible';
-  h.render(article);
+  const content = h.render(article), main = content.children[0];
   h.context.sourceURL = article.source_review.url;
   h.nodes.get('article-reference').open = true;
-  h.nodes.get('source-review-frame').append(new ArticleMediaNode('p', 'Pinned source'));
-  const held = h.nodes.get('source-review-frame').firstElementChild;
+  const frame = h.nodes.get('source-review-frame'), held = new ArticleMediaNode('p');
+  held.textContent = 'Pinned source';
+  frame.append(held);
   const focusTarget = h.nodes.get('source-review-load');
   h.nodes.get('reader').append(focusTarget);
+  focusTarget.focus = () => {
+    if (focusTarget.disabled) return;
+    focusTarget.focusCalls = (focusTarget.focusCalls || 0) + 1;
+    h.context.document.activeElement = focusTarget;
+  };
   h.context.document.activeElement = focusTarget;
   runInNewContext(appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'), h.context);
   const checked = h.context.recheckReader(h.g);
   assert.deepEqual(calls, ['session', 'article', 'source']);
   assert.equal(h.nodes.get('reader').hidden, true);
+  assert.equal(frame.hidden, true);
   assert.equal(h.context.document.body.dataset.printable, 'false');
   h.context.document.activeElement = h.context.document.body;
-  account.resolve(true);
   detail.resolve({ status: 200, data: { configuration, article } });
   await new Promise(setImmediate);
   assert.equal(h.nodes.get('reader').hidden, true);
-  source.resolve({ source: { url: article.source_review.url } });
-  await checked;
+  account.resolve(true);
+  await new Promise(setImmediate);
   assert.equal(h.nodes.get('reader').hidden, false);
   assert.equal(h.context.document.body.dataset.printable, 'true');
-  assert.equal(h.nodes.get('source-review-frame').firstElementChild, held);
+  assert.equal(content.children[0], main);
+  assert.equal(frame.hidden, true);
+  assert.equal(focusTarget.disabled, true);
+  assert.equal(h.context.document.activeElement, h.context.document.body);
+  source.resolve({ source: { url: article.source_review.url } });
+  await checked;
+  assert.equal(frame.hidden, false);
+  assert.equal(frame.children[0], held);
+  assert.equal(focusTarget.disabled, false);
   assert.equal(focusTarget.focusCalls, 1);
 });
 
@@ -5724,6 +5738,102 @@ test('reader refocus clears an unavailable staged Original while keeping the aut
   assert.equal(frame.hidden, true);
   assert.equal(frame.textContent, '');
   assert.equal(h.nodes.get('source-review-link').href, referenceURL);
+});
+
+async function recheckOpenedOriginal() {
+  const configuration = { id: routeConfiguration, region: 'US' };
+  const url = `/v1/catalog/vehicles/v/articles/${routeArticle}/source?source_revision_id=${routeOrder}`;
+  const article = mediaArticle([{ type: 'paragraph', text: 'Authorized article' }], [], {
+    id: routeArticle, content_origin: 'canonical', source_review: { available: true, url },
+  });
+  const pending = deferredAuthOperation(), requests = [], sessionEvents = [];
+  const h = articleMediaHarness({
+    vehicle: configuration, scope: () => ({ configuration_id: configuration.id, region: configuration.region }),
+    session: {
+      state: { authenticated: true, mode: 'firebase' },
+      async matchesCurrentSession() { return true; },
+      clear() { sessionEvents.push('clear'); },
+      async bootstrap() { sessionEvents.push('bootstrap'); },
+    },
+    async requestArticleJSON() { return { status: 200, data: { configuration, article } }; },
+    async requestJSON(path) {
+      requests.push(path);
+      if (requests.length === 2) return pending.promise;
+      return { source: { url }, document: { blocks: [{ type: 'paragraph', text: 'Authorized Original' }] } };
+    },
+    cancelPickerRefreshes() {},
+    renderPurchase() {},
+    show(id) { h.nodes.get('reader').hidden = id !== 'reader'; h.shows.push(id); },
+  });
+  for (const id of ['cancel', 'loading-progress']) h.nodes.set(id, new ArticleMediaNode('div'));
+  runInNewContext(appSection('async function operation(', 'function updateURL(') +
+    appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'), h.context);
+  const content = h.render(article), frame = h.nodes.get('source-review-frame');
+  await h.context.loadSource(url, h.g);
+  assert.equal(frame.textContent, 'Authorized Original');
+  const checked = h.context.recheckReader(h.g);
+  await new Promise(setImmediate);
+  assert.equal(h.nodes.get('reader').hidden, false);
+  assert.equal(frame.hidden, true);
+  assert.deepEqual(requests, [url, url]);
+  return { ...h, pending, checked, content, frame, requests, sessionEvents, url };
+}
+
+test('reader refocus keeps the same main DOM and allows an exact Original retry after 503', async () => {
+  const h = await recheckOpenedOriginal(), main = h.content.children[0];
+  h.pending.reject(Object.assign(new Error('Original temporarily unavailable'), { status: 503 }));
+  await h.checked;
+
+  assert.equal(h.g.current(), true);
+  assert.equal(h.nodes.get('reader').hidden, false);
+  assert.equal(h.context.document.body.dataset.printable, 'true');
+  assert.equal(h.content.children[0], main);
+  assert.equal(h.frame.hidden, true);
+  assert.equal(h.frame.textContent, '');
+  assert.equal(h.nodes.get('source-review-load').disabled, false);
+  assert.equal(h.nodes.get('source-review-link').href, h.url);
+  assert.match(h.nodes.get('source-review-meta').textContent, /load it again to retry/i);
+  await h.context.loadSource(h.nodes.get('source-review-link').href, h.g);
+  assert.deepEqual(h.requests, [h.url, h.url, h.url]);
+  assert.equal(h.frame.hidden, false);
+  assert.equal(h.frame.textContent, 'Authorized Original');
+  assert.equal(h.content.children[0], main);
+});
+
+test('reader refocus clears both projections after an explicit Original access denial', async t => {
+  for (const status of [401, 403, 410]) {
+    await t.test(String(status), async () => {
+      const h = await recheckOpenedOriginal();
+      h.pending.reject(Object.assign(new Error('Original access denied'), { status }));
+      await h.checked;
+
+      assert.equal(h.g.current(), false);
+      assert.equal(h.nodes.get('reader').hidden, true);
+      assert.equal(h.context.document.body.dataset.printable, 'false');
+      assert.equal(h.content.textContent, '');
+      assert.equal(h.frame.textContent, '');
+      assert.equal(h.context.sourceURL, '');
+      assert.deepEqual(h.shows, ['reader', 'welcome']);
+      assert.deepEqual(h.sessionEvents, status === 401 ? ['clear', 'bootstrap'] : []);
+    });
+  }
+});
+
+test('a late Original denial leaves the newly navigated reader intact', async () => {
+  const h = await recheckOpenedOriginal();
+  const next = h.navigation.next();
+  h.context.resetReaderContent();
+  h.context.renderArticle(mediaArticle([{ type: 'paragraph', text: 'Another article' }]), next);
+  h.context.show('reader');
+  const main = h.content.children[0];
+
+  h.pending.reject(Object.assign(new Error('Old Original access denied'), { status: 403 }));
+  await h.checked;
+  assert.equal(next.current(), true);
+  assert.equal(h.nodes.get('reader').hidden, false);
+  assert.equal(h.content.children[0], main);
+  assert.equal(h.content.textContent, 'Another article');
+  assert.deepEqual(h.shows, ['reader', 'reader']);
 });
 
 test('opening My vehicles hides the previous purchase panel while Library is loading', async () => {
