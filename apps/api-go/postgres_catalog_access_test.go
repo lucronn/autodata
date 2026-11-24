@@ -820,6 +820,14 @@ func TestPostgresPaidCatalogSourceBodyPreviewRights(t *testing.T) {
 	assertHidden(0, http.StatusAccepted)
 	f.exec(`UPDATE source_review_items SET status='approved' WHERE item_key='source-body-preview-quarantine'`)
 	assertVisible()
+	f.exec(`INSERT INTO source_artifacts(source_snapshot_id,artifact_kind,media_type,content_sha256,object_key,extraction_status)
+		SELECT source_snapshot_id,'document','application/pdf',content_sha256,object_key,'candidate_ready'
+		FROM source_snapshots WHERE source_snapshot_id=$1::uuid`, snapshot)
+	assertVisible()
+	f.exec(`UPDATE source_artifacts SET extraction_status='quarantined' WHERE source_snapshot_id=$1::uuid`, snapshot)
+	assertHidden(0, http.StatusAccepted)
+	f.exec(`UPDATE source_artifacts SET extraction_status='candidate_ready' WHERE source_snapshot_id=$1::uuid`, snapshot)
+	assertVisible()
 	f.exec(`UPDATE canonical_articles SET request_generation=request_generation+1 WHERE canonical_article_id=$1::uuid`, f.article)
 	assertHidden(0, http.StatusAccepted)
 }

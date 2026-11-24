@@ -594,6 +594,13 @@ def capture_source_article(
             and isinstance(node.get("asset_resource_ref"), str)
         }
 
+    def native_pdf_blocks(page_texts):
+        parser = LeadingDecimalStepParser() if keep_leading_decimals else None
+        return [
+            block for _, text in page_texts
+            for block in segment_plain_article_text(text, step_parser=parser)
+        ]
+
     # All requests share one deadline; no more than four can run concurrently.
     def fetch(pair, defer_pdf=False, native_ready=None):
         ref, role = pair
@@ -610,11 +617,7 @@ def capture_source_article(
                 resource = upload_resource(envelope, ref, role, bounded_objects)
 
                 def native_text(page_texts):
-                    parser = LeadingDecimalStepParser() if keep_leading_decimals else None
-                    blocks = [
-                        block for _, text in page_texts
-                        for block in segment_plain_article_text(text, step_parser=parser)
-                    ]
+                    blocks = native_pdf_blocks(page_texts)
                     if blocks:
                         native_ready.set_result((resource, blocks))
 
@@ -742,8 +745,9 @@ def capture_source_article(
             for name, (enabled, legacy) in caption_settings.items()
         }
         refreshed_captions = {name: enabled for name, (enabled, _) in caption_settings.items() if enabled and not legacy_captions[name]}
+        body_payload = body.to_source_resource()
         adapt = partial(
-            adapt_bound_article, body.to_source_resource(), context,
+            adapt_bound_article, body_payload, context,
             keep_embedded_pdf=keep_embedded_pdf, keep_html_headings=keep_html_headings,
             keep_bound_pdf_iframes=keep_bound_pdf_iframes,
             keep_pdf_figure_order=keep_pdf_figure_order,
@@ -796,13 +800,28 @@ def capture_source_article(
                 )
             return article
 
-        article = parser_pool.submit(parse, step_parser=step_parser).result(timeout=remaining())
+        primary_text = (
+            Future() if on_body_preview is not None and not context.has_stored_source
+            and body_payload.media_type == "application/pdf" and keep_pdf_figure_order else None
+        )
+        body_parse = parser_pool.submit(
+            parse, step_parser=step_parser, on_primary_pdf_text=primary_text.set_result if primary_text is not None else None,
+        )
+        if primary_text is not None:
+            ready, _ = wait((body_parse, primary_text), timeout=remaining(), return_when=FIRST_COMPLETED)
+            if primary_text in ready and body_parse not in ready:
+                native_preview = build_preview({"blocks": native_pdf_blocks(primary_text.result())})
+                if native_preview is not None and time.monotonic() < deadline:
+                    body_resource = upload_resource(body, body_ref, "body", bounded_objects)
+                    on_body_preview(body_resource, native_preview)
+        article = body_parse.result(timeout=remaining())
         if recover_legacy_bankone_svg:
             on_linked_preview = None
         elif on_body_preview is not None or on_linked_preview is not None:
             body_preview = build_preview(article)
             if body_preview is not None and on_body_preview is not None:
-                body_resource = upload_resource(body, body_ref, "body", bounded_objects)
+                if body_resource is None:
+                    body_resource = upload_resource(body, body_ref, "body", bounded_objects)
                 on_body_preview(body_resource, body_preview)
         candidates = article.get("untyped_pdf_embed_refs", ())
         if candidates:
