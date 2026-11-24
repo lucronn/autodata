@@ -59,7 +59,18 @@
               "type": "string",
               "maxLength": 120
             },
-            "description": "Optional case-insensitive search over visible title, kind, component, and current readable article text. At most eight whitespace-separated words. In Firebase mode the current exact configuration grant is checked before searching; results remain metadata-only descriptors in index order. An empty query retains the unfiltered index."
+            "description": "Optional case-insensitive search over visible title, kind, component, and current readable article text. At most eight whitespace-separated words. In Firebase mode the current exact configuration grant is checked before searching; results remain metadata-only descriptors in index order. An empty query retains the unfiltered index. Cannot be combined with title."
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "description": "Optional exact case-insensitive match of the displayed article title after trimming surrounding whitespace. Matches title metadata only and returns descriptors in index order. Cannot be combined with q."
           },
           {
             "name": "Prefer",
