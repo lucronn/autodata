@@ -1491,6 +1491,75 @@ test('session validation starts while login configuration is in flight', async (
   assert.equal(session.state.mode, 'local');
 });
 
+test('a verified Firebase session opens before public login configuration and reuses it for sign-out', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  const settings = deferredAuthOperation();
+  const calls = [];
+  const sdk = {
+    GoogleAuthProvider: class {},
+    initializeApp: () => ({}), initializeAuth: () => ({}), setPersistence: async () => {},
+  };
+  const session = createSession({
+    loadSDK: async () => { calls.push('sdk'); return sdk; },
+    request: async (path, options) => {
+      calls.push(path);
+      if (path === '/auth/config') return settings.promise;
+      if (path === '/auth/logout') {
+        assert.equal(options.headers['X-CSRF-Token'], 'verified');
+        return null;
+      }
+      assert.equal(path, '/auth/session');
+      return { authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z',
+        csrf_token: 'verified', ...(options.headers?.Prefer === 'workshop-session-mode' ? { mode: 'firebase' } : {}) };
+    },
+  });
+  const pending = session.bootstrap();
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(session.state.authenticated, true);
+    assert.equal(session.state.mode, 'firebase');
+    assert.equal(session.state.csrf, 'verified');
+    assert.deepEqual(calls, ['/auth/config', '/auth/session']);
+    const logout = session.logout();
+    assert.equal(session.state.authenticated, false);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(session.state.message, 'Signed out.');
+    assert.equal(session.state.ready, false);
+    settings.resolve({ version: 'v1', mode: 'firebase', login_available: true, providers: ['google.com'],
+      firebase: { apiKey: 'fixture', authDomain: 'fixture-project.firebaseapp.com',
+        projectId: 'fixture-project', appId: '1:123:web:abc' } });
+    assert.equal(await logout, true);
+    assert.equal(session.state.ready, true);
+    assert.equal(session.state.csrf, '');
+    assert.deepEqual(calls, ['/auth/config', '/auth/session', '/auth/logout', 'sdk']);
+  } finally {
+    settings.resolve(null);
+    await pending;
+  }
+});
+
+test('session mode cannot accelerate a missing dataset role, CSRF token or unexpired session', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  for (const invalid of [{ roles: [] }, { csrf_token: '' }, { expires_at: '2000-01-01T00:00:00Z' }]) {
+    const settings = deferredAuthOperation();
+    const session = createSession({ request: async path => path === '/auth/config' ? settings.promise : {
+      authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z',
+      csrf_token: 'verified', mode: 'firebase', ...invalid,
+    } });
+    const pending = session.bootstrap();
+    try {
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(session.state.mode, null);
+      assert.equal(session.state.authenticated, false);
+    } finally {
+      settings.resolve({ mode: 'firebase' });
+      await pending;
+    }
+    assert.equal(session.state.authenticated, false);
+    assert.equal(session.state.csrf, '');
+  }
+});
+
 test('Firebase persistence is awaited before popup and token exchange clears SDK user', async () => {
   const { createSession }=await import('./workshop/auth.mjs');const calls=[];let release;
   const user={}; const sdk={initializeApp:()=>({}),initializeAuth:(_,options)=>{assert.equal(options.persistence,'NONE');return {};},inMemoryPersistence:'NONE',browserPopupRedirectResolver:{},setPersistence:()=>new Promise(resolve=>{release=resolve;}),GoogleAuthProvider:class{},signInWithPopup:async()=>{calls.push('popup');return{user};},getIdTokenResult:async()=>({token:'synthetic-token',authTime:new Date().toISOString()}),signOut:async()=>{calls.push('sdk-signout');}};

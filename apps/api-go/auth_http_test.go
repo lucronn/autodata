@@ -208,6 +208,76 @@ func TestCustomerAuthHTTPBoundaries(t *testing.T) {
 		t.Fatal("exchange dependency outage must preserve cookie and deny", w.Code)
 	}
 }
+
+func TestCustomerSessionModePreference(t *testing.T) {
+	now := time.Date(2026, time.November, 24, 12, 0, 0, 0, time.UTC)
+	expires := now.Add(time.Hour)
+	token, _, err := newCustomerSessionToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookie := customerSessionCookie(token, expires, now)
+	verifier := &customerVerifierFixture{}
+	service := &customerAuthService{
+		config: customerAuthConfig{Mode: "firebase", ProjectID: "fixture-project"},
+		store: &customerSessionFixture{session: customerSession{
+			ProjectID: "fixture-project", UID: "fixture-user", AuthTime: now.Unix(), ExpiresAt: expires,
+		}},
+		verifier: verifier,
+		now:      func() time.Time { return now },
+	}
+	handler := customerAuthHandler(service)
+	for _, tc := range []struct {
+		name, prefer string
+		cookie       *http.Cookie
+		checkErr     error
+		status       int
+		checks       int
+		mode         bool
+	}{
+		{name: "default", cookie: cookie, status: 200, checks: 1},
+		{name: "exact token in list", prefer: "unrelated, workshop-session-mode", cookie: cookie, status: 200, checks: 1, mode: true},
+		{name: "near matches", prefer: "other-workshop-session-mode, workshop-session-mode=1", cookie: cookie, status: 200, checks: 1},
+		{name: "guest", prefer: "workshop-session-mode", status: 401},
+		{name: "revoked", prefer: "workshop-session-mode", cookie: cookie, checkErr: ErrUnauthenticated, status: 401, checks: 1},
+		{name: "verifier unavailable", prefer: "workshop-session-mode", cookie: cookie, checkErr: ErrCustomerDependency, status: 503, checks: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			verifier.checkErr, verifier.checks = tc.checkErr, 0
+			var headers map[string]string
+			if tc.prefer != "" {
+				headers = map[string]string{"Prefer": tc.prefer}
+			}
+			w := customerHTTP(t, handler, http.MethodGet, "/auth/session", "", headers, tc.cookie)
+			if w.Code != tc.status || verifier.checks != tc.checks {
+				t.Fatalf("status=%d, verification calls=%d, want %d and %d", w.Code, verifier.checks, tc.status, tc.checks)
+			}
+			var body map[string]json.RawMessage
+			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if tc.status != 200 {
+				if len(body) != 1 || body["error"] == nil {
+					t.Fatal("denied session must return only the existing error envelope")
+				}
+				return
+			}
+			if string(body["authenticated"]) != "true" || string(body["roles"]) != `["dataset_viewer"]` ||
+				string(body["expires_at"]) != fmt.Sprintf("%q", expires.Format(time.RFC3339)) ||
+				string(body["csrf_token"]) != fmt.Sprintf("%q", customerCSRF(token)) {
+				t.Fatal("session verification response fields changed")
+			}
+			if tc.mode {
+				if len(body) != 5 || string(body["mode"]) != `"firebase"` {
+					t.Fatal("opted-in verified session did not include the configured mode")
+				}
+			} else if len(body) != 4 || body["mode"] != nil {
+				t.Fatal("default session response must contain exactly four fields")
+			}
+		})
+	}
+}
+
 func TestCustomerLocalLoginUnavailable(t *testing.T) {
 	handler := customerAuthHandler(&customerAuthService{config: customerAuthConfig{Mode: "local", Origin: "https://cars.example"}})
 	for _, tc := range []struct {

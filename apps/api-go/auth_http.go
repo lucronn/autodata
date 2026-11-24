@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+const workshopSessionModePreference = "workshop-session-mode"
+
 func (s *customerAuthService) mountRoutes(mux *http.ServeMux, confirmSelectedIndex bool) {
 	mux.HandleFunc("GET /auth/config", s.publicConfig)
 	mux.HandleFunc("GET /auth/session", s.currentSession)
@@ -55,7 +57,16 @@ func (s *customerAuthService) currentSession(w http.ResponseWriter, r *http.Requ
 		s.writeError(w, r, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"authenticated": true, "roles": []string{"dataset_viewer"}, "expires_at": session.ExpiresAt.UTC().Format(time.RFC3339), "csrf_token": customerCSRF(token)})
+	result := map[string]any{
+		"authenticated": true,
+		"roles":         []string{"dataset_viewer"},
+		"expires_at":    session.ExpiresAt.UTC().Format(time.RFC3339),
+		"csrf_token":    customerCSRF(token),
+	}
+	if catalogReadPreferenceRequested(r, workshopSessionModePreference) {
+		result["mode"] = s.config.Mode
+	}
+	writeJSON(w, 200, result)
 }
 func (s *customerAuthService) exchangeSession(w http.ResponseWriter, r *http.Request, confirmSelectedIndex bool) {
 	w.Header().Set("Cache-Control", "no-store")
