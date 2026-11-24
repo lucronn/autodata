@@ -16,7 +16,7 @@ type paidSourceViewFixture struct {
 	reads int
 }
 
-func (s *paidSourceViewFixture) paidCatalogSourceView(_ context.Context, configuration, article, revision string) (PaidArticleIdentity, CatalogArticleView, CatalogSourceContent, error) {
+func (s *paidSourceViewFixture) paidCatalogSourceView(_ context.Context, configuration, article, revision string, _ bool) (PaidArticleIdentity, CatalogArticleView, CatalogSourceContent, error) {
 	s.reads++
 	if configuration != s.configuration.ID || article != s.identity.CanonicalArticleID || revision != *s.source.SourceRevisionID {
 		return PaidArticleIdentity{}, CatalogArticleView{}, CatalogSourceContent{}, ErrCatalogNotFound

@@ -943,12 +943,12 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 	store := newPostgresCatalogStore(f.pool)
 	for _, revision := range []string{"", *fresh.SourceRevisionID, oldSource} {
 		full, fullErr := store.ArticleSourceRevision(context.Background(), Principal{}, f.configuration, f.article, revision)
-		identity, anchor, narrow, narrowErr := store.paidCatalogSourceView(context.Background(), f.configuration, f.article, revision)
+		identity, anchor, narrow, narrowErr := store.paidCatalogSourceView(context.Background(), f.configuration, f.article, revision, false)
 		if fullErr != nil || narrowErr != nil || !reflect.DeepEqual(full, narrow) || !samePaidCatalogID(identity.CurrentSourceRevisionID, fresh.SourceRevisionID) || !samePaidCatalogID(anchor.Article.CanonicalRevisionID, fresh.CanonicalRevisionID) {
 			t.Fatal("scoped read changed source, version, display hash, or current anchor", fullErr, narrowErr)
 		}
 	}
-	if _, _, _, err := store.paidCatalogSourceView(context.Background(), f.adjacent, f.article, oldSource); !errors.Is(err, ErrCatalogNotFound) {
+	if _, _, _, err := store.paidCatalogSourceView(context.Background(), f.adjacent, f.article, oldSource, false); !errors.Is(err, ErrCatalogNotFound) {
 		t.Fatal("scoped source lookup accepted an adjacent configuration", err)
 	}
 	// refresh-source independently seeds "Remove the refreshed pump.". The
@@ -1060,15 +1060,32 @@ func assertStagedMediaRefreshFence(t *testing.T, f *paidFixture, current Catalog
 	}
 	currentSource := *current.SourceRevisionID
 	staged, historical, job, canonical := f.uuid(), f.uuid(), f.uuid(), f.uuid()
+	var svgSnapshot, svgDigest, resolution string
+	if f.provider == "bankone" {
+		svgSnapshot, resolution = f.uuid(), f.uuid()
+		for _, id := range []string{svgSnapshot, resolution} {
+			digest := sha256.Sum256([]byte(id))
+			checksum := hex.EncodeToString(digest[:])
+			f.exec(`INSERT INTO source_snapshots (source_snapshot_id,adapter_name,source_uri,source_version,content_sha256,object_key,license_metadata,retrieved_at)
+				VALUES ($1::uuid,'fixture','fixture:positioned-source','fixture-positioned',$2::text,'sources/'||left($2::text,16)||'/'||$2::text,'{}',now())`, id, checksum)
+			if id == svgSnapshot {
+				svgDigest = checksum
+			}
+		}
+	}
 	for _, revision := range []string{staged, historical} {
 		fingerprint := sha256.Sum256([]byte(revision))
+		original := "[]"
+		if revision == staged && svgDigest != "" {
+			original = `[{"role":"asset_original","media_type":"image/svg+xml","sha256":"` + svgDigest + `"}]`
+		}
 		f.exec(`INSERT INTO canonical_article_source_revisions
 			(source_revision_id,canonical_article_id,source_fingerprint,body_source_snapshot_id,resource_manifest,
 			 source_document,source_images,source_body,source_steps,projection_version,projection_status,evidence_manifest,captured_at)
-			SELECT $1::uuid,canonical_article_id,$2,body_source_snapshot_id,resource_manifest,
+			SELECT $1::uuid,canonical_article_id,$2,body_source_snapshot_id,resource_manifest || $4::jsonb,
 			 source_document,source_images,source_body,source_steps,projection_version,projection_status,evidence_manifest,now()
 			FROM canonical_article_source_revisions WHERE source_revision_id=$3::uuid`,
-			revision, hex.EncodeToString(fingerprint[:]), currentSource)
+			revision, hex.EncodeToString(fingerprint[:]), currentSource, original)
 	}
 	transformation := sha256.Sum256([]byte(job))
 	f.exec(`INSERT INTO source_fetch_jobs
@@ -1117,6 +1134,10 @@ func assertStagedMediaRefreshFence(t *testing.T, f *paidFixture, current Catalog
 	checkDenied()
 	f.expect(0, http.MethodGet, sourcePath(historical), "", http.StatusOK)
 	f.image(0, original.Images[0].URL, http.StatusOK)
+	if f.provider == "bankone" {
+		assertBoundStagedOriginal(t, f, current, staged, job, svgSnapshot, svgDigest, resolution, original.Images[0].URL)
+		checkDenied()
+	}
 
 	f.exec(`INSERT INTO canonical_article_revisions
 		(canonical_article_revision_id,canonical_article_id,source_revision_id,transformation_key,normalization_version,
@@ -1142,6 +1163,120 @@ func assertStagedMediaRefreshFence(t *testing.T, f *paidFixture, current Catalog
 		t.Fatal("publishing a historical source changed the selected reader anchor")
 	}
 }
+
+func assertBoundStagedOriginal(t *testing.T, f *paidFixture, current CatalogArticle, staged, job, svgSnapshot, svgDigest, resolution, oldImage string) {
+	t.Helper()
+	currentSource, currentCanonical := *current.SourceRevisionID, *current.CanonicalRevisionID
+	detailPath := f.path("/" + f.article)
+	sourcePath := detailPath + "/source?source_revision_id=" + staged
+	f.exec(`INSERT INTO canonical_article_source_observations
+		(source_observation_id,canonical_article_id,source_revision_id,source_fetch_job_id,request_generation,
+		 body_provider_revision,resource_provenance,captured_context,resolution_source_snapshot_id,descriptor_source_snapshot_id,captured_at)
+		SELECT gen_random_uuid(),j.canonical_article_id,j.source_revision_id,j.source_fetch_job_id,j.request_generation,
+		 'fixture-positioned',old.resource_provenance || jsonb_build_array(jsonb_build_object(
+		 'role','asset_original','media_type','image/svg+xml','sha256',$4::text,'source_snapshot_id',$5::text)),
+		 old.captured_context,$6::uuid,a.descriptor_source_snapshot_id,now()
+		FROM source_fetch_jobs j JOIN canonical_articles a USING (canonical_article_id)
+		JOIN LATERAL (SELECT resource_provenance,captured_context FROM canonical_article_source_observations
+		 WHERE canonical_article_id=$1::uuid AND source_revision_id=$3::uuid ORDER BY captured_at,source_observation_id LIMIT 1) old ON true
+		WHERE a.canonical_article_id=$1::uuid AND j.source_fetch_job_id=$2::uuid`,
+		f.article, job, currentSource, svgDigest, svgSnapshot, resolution)
+	f.exec(`UPDATE source_fetch_jobs SET checkpoint=jsonb_build_object('staged_media_refresh',jsonb_build_object(
+		'version',1,'source_revision_id',$2::uuid,'prior_source_revision_id',$3::uuid,'prior_canonical_revision_id',$4::uuid))
+		WHERE source_fetch_job_id=$1::uuid`, job, staged, currentSource, currentCanonical)
+	var previousJob string
+	if err := f.pool.QueryRow(context.Background(), `SELECT current_job_id::text FROM canonical_articles WHERE canonical_article_id=$1::uuid`, f.article).Scan(&previousJob); err != nil {
+		t.Fatal(err)
+	}
+	f.exec(`UPDATE canonical_articles a SET current_job_id=j.source_fetch_job_id,request_generation=j.request_generation
+		FROM source_fetch_jobs j WHERE j.source_fetch_job_id=$1::uuid AND a.canonical_article_id=j.canonical_article_id`, job)
+	checkDetail := func(wantOriginal bool) CatalogArticle {
+		t.Helper()
+		got := f.detail(0)
+		if !samePaidCatalogID(got.SourceRevisionID, current.SourceRevisionID) || !samePaidCatalogID(got.CanonicalRevisionID, current.CanonicalRevisionID) ||
+			!samePaidCatalogID(got.ViewRevision, current.ViewRevision) || got.SourceReview == nil || got.SourceReview.URL != current.SourceReview.URL ||
+			(got.OriginalSourceReview != nil) != wantOriginal {
+			t.Fatal("staged capture changed the current rewrite or source citation, or returned the wrong Original metadata")
+		}
+		return got
+	}
+	for _, phase := range []string{"normalizing", "rewriting", "validating", "publishing"} {
+		f.exec(`UPDATE source_fetch_jobs SET phase=$2 WHERE source_fetch_job_id=$1::uuid`, job, phase)
+		checkDetail(true)
+	}
+	f.exec(`UPDATE source_fetch_jobs SET status='dead_letter',error_code='REWRITE_TECHNICAL_MUTATION',
+		lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL WHERE source_fetch_job_id=$1::uuid`, job)
+	metadata := checkDetail(true).OriginalSourceReview
+	if !metadata.Available || metadata.URL != sourcePath || metadata.Version != "fixture-positioned" ||
+		metadata.ContentSHA256 != current.SourceReview.ContentSHA256 || metadata.SnapshotID != current.SourceReview.SnapshotID {
+		t.Fatal("staged Original metadata did not bind to the exact same-body source")
+	}
+	f.exec(`UPDATE source_fetch_jobs SET error_code='REWRITE_RESPONSE_INVALID' WHERE source_fetch_job_id=$1::uuid`, job)
+	checkDetail(true)
+	var selected CatalogSourceContentResponse
+	if err := json.Unmarshal(f.expect(0, "GET", sourcePath, "", 200), &selected); err != nil || selected.Source != *metadata ||
+		selected.Document == nil || len(selected.Document.Blocks) == 0 || len(selected.Images) == 0 || selected.Images[0].URL == "" {
+		t.Fatal("staged Original did not return its exact protected document and media", err)
+	}
+	media := selected.Images[0].URL
+	ref, err := openPaidCatalogImageReference(strings.TrimPrefix(media, "/v1/catalog/images/"), f.applications[0].catalogImageKey, time.Now())
+	if err != nil || ref.Projection != "source" || ref.SelectedSourceRevisionID != staged || ref.AnchorSourceRevisionID != currentSource ||
+		!samePaidCatalogID(ref.AnchorCanonicalRevisionID, current.CanonicalRevisionID) {
+		t.Fatal("staged media was not bound to the approved pair", err)
+	}
+	f.image(0, media, 200)
+	f.image(0, oldImage, 200)
+	f.expect(-1, "GET", sourcePath, "", 401)
+	f.expect(1, "GET", sourcePath, "", 403)
+	f.expect(0, "GET", sourcePath+"&region=CA", "", 404)
+	f.image(1, media, 404)
+	store := newPostgresCatalogStore(f.pool)
+	if _, err := store.ArticleSourceRevision(context.Background(), Principal{}, f.configuration, f.article, staged); !errors.Is(err, ErrCatalogNotFound) {
+		t.Fatal("staged Original escaped the general source fence", err)
+	}
+	app := f.applications[0]
+	app.workshopOpenDemoHost = "demo.cars.tk"
+	demo := httptest.NewRequest("GET", "https://demo.cars.tk"+sourcePath+"&demo=1", nil)
+	demoResult := httptest.NewRecorder()
+	app.Handler().ServeHTTP(demoResult, demo)
+	app.workshopOpenDemoHost = ""
+	if demoResult.Code != 404 {
+		t.Fatal("open demo admitted an unpublished Original")
+	}
+	htmlRequest := httptest.NewRequest("GET", "https://cars.example"+sourcePath, nil)
+	htmlRequest.Header.Set("Accept", "text/html")
+	htmlRequest.AddCookie(customerSessionCookie(f.owners[0].token, f.owners[0].session.ExpiresAt, time.Now()))
+	html := httptest.NewRecorder()
+	app.Handler().ServeHTTP(html, htmlRequest)
+	if html.Code != 200 || !strings.Contains(html.Body.String(), "<img") {
+		t.Fatal("standalone Original HTML omitted its authorized figure")
+	}
+	checkDenied := func() {
+		t.Helper()
+		before := f.reader.calls.Load()
+		checkDetail(false)
+		f.expect(0, "GET", sourcePath, "", 404)
+		f.image(0, media, 404)
+		if f.reader.calls.Load() != before {
+			t.Fatal("blocked Original reached the image store")
+		}
+		f.image(0, oldImage, 200)
+	}
+	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=$1::uuid`, resolution)
+	checkDenied()
+	f.exec(`UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=$1::uuid`, resolution)
+	f.exec(`INSERT INTO source_artifacts (source_snapshot_id,artifact_kind,media_type,content_sha256,object_key,extraction_status)
+		SELECT source_snapshot_id,'diagram','image/svg+xml',content_sha256,object_key,'quarantined' FROM source_snapshots WHERE source_snapshot_id=$1::uuid`, svgSnapshot)
+	checkDenied()
+	f.exec(`UPDATE source_artifacts SET extraction_status='complete' WHERE source_snapshot_id=$1::uuid`, svgSnapshot)
+	checkDetail(true)
+	f.exec(`UPDATE canonical_articles SET request_generation=request_generation+1 WHERE canonical_article_id=$1::uuid`, f.article)
+	checkDenied()
+	f.exec(`UPDATE canonical_articles SET current_job_id=$2::uuid WHERE canonical_article_id=$1::uuid`, f.article, previousJob)
+	checkDenied()
+	t.Log("verified staged Original kept the approved rewrite through recovery and candidate withdrawal")
+}
+
 func TestPostgresPaidCatalogCustomerLegacyRoutesDenied(t *testing.T) {
 	f := paidSetup(t)
 	order := f.grant(0, f.configuration, "US")

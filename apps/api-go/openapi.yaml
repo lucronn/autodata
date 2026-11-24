@@ -643,9 +643,10 @@ paths:
       summary: Read sanitized stored source content
       description: Read the permitted ordered source HTML or JSON after current session
         and exact purchased configuration grant. source_revision_id may select a historical
-        revision of this article, while current membership, source rights and quarantine
-        still apply. Embedded media uses authenticated short-lived contextual references.
-        No provider, model or scheduling call occurs.
+        revision or the verified same-body capture advertised in original_source_review.
+        Current membership, source rights and quarantine still apply. Embedded media uses
+        authenticated short-lived contextual references. No provider, model or scheduling
+        call occurs.
       parameters:
       - $ref: '#/components/parameters/VehicleId'
       - $ref: '#/components/parameters/ArticleId'
@@ -2231,24 +2232,28 @@ components:
               version:
                 type: string
         source_review:
-          type: object
-          additionalProperties: false
-          required:
-          - available
-          properties:
-            available:
-              type: boolean
-            snapshot_id:
-              type: string
-            version:
-              type: string
-            content_sha256:
-              type: string
-            format:
-              type: string
-            url:
-              type: string
-              pattern: ^/v1/catalog/vehicles/[^?]+/articles/[^?]+/source(?:\?source_revision_id=[^&]+)?$
+          $ref: '#/components/schemas/CatalogSourceReview'
+        original_source_review:
+          $ref: '#/components/schemas/CatalogSourceReview'
+    CatalogSourceReview:
+      type: object
+      additionalProperties: false
+      required:
+      - available
+      properties:
+        available:
+          type: boolean
+        snapshot_id:
+          type: string
+        version:
+          type: string
+        content_sha256:
+          type: string
+        format:
+          type: string
+        url:
+          type: string
+          pattern: ^/v1/catalog/vehicles/[^?]+/articles/[^?]+/source(?:\?source_revision_id=[^&]+)?$
     CatalogArticleResponse:
       type: object
       required:
