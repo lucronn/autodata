@@ -9,14 +9,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const (
+	figoSelectorID   = "11111111-1111-4111-8111-111111111111"
+	aClassSelectorID = "22222222-2222-4222-8222-222222222222"
+)
+
 func TestCatalogPublicSelectorSlugsPreserveScope(t *testing.T) {
 	store := newMemoryCatalogStore()
 	for _, row := range []CatalogConfiguration{
-		{ID: "figo", Year: 2020, Make: "Ford", Model: "Figo (MEXICO)", Region: "US", Complete: true},
+		{ID: figoSelectorID, Year: 2020, Make: "Ford", Model: "Figo (MEXICO)", Region: "US", Complete: true},
 		{ID: "year", Year: 2019, Make: "Ford", Model: "Figo (MEXICO)", Region: "US"},
 		{ID: "region", Year: 2020, Make: "Ford", Model: "Figo (MEXICO)", Region: "CA"},
 		{ID: "make", Year: 2020, Make: "Other", Model: "Figo (MEXICO)", Region: "US"},
-		{ID: "punctuated", Year: 2020, Make: "Mercedes Benz", Model: "A-Class", Region: "US"},
+		{ID: aClassSelectorID, Year: 2020, Make: "Mercedes Benz", Model: "A-Class", Region: "US"},
 	} {
 		store.PutConfiguration(row)
 	}
@@ -27,9 +32,9 @@ func assertPublicSelectorSlugs(t *testing.T, store CatalogStore) {
 	t.Helper()
 	ctx := context.Background()
 	for _, tc := range []struct{ makeName, model, id string }{
-		{"ford", "figo-mexico", "figo"},
-		{"FORD", "Figo (MEXICO)", "figo"},
-		{"mercedes-benz", "a-class", "punctuated"},
+		{"ford", "figo-mexico", figoSelectorID},
+		{"FORD", "Figo (MEXICO)", figoSelectorID},
+		{"mercedes-benz", "a-class", aClassSelectorID},
 	} {
 		rows, err := store.Configurations(ctx, Principal{}, 2020, tc.makeName, tc.model, "US")
 		if err != nil || len(rows) != 1 || rows[0].ID != tc.id {
@@ -89,12 +94,14 @@ func TestPostgresPublicSelectorSlugsPreserveScope(t *testing.T) {
 	pool := openSelectorTestPool(t)
 	// Temporary relations keep this read-path regression independent of durable fixture data.
 	_, err := pool.Exec(ctx, `CREATE TEMP TABLE vehicle_identity_bases(vehicle_identity_base_id int, model_year int, make text, model text, region text, reviewer_state text, body_style text, drivetrain text);
- CREATE TEMP TABLE vehicle_configurations(vehicle_configuration_id text, vehicle_id text, vehicle_identity_base_id int, trim text, engine_displacement_l numeric, reviewer_state text, engine_variant text, engine_variant_market_verified boolean NOT NULL DEFAULT false);
+ CREATE TEMP TABLE vehicle_configurations(vehicle_configuration_id uuid, vehicle_id uuid, vehicle_identity_base_id int, trim text, engine_displacement_l numeric, reviewer_state text, engine_variant text, engine_variant_market_verified boolean NOT NULL DEFAULT false);
  CREATE TEMP TABLE vehicle_catalog_hydration_scopes(scope text, model_year int, make text, model text, region text, completion_version int, selector_rows jsonb);
  CREATE TEMP TABLE vehicle_catalog_sync_scopes(vehicle_catalog_sync_id int, status text, scope_key text);
  CREATE TEMP TABLE vehicle_catalog_syncs(vehicle_catalog_sync_id int, provider text, status text);
  INSERT INTO vehicle_identity_bases(vehicle_identity_base_id,model_year,make,model,region,reviewer_state) VALUES (1,2020,'Ford','Figo (MEXICO)','US','approved'),(2,2019,'Ford','Figo (MEXICO)','US','approved'),(3,2020,'Ford','Figo (MEXICO)','CA','approved'),(4,2020,'Other','Figo (MEXICO)','US','approved'),(5,2020,'Mercedes Benz','A-Class','US','approved');
- INSERT INTO vehicle_configurations (vehicle_configuration_id,vehicle_id,vehicle_identity_base_id,trim,engine_displacement_l,reviewer_state) SELECT CASE vehicle_identity_base_id WHEN 1 THEN 'figo' WHEN 2 THEN 'year' WHEN 3 THEN 'region' WHEN 4 THEN 'make' ELSE 'punctuated' END, 'vehicle',vehicle_identity_base_id,'',NULL, 'approved' FROM vehicle_identity_bases;
+ INSERT INTO vehicle_configurations (vehicle_configuration_id,vehicle_id,vehicle_identity_base_id,trim,engine_displacement_l,reviewer_state)
+ SELECT CASE vehicle_identity_base_id WHEN 1 THEN '`+figoSelectorID+`'::uuid WHEN 5 THEN '`+aClassSelectorID+`'::uuid ELSE gen_random_uuid() END,
+   '33333333-3333-4333-8333-333333333333',vehicle_identity_base_id,'',NULL,'approved' FROM vehicle_identity_bases;
  INSERT INTO vehicle_catalog_hydration_scopes SELECT 'configurations',model_year,make,model,region,1,'[]'::jsonb FROM vehicle_identity_bases;`)
 	if err != nil {
 		t.Fatal(err)
@@ -181,5 +188,59 @@ func TestPostgresSparseSelectorKeepsEngineVariants(t *testing.T) {
 	configurations := selectors.Vehicles[0].Configurations
 	if len(configurations) != 1 || configurations[0].VehicleConfigurationID != legacy {
 		t.Fatalf("legacy configurations = %#v", configurations)
+	}
+}
+
+func TestPostgresUnresolvedConfigurationRequiresExactEvidence(t *testing.T) {
+	pool := openSelectorTestPool(t)
+	ctx := context.Background()
+	_, err := pool.Exec(ctx, `
+		CREATE TEMP TABLE vehicle_identity_bases (vehicle_identity_base_id int, vehicle_id uuid,
+		  model_year int, make text, model text, region text, reviewer_state text, body_style text, drivetrain text);
+		CREATE TEMP TABLE vehicle_configurations (vehicle_configuration_id uuid, vehicle_id uuid,
+		  vehicle_identity_base_id int, trim text, engine_displacement_l numeric, reviewer_state text,
+		  engine_variant text, engine_variant_market_verified boolean);
+		CREATE TEMP TABLE vehicle_provider_mappings (vehicle_id uuid, vehicle_configuration_id uuid,
+		  provider text, entity_type text, mapping_status text, provider_id text);
+		CREATE TEMP TABLE catalog_article_provider_scopes (scope_key text, provider_slug text, source_vehicle_ref text);
+		CREATE TEMP TABLE canonical_articles (scope_key text, provider_slug text, membership_status text, takedown_status text,
+		  source_vehicle_ref text, source_article_ref text);
+		INSERT INTO vehicle_identity_bases VALUES
+		  (1, '44444444-4444-4444-8444-444444444444', 2024, 'Buick Truck', 'Envision AWD', 'US', 'approved', NULL, NULL);
+		INSERT INTO vehicle_configurations
+		  SELECT ('00000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, vehicle_id, 1,
+		    CASE WHEN n=1 THEN chr(9) || ' ' END, CASE WHEN n=2 THEN 2.0 END, 'pending', NULL, false
+		  FROM generate_series(1, 7) n CROSS JOIN vehicle_identity_bases;
+		-- A vehicle-wide mapping and an empty or ambiguous exact mapping do not verify a scope.
+		INSERT INTO vehicle_provider_mappings
+		  SELECT vehicle_id, NULL, 'bankone', 'car', 'verified', 'vehicle-wide' FROM vehicle_identity_bases;
+		INSERT INTO vehicle_provider_mappings
+		  SELECT vehicle_id, vehicle_configuration_id, 'bankone', 'car', 'verified', ref
+		  FROM vehicle_configurations
+		  JOIN (VALUES ('3','mapped'),('3','mapped'),('6','one'),('6','two'),('7',' ')) refs(suffix, ref)
+		    ON right(vehicle_configuration_id::text, 1) = refs.suffix;
+		INSERT INTO catalog_article_provider_scopes VALUES
+		  ('configuration:00000000-0000-4000-8000-000000000004','bankone','bound');
+		INSERT INTO canonical_articles (scope_key, provider_slug, membership_status, takedown_status) VALUES
+		  ('configuration:00000000-0000-4000-8000-000000000005','banktwo','active','active'),
+		  ('configuration:00000000-0000-4000-8000-000000000007','banktwo','retired','active');
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &postgresCatalogStore{pool: pool}
+	rows, err := store.Configurations(ctx, Principal{}, 2024, "buick-truck", "envision-awd", "US")
+	wantUnresolved := []bool{true, false, false, false, false, true, true}
+	if err != nil || len(rows) != len(wantUnresolved) {
+		t.Fatalf("configurations = %#v, %v", rows, err)
+	}
+	for i, want := range wantUnresolved {
+		if rows[i].ConfigurationUnresolved != want {
+			t.Fatalf("configuration %d unresolved = %v, want %v", i+1, rows[i].ConfigurationUnresolved, want)
+		}
+		exact, err := store.ConfigurationByVehicle(ctx, Principal{}, rows[i].ID)
+		if err != nil || exact != rows[i] {
+			t.Fatalf("exact configuration %d = %#v, %v", i+1, exact, err)
+		}
 	}
 }

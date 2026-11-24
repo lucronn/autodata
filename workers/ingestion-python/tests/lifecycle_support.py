@@ -150,7 +150,7 @@ def read_imported_job_invariants(repo):
         ).fetchall()
 
 
-def seed_configuration(repo, vehicle):
+def seed_configuration(repo, vehicle, *, engine_displacement_l=None):
     snapshot = seed_snapshot(repo)
     with repo.connect() as conn:
         evidence = conn.execute(
@@ -162,8 +162,11 @@ def seed_configuration(repo, vehicle):
             (uuid.uuid4().hex, vehicle, snapshot, evidence),
         ).fetchone()["vehicle_identity_base_id"]
         return conn.execute(
-            "INSERT INTO vehicle_configurations(configuration_key,vehicle_identity_base_id,vehicle_id,source_snapshot_id,extraction_evidence_id,source_locator,evidence_locator,evidence_confidence,reviewer_state) VALUES (%s,%s,%s,%s,%s,'fixture','fixture',1,'approved') RETURNING vehicle_configuration_id",
-            (uuid.uuid4().hex, base, vehicle, snapshot, evidence),
+            """INSERT INTO vehicle_configurations(configuration_key,vehicle_identity_base_id,vehicle_id,
+                source_snapshot_id,extraction_evidence_id,engine_displacement_l,source_locator,evidence_locator,
+                evidence_confidence,reviewer_state)
+                VALUES (%s,%s,%s,%s,%s,%s,'fixture','fixture',1,'approved') RETURNING vehicle_configuration_id""",
+            (uuid.uuid4().hex, base, vehicle, snapshot, evidence, engine_displacement_l),
         ).fetchone()["vehicle_configuration_id"]
 
 

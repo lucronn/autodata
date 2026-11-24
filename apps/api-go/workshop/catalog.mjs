@@ -9,7 +9,8 @@ export function selectorLabel(name, item) {
   if (name === 'year') return String(item.year);
   if (name === 'configuration') {
     const label = configurationLabel(item);
-    return item.engine_variant_market_unverified === true ? `${label} · market unverified` : label;
+    if (item.engine_variant_market_unverified === true) return `${label} · market unverified`;
+    return item.configuration_unresolved === true ? `${label} · unverified` : label;
   }
   return item.market_unverified === true ? `${item.name} · market unverified` : item.name;
 }

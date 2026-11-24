@@ -125,7 +125,7 @@ class StripeFixture:
 @pytest.fixture
 def commerce(fresh_database, request):
     repo = fresh_database()
-    config = str(seed_configuration(repo, seed_vehicle(repo)))
+    config = str(seed_configuration(repo, seed_vehicle(repo), engine_displacement_l=2.0))
     stripe = StripeFixture()
     now = [datetime.now(UTC)]
     service = CommerceService(repo.connect, CommerceConfig('stripe_test','acct_fixture','price_fixture'), stripe.provider,clock=lambda:now[0],purchase_config=PurchaseConfig.from_public(dict(enabled=True,terms_version='workshop-v1',terms_url='https://legal.example.test/terms',privacy_url='https://legal.example.test/privacy',refund_url='https://legal.example.test/refund',contact_url='https://legal.example.test/contact',tax_notice='Synthetic fixture notice')))
@@ -236,7 +236,7 @@ def test_lost_create_response_and_retention_boundary(commerce):
     c=commerce;key=str(uuid.uuid4());c[2].lose_once=True
     first=checkout(c,key);assert first['state']=='processing'
     retry=checkout(c,key);assert retry['state']=='checkout' and retry['order_id']==first['order_id'] and len(c[2].sessions)==1
-    c[2].lose_once=True;other=str(seed_configuration(c[0],seed_vehicle(c[0])))
+    c[2].lose_once=True;other=str(seed_configuration(c[0],seed_vehicle(c[0]),engine_displacement_l=2.0))
     pending=checkout(c,config=other);c[5][0]+=timedelta(hours=23)
     calls=len(c[2].calls);again=checkout(c,config=other)
     assert again['order_id']==pending['order_id'] and again['state']=='processing' and len(c[2].calls)==calls
@@ -312,7 +312,7 @@ def test_refund_chargeback_ordering_and_monotonic_revocation(commerce, monkeypat
     assert c[1].webhook(*c[2].event(sid))['status']=='accepted' and counts(c)['entitlements']==0
     with pytest.raises(CommerceError) as error:checkout(c)
     assert error.value.code=='ENTITLEMENT_REVOKED'
-    other=str(seed_configuration(c[0],seed_vehicle(c[0])));second=checkout(c,config=other);settle(c,second)
+    other=str(seed_configuration(c[0],seed_vehicle(c[0]),engine_displacement_l=2.0));second=checkout(c,config=other);settle(c,second)
     paid_item = next(item for item in service.library(*owner)["items"] if item["library_item_id"] == second["order_id"])
     with repo.connect() as conn:
         grant = conn.execute(
@@ -383,7 +383,7 @@ def test_payment_survives_source_unavailable_and_restart(commerce):
 def test_library_is_owner_only_and_paginated(commerce, monkeypatch):
     c = commerce
     repo, service, _, owner, first_configuration, _ = c
-    assert service.quote(first_configuration, 'US')['configuration_label'] == '2024 Example Car'
+    assert service.quote(first_configuration, 'US')['configuration_label'] == '2024 Example Car 2.0 L'
     with repo.connect() as conn:
         vehicle = conn.execute(
             'SELECT vehicle_id FROM vehicle_configurations WHERE vehicle_configuration_id=%s', (first_configuration,),

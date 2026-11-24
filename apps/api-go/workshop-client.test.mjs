@@ -8257,8 +8257,8 @@ function selectorOptionsHarness(response) {
     context.rows[name] = items;
     displayed.push(items);
     select.disabled = !items.length;
-    select.options = items.map(item => new PickerOption(selectorLabel(name,item), String(item.id ?? item.year)));
-    select.value = select.options.some(option => option.value === selected) ? selected : '';
+    select.options = items.map(item => context.pickerOption(context.pickerChoice(name, item)));
+    select.value = select.options.some(option => option.value === selected && !option.disabled) ? selected : '';
   },
   recordStatus:(text,options={})=>statuses.push({text,...options}), restoreRoute(){},
  };
@@ -8319,6 +8319,36 @@ test('a picker refresh enables the same engine variant when its market is verifi
   assert.equal(originalOption.text, '6.0 L CNG');
   assert.equal(originalOption.disabled, false);
   assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
+});
+
+test('an unverified base choice stays visible and cannot replace the selected exact engine', async () => {
+  const exact = { id: 'exact-engine', engine: '3.5', complete: true };
+  const base = { id: 'base', complete: true };
+  const unresolved = { ...base, configuration_unresolved: true };
+  const h = selectorOptionsHarness(path => path.includes('stored_only')
+    ? { items: [exact, base], complete: true }
+    : { items: [exact, unresolved], complete: false });
+  await h.load(exact.id);
+  const select = h.$('configuration');
+  const option = select.options[1];
+  assert.equal(option.text, 'Base configuration · unverified');
+  assert.equal(option.disabled, true);
+  assert.equal(select.value, exact.id);
+
+  await h.context.refreshPicker('configuration');
+  assert.equal(select.value, exact.id);
+  assert.equal(select.options[1], option);
+  assert.equal(option.text, 'Base configuration');
+  assert.equal(option.disabled, false);
+});
+
+test('an unresolved saved base choice displays the missing evidence and remains unselected', async () => {
+  const unresolved = { id: 'base', configuration_unresolved: true, complete: true };
+  const h = selectorOptionsHarness({ items: [unresolved], complete: true });
+  await h.load(unresolved.id);
+  assert.equal(h.$('configuration').value, '');
+  assert.equal(h.$('configuration').options[0].disabled, true);
+  assert.match(h.statuses.at(-1).text, /saved configuration is unverified/);
 });
 
 test('an engine reopen follows existing discovery through an idle peer using stored reads', async () => {

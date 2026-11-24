@@ -271,6 +271,9 @@ func (s *Server) commerceCall(w http.ResponseWriter, r *http.Request, operation 
 		case status == 409 && operation == "checkouts" && code == "CONFIGURATION_MARKET_UNVERIFIED":
 			writeAPIError(w, r, status, code, "The source market for this engine is unverified.", false)
 			return
+		case status == 409 && operation == "checkouts" && code == "CONFIGURATION_UNRESOLVED":
+			writeAPIError(w, r, status, code, "Article coverage for this configuration is unverified.", false)
+			return
 		case status == 413 && code == "REQUEST_TOO_LARGE":
 		default:
 			unavailable()
