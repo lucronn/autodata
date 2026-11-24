@@ -1436,11 +1436,17 @@ class API21FakeLocator:
         assert "tagName" in expression
         if 'td:has(img[alt="Alignment marks"])' in self.selector:
             return "P,FIGURE,P"
-        return "P,P,FIGURE,P,FIGURE,P,P"
-    def get_by_role(self, role, *, name):
-        assert role == 'img' and name == 'Alignment marks'
-        assert self.selector.endswith('td:has(img[alt="Alignment marks"])')
-        return self.locator('img')
+        assert 'ol[start="4"] > li[value="9"] table td' in self.selector
+        return "P,P,P,FIGURE,P,FIGURE,P,P"
+
+    def get_by_role(self, role, *, name, exact=False):
+        if role == 'img':
+            assert name == 'Alignment marks'
+            assert self.selector.endswith('td:has(img[alt="Alignment marks"])')
+            return self.locator('img')
+        assert (role, name, exact) == ('link', 'Oil seal service addendum', True)
+        assert self.selector.endswith('ol[start="4"] > li[value="9"] table td')
+        return self.locator('a')
     async def press(self, key):
         assert key == 'Enter' and self.selector.endswith('table td figure + .source-reference')
         self.page.emit(
