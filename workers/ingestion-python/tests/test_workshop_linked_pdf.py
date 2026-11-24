@@ -252,7 +252,7 @@ def test_native_pdf_preview_precedes_figure_decode(runtime, monkeypatch, provide
     job = refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="initial native PDF",
                               rewrite_profile_version=AUTO_PROFILE)
     decode_started, decode_release = Event(), Event()
-    original_decode = source_adapters._extract_pdf_page_images
+    original_decode = source_adapters._browser_safe_image_payload
     original_extract = PageObject.extract_text
     client = runtime.registry[provider]
     downloaded = []
@@ -290,7 +290,7 @@ def test_native_pdf_preview_precedes_figure_decode(runtime, monkeypatch, provide
             return preview if "document" in preview else None
         return preview.get("linked_preview")
 
-    monkeypatch.setattr(source_adapters, "_extract_pdf_page_images", hold_decode)
+    monkeypatch.setattr(source_adapters, "_browser_safe_image_payload", hold_decode)
     monkeypatch.setattr(PageObject, "extract_text", read_native_text)
     with ThreadPoolExecutor(max_workers=1) as executor:
         worker = executor.submit(run_article_worker_once, runtime.repo, worker_id=uuid4(), job_id=job.job_id,
