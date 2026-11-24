@@ -96,6 +96,28 @@ test('a transient refresh preserves an already visible list in the current scope
   await assert.rejects(readCollection(async () => { throw unavailable; }), unavailable);
 });
 
+test('access and rate limit responses retain their status when the error body times out', async () => {
+  const keepAlive = setTimeout(() => {}, 1000);
+  try {
+    for (const status of [401, 403, 404, 410, 429]) {
+      await assert.rejects(requestJSON('/articles', {
+        timeout: 10,
+        fetcher: async (_path, { signal }) => ({
+          ok: false,
+          status,
+          headers: new Headers(status === 429 ? { 'Retry-After': '2' } : {}),
+          json: () => new Promise((_, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+          }),
+        }),
+      }), error => error instanceof CatalogRequestError && error.status === status &&
+        error.retryAfterSeconds === (status === 429 ? 2 : 0));
+    }
+  } finally {
+    clearTimeout(keepAlive);
+  }
+});
+
 test('a denied refresh reaches the authorization handler after a visible list', async () => {
   for (const status of [401, 403, 404, 410]) {
     const denial = new CatalogRequestError('Access unavailable', { status });
@@ -4705,6 +4727,23 @@ test('the first rows of an empty owned index appear on a short authenticated che
   await opening;
   assert.equal(h.requests.length, 3);
   assert.equal(h.$('completion-status').textContent, 'Article index ready.');
+});
+
+test('the index does not announce links for filtered or unreadable results', async () => {
+  const configuration = { id: 'B', region: 'US' };
+  const article = { id: 'first', title: 'Oil pump repair', availability: 'unavailable' };
+  const partial = { ...indexResponse('running', { hydrating: true, items: [article] }), configuration };
+  const final = { ...indexResponse('completed', { complete: true, items: [article] }), configuration };
+  const noMatches = { ...indexResponse('running', { hydrating: true }), configuration };
+  const openDemo = articleIndexHarness([partial, final], { openDemo: true });
+  await openDemo.load();
+  assert.equal(openDemo.statuses.some(status => status.text.includes('open the articles below')), false);
+
+  const filtered = articleIndexHarness([partial, noMatches, final, noMatches]);
+  filtered.$('search').value = 'cylinder';
+  await filtered.load();
+  assert.equal(filtered.statuses.some(status => status.text.includes('open the articles below')), false);
+  assert.equal(filtered.$('articles').firstElementChild.children.length, 0);
 });
 
 test('a timed-out empty owned-index check keeps the ordinary polling deadline', async () => {

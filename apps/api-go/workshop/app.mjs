@@ -893,11 +893,11 @@ async function loadArticles(g, articleID = "", {
         renderPurchase();
         show("catalog");
         if (pendingIndexPage === g) pendingIndexPage = null;
-        if (!showedAvailable && articles.length && indexHydrating) {
+        const query = trimArticleSearch($("search").value);
+        if (!showedAvailable && !openDemo && !query && articles.length && indexHydrating) {
           showedAvailable = true;
           status("You can open the articles below while more sources load.", { cancelable: true });
         }
-        const query = trimArticleSearch($("search").value);
         if (query && (searchQuery !== query ||
           (!searchPending && searchItems === null && !searchError) ||
           indexChanged ||
