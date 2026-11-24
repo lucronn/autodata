@@ -24,6 +24,7 @@ _LAYOUT = ("mixed_html_pdf_layout", "mixed-html-pdf-v1")
 _OPENING = "Remove the pump."
 _CLOSING = "Install the replacement."
 _INSPECTION = "Inspect the seal."
+_ANCHOR_LABEL = "Pump service addendum"
 _PARAGRAPHS = [{"kind": "text", "text": text} for text in (_OPENING, _CLOSING)]
 _PDF_CONTENT = [("paragraph", _INSPECTION), ("image", None)]
 
@@ -40,6 +41,8 @@ def _hal_payload(html, *, blocks=None, steps=None):
 def _embedding(kind):
     if kind == "typed":
         return '<object type="application/pdf" data="/media/diagram">Fallback text.</object>'
+    if kind == "anchor":
+        return f'<a href="{_LOCATOR}">{_ANCHOR_LABEL}</a>'
     return '<embed src="/media/diagram">'
 
 
@@ -59,7 +62,7 @@ def _capture(capture_fixture, provider, *, mixed=True, context=None):
         context or capture_fixture.context(provider), registry=capture_fixture.registry,
         object_store=capture_fixture.objects, keep_bound_pdf_iframes=True,
         keep_pdf_figure_order=True, skip_blank_linked_pdf_pages=True,
-        keep_mixed_html_pdf_embeds=mixed,
+        keep_mixed_html_pdf_embeds=mixed, keep_html_document_links=True,
     )
 
 
@@ -90,7 +93,7 @@ def _assert_linked_source(captured, capture_fixture, raw, pdf, pixels):
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
-@pytest.mark.parametrize("kind", ["typed", "untyped"])
+@pytest.mark.parametrize("kind", ["typed", "untyped", "anchor"])
 def test_mixed_hal_places_pdf_between_structured_steps(capture_fixture, provider, kind):
     blocks = [
         {"kind": "step", "number": 7, "text": _OPENING},
@@ -103,7 +106,8 @@ def test_mixed_hal_places_pdf_between_structured_steps(capture_fixture, provider
     assert captured.projection_status == "readable"
     assert capture_fixture.resource_calls(provider, _REF) == 1
     result = captured.source_document["blocks"]
-    assert _outline(result) == [("step", _OPENING), *_PDF_CONTENT, ("step", _CLOSING)]
+    label = [("link", _ANCHOR_LABEL)] if kind == "anchor" else []
+    assert _outline(result) == [("step", _OPENING), *label, *_PDF_CONTENT, ("step", _CLOSING)]
     assert [result[0]["number"], result[-1]["number"]] == [7, 11]
     _assert_linked_source(captured, capture_fixture, raw, pdf, pixels)
 

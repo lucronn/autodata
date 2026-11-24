@@ -2474,6 +2474,196 @@ def test_bound_pdf_without_html_type_uses_verified_pdf_in_source_order(capture_f
     assert 'source:' + document['source_snapshot_id'] in figure['evidence_ids']
 
 
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("type_attribute", ["", ' type="application/pdf"'])
+def test_exact_bound_pdf_anchor_preserves_authored_label_and_pdf_order(capture_fixture, provider, type_attribute):
+    import json
+
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_workshop_linked_pdf import _pdf_with_fixture_figure
+
+    pdf, _ = _pdf_with_fixture_figure(trailing_text="Inspect the connector for corrosion.")
+    html = (
+        '<table><tr><td>Disconnect the battery. '
+        f'<a href="/media/addendum"{type_attribute}>Pump <strong>service addendum</strong></a> '
+        'Remove the cover.</td></tr></table>'
+        '<p><a href="/media/unbound" type="application/pdf">Related document</a></p>'
+    )
+    raw, media = html.encode(), "text/html"
+    if provider == "banktwo":
+        raw = json.dumps({"_embedded": {"data": {"article": {"content": html}}}}).encode()
+        media = "application/hal+json"
+    capture_fixture.body(provider, raw, media, assets=["addendum"], asset_bindings=[
+        {"source_url": "/media/addendum", "resource_ref": "addendum"},
+    ])
+    for ref in ("addendum", "unbound"):
+        capture_fixture.body(provider, pdf, "application/pdf", ref=ref, kind="binary")
+
+    captured = capture_source_article(
+        capture_fixture.context(provider), registry=capture_fixture.registry, object_store=capture_fixture.objects,
+        keep_bound_pdf_iframes=True, keep_pdf_figure_order=True, keep_html_document_links=True,
+    )
+
+    assert capture_fixture.resource_calls(provider, "addendum") == 1
+    assert capture_fixture.resource_calls(provider, "unbound") == 0
+    assert captured.projection_status == "readable"
+    table, unrelated = captured.source_document["blocks"]
+    assert unrelated["text"] == "Related document"
+    cell = table["rows"][0][0]
+    assert [(block["type"], block.get("text")) for block in cell["blocks"]] == [
+        ("paragraph", "Disconnect the battery."),
+        ("link", "Pump service addendum"),
+        ("paragraph", "Inspect the seal."),
+        ("image", None),
+        ("paragraph", "Inspect the connector for corrosion."),
+        ("paragraph", "Remove the cover."),
+    ]
+    assert "/media/" not in json.dumps(captured.source_document)
+    [retained] = [resource for resource in captured.resources if resource["role"] == "document_asset"]
+    assert retained["sha256"] == sha256(pdf).hexdigest()
+    assert capture_fixture.objects.data[retained["object_key"]] == (pdf, "application/pdf")
+    [figure] = captured.source_images
+    assert figure["status"] == "available"
+    assert "source:" + retained["source_snapshot_id"] in figure["evidence_ids"]
+
+
+def test_bound_anchor_pdf_hint_needs_connector_pdf_bytes(capture_fixture):
+    from io import BytesIO
+
+    from PIL import Image
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    capture_fixture.body("bankone", (
+        b'<p>Install the pump. <a href="/media/figure" type="application/pdf">Service reference</a> '
+        b'Fit the cover.</p>'
+    ), assets=["figure"], asset_bindings=[{"source_url": "/media/figure", "resource_ref": "figure"}])
+    with BytesIO() as png:
+        Image.new("RGB", (4, 4), "green").save(png, format="PNG")
+        capture_fixture.body("bankone", png.getvalue(), "image/png", ref="figure", kind="asset")
+
+    captured = capture_source_article(
+        capture_fixture.context("bankone"), registry=capture_fixture.registry, object_store=capture_fixture.objects,
+        keep_bound_pdf_iframes=True, keep_html_document_links=True,
+    )
+
+    assert capture_fixture.resource_calls("bankone", "figure") == 1
+    assert [resource["role"] for resource in captured.resource_manifest] == ["body", "asset"]
+    assert captured.source_document["blocks"][0]["text"] == "Install the pump. Service reference Fit the cover."
+    assert captured.source_images[0]["status"] == "available"
+
+
+@pytest.mark.parametrize("markup", [
+    '<a style="display:none" style="display:block" href="/media/addendum">Hidden addendum</a>',
+    '<a aria-hidden="true" aria-hidden="false" href="/media/addendum">Hidden addendum</a>',
+    '<a style="display:none /* hidden */" href="/media/addendum">Hidden addendum</a>',
+    '<section style="display:none /* hidden */"><a href="/media/addendum">Hidden addendum</a></section>',
+    '<a href="/media/addendum"><span aria-hidden="true" aria-hidden="false">Hidden addendum</span></a>',
+])
+def test_pdf_anchor_visibility_rejects_ambiguous_or_hidden_markup(capture_fixture, markup):
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_workshop_linked_pdf import _pdf_with_fixture_figure
+
+    pdf, _ = _pdf_with_fixture_figure()
+    capture_fixture.body("bankone", (
+        f"<p>Remove the pump.</p>{markup}<p>Install the replacement.</p>"
+        '<a href="/media/addendum">Visible addendum</a>'
+    ).encode(), assets=["addendum"], asset_bindings=[
+        {"source_url": "/media/addendum", "resource_ref": "addendum"},
+    ])
+    capture_fixture.body("bankone", pdf, "application/pdf", ref="addendum", kind="binary")
+    captured = capture_source_article(
+        capture_fixture.context("bankone"), registry=capture_fixture.registry, object_store=capture_fixture.objects,
+        keep_bound_pdf_iframes=True, keep_pdf_figure_order=True, keep_html_document_links=True,
+    )
+    blocks = captured.source_document["blocks"]
+    assert [block["text"] for block in blocks if block["type"] == "link"] == ["Visible addendum"]
+    assert captured.source_body.count("Inspect the seal.") == 1
+    assert capture_fixture.resource_calls("bankone", "addendum") == 1
+
+
+@pytest.mark.parametrize("media_type", ["application/pdf", "image/png"])
+def test_hal_anchor_only_body_is_parsed_with_a_registered_binding(capture_fixture, media_type):
+    from io import BytesIO
+    import json
+
+    from PIL import Image
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_workshop_linked_pdf import _pdf_with_fixture_figure
+
+    html = '<a href="/media/attached" type="application/pdf">Service addendum</a>'
+    raw = json.dumps({"_embedded": {"data": {"article": {"content": html}}}}).encode()
+    capture_fixture.body("banktwo", raw, "application/hal+json", assets=["attached"], asset_bindings=[
+        {"source_url": "/media/attached", "resource_ref": "attached"},
+    ])
+    if media_type == "application/pdf":
+        payload, _ = _pdf_with_fixture_figure()
+    else:
+        with BytesIO() as png:
+            Image.new("RGB", (4, 4), "green").save(png, format="PNG")
+            payload = png.getvalue()
+    capture_fixture.body("banktwo", payload, media_type, ref="attached", kind="binary")
+    captured = capture_source_article(
+        capture_fixture.context("banktwo"), registry=capture_fixture.registry, object_store=capture_fixture.objects,
+        keep_bound_pdf_iframes=True, keep_pdf_figure_order=True, keep_html_document_links=True,
+    )
+    expected = (
+        [("link", "Service addendum"), ("paragraph", "Inspect the seal."), ("image", None)]
+        if media_type == "application/pdf" else [("paragraph", "Service addendum"), ("image", None)]
+    )
+    assert [(block["type"], block.get("text")) for block in captured.source_document["blocks"]] == expected
+    assert capture_fixture.resource_calls("banktwo", "attached") == 1
+    assert "/media/attached" not in json.dumps(captured.source_document)
+
+
+def test_hal_anchor_only_legacy_body_keeps_a_safe_label_when_the_asset_changes(capture_fixture):
+    from io import BytesIO
+    import json
+
+    from PIL import Image
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_workshop_linked_pdf import _pdf_with_fixture_figure
+
+    html = '<a href="/media/attached">Service addendum</a>'
+    raw = json.dumps({"_embedded": {"data": {"article": {"content": html}}}}).encode()
+    capture_fixture.body("banktwo", raw, "application/hal+json", assets=["attached"], asset_bindings=[
+        {"source_url": "/media/attached", "resource_ref": "attached"},
+    ])
+    images = []
+    for color in ("green", "red"):
+        with BytesIO() as png:
+            Image.new("RGB", (4, 4), color).save(png, format="PNG")
+            images.append(png.getvalue())
+    capture_fixture.body("banktwo", images[0], "image/png", ref="attached", kind="binary")
+    context = capture_fixture.context("banktwo")
+    options = dict(
+        registry=capture_fixture.registry, object_store=capture_fixture.objects,
+        keep_bound_pdf_iframes=True, keep_html_document_links=True,
+    )
+    first = capture_source_article(context, **options)
+    assert "html_document_link_layout" not in first.resource_manifest[0]
+    legacy = replace(context, legacy_published_html_document_link_body=sha256(raw).hexdigest())
+
+    repeated = capture_source_article(legacy, **options)
+    assert repeated.source_fingerprint == first.source_fingerprint
+    assert repeated.source_document == first.source_document
+
+    capture_fixture.body("banktwo", images[1], "image/png", ref="attached", kind="binary")
+    changed = capture_source_article(legacy, **options)
+    assert changed.body_source_snapshot_id == first.body_source_snapshot_id
+    assert changed.source_fingerprint != first.source_fingerprint
+    assert changed.resource_manifest[1]["sha256"] == sha256(images[1]).hexdigest()
+
+    pdf, _ = _pdf_with_fixture_figure()
+    capture_fixture.body("banktwo", pdf, "application/pdf", ref="attached", kind="binary")
+    with_pdf = capture_source_article(legacy, **options)
+    assert with_pdf.body_source_snapshot_id == first.body_source_snapshot_id
+    assert all(resource["role"] != "document_asset" for resource in with_pdf.resource_manifest)
+    for captured in (first, repeated, changed, with_pdf):
+        assert captured.source_document["blocks"][0]["text"] == "Service addendum"
+        assert "<a" not in captured.source_body
+        assert "/media/attached" not in json.dumps(captured.source_document)
+
+
 def test_inferred_pdf_omits_assets_only_used_in_hidden_fallback(capture_fixture):
     from io import BytesIO
 

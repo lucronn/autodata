@@ -1321,13 +1321,14 @@ async def expect_linked_pdf(article, *, rewritten=False):
         if rewritten else ['Inspect the seal.', 'Inspect the gasket.', 'Install a new oil seal after the flange is dry.']
     )
     await expect(cell.locator(':scope > p')).to_have_text(
-        ['Do not remove the retaining clip.', *extracted_text, 'Do not rotate the service shaft.'],
+        ['Do not remove the retaining clip.', 'Oil seal service addendum', *extracted_text,
+         'Do not rotate the service shaft.'],
     )
     assert await cell.locator(':scope > :is(p, figure)').evaluate_all(
         "nodes => nodes.map(node => node.tagName).join(',')"
-    ) == "P,P,FIGURE,P,FIGURE,P,P"
+    ) == "P,P,P,FIGURE,P,FIGURE,P,P"
     assert await article.locator('iframe, object, embed').count() == 0
-    await expect(article).not_to_contain_text('Hidden fallback.')
+    await expect(cell.get_by_role('link', name='Oil seal service addendum', exact=True)).to_have_count(0)
     assert "/provider-private/" not in await article.inner_html()
     await expect(figures.first.locator('img')).to_have_js_property('naturalWidth', 96)
     await expect(figures.last.locator('img')).to_have_js_property('naturalWidth', 128)

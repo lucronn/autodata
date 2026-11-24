@@ -2096,7 +2096,9 @@ def adapt_bound_article(
                         "blocks": _maintenance_xml_blocks(text),
                         "asset_resource_refs": article.get("asset_resource_refs", []),
                     }
-                html_tags = r"p|div|ol|ul|li|table|h[1-6]|script|style|img"
+                # Anchor labels need HTML parsing even on a pinned source
+                # whose PDF-link projection remains disabled.
+                html_tags = r"a(?=[\s/>])|p|div|ol|ul|li|table|h[1-6]|script|style|img"
                 if keep_bound_pdf_iframes:
                     html_tags += r"|iframe|object|embed"
                 if re.search(rf"</?(?:{html_tags})\b", text, re.I):
@@ -2161,7 +2163,8 @@ def adapt_bound_article(
         html = article.get("content")
         if (keep_mixed_html_pdf_embeds and keep_bound_pdf_iframes
                 and (not needs_blocks or article.get("steps"))
-                and isinstance(html, str) and re.search(r"<(?:iframe|object|embed)\b", html, re.I)):
+                and resource.metadata.get("asset_bindings")
+                and isinstance(html, str) and re.search(r"<(?:iframe|object|embed|a)\b", html, re.I)):
             from .mixed_article_documents import place_bound_documents
 
             try:

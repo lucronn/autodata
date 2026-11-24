@@ -368,6 +368,8 @@ def _replace_pdf_embeds(value, documents):
         for node in value:
             if isinstance(node, ConnectorDocumentEmbed):
                 ref = node.get("asset_resource_ref")
+                if node.get("text"):
+                    expanded.append({"kind": "link", "text": node["text"]})
                 if ref in documents:
                     blocks, evidence, _ = documents[ref]
                     expanded.extend({**deepcopy(block), "evidence_ids": evidence} for block in blocks)
@@ -818,12 +820,17 @@ def capture_source_article(
     html_media_table_headers = article.get("html_media_table_headers") is True
     html_nested_tables = article.get("html_nested_tables") is True
     html_numeric_superscripts = article.get("html_numeric_superscripts") is True
-    html_document_links = article.get("html_document_links") is True
+    handled_pdf_embeds = article.get("handled_pdf_embeds") is True
+    # Both HTML and mixed HAL carry confirmed anchor labels on the placed nodes.
+    html_document_links = article.get("html_document_links") is True or (
+        handled_pdf_embeds and any(
+            isinstance(node, ConnectorDocumentEmbed) and node.get("text") for node in _walk(blocks)
+        )
+    )
     html_bound_images = article.get("html_bound_images") is True
     mixed_html_pdf_embeds = article.get("mixed_html_pdf_embeds") is True
     html_section_titles = article.get("html_section_titles") is True
     bankone_html_flow = article.get("bankone_html_flow") is True
-    handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
     retained_pdf_repeats = article.get("retained_repeated_pdf_figures") is True
