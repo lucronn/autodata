@@ -1419,16 +1419,30 @@ function articleViewRevision(article) {
   return article.view_revision ||
     `${article.content_origin || "legacy"}:${article.source_revision_id || ""}:${article.canonical_revision_id || ""}`;
 }
+function originalSourceReview(article) {
+  return article?.original_source_review?.available ? article.original_source_review : article?.source_review;
+}
 function renderArticle(article, g, redraw = false) {
   if (!g.current()) return;
   const revision = articleViewRevision(article);
-  const review = article.source_review;
-  const previousReview = currentArticle?.source_review;
-  const reviewURL = review?.available ? review.url : "";
-  const previousURL = previousReview?.available ? previousReview.url : "";
+  const review = originalSourceReview(article);
+  const previousOriginal = originalSourceReview(currentArticle);
+  const originalURL = review?.available ? review.url : "";
+  const previousOriginalURL = previousOriginal?.available ? previousOriginal.url : "";
+  const referenceURL = article.source_review?.available ? article.source_review.url : "";
+  const previousReferenceURL = currentArticle?.source_review?.available ? currentArticle.source_review.url : "";
   const sourceChanged = currentArticle?.id !== article.id ||
-    currentArticle?.source_revision_id !== article.source_revision_id || previousURL !== reviewURL;
-  if (redraw || revision !== renderedRevision || sourceChanged) {
+    currentArticle?.source_revision_id !== article.source_revision_id || previousReferenceURL !== referenceURL;
+  const rebuildArticle = redraw || revision !== renderedRevision || sourceChanged;
+  if (renderedRevision && (rebuildArticle || previousOriginalURL !== originalURL)) {
+    const revisionForURL = (url) => validSourceURL(url)?.searchParams.get("source_revision_id");
+    const pins = [referenceURL, originalURL].map(revisionForURL).filter(Boolean);
+    const activeReads = [sourceURL, sourceDocumentRequest?.key].filter(Boolean);
+    if (sourceChanged || !pins.length || activeReads.some((url) => !pins.includes(revisionForURL(url)))) {
+      resetSourceReview();
+    }
+  }
+  if (rebuildArticle) {
     const fragment = document.createDocumentFragment();
     const figures = !openDemo && session.state.mode === "firebase" && article.content_origin === "canonical" &&
       !processingArticle(article) && article.document?.blocks?.length ? [] : null;
@@ -1438,12 +1452,6 @@ function renderArticle(article, g, redraw = false) {
     deferredArticleFigures = figures ? startArticleFigures(figures, g) : null;
     articleImageRefresh = null;
     sourceImageRefresh = null;
-    if (renderedRevision) {
-      // A new article projection can still cite the exact source already open.
-      const pinnedID = !sourceChanged && validSourceURL(reviewURL)?.searchParams.get("source_revision_id");
-      const displayedID = sourceURL && validSourceURL(sourceURL)?.searchParams.get("source_revision_id");
-      if (!pinnedID || (sourceURL && displayedID !== pinnedID)) resetSourceReview();
-    }
     renderedRevision = revision;
   }
   currentArticle = article;
@@ -2505,7 +2513,7 @@ $("cancel").addEventListener("click", () => {
 $("source-review-load").addEventListener("click", () => {
   const g = viewGeneration;
   if (currentArticle && g?.current())
-    void loadSource(currentArticle.source_review?.url, g).catch(
+    void loadSource(originalSourceReview(currentArticle)?.url, g).catch(
       (error) => handleSourceError(error, g),
     );
 });
@@ -2612,7 +2620,9 @@ async function recheckReader(g) {
   const focused = document.activeElement;
   // Reopening a folded source will request a fresh authorized copy.
   if (sourceURL && !$("article-reference").open) resetSourceReview();
-  const pinned = sourceURL && validSourceURL(sourceURL);
+  const pinned = sourceURL ? validSourceURL(sourceURL) : null;
+  const pin = pinned?.searchParams.get("source_revision_id");
+  const stagedPin = validSourceURL(opened.original_source_review?.url)?.searchParams.get("source_revision_id");
   const order = articleDetailOrder(g, opened.id);
   const { signal } = g;
   // Keep the view nodes for continuity, withhold article display and printing
@@ -2623,11 +2633,15 @@ async function recheckReader(g) {
     const [sameSession, detail, source] = await Promise.all([
       session.matchesCurrentSession({ signal }),
       requestArticleDetail(order, articleRequestPath(opened.id), { signal }),
-      pinned ? requestJSON(pinned.pathname + pinned.search, { signal, headers: sourceDocumentHeaders }) : null,
+      pinned ? requestJSON(pinned.pathname + pinned.search, { signal, headers: sourceDocumentHeaders }).catch((error) => {
+        if (pin === stagedPin && error.status === 404 && error.code === "CATALOG_NOT_FOUND") return null;
+        throw error;
+      }) : null,
     ]);
     if (!g.current()) return;
     const article = acceptArticleDetail(order, detail)?.data?.article;
     const returnedPin = source && validSourceURL(source.source?.url);
+    if (pin && pin === stagedPin && source === null) resetSourceReview();
     if (!sameSession || detail.status !== 200 || !scopeMatches(detail.data?.configuration) ||
         article?.id !== opened.id || !readableArticle(article) || processingArticle(article) ||
         (sourceURL && (!pinned || !returnedPin || returnedPin.searchParams.get("source_revision_id") !==

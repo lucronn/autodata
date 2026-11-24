@@ -1940,6 +1940,7 @@ function sourceReviewHarness() {
     status(message) { state.status = message; },
   };
   runInNewContext(
+    appSection('function originalSourceReview(', 'function renderArticle(') +
     appSection('function handleSourceError(error, g) {', 'async function renewMedia(') +
     appSection('$("source-review-load").addEventListener', '$("back").addEventListener'),
     context,
@@ -4040,6 +4041,7 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
     navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexLoaded: false, indexComplete: false, indexHydrating: false, indexFailed: false, access: '', retryAction: null, filterArticles,
     searchNavigation, searchItems: null, searchQuery: '', searchPending: false, searchComplete: false, searchError: false, searchTimer: null,
     currentArticle: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
+    sourceDocumentRequest: null,
     articleImageRefresh: null, sourceImageRefresh: null, libraryPageRequest: null, libraryCursor: null,
     currentOrder: '', paidOrder: null, unconfirmedOrder: null, viewGeneration: null,
     clearOrderRoute(id) { clearedOrders.push(id); },
@@ -5543,6 +5545,41 @@ test('reader refocus discards a folded source so only the current account and ar
   assert.equal(h.context.sourceURL, '');
 });
 
+test('reader refocus clears an unavailable staged Original while keeping the authorized rewrite', async () => {
+  const configuration = { id: routeConfiguration, region: 'US' };
+  const path = `/v1/catalog/vehicles/v/articles/${routeArticle}/source?source_revision_id=`;
+  const originalURL = path + mediaSourceURL.split('=')[1];
+  const referenceURL = path + routeOrder;
+  const article = mediaArticle([{ type: 'paragraph', text: 'Authorized article' }], [], {
+    id: routeArticle, content_origin: 'canonical',
+    source_review: { available: true, url: referenceURL },
+  });
+  const h = articleMediaHarness({
+    vehicle: configuration, scope: () => ({ configuration_id: configuration.id, region: configuration.region }),
+    session: { state: { authenticated: true, mode: 'firebase' }, async matchesCurrentSession() { return true; } },
+    async requestArticleJSON() { return { status: 200, data: { configuration, article } }; },
+    async requestJSON(url) {
+      assert.equal(url, originalURL);
+      throw Object.assign(new Error('Source is no longer available'), { status: 404, code: 'CATALOG_NOT_FOUND' });
+    },
+    renderPurchase() {},
+    show(id) { h.nodes.get('reader').hidden = id !== 'reader'; },
+  });
+  const content = h.render({ ...article, original_source_review: { available: true, url: originalURL } });
+  h.context.sourceURL = originalURL;
+  h.nodes.get('article-reference').open = true;
+  const frame = h.nodes.get('source-review-frame');
+  frame.append(new ArticleMediaNode('p', 'Previously available staged source'));
+  runInNewContext(appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'), h.context);
+  await h.context.recheckReader(h.g);
+  assert.equal(h.g.current(), true);
+  assert.equal(h.nodes.get('reader').hidden, false);
+  assert.equal(content.textContent, 'Authorized article');
+  assert.equal(frame.hidden, true);
+  assert.equal(frame.textContent, '');
+  assert.equal(h.nodes.get('source-review-link').href, referenceURL);
+});
+
 test('opening My vehicles hides the previous purchase panel while Library is loading', async () => {
   const response = deferredAuthOperation();
   const h = articleMediaHarness({
@@ -6470,6 +6507,58 @@ test('an inline source reference focuses the matching nested figure in the pinne
   assert.equal(cited.focusCalls, 1);
   await h.context.loadSource(mediaSourceURL, h.g, 'block-missing-in-copy');
   assert.equal(h.nodes.get('source-review-title').focusCalls, 1);
+});
+
+test('Original loads the verified capture and existing article citations keep their pinned source', async () => {
+  const originalURL = mediaSourceURL.replaceAll('11111111', '22222222');
+  const requested = [];
+  const pending = deferredAuthOperation();
+  const cite = { type: 'paragraph', block_id: 'existing', evidence_ids: ['old-page'], text: 'Published service instructions' };
+  const figure = { type: 'image', asset_id: 'recovered', alt: 'Recovered illustration' };
+  const source = {
+    source: { url: originalURL }, document: { blocks: [figure] },
+    images: [{ id: 'recovered', url: mediaURL('verified-figure') }],
+  };
+  const h = articleMediaHarness({ async requestJSON(path) {
+    requested.push(path);
+    if (path !== originalURL) {
+      return { source: { url: mediaSourceURL }, document: { blocks: [{ ...cite, text: 'Pinned source passage' }] } };
+    }
+    return requested.length === 3 ? pending.promise : source;
+  } });
+  h.context.viewGeneration = h.g;
+  runInNewContext(appSection('$("source-review-load").addEventListener', 'function returnToArticleIndex()'), h.context);
+  const article = mediaArticle([cite], [], {
+    content_origin: 'canonical',
+    source_review: { available: true, url: mediaSourceURL },
+    original_source_review: { available: true, url: originalURL },
+  });
+  const content = h.render(article), frame = h.nodes.get('source-review-frame');
+  const original = h.nodes.get('source-review-load');
+  const link = h.nodes.get('source-review-link');
+  assert.equal(link.href, originalURL);
+  assert.equal(requested.length, 0);
+  original.dispatch('click');
+  await new Promise(setImmediate);
+  assert.deepEqual(mediaIDs(frame), ['recovered']);
+
+  const [citation] = mediaDescendants(content, 'a');
+  citation.dispatch('click', { preventDefault() {} });
+  await new Promise(setImmediate);
+  assert.deepEqual(requested, [originalURL, `${mediaSourceURL}&evidence_id=old-page`]);
+  assert.equal(frame.textContent, 'Pinned source passage');
+  assert.equal(frame.children[0].focusCalls, 1);
+
+  original.dispatch('click');
+  assert.equal(original.disabled, true);
+  h.render({ ...article, original_source_review: undefined });
+  pending.resolve(source);
+  await new Promise(setImmediate);
+  assert.equal(frame.hidden, true);
+  assert.equal(frame.children.length, 0);
+  assert.equal(link.href, mediaSourceURL);
+  assert.equal(original.disabled, false);
+  assert.equal(mediaDescendants(content, 'a')[0], citation);
 });
 
 test('overlapping citations share one pinned read, focus the latest block and recheck access on a new read', async () => {
