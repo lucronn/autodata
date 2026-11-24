@@ -199,14 +199,18 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 if context.key.provider not in registry:raise ValueError("SOURCE_NOT_CONFIGURED")
 
                 def save_body_preview(resource, document):
-                    if lost.is_set():
-                        raise LeaseLost("heartbeat lost during body preview")
-                    try:
-                        store.store_source_body_preview(repo, lease, context, resource, document)
-                    except DatabaseError:
-                        # The full source commit remains the durable fallback
-                        # when this optional reader checkpoint cannot be stored.
-                        pass
+                    for _ in range(2):
+                        if lost.is_set():
+                            raise LeaseLost("heartbeat lost during body preview")
+                        try:
+                            store.store_source_body_preview(repo, lease, context, resource, document)
+                            return
+                        except (ConnectionTimeout, LockNotAvailable, QueryCanceled):
+                            # Retry the same uploaded body under the same lease.
+                            continue
+                        except DatabaseError:
+                            # A preview-only failure leaves the full source commit available.
+                            return
 
                 _hook(hooks,"before_source_request")
                 captured = capture_source_article(

@@ -836,6 +836,43 @@ test('reader credits time spent awaiting the prepared response before polling', 
     assert.equal(result.data.article.body, 'Stored procedure');
   }
 });
+test('reader checks an active, slow first capture without delaying its regular read', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  for (const [sourceReadyAt, expectedVisibleAt, expectedLateStarts] of [
+    [5056, 6622, [6502]],
+    [7800, 8622, [6502, 8502]],
+    [9700, 12742, [6502, 8502, 12622]],
+  ]) {
+    let now = 142;
+    let visibleAt;
+    let lateTimeout;
+    const lateStarts = [];
+    await readArticle(async ({ preferShortSourceCheck, timeout }) => {
+      const initial = now === 142;
+      if (now > 5000 && visibleAt === undefined) lateStarts.push(now);
+      if (now === 6502) lateTimeout = timeout;
+      if (!initial) now += 120;
+      if (visibleAt !== undefined) return { status: 200, data: { article: { body: 'Published article' } } };
+      const processing = { job_id: 'job', state: initial ? 'queued' : 'fetching_source' };
+      if (now >= sourceReadyAt) return { status: 200, retryAfterSeconds: 1, data: { article: {
+        content_origin: 'source', body: 'Stored source preview', processing,
+      } } };
+      const short = initial || preferShortSourceCheck;
+      return { status: 202, shortSourceCheck: short, retryAfterSeconds: short ? 0 : 1, data: { article: { processing } } };
+    }, {
+      initialReadStartedAt: 0,
+      now: () => now,
+      wait: async milliseconds => { now += milliseconds; },
+      onUpdate(response) {
+        if (response.data.article.content_origin === 'source') visibleAt = now;
+      },
+    });
+    assert.equal(visibleAt, expectedVisibleAt);
+    assert.deepEqual(lateStarts, expectedLateStarts);
+    assert.equal(lateTimeout, 2000);
+  }
+});
+
 test('reader confirms newly visible source once before resuming publication backoff', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   const pending = { status: 202, retryAfterSeconds: 1, data: {
