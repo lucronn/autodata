@@ -10,6 +10,7 @@ from .procedure_rewrite_correction import (
     CorrectionResult,
     _apply_variants,
     _initial_draft,
+    _introduction,
     _passage_errors,
     _validated_document,
     rebuild_retained_correction,
@@ -18,10 +19,14 @@ from .procedure_rewrite_correction import (
 RECOVERY_METHOD = "source-bound-correction-recovery-v1"
 FIRST_DRAFT_RECOVERY_METHOD = "source-bound-first-draft-recovery-v1"
 FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v2"
-FIRST_DRAFT_RECOVERY_METHODS = (FIRST_DRAFT_RECOVERY_METHOD, FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD)
+FIRST_DRAFT_COOLING_RECOVERY_METHOD = "source-bound-first-draft-recovery-v3"
+FIRST_DRAFT_RECOVERY_METHODS = (
+    FIRST_DRAFT_RECOVERY_METHOD, FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD, FIRST_DRAFT_COOLING_RECOVERY_METHOD,
+)
 FIRST_DRAFT_RECOVERABLE_ERRORS = frozenset({
     "REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR", "REWRITE_ACTION_MUTATION",
     "REWRITE_QUALIFIER_MUTATION", "REWRITE_TECHNICAL_MUTATION",
+    "REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM",
 })
 _PART_WORD = r"[a-z]+(?:-[a-z]+)*"
 _PART = rf"{_PART_WORD}(?: {_PART_WORD}){{0,9}}"
@@ -53,6 +58,12 @@ _POSITION_AND_INSTALL = re.compile(
 )
 _TIGHTEN_COUNTED = re.compile(
     rf"Tighten the (?P<count>{_COUNT}) (?P<part>{_PART} )?(?P<fasteners>{_FASTENERS})\.", re.I,
+)
+_LOOSEN = re.compile(rf"Loosen the (?P<part>{_PART})\.", re.I)
+_FILL_BLEED_REFERENCE = re.compile(
+    r"Fill and bleed the (?P<system>cooling system)\. For additional information, refer to "
+    r"(?P<title>Cooling System Draining, Filling and Bleeding) in this section\.",
+    re.I,
 )
 _DIRECTIVE_LABEL_EXCLUSIONS = auto._TARGET_DELIMITERS | frozenset(
     "against down during facing finger inside instead last must never no not only outside should tight together up".split()
@@ -121,8 +132,18 @@ def _equivalent_directive(text):
     return None
 
 
+def _equivalent_cooling_directive(text):
+    if match := _LOOSEN.fullmatch(text):
+        if _part_label(match["part"]) and auto._execution_order(text) == ("loosen",):
+            return f"The {match['part']} must be loosened."
+    if match := _FILL_BLEED_REFERENCE.fullmatch(text):
+        return f"Fill the {match['system']} and bleed it. See {match['title']} in this section for details."
+    return None
+
+
 def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version, method, original_error):
-    if not corrected_paths:
+    introduction_replaced = raw["introduction"] != draft["introduction"]
+    if not corrected_paths and not introduction_replaced:
         return None
     try:
         document = auto.render_auto(source, draft, prompt_version=prompt_version)
@@ -141,6 +162,8 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
         "draft_hash": digest_json(draft),
         "output_hash": digest_json(document),
         "corrected_paths": corrected_paths,
+        **({"introduction_replaced": introduction_replaced}
+           if method == FIRST_DRAFT_COOLING_RECOVERY_METHOD else {}),
     })
 
 
@@ -170,7 +193,7 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
         return None
     if original_error not in FIRST_DRAFT_RECOVERABLE_ERRORS:
         return None
-    if method != FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD and original_error == "REWRITE_UNCHANGED":
+    if method in (None, FIRST_DRAFT_RECOVERY_METHOD) and original_error == "REWRITE_UNCHANGED":
         draft = deepcopy(raw)
         corrected = []
         for slot, row in zip(slots, draft["replacements"], strict=True):
@@ -201,9 +224,34 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
         if wording is not None:
             row.update(text=wording, reason="Distinct source-bound prose.")
             corrected.append(slot["path"])
+    if method in (None, FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD):
+        directive = _validate_first_draft(
+            source, raw, draft, corrected, prompt_version=prompt_version,
+            method=FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD, original_error=original_error,
+        )
+        if directive is not None or method == FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD:
+            return directive
+
+    # A newly published recast must remain reproducible under the method saved
+    # with its response. Earlier methods never use these extra source edits.
+    already_corrected = set(corrected)
+    for slot, row in zip(slots, draft["replacements"], strict=True):
+        path = slot["path"]
+        if (path in already_corrected or row["action"] != "rewrite"
+                or invalid.get(path) not in FIRST_DRAFT_RECOVERABLE_ERRORS):
+            continue
+        if wording := _equivalent_cooling_directive(slot["text"]):
+            row.update(text=wording, reason="Distinct source-bound prose.")
+            already_corrected.add(path)
+    try:
+        draft["introduction"] = _introduction(source, raw["introduction"])
+    except ValueError:
+        return None
+    if len(already_corrected) == len(corrected) and draft["introduction"] == raw["introduction"]:
+        return None
     return _validate_first_draft(
-        source, raw, draft, corrected, prompt_version=prompt_version,
-        method=FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD, original_error=original_error,
+        source, raw, draft, [slot["path"] for slot in slots if slot["path"] in already_corrected],
+        prompt_version=prompt_version, method=FIRST_DRAFT_COOLING_RECOVERY_METHOD, original_error=original_error,
     )
 
 

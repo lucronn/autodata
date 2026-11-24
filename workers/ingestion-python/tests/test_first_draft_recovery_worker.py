@@ -9,6 +9,7 @@ import pytest
 from autodata_ingestion import article_lifecycle_store as store
 from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE, NORMALIZATION_VERSION, digest_json
 from autodata_ingestion.procedure_rewrite_recovery import (
+    FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
     FIRST_DRAFT_RECOVERY_METHOD,
 )
@@ -161,8 +162,32 @@ def test_echoed_draft_does_not_relax_other_rewrite_guards(runtime, variant, erro
         assert conn.execute("SELECT 1 FROM publication_events").fetchone() is None
 
 
-def test_worker_replays_recovery_with_its_original_response_and_media(runtime):
-    instruction = "Install the guide plate. For additional information, refer to Section 410-07C ."
+@pytest.mark.parametrize(("instruction", "bad_wording", "introduction", "expected", "method"), [
+    (
+        "Install the guide plate. For additional information, refer to Section 410-07C .",
+        "Put the guide plate in place. See Section 510-07C.",
+        "This article covers the service sequence for the cover.",
+        "Fit the guide plate. Details are in Section 410-07C.",
+        FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
+    ),
+    (
+        "Loosen the mounting plate bolts.",
+        "Remove the mounting plate bolts.",
+        "It is safe to service the cover while the engine is running.",
+        "The mounting plate bolts must be loosened.",
+        FIRST_DRAFT_COOLING_RECOVERY_METHOD,
+    ),
+    (
+        "Loosen the mounting plate bolts.",
+        "The mounting plate bolts must be loosened.",
+        "It is safe to service the cover while the engine is running.",
+        "The mounting plate bolts must be loosened.",
+        FIRST_DRAFT_COOLING_RECOVERY_METHOD,
+    ),
+])
+def test_worker_replays_recovery_with_its_original_response_and_media(
+    runtime, instruction, bad_wording, introduction, expected, method,
+):
     job_id = queue_article(runtime, figure=True, instruction=instruction)
 
     class ChangedReference:
@@ -174,7 +199,7 @@ def test_worker_replays_recovery_with_its_original_response_and_media(runtime):
                 (instruction, "rewrite"), (TORQUE, "retain"),
             ]
             self.raw = {
-                "introduction": "This article covers the service sequence for the cover.",
+                "introduction": introduction,
                 "replacements": [
                     {
                         "block_id": s["block_id"], "path": s["path"],
@@ -184,15 +209,14 @@ def test_worker_replays_recovery_with_its_original_response_and_media(runtime):
                     for s in slots
                 ],
             }
-            self.raw["replacements"][0]["text"] = "Put the guide plate in place. See Section 510-07C."
+            self.raw["replacements"][0]["text"] = bad_wording
             return self.raw
 
     model = ChangedReference()
     assert run_job(runtime, job_id, model, registry=runtime.registry)
     current = runtime.read_current()
     assert current["content_origin"] == "canonical"
-    assert "Fit the guide plate. Details are in Section 410-07C." in current["body"]
-    assert "510-07C" not in current["body"]
+    assert expected in current["body"]
     assert current["images"][0]["status"] == "available"
 
     [archived] = attempt_rows(runtime, job_id)
@@ -205,6 +229,10 @@ def test_worker_replays_recovery_with_its_original_response_and_media(runtime):
         )
         assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
     assert attempt == archived and archived["response"] == model.raw
-    assert revision["model_metadata"]["transformation_method"] == FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD
-    assert revision["model_metadata"]["first_draft_recovery"]["raw_response_hash"] == digest_json(model.raw)
-    assert effective["replacements"][0]["text"] == "Fit the guide plate. Details are in Section 410-07C."
+    assert revision["model_metadata"]["transformation_method"] == method
+    evidence = revision["model_metadata"]["first_draft_recovery"]
+    assert evidence["raw_response_hash"] == digest_json(model.raw)
+    assert effective["replacements"][0]["text"] == expected
+    if method == FIRST_DRAFT_COOLING_RECOVERY_METHOD:
+        assert evidence["introduction_replaced"] is True
+        assert effective["introduction"] != introduction
