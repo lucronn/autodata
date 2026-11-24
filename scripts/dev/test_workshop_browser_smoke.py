@@ -1470,7 +1470,7 @@ class API21FakeLocator:
         if self.selector=='#signin':context.signed=True
         elif self.selector=='#signout':context.signed=False
         elif self.selector=='#my-vehicles':self.page.library()
-        elif self.selector=='#source-review-load':
+        elif self.selector in ('#source-review-load', '#open-original'):
             self.page.emit('https://127.0.0.1:32001/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE+'/source',{'source':'Remove the pump.'})
         elif self.selector in ('#purchase-action','#retry'):
             route=CheckoutRoute()

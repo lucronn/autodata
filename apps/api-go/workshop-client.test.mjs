@@ -2219,9 +2219,11 @@ function sourceReviewHarness() {
   const context = {
     currentArticle: { source_review: { url: '/article-A/source' } },
     viewGeneration: first,
-    $: () => ({ addEventListener(event, callback) {
-      assert.equal(event, 'click');
-      click = callback;
+    $: id => ({ addEventListener(event, callback) {
+      if (id === 'source-review-load') {
+        assert.equal(event, 'click');
+        click = callback;
+      }
     } }),
     loadSource(url, generation) {
       loads.push({ url, generation });
@@ -2234,7 +2236,7 @@ function sourceReviewHarness() {
   runInNewContext(
     appSection('function originalSourceReview(', 'function renderArticle(') +
     appSection('function handleSourceError(error, g) {', 'async function renewMedia(') +
-    appSection('$("source-review-load").addEventListener', '$("back").addEventListener'),
+    appSection('function openOriginal(', '$("back").addEventListener'),
     context,
   );
   const handleError = context.handleSourceError;
@@ -6114,6 +6116,7 @@ class ArticleMediaNode {
     this._text = '';
   }
   focus() { this.focusCalls = (this.focusCalls || 0) + 1; }
+  scrollIntoView(options) { this.lastScroll = options; }
   get textContent() { return this._text + this.children.map(n => n.textContent).join(''); }
   set textContent(value) { this.replaceChildren(); this._text = String(value); }
   get isConnected() { return this.tagName === 'body' || Boolean(this.parentNode?.isConnected); }
@@ -6184,7 +6187,7 @@ function articleMediaHarness(overrides = {}) {
     'article-title', 'catalog-count', 'article-pages', 'article-page-range', 'article-prev', 'article-next',
     'article-note', 'source-review-meta', 'source-review', 'source-review-title', 'print',
     'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase', 'purchase-selection',
-    'article-kind', 'article-reference', 'source-review-load', 'check-order',
+    'article-kind', 'article-reference', 'source-review-load', 'open-original', 'original-error', 'back-to-article', 'check-order',
     'library-more', 'library-message', 'library-title'];
   for (const id of ids) { const node = new ArticleMediaNode('div'); nodes.set(id, node); body.append(node); }
   const navigation = new NavigationGeneration(), searchNavigation = new NavigationGeneration(), g = navigation.next();
@@ -7544,7 +7547,7 @@ test('Original loads the verified capture and existing article citations keep th
     return requested.length === 3 ? pending.promise : source;
   } });
   h.context.viewGeneration = h.g;
-  runInNewContext(appSection('$("source-review-load").addEventListener', 'function returnToArticleIndex()'), h.context);
+  runInNewContext(appSection('function openOriginal(', 'function returnToArticleIndex()'), h.context);
   const article = mediaArticle([cite], [], {
     content_origin: 'canonical',
     source_review: { available: true, url: mediaSourceURL },
@@ -7552,12 +7555,30 @@ test('Original loads the verified capture and existing article citations keep th
   });
   const content = h.render(article), frame = h.nodes.get('source-review-frame');
   const original = h.nodes.get('source-review-load');
+  const open = h.nodes.get('open-original');
+  const back = h.nodes.get('back-to-article');
+  const sourceTitle = h.nodes.get('source-review-title');
+  assert.equal(open.hidden, false);
   const link = h.nodes.get('source-review-link');
   assert.equal(link.href, originalURL);
   assert.equal(requested.length, 0);
-  original.dispatch('click');
+  open.dispatch('click');
+  assert.equal(open.disabled, true);
+  assert.equal(original.disabled, true);
+  assert.equal(open.textContent, 'Opening Original…');
   await new Promise(setImmediate);
   assert.deepEqual(mediaIDs(frame), ['recovered']);
+  assert.equal(sourceTitle.focusCalls, 1);
+  assert.equal(sourceTitle.lastScroll.behavior, 'instant');
+  assert.equal(h.nodes.get('reader').dataset.readingOriginal, 'true');
+  assert.equal(open.disabled, false);
+  assert.equal(open.textContent, 'View Original');
+  assert.equal(back.hidden, false);
+  back.dispatch('click');
+  assert.equal(h.nodes.get('reader').dataset.readingOriginal, undefined);
+  assert.equal(h.nodes.get('article-title').focusCalls, 1);
+  assert.equal(h.nodes.get('article-title').lastScroll.behavior, 'instant');
+  assert.deepEqual(requested, [originalURL]);
 
   const [citation] = mediaDescendants(content, 'a');
   citation.dispatch('click', { preventDefault() {} });
@@ -7573,9 +7594,39 @@ test('Original loads the verified capture and existing article citations keep th
   await new Promise(setImmediate);
   assert.equal(frame.hidden, true);
   assert.equal(frame.children.length, 0);
+  assert.equal(back.hidden, true);
   assert.equal(link.href, mediaSourceURL);
   assert.equal(original.disabled, false);
   assert.equal(mediaDescendants(content, 'a')[0], citation);
+});
+
+test('the Original shortcut shows a failed read beside the button and can retry', async () => {
+  const request = deferredAuthOperation();
+  let reads = 0;
+  const h = articleMediaHarness({ requestJSON(path) {
+    assert.equal(path, mediaSourceURL);
+    if (++reads === 1) return Promise.reject(new Error('Stored source could not be loaded.'));
+    return request.promise;
+  } });
+  h.context.viewGeneration = h.g;
+  runInNewContext(appSection('function openOriginal(', 'function returnToArticleIndex()'), h.context);
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Published' }], [], {
+    source_review: { available: true, url: mediaSourceURL },
+  }));
+  const open = h.nodes.get('open-original'), error = h.nodes.get('original-error');
+  open.dispatch('click');
+  await new Promise(setImmediate);
+  assert.equal(open.disabled, false);
+  assert.equal(error.hidden, false);
+  assert.equal(error.textContent, 'Stored source could not be loaded.');
+  assert.equal(h.nodes.get('source-review-title').focusCalls, undefined);
+
+  open.dispatch('click');
+  assert.equal(error.hidden, true);
+  request.resolve({ source: { url: mediaSourceURL }, document: { blocks: [{ type: 'paragraph', text: 'Original' }] } });
+  await new Promise(setImmediate);
+  assert.equal(h.nodes.get('source-review-frame').textContent, 'Original');
+  assert.equal(h.nodes.get('source-review-title').focusCalls, 1);
 });
 
 test('overlapping citations share one pinned read, focus the latest block and recheck access on a new read', async () => {

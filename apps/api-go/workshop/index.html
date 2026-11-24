@@ -265,6 +265,8 @@
               <p id="article-kind" class="caption"></p>
               <h2 id="article-title" tabindex="-1"></h2>
               <p id="article-note" class="article-note" hidden></p>
+              <button id="open-original" class="text-button" type="button" aria-controls="source-review-frame" aria-describedby="original-error" hidden>View Original</button>
+              <p id="original-error" class="article-note" hidden></p>
               <div id="article-content" class="article-content"></div>
               <details id="article-reference" class="reference">
                 <summary>Article reference</summary>
@@ -290,6 +292,7 @@
                     >
                       Load beside article
                     </button>
+                    <button id="back-to-article" class="text-button" type="button" hidden>Back to article</button>
                   </p>
                   <div
                     id="source-review-frame"

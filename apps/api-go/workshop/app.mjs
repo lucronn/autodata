@@ -210,6 +210,12 @@ function clearLibrary() {
   $("library-more").removeAttribute("aria-disabled");
   $("library-message").textContent = "";
 }
+function setSourceLoading(loading) {
+  $("source-review-load").disabled = loading;
+  $("open-original").disabled = loading;
+  $("open-original").textContent = loading ? "Opening Original…" : "View Original";
+  if (loading) $("original-error").hidden = true;
+}
 function resetSourceReview() {
   sourceImageRefresh = null;
   sourceDocumentRequest = null;
@@ -217,8 +223,12 @@ function resetSourceReview() {
   sourceURL = "";
   ++sourceRevision;
   displayedSourceRevision = sourceRevision;
+  delete $("reader").dataset.readingOriginal;
   $("source-review").hidden = true;
-  $("source-review-load").disabled = false;
+  $("open-original").hidden = true;
+  $("original-error").hidden = true;
+  $("back-to-article").hidden = true;
+  setSourceLoading(false);
   $("source-review-frame").replaceChildren();
   $("source-review-frame").hidden = true;
   $("source-review-link").removeAttribute("href");
@@ -1626,6 +1636,7 @@ function renderArticle(article, g, redraw = false) {
   document.body.dataset.printable = String(readable);
   $("article-reference").hidden = false;
   $("source-review").hidden = !review?.available;
+  $("open-original").hidden = !originalURL;
   if (review?.available) {
     $("source-review-link").href = demoPath(review.url);
     $("source-review-link").target = "_blank";
@@ -1824,7 +1835,7 @@ function validSourceURL(value) {
   }
 }
 const sourceDocumentHeaders = { Prefer: "workshop-source-document" };
-async function loadSource(value, g, blockID = null) {
+async function loadSource(value, g, blockID = null, { focusSource = false } = {}) {
   const requested = validSourceURL(value);
   if (!requested) throw new Error("This source reference is unavailable.");
   const query = new URLSearchParams(requested.search);
@@ -1834,7 +1845,7 @@ async function loadSource(value, g, blockID = null) {
   query.sort();
   const key = `${requested.pathname}?${query}`;
   const selected = ++sourceRevision;
-  $("source-review-load").disabled = true;
+  setSourceLoading(true);
   let pending;
   try {
     if (sourceDocumentRequest?.key !== key || sourceDocumentRequest.signal !== g.signal) {
@@ -1882,20 +1893,22 @@ async function loadSource(value, g, blockID = null) {
       displayedSourceRevision = selected;
     }
     $("source-review-frame").hidden = false;
+    $("back-to-article").hidden = false;
     sourceURL = demoPath(requested.href);
     $("article-reference").open = true;
     $("source-review-meta").textContent = "Stored source loaded.";
-    if (blockID !== null) {
+    if (blockID !== null || focusSource) {
       const target = targets?.get(blockID) || $("source-review-title");
       target.setAttribute("tabindex", "-1");
-      target.focus();
+      if (focusSource) $("reader").dataset.readingOriginal = "true";
+      target.focus({ preventScroll: focusSource });
+      if (focusSource) target.scrollIntoView({ behavior: "instant", block: "start" });
     }
   } catch (error) {
     if (g.current() && selected === sourceRevision) throw error;
   } finally {
     if (sourceDocumentRequest === pending) sourceDocumentRequest = null;
-    if (g.current() && selected === sourceRevision)
-      $("source-review-load").disabled = false;
+    if (g.current() && selected === sourceRevision) setSourceLoading(false);
   }
 }
 function handleSourceError(error, g) {
@@ -2724,12 +2737,28 @@ $("cancel").addEventListener("click", () => {
     retry: () => restoreRoute(),
   });
 });
-$("source-review-load").addEventListener("click", () => {
+function openOriginal(focusSource) {
   const g = viewGeneration;
   if (currentArticle && g?.current())
-    void loadSource(originalSourceReview(currentArticle)?.url, g).catch(
-      (error) => handleSourceError(error, g),
-    );
+    void loadSource(originalSourceReview(currentArticle)?.url, g, null, { focusSource }).catch((error) => {
+      handleSourceError(error, g);
+      if (focusSource && g.current() && !$("open-original").hidden) {
+        $("original-error").textContent = error.message || "Stored source is unavailable.";
+        $("original-error").hidden = false;
+      }
+    });
+}
+$("source-review-load").addEventListener("click", () => openOriginal(false));
+$("open-original").addEventListener("click", () => openOriginal(true));
+$("back-to-article").addEventListener("click", () => {
+  if (!viewGeneration?.current()) return;
+  delete $("reader").dataset.readingOriginal;
+  const title = $("article-title");
+  title.focus({ preventScroll: true });
+  title.scrollIntoView({ behavior: "instant", block: "start" });
+});
+$("article-reference").addEventListener("toggle", () => {
+  if (!$("article-reference").open) delete $("reader").dataset.readingOriginal;
 });
 function returnToArticleIndex() {
   const origin = articleIndexOrigin;
@@ -2853,7 +2882,8 @@ async function recheckReader(g) {
   document.body.dataset.printable = "false";
   if (pinned) {
     $("source-review-frame").hidden = true;
-    $("source-review-load").disabled = true;
+    $("back-to-article").hidden = true;
+    setSourceLoading(true);
     $("source-review-meta").textContent = "Checking the stored source…";
   }
   try {
@@ -2888,7 +2918,8 @@ async function recheckReader(g) {
     if (returned?.pathname === pinned.pathname &&
         returned.searchParams.get("source_revision_id") === pin) {
       $("source-review-frame").hidden = false;
-      $("source-review-load").disabled = false;
+      $("back-to-article").hidden = false;
+      setSourceLoading(false);
       $("source-review-meta").textContent = "Stored source loaded.";
     } else {
       resetSourceReview();

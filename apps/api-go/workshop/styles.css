@@ -615,6 +615,18 @@ select:enabled:hover {
   color: var(--quiet);
   margin: 0 0 25px;
 }
+#open-original {
+  min-block-size: 44px;
+  margin-bottom: 12px;
+}
+#back-to-article {
+  min-block-size: 44px;
+}
+@media screen {
+  #reader[data-reading-original="true"]:has(#article-reference[open]) :is(#article-content, #open-original) {
+    display: none;
+  }
+}
 .article-content {
   font-size: 17px;
   line-height: 1.75;
@@ -1008,6 +1020,8 @@ footer {
   .welcome,
   .catalog,
   .reader-nav,
+  #open-original,
+  #original-error,
   footer,
   .skip-link,
   .reference {
