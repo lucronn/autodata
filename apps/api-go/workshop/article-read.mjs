@@ -125,9 +125,13 @@ export async function readArticle(
     const publicationCheck = statusProbe?.anchor ??
       (publicationReadAt || sourceConfirmationAt ? publicationAnchor(latest) : undefined);
     const finishPublishedBody = Boolean(publicationReadAt || publicationCheck);
+    // A retained slot schedules the next read after a missed confirmation.
+    // It does not shorten the confirmation's existing download deadline.
+    const regularSourceDeadline = keepRegularSourceRead && regularSourceReadJob !== undefined
+      ? 0 : regularSourceReadAt;
     const readDeadline = Math.min(
       deadline, firstReadAt || deadline, nextSourceProbeAt || deadline,
-      regularSourceReadAt || deadline, sourceConfirmationAt || deadline, publicationReadAt || deadline,
+      regularSourceDeadline || deadline, sourceConfirmationAt || deadline, publicationReadAt || deadline,
       statusProbe ? Math.min(statusProbe.regularReadAt, startedAt + publicationStatusProbeDelayMs) : deadline,
       initialSourceFallback || deadline, advancedProbeLimit || deadline, previewMidpoint || deadline,
     );
@@ -136,7 +140,7 @@ export async function readArticle(
     // the later probes one extra interval to finish without downloading twice.
     const sourceBodyDeadline = firstReadAt
       ? firstReadAt + (nextSourceProbeAt ? 0 : sourceProbeIntervalMs)
-      : regularSourceReadAt && regularSourceReadAt + (keepRegularSourceRead ? 0 : sourceProbeIntervalMs);
+      : regularSourceDeadline && regularSourceDeadline + (keepRegularSourceRead ? 0 : sourceProbeIntervalMs);
     // A confirmed publication can use the ordinary body deadline even
     // when the probe had a short deadline for its headers.
     const finishBodyBy = statusProbe?.late ? statusProbe.regularReadAt : startedAt + maxArticleRequestMs;
@@ -147,7 +151,7 @@ export async function readArticle(
         timeout: Math.max(1, Math.floor(Math.min(maxArticleRequestMs, readDeadline - startedAt))),
         readableBodyTimeout: bodyDeadline ? Math.floor(Math.min(deadline, bodyDeadline) - startedAt) : undefined,
         finishPublishedBody,
-        preferShortSourceCheck: Boolean(firstReadAt || regularSourceReadAt || firstScheduledSourceRead),
+        preferShortSourceCheck: Boolean(firstReadAt || regularSourceDeadline || firstScheduledSourceRead),
         preferShortPublicationCheck: !sawFastSource || Boolean(publicationReadAt),
         publicationCheck,
       });

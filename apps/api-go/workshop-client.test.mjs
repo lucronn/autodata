@@ -955,8 +955,10 @@ test('a first capture preview at a midpoint preserves the scheduled Original rea
     content_origin: 'source', source_revision_id: 'revision', body: 'Stored Original',
   } } };
   const busy = Object.assign(new Error('Busy'), { status: 503, retryable: true, retryAfterSeconds: 4 });
+  const slowDownload = Symbol('slow Original download');
   for (const [job, storedAt, confirmation, expectedStarts] of [
     ['job', 6900, null, [0, 1000, 2000, 4000, 6000, 7000]],
+    ['job', 6900, slowDownload, [0, 1000, 2000, 4000, 6000, 7000]],
     ['job', 7800, null, [0, 1000, 2000, 4000, 6000, 7000, 8000]],
     ['job', 7800, busy, [0, 1000, 2000, 4000, 6000, 7000, 11000]],
     ['job', 10500, null, [0, 1000, 2000, 4000, 6000, 7000, 8000, 14000]],
@@ -968,14 +970,17 @@ test('a first capture preview at a midpoint preserves the scheduled Original rea
       content_origin: 'source', source_body_preview: true, source_revision_id: null,
       body: 'Readable attachment preview', processing: { job_id: job, state: 'fetching_source' },
     } } };
-    const result = await readArticle(async ({ timeout }) => {
+    const result = await readArticle(async ({ timeout, readableBodyTimeout, preferShortSourceCheck }) => {
       starts.push(now);
+      if (now === 7000 && job === 'job') {
+        assert.equal(timeout, 7000);
+        assert.equal(readableBodyTimeout, undefined);
+        assert.equal(preferShortSourceCheck, false);
+        if (confirmation === slowDownload) now += 1100;
+        else if (confirmation) throw confirmation;
+      }
       if (now >= storedAt) return stored;
       if (now < 5900) return pending;
-      if (now === 7000 && job === 'job') {
-        assert.equal(timeout, 1000);
-        if (confirmation) throw confirmation;
-      }
       return preview;
     }, {
       now: () => now,
