@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -111,7 +112,7 @@ func TestWorkshopPublicAssetsRevalidateByContent(t *testing.T) {
 			}
 		})
 	}
-	t.Run("versioned bootstrap", func(t *testing.T) {
+	t.Run("legacy versioned bootstrap", func(t *testing.T) {
 		const path = "/workshop/bootstrap.mjs"
 		const cache = "private, max-age=31536000, immutable"
 		first := request(http.MethodGet, path, "")
@@ -119,10 +120,6 @@ func TestWorkshopPublicAssetsRevalidateByContent(t *testing.T) {
 		version := hex.EncodeToString(digest[:])
 		versioned := path + "?v=" + version
 		tag := `W/"` + version + `"`
-		index := request(http.MethodGet, "/workshop/?view=library", "")
-		if index.Code != http.StatusOK || !strings.Contains(index.Body.String(), `src="`+versioned+`"`) {
-			t.Fatal("Workshop entry page does not link to the content version of the bootstrap")
-		}
 		for _, method := range []string{http.MethodGet, http.MethodHead} {
 			response := request(method, versioned, "")
 			if response.Code != http.StatusOK || response.Header().Get("ETag") != tag || response.Header().Get("Cache-Control") != cache {
@@ -140,6 +137,46 @@ func TestWorkshopPublicAssetsRevalidateByContent(t *testing.T) {
 			response := request(http.MethodGet, alias, "")
 			if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-cache" || !bytes.Equal(response.Body.Bytes(), first.Body.Bytes()) {
 				t.Fatalf("bootstrap alias %s = %d, cache %q", alias, response.Code, response.Header().Get("Cache-Control"))
+			}
+		}
+	})
+	t.Run("immutable release assets", func(t *testing.T) {
+		index := request(http.MethodGet, "/workshop/?view=library", "").Body.String()
+		match := regexp.MustCompile(`src="(/workshop/assets/[a-f0-9]{64}/)bootstrap\.mjs"`).FindStringSubmatch(index)
+		if len(match) != 2 {
+			t.Fatal("Workshop entry page is missing the versioned bootstrap")
+		}
+		for _, name := range []string{"catalog.mjs", "styles.css", "fonts/InstrumentSans.woff2"} {
+			if !strings.Contains(index, `href="`+match[1]+name+`"`) {
+				t.Fatalf("Workshop entry page is missing the versioned %s", name)
+			}
+		}
+		const immutable = "private, max-age=31536000, immutable"
+		for _, name := range []string{"bootstrap.mjs", "app.mjs", "auth.mjs", "article-read.mjs", "progress.mjs",
+			"catalog.mjs", "commerce.mjs", "firebase-web.mjs", "demo.mjs", "styles.css", "fonts/InstrumentSans.woff2"} {
+			fresh := request(http.MethodGet, match[1]+name, "")
+			legacy := request(http.MethodGet, "/workshop/"+name, "")
+			if fresh.Code != http.StatusOK || fresh.Header().Get("Cache-Control") != immutable ||
+				fresh.Header().Get("ETag") != legacy.Header().Get("ETag") ||
+				fresh.Header().Get("Content-Type") != legacy.Header().Get("Content-Type") ||
+				!bytes.Equal(fresh.Body.Bytes(), legacy.Body.Bytes()) {
+				t.Errorf("versioned %s returned status %d or different content/headers", name, fresh.Code)
+			}
+			warm := request(http.MethodHead, match[1]+name, fresh.Header().Get("ETag"))
+			if warm.Code != http.StatusNotModified || warm.Body.Len() != 0 {
+				t.Errorf("conditional HEAD for %s = %d", name, warm.Code)
+			}
+		}
+		otherVersion := strings.Repeat("e", 64)
+		previous := request(http.MethodGet, "/workshop/assets/"+otherVersion+"/firebase-web.mjs", "")
+		if previous.Code != http.StatusTemporaryRedirect || previous.Header().Get("Location") != "/workshop/firebase-web.mjs" ||
+			previous.Header().Get("Cache-Control") != "no-store" {
+			t.Fatal("an old release URL must resolve without caching newer bytes at the old URL")
+		}
+		for _, name := range []string{"", "missing.mjs", "purchase-config.json", "demo-mode.json"} {
+			missing := request(http.MethodGet, match[1]+name, "")
+			if missing.Code != http.StatusNotFound || missing.Header().Get("Cache-Control") == immutable {
+				t.Errorf("unknown versioned asset %q = %d with %q", name, missing.Code, missing.Header().Get("Cache-Control"))
 			}
 		}
 	})

@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 const source = name => readFileSync(new URL(`./workshop/${name}`, import.meta.url), 'utf8');
+const assetBase = `https://workshop.example/workshop/assets/${'a'.repeat(64)}/`;
+const bootstrapCode = source('bootstrap.mjs').replaceAll('import(', 'loadModule(')
+  .replaceAll('import.meta.url', JSON.stringify(assetBase + 'bootstrap.mjs'));
 test('HTML starts only the isolated bootstrap', () => {
   assert.match(source('index.html'), /src="\/workshop\/bootstrap.mjs"/);
   assert.doesNotMatch(source('index.html'), /src="\/workshop\/(app|demo)\.mjs"/);
@@ -19,7 +22,6 @@ test('sign-in is inert in initial HTML until async app readiness', () => {
 });
 test('real demo uses the ordinary app only in test mode; sample stays separate', async () => {
   assert.ok(existsSync(new URL('./workshop/bootstrap.mjs', import.meta.url)), 'bootstrap must exist');
-  const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
   const scenarios = [
     ['?sample=1', true, ['./demo.mjs'], false, 0],
     ['?demo=1', true, ['./app.mjs'], true, 1],
@@ -35,8 +37,8 @@ test('real demo uses the ordinary app only in test mode; sample stays separate',
     const nodes = new Map(['test-banner', 'open-demo-banner', 'test-unavailable'].map(id => [id, { hidden: true }]));
     const main = { hidden: false };
     const nav = { hidden: false };
-    await runInNewContext(`(async () => { ${code} })()`, {
-      AbortSignal, URLSearchParams, location: { search }, document: {
+    await runInNewContext(`(async () => { ${bootstrapCode} })()`, {
+      AbortSignal, URL, URLSearchParams, location: { search }, document: {
         documentElement: { dataset: {} },
         createElement: tag => ({ tag }),
         head: { append: element => preload.push(element) },
@@ -64,9 +66,9 @@ test('real demo uses the ordinary app only in test mode; sample stays separate',
     assert.equal(nodes.get('test-unavailable').hidden, !(search.includes('demo=1') && !ready));
     assert.equal(calls.length, fetchCount);
     assert.deepEqual(preload, fetchCount && !search.includes('demo=1') ? [
-      { tag: 'link', rel: 'modulepreload', href: '/workshop/app.mjs' },
-      { tag: 'link', rel: 'modulepreload', href: '/workshop/commerce.mjs' },
-      { tag: 'link', rel: 'modulepreload', href: '/workshop/article-read.mjs' },
+      { tag: 'link', rel: 'modulepreload', href: assetBase + 'app.mjs' },
+      { tag: 'link', rel: 'modulepreload', href: assetBase + 'commerce.mjs' },
+      { tag: 'link', rel: 'modulepreload', href: assetBase + 'article-read.mjs' },
     ] : []);
     if (fetchCount) assert.deepEqual(calls[0], {
       path: '/workshop/demo-mode.json', preload, imports: [],
@@ -78,7 +80,6 @@ test('real demo uses the ordinary app only in test mode; sample stays separate',
   }
 });
 test('real demo request fails closed on unavailable or malformed mode signal', async () => {
-  const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
   for (const response of [
     async () => { throw new Error('network unavailable'); },
     async () => ({ ok: false, json: async () => ({ enabled: true }) }),
@@ -88,7 +89,7 @@ test('real demo request fails closed on unavailable or malformed mode signal', a
     const loaded = [];
     const nodes = new Map(['test-banner', 'open-demo-banner', 'test-unavailable'].map(id => [id, { hidden: true }]));
     const main = { hidden: false };
-    await runInNewContext(`(async () => { ${code} })()`, {
+    await runInNewContext(`(async () => { ${bootstrapCode} })()`, {
       AbortSignal, URLSearchParams, location: { search: '?demo=1' },
       document: { documentElement: { dataset: {} }, getElementById: id => nodes.get(id), querySelector: () => main },
       fetch: response, loadModule: async path => loaded.push(path),
@@ -100,15 +101,14 @@ test('real demo request fails closed on unavailable or malformed mode signal', a
   }
 });
 test('regular startup opens the app with the first reads while checkout mode is pending', async () => {
-  const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
   let releaseMode;
   let modeConfirmation;
   const result = Promise.resolve({ items: [{ year: 2024 }] });
   const account = [{ status: 'fulfilled', value: {} }];
   const events = [];
   const banner = { hidden: true };
-  const started = runInNewContext(`(async () => { ${code} })()`, {
-    AbortSignal, URLSearchParams, location: { search: '' }, document: {
+  const started = runInNewContext(`(async () => { ${bootstrapCode} })()`, {
+    AbortSignal, URL, URLSearchParams, location: { search: '' }, document: {
       documentElement: { dataset: {} },
       createElement: () => ({}), head: { append() {} },
       getElementById: id => id === 'test-banner' ? banner : {},
@@ -148,11 +148,10 @@ test('regular startup opens the app with the first reads while checkout mode is 
   assert.equal(await modeConfirmation, true);
 });
 test('open demo handshake loads the real app without test checkout UI', async () => {
-  const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
   const loaded = [];
   const nodes = new Map(['test-banner', 'open-demo-banner', 'test-unavailable'].map(id => [id, { hidden: true }]));
   const root = { dataset: {} };
-  await runInNewContext(`(async () => { ${code} })()`, {
+  await runInNewContext(`(async () => { ${bootstrapCode} })()`, {
     AbortSignal, URLSearchParams,
     location: { search: '?demo=1' },
     document: { documentElement: root, getElementById: id => nodes.get(id), querySelector: () => ({ hidden: false }) },
