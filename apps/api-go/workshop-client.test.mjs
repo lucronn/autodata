@@ -7,6 +7,8 @@ import { pollOrder, purchaseConfiguration, quoteConfigurationLabel, readOrder, r
 import { articlePresentation, articleSearchParams, CatalogRequestError, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, trimArticleSearch, vehicleSelectorPath } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
+const paidPagePreferences = 'workshop-index-pages, workshop-index-live-pages';
+
 // The app sections below run without the module bootstrap. Model the ordinary
 // paid path unless a test explicitly opts into the open demo.
 function runInNewContext(code, context) {
@@ -24,6 +26,7 @@ function runInNewContext(code, context) {
   context.paidOrder ??= null;
   context.articleIndexOrigin ??= null;
   context.articlePage ??= 0;
+  context.articleIndexPagePreferences ??= paidPagePreferences;
   context.indexPage ??= null;
   context.pendingIndexPage ??= null;
   context.performance ??= performance;
@@ -2447,7 +2450,7 @@ test('selected sign-in hands off the exact negotiated index and purchase quote e
     },
     selectorRead(path, options) {
       assert.equal(path, `/v1/catalog/vehicles/${routeConfiguration}/articles?region=US`);
-      assert.equal(options.headers.Prefer, 'workshop-confirm-session, workshop-purchase-quote, workshop-index-pages');
+      assert.equal(options.headers.Prefer, `workshop-confirm-session, workshop-purchase-quote, ${paidPagePreferences}`);
       assert.equal(options.headers['X-CSRF-Token'], 'exchange-csrf');
       options.onSelectedIndexSession({ expiresAt: '2099-01-01T00:00:00Z' });
       throw revoked;
@@ -4879,11 +4882,11 @@ const pageFixtureArticles = Array.from({ length: 205 }, (_, index) => ({
   title: `Service article ${index + 1}`,
 }));
 function pagedIndexResponse(offset, {
-  descriptors = pageFixtureArticles, failed = false, revision = 'a'.repeat(64),
+  descriptors = pageFixtureArticles, failed = false, hydrating = false, revision = 'a'.repeat(64),
 } = {}) {
   return {
-    ...indexResponse(failed ? 'failed' : 'completed', {
-      complete: !failed, items: descriptors.slice(offset, offset + 100),
+    ...indexResponse(hydrating ? 'running' : failed ? 'failed' : 'completed', {
+      complete: !failed && !hydrating, hydrating, items: descriptors.slice(offset, offset + 100),
     }),
     configuration: { id: scope.configuration_id, region: scope.region },
     page: { offset, total: descriptors.length, revision },
@@ -4908,7 +4911,7 @@ test('negotiated paid index reads one requested page and searches the whole term
   assert.equal(h.$('catalog-count').textContent, '205 articles from available sources.');
   assert.equal(h.$('article-prev').disabled, true);
   assert.equal(h.requests[0].path.split('?')[1], 'region=US');
-  assert.equal(h.requests[0].prefer, 'workshop-index-pages');
+  assert.equal(h.requests[0].prefer, paidPagePreferences);
   await h.context.moveArticlePage(1);
   assert.equal(rows.firstElementChild.dataset.articleId, pageFixtureArticles[100].id);
   assert.equal(h.$('article-page-range').textContent, '101–200 of 205');
@@ -4931,13 +4934,57 @@ test('negotiated paid index reads one requested page and searches the whole term
   assert.equal(h.$('article-page-range').textContent, '201–205 of 205');
   await h.context.moveArticlePage(-1);
   assert.deepEqual(h.requests.map(({ path, prefer }) => [path.split('?')[1], prefer]), [
-    ['region=US', 'workshop-index-pages'],
-    ['offset=100&region=US', 'workshop-index-pages'],
-    ['offset=200&region=US', 'workshop-index-pages'],
+    ['region=US', paidPagePreferences],
+    ['offset=100&region=US', paidPagePreferences],
+    ['offset=200&region=US', paidPagePreferences],
     ['q=Service+article+155&region=US', undefined],
     ['q=Alternator&region=US', undefined],
-    ['offset=100&region=US', 'workshop-index-pages'],
+    ['offset=100&region=US', paidPagePreferences],
   ]);
+});
+
+test('a paid index remains immediately pageable while another provider runs', async () => {
+  const polls = Array.from({ length: 4 }, () => deferredAuthOperation());
+  let nextPoll = 0;
+  const added = {
+    id: '99999999-9999-4999-8999-999999999999', title: 'New supplier procedure', availability: 'available',
+  };
+  const finished = pagedIndexResponse(200, {
+    descriptors: [...pageFixtureArticles, added], revision: 'b'.repeat(64),
+  });
+  const h = articleIndexHarness([
+    { ...indexResponse('running', { hydrating: true, items: pageFixtureArticles.slice(0, 1) }),
+      configuration: { id: scope.configuration_id, region: scope.region } },
+    pagedIndexResponse(0, { hydrating: true }),
+    pagedIndexResponse(100, { hydrating: true }),
+    pagedIndexResponse(200, { hydrating: true }),
+    finished,
+  ], { wait: () => polls[nextPoll++].promise });
+  h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+  // Start with one available descriptor, then allow the active snapshot to grow.
+  const opening = h.load();
+  await new Promise(setImmediate);
+  assert.equal(h.$('articles').firstElementChild.children.length, 1);
+  polls[0].resolve();
+  await new Promise(setImmediate);
+  assert.equal(h.requests[1].prefer, paidPagePreferences);
+  assert.equal(h.$('article-page-range').textContent, '1–100 of 205');
+  assert.match(h.$('activity-text').textContent, /while more sources load/);
+  const second = h.context.moveArticlePage(1);
+  const canceled = assert.rejects(opening, { name: 'AbortError' });
+  await new Promise(setImmediate);
+  assert.equal(h.requests[1].signal.aborted, true);
+  assert.equal(h.$('article-page-range').textContent, '101–200 of 205');
+  const third = h.context.moveArticlePage(1);
+  await new Promise(setImmediate);
+  assert.equal(h.requests[2].signal.aborted, true);
+  assert.equal(h.$('article-page-range').textContent, '201–205 of 205');
+  for (const poll of polls.slice(1)) poll.resolve();
+  await Promise.all([second, third, canceled]);
+  assert.equal(h.$('article-page-range').textContent, '201–206 of 206');
+  assert.equal(h.$('articles').firstElementChild.children.at(-1).dataset.articleId, added.id);
+  assert.deepEqual(h.requests.map(({ path }) => new URL(path, 'https://cars.example').searchParams.get('offset')),
+    [null, null, '100', '200', '200']);
 });
 
 test('paged reader Back reuses its index in-app and anchors a fresh browser history read', async () => {
@@ -5031,7 +5078,7 @@ test('a legacy hydrating index keeps its local page when the index settles', asy
   finish.resolve();
   await opening;
   assert.deepEqual(h.requests.map(({ path, prefer }) => [path.split('?')[1], prefer]), [
-    ['region=US', 'workshop-index-pages'],
+    ['region=US', paidPagePreferences],
     ['region=US', undefined],
   ]);
   assert.equal(h.$('article-page-range').textContent, '101–200 of 205');
@@ -5131,6 +5178,16 @@ test('paid page negotiation rejects malformed shape and preserves an unpaged sma
   assert.equal(h.$('article-pages').hidden, true);
   assert.equal(h.$('catalog-count').textContent, '20 articles');
   assert.equal(h.requests.length, 2);
+});
+
+test('a paid page still displays stored rows when progress cannot be read', async () => {
+  const h = articleIndexHarness([{ ...pagedIndexResponse(0), complete: false, progress: null }]);
+  h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+  await h.load();
+  assert.equal(h.$('articles').firstElementChild.children.length, 100);
+  assert.equal(h.$('article-page-range').textContent, '1–100 of 205');
+  assert.match(h.$('activity-text').textContent, /index update couldn’t load/);
+  assert.equal(h.context.indexComplete, false);
 });
 
 test('a zero-match search keeps a failed partial index usable', async () => {

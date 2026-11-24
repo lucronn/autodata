@@ -10,6 +10,7 @@ import (
 )
 
 const catalogIndexPagesPreference = "workshop-index-pages"
+const catalogIndexLivePagesPreference = "workshop-index-live-pages"
 const catalogIndexPageSize = 100
 
 var catalogIndexOffsetPattern = regexp.MustCompile(`^(0|[1-9][0-9]*00)$`)
@@ -43,7 +44,7 @@ func parseCatalogIndexPageRequest(filters url.Values) (catalogIndexPageRequest, 
 	}
 }
 
-// Hash the complete authorized index, in repository order. The projection
+// Hash the current authorized index snapshot, in repository order. The projection
 // uses only index metadata so retained body bytes and processing timers
 // never affect a page revision.
 func catalogIndexRevision(items []CatalogArticle) string {

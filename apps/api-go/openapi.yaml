@@ -60,25 +60,28 @@ paths:
         schema:
           type: string
           pattern: ^(0|[1-9][0-9]*00)$
-        description: Optional zero-based offset with workshop-index-pages. Offsets
-          that exceed the authorized index select its last page. Mutually exclusive
-          with anchor, q, and title.
+        description: Optional zero-based offset with workshop-index-live-pages or
+          workshop-index-pages. Offsets that exceed the authorized index select
+          its last page. Mutually exclusive with anchor, q, and title.
       - name: anchor
         in: query
         schema:
           type: string
           format: uuid
         description: Optional exact lowercase canonical article UUID with
-          workshop-index-pages. Selects the page containing that authorized
-          descriptor, or the first page when the descriptor is absent. Mutually
-          exclusive with offset, q, and title.
+          workshop-index-live-pages or workshop-index-pages. Selects the page
+          containing that authorized descriptor, or the first page when the
+          descriptor is absent. Mutually exclusive with offset, q, and title.
       - name: Prefer
         in: header
         schema:
           type: string
-        description: Workshop can request workshop-index-pages for an unfiltered
-          paid index, and workshop-confirm-session and workshop-purchase-quote on
-          the exact selected configuration and region.
+        description: Workshop can request workshop-index-live-pages to page a large
+          unfiltered paid index even while sources are still loading or progress is
+          unavailable. workshop-index-pages pages only settled indexes. When both
+          are requested, workshop-index-live-pages takes precedence.
+          workshop-confirm-session and workshop-purchase-quote apply on the exact
+          selected configuration and region.
       - name: X-CSRF-Token
         in: header
         schema:
@@ -102,8 +105,8 @@ paths:
               schema:
                 type: string
               description: Acknowledges workshop-confirm-session after checking the
-                exchanged cookie and current Firebase account, and acknowledges
-                workshop-index-pages when page metadata is returned.
+                exchanged cookie and current Firebase account. When page metadata
+                is returned, acknowledges the paging preference used.
             Workshop-Session-Expires:
               schema:
                 type: string
@@ -2311,8 +2314,9 @@ components:
           $ref: '#/components/schemas/CatalogArticleIndexPage'
     CatalogArticleIndexPage:
       type: object
-      description: Coordinates and revision of the complete ordered, authorized
-        descriptor snapshot. Present when workshop-index-pages is applied.
+      description: Coordinates and revision of the current ordered, authorized
+        descriptor snapshot. Present when workshop-index-live-pages or
+        workshop-index-pages is applied.
       required: [offset, total, revision]
       properties:
         offset:
@@ -2325,8 +2329,8 @@ components:
         revision:
           type: string
           pattern: ^[0-9a-f]{64}$
-          description: SHA-256 of the complete ordered index metadata. The same
-            current descriptor snapshot has the same revision on every page.
+          description: SHA-256 of all ordered index metadata available in this
+            snapshot. The same snapshot has the same revision on every page.
     CatalogConfiguration:
       type: object
       description: Exact configuration admitted by the server for the paid catalog request.

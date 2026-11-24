@@ -216,9 +216,15 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "article search query is invalid", false)
 		return
 	}
-	wantsPages := catalogReadPreferenceRequested(request, catalogIndexPagesPreference)
+	var pagePreference string
+	switch {
+	case catalogReadPreferenceRequested(request, catalogIndexLivePagesPreference):
+		pagePreference = catalogIndexLivePagesPreference
+	case catalogReadPreferenceRequested(request, catalogIndexPagesPreference):
+		pagePreference = catalogIndexPagesPreference
+	}
 	var pageRequest catalogIndexPageRequest
-	if wantsPages {
+	if pagePreference != "" {
 		var valid bool
 		pageRequest, valid = parseCatalogIndexPageRequest(filters)
 		if !valid {
@@ -333,11 +339,11 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 	var page *CatalogArticleIndexPage
 	if scope, ok := request.Context().Value(paidCatalogContextKey{}).(paidCatalogContext); ok {
 		configuration = &scope.configuration
-		if paid && !scope.openDemo && wantsPages && !filters.Has("q") && !filters.Has("title") &&
-			len(items) > catalogIndexPageSize && progress != nil &&
-			(progress.Complete || (progress.Status == "failed" && !progress.Retryable)) {
+		settled := progress != nil && (progress.Complete || (progress.Status == "failed" && !progress.Retryable))
+		if paid && !scope.openDemo && pagePreference != "" && !filters.Has("q") && !filters.Has("title") &&
+			len(items) > catalogIndexPageSize && (pagePreference == catalogIndexLivePagesPreference || settled) {
 			items, page = pageRequest.selectPage(items)
-			response.Header().Add("Preference-Applied", catalogIndexPagesPreference)
+			response.Header().Add("Preference-Applied", pagePreference)
 		}
 	}
 	writeJSON(response, http.StatusOK, CatalogArticlesResponse{
