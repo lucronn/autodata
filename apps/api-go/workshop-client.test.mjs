@@ -5393,6 +5393,8 @@ class ArticleMediaNode {
   }
   dispatch(name, event = {}) { for (const handler of this.handlers.get(name) || []) handler(event); }
   querySelectorAll(selector) {
+    if (selector === '[data-pending-source-image]')
+      return mediaDescendants(this, 'p').filter(node => 'pendingSourceImage' in node.dataset);
     assert.equal(selector, 'figure');
     return mediaDescendants(this, 'figure');
   }
@@ -6022,6 +6024,47 @@ test('the reader displays supplier text before the original figures finish', asy
   await opening;
   assert.equal(h.nodes.get('article-kind').textContent, 'Stored source');
   assert.doesNotMatch(h.nodes.get('article-content').textContent, /Preparing illustration/);
+});
+
+test('same-revision supplier preview keeps its position when figure preparation fails', () => {
+  const preview = mediaArticle([
+    { type: 'paragraph', text: 'Remove the retaining bolts.' },
+    { type: 'image', status: 'unavailable', unavailable_reason: 'SOURCE_MEDIA_PENDING', caption: 'Retaining bolt locations' },
+    { type: 'image', asset_id: 'ready', caption: 'Released bolts' },
+    { type: 'image', status: 'unavailable', unavailable_reason: 'SOURCE_NOT_FOUND', caption: 'Missing view' },
+    { type: 'paragraph', text: 'Continue after the figures.' },
+  ], [{ id: 'ready', url: mediaURL('ready') }], {
+    source_body_preview: true, source_revision_id: null, view_revision: 'supplier-body',
+    processing: { job_id: 'capture', state: 'fetching_source' },
+  });
+  const h = articleMediaHarness();
+  const content = h.render(preview);
+  const mounted = [...content.children];
+  const [body, pending, prepared, unavailable] = mounted;
+  const [placeholder, caption] = pending.children;
+  const image = prepared.children[0];
+  h.context.document.activeElement = h.nodes.get('print');
+  const update = retryable => h.render({ ...preview, processing: { ...preview.processing, state: 'failed', retryable } });
+
+  assert.equal(placeholder.textContent, 'Preparing illustration…');
+  update(true);
+  assert.equal(placeholder.textContent, 'Preparing illustration…');
+  update(false);
+  assert.equal(placeholder.textContent, 'Illustration unavailable.');
+  assert.equal(content.children.length, mounted.length);
+  for (const [index, node] of mounted.entries()) assert.equal(content.children[index], node);
+  assert.equal(pending.children[0], placeholder);
+  assert.equal(pending.children[1], caption);
+  assert.equal(caption.textContent, 'Retaining bolt locations');
+  assert.equal(body.textContent, 'Remove the retaining bolts.');
+  assert.equal(prepared.children[0], image);
+  assert.equal(image.src, 'https://cars.example' + mediaURL('ready'));
+  assert.equal(unavailable.children[0].textContent, 'Illustration unavailable.');
+  assert.equal(h.context.document.activeElement, h.nodes.get('print'));
+
+  const terminal = articleMediaHarness().render({ ...preview, processing: { ...preview.processing, state: 'failed', retryable: false } });
+  assert.match(terminal.textContent, /Illustration unavailable\.Retaining bolt locations/);
+  assert.doesNotMatch(terminal.textContent, /Preparing illustration/);
 });
 
 test('authoritative article not-found clears previously readable source and printing', async () => {

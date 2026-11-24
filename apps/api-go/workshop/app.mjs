@@ -1113,6 +1113,8 @@ const missingSourceImage = (reference) =>
   reference?.status === "unavailable" &&
   reference.unavailable_reason === "SOURCE_NOT_FOUND";
 const missingImagePlacement = (id, caption) => JSON.stringify([id, caption || ""]);
+const pendingSourceImageText = "Preparing illustration…";
+const unavailableImageText = "Illustration unavailable.";
 function imageMap(article) {
   return [
     ...(article?.images || []),
@@ -1145,7 +1147,9 @@ function addImage(parent, image, reference, g, figures = null, useAltCaption = f
   } else {
     const missingID = missing ? imageReferenceID(reference) : "";
     if (missingID) figure.dataset.missingImagePlacement = missingImagePlacement(missingID, caption);
-    figure.append(element("p", preparing ? "Preparing illustration…" : "Illustration unavailable.", "image-missing"));
+    const placeholder = element("p", preparing ? pendingSourceImageText : unavailableImageText, "image-missing");
+    if (preparing) placeholder.dataset.pendingSourceImage = "";
+    figure.append(placeholder);
   }
   if ((available || missing || preparing) && visibleCaption)
     figure.append(element("figcaption", visibleCaption));
@@ -1444,6 +1448,7 @@ function renderArticle(article, g, redraw = false) {
   const sourceChanged = currentArticle?.id !== article.id ||
     currentArticle?.source_revision_id !== article.source_revision_id || previousReferenceURL !== referenceURL;
   const rebuildArticle = redraw || revision !== renderedRevision || sourceChanged;
+  const processing = processingArticle(article);
   if (renderedRevision && (rebuildArticle || previousOriginalURL !== originalURL)) {
     const revisionForURL = (url) => validSourceURL(url)?.searchParams.get("source_revision_id");
     const pins = [referenceURL, originalURL].map(revisionForURL).filter(Boolean);
@@ -1455,7 +1460,7 @@ function renderArticle(article, g, redraw = false) {
   if (rebuildArticle) {
     const fragment = document.createDocumentFragment();
     const figures = !openDemo && session.state.mode === "firebase" && article.content_origin === "canonical" &&
-      !processingArticle(article) && article.document?.blocks?.length ? [] : null;
+      !processing && article.document?.blocks?.length ? [] : null;
     renderContent(fragment, article, g, figures);
     if (!g.current()) return;
     $("article-content").replaceChildren(fragment);
@@ -1463,6 +1468,13 @@ function renderArticle(article, g, redraw = false) {
     articleImageRefresh = null;
     sourceImageRefresh = null;
     renderedRevision = revision;
+  }
+  // A retained preview can outlive the job without changing its view revision.
+  if (article.source_body_preview && (rebuildArticle || processing !== processingArticle(currentArticle))) {
+    const message = processing ? pendingSourceImageText : unavailableImageText;
+    for (const placeholder of $("article-content").querySelectorAll("[data-pending-source-image]")) {
+      if (placeholder.textContent !== message) placeholder.textContent = message;
+    }
   }
   currentArticle = article;
   $("article-title").textContent = article.title || "Article";
@@ -1477,7 +1489,6 @@ function renderArticle(article, g, redraw = false) {
   $("reader-vehicle").textContent = vehicleIdentityLabel();
   $("reader-engine").textContent = vehicle.region;
   const readable = readableArticle(article);
-  const processing = processingArticle(article);
   const notes = [];
   if (readable && processing && article.source_body_preview) {
     notes.push("Showing the supplier text while the full article is prepared.");
