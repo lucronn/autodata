@@ -2487,6 +2487,16 @@ function checkAccount(initial) {
   return accountCheck;
 }
 async function confirmedSavedYear(desired, initial, region) {
+  const year = Number(desired.year);
+  if (!desired.model && !desired.configuration) {
+    if (region !== "US") return null;
+    const makes = await initial.make;
+    // The makes endpoint only returns rows stored for the requested year and region.
+    return Array.isArray(makes?.items) && makes.items.some(item =>
+      typeof item?.id === "string" && item.id && (!desired.make || item.id === desired.make))
+      ? { year } : null;
+  }
+  if (!desired.make || !desired.model || !initial.configuration) return null;
   const [makes, models, configurations] = await Promise.all([initial.make, initial.model, initial.configuration]);
   const includes = (result, id) => Array.isArray(result?.items) && result.items.some((item) => item?.id === id);
   if (!includes(makes, desired.make) || !includes(models, desired.model) ||
@@ -2494,7 +2504,6 @@ async function confirmedSavedYear(desired, initial, region) {
       (desired.configuration && !includes(configurations, desired.configuration))) return null;
   const slug = (value) => typeof value === "string"
     ? value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") : "";
-  const year = Number(desired.year);
   return configurations.items.every((item) => item?.complete === true && item.year === year &&
     item.region === region && slug(item.make) === desired.make && slug(item.model) === desired.model)
     ? { year } : null;
@@ -2597,9 +2606,8 @@ async function restoreRoute(initialYears = null, {
         }
       }
       const fullYears = Promise.resolve(initial.year);
-      // Exact configuration rows can confirm the year while the broader list
-      // is in flight. Make/model membership still comes from their own reads.
-      const confirmed = initial.year && desired.make && desired.model && initial.configuration
+      // Verified stored choices can confirm the year while the broader list is in flight.
+      const confirmed = initial.year && initial.make
         ? await Promise.race([
           fullYears.then(() => null),
           confirmedSavedYear(desired, initial, params.get("region") ?? "US"),

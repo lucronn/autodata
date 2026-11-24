@@ -2769,18 +2769,55 @@ const storedPickerConfiguration = {
 };
 const fullPickerYears = { items: [{ year: 2024 }, { year: 2022 }, { year: 2026 }], complete: true };
 
-function setupSlowSavedYears(route, configuration = storedPickerConfiguration) {
+function setupSlowSavedYears(route, configuration = storedPickerConfiguration, makes = savedPickerRows[1]) {
   const year = deferredAuthOperation();
   const response = { items: [configuration], complete: true };
   const initialSelectors = startSavedSelectorReads(new URLSearchParams(route), async path => {
     const index = savedPickerPaths.indexOf(path);
     if (index === 0) return year.promise;
+    if (index === 1) return makes;
     return index === 3 ? response : savedPickerRows[index];
   });
   const h = loginRouteHarness(route);
   const opening = h.context.restoreRoute(null, { initialSelectors });
   return { ...h, opening, year, initialSelectors };
 }
+
+for (const hasMake of [false, true]) {
+  test(`saved ${hasMake ? 'year and make' : 'year'} opens its stored choices while the full year list loads`, async () => {
+    const route = hasMake ? '?year=2024&make=buick-truck' : '?year=2024';
+    const h = setupSlowSavedYears(route);
+    await new Promise(setImmediate);
+    const expected = ['2024', hasMake ? 'buick-truck' : '', '', ''];
+    assert.deepEqual(h.context.names.map(name => h.element(name).value), expected);
+    assert.equal(h.element('year').disabled, false);
+    assert.equal(h.element('make').disabled, false);
+    assert.equal(h.element('model').disabled, !hasMake);
+    assert.equal(h.element('configuration').disabled, true);
+    assert.deepEqual(h.calls.selections, []);
+
+    h.year.resolve(fullPickerYears);
+    await h.opening;
+    assert.deepEqual(h.context.names.map(name => h.element(name).value), expected);
+    assert.deepEqual(h.element('year').children.slice(1).map(option => option.value), ['2026', '2024', '2022']);
+    assert.deepEqual(h.calls.selectorReads, []);
+  });
+}
+
+test('a saved model preview cannot establish the year when the requested make is missing', async () => {
+  const makes = { items: [{ id: 'ford', name: 'Ford' }], complete: true };
+  const h = setupSlowSavedYears('?year=2024&make=buick-truck', undefined, makes);
+  const rejected = assert.rejects(h.opening, /Unavailable choice/);
+  await new Promise(setImmediate);
+  assert.equal(h.element('year').disabled, true);
+  assert.equal(h.element('model').disabled, true);
+  assert.deepEqual(h.calls.selections, []);
+
+  h.year.resolve(fullPickerYears);
+  await rejected;
+  assert.equal(h.element('year').value, '2024');
+  assert.equal(h.element('model').disabled, true);
+});
 
 for (const exact of [false, true]) {
   test(`a verified saved ${exact ? 'configuration' : 'model'} is usable before its full year list`, async () => {
