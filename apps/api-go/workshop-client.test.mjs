@@ -873,6 +873,93 @@ test('reader checks an active, slow first capture without delaying its regular r
   }
 });
 
+test('readable capture previews can show newer source during the first two long waits', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const processing = { job_id: 'job', state: 'fetching_source', retry_after_seconds: 1 };
+  const wrapper = { status: 200, data: { article: {
+    content_origin: 'source', source_body_preview: true, source_revision_id: null,
+    view_revision: 'wrapper', document: { blocks: [{ type: 'paragraph', text: 'Attachment label.' }] }, processing,
+  } } };
+  const linked = { ...wrapper, data: { article: {
+    ...wrapper.data.article, view_revision: 'linked',
+    document: { blocks: [{ type: 'paragraph', text: 'Linked document text.' }] },
+  } } };
+  const original = { ...wrapper, data: { article: {
+    ...linked.data.article, source_body_preview: false, source_revision_id: 'source',
+    view_revision: 'original', processing: { ...processing, state: 'rewriting' },
+  } } };
+  const done = { ...original, data: { article: {
+    ...original.data.article, view_revision: 'published', processing: { ...processing, state: 'completed' },
+  } } };
+  let now = 0;
+  const starts = [], firstVisible = new Map();
+  await readArticle(async (options) => {
+    starts.push(now);
+    if (now <= 3500) return wrapper;
+    if (now === 5000 || now === 11000) {
+      const budget = now === 5000 ? 2000 : 4000;
+      assert.equal(options.timeout, budget);
+      assert.equal(options.readableBodyTimeout, budget);
+    }
+    if (now <= 7100) return linked;
+    if (now < 15000) return original;
+    return done;
+  }, {
+    now: () => now, wait: async ms => { now += ms; },
+    onUpdate(response) {
+      const view = response.data.article.view_revision;
+      if (!firstVisible.has(view)) firstVisible.set(view, now);
+    },
+  });
+  assert.deepEqual(starts, [0, 1000, 3000, 5000, 7000, 11000, 15000]);
+  assert.deepEqual([...firstVisible], [['wrapper', 0], ['linked', 5000], ['original', 11000], ['published', 15000]]);
+});
+
+test('capture preview checks preserve retry floors, access errors and cancellation', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const article = {
+    content_origin: 'source', source_body_preview: true, source_revision_id: null, body: 'Preview',
+    processing: { job_id: 'job', state: 'fetching_source' },
+  };
+  const done = { status: 200, data: { article: { body: 'Stored procedure' } } };
+  const busy = Object.assign(new Error('Busy'), { status: 503, retryable: true, retryAfterSeconds: 4 });
+  const denied = Object.assign(new Error('Access revoked'), { status: 403, code: 'ENTITLEMENT_REVOKED' });
+  const ordinary = [0, 1000, 3000, 7000, 15000, 25000];
+  const probed = [0, 1000, 3000, 5000, 7000, 11000, 15000, 25000];
+  for (const [label, data, retryAfterSeconds, outcome, starts] of [
+    ['steady capture', article, 1, null, probed],
+    ['transient transport failure', article, 1, new TypeError('Network failed'), probed],
+    ['explicit retry floor', article, 1, busy, [0, 1000, 3000, 5000, 9000, 13000, 17000, 27000]],
+    ['revoked grant', article, 1, denied, [0, 1000, 3000, 5000]],
+    ['aborted preview check', article, 1, 'abort', [0, 1000, 3000, 5000]],
+    ['no preview contract', { ...article, source_body_preview: undefined }, 1, null, ordinary],
+    ['stored revision', { ...article, source_revision_id: 'source' }, 1, null, ordinary],
+    ['no retry hint', article, 0, null, ordinary],
+  ]) {
+    let now = 0;
+    const actual = [], shown = [];
+    const controller = new AbortController();
+    const reading = readArticle(async ({ signal }) => {
+      assert.equal(signal, controller.signal);
+      actual.push(now);
+      if (now === 5000 && outcome instanceof Error) throw outcome;
+      if (now === 5000 && outcome === 'abort') controller.abort();
+      if (now >= 25000) return done;
+      return { status: 200, retryAfterSeconds, data: { article: data } };
+    }, {
+      signal: controller.signal, now: () => now, wait: async ms => { now += ms; },
+      onUpdate() { shown.push(now); },
+    });
+    if (outcome === 'abort' || outcome === denied) {
+      await assert.rejects(reading, outcome === 'abort' ? { name: 'AbortError' } : denied);
+      assert.deepEqual(shown, [0, 1000, 3000]);
+    } else {
+      assert.equal((await reading).data.article.body, 'Stored procedure', label);
+    }
+    assert.deepEqual(actual, starts, label);
+  }
+});
+
 test('reader confirms newly visible source once before resuming publication backoff', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   const pending = { status: 202, retryAfterSeconds: 1, data: {
