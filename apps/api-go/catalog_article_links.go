@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"regexp"
 	"slices"
 )
@@ -13,11 +15,105 @@ var catalogArticleReferenceDigest = regexp.MustCompile("^[a-f0-9]{64}$")
 
 type catalogArticleLinkResolver func([]string) map[string]string
 
-func projectStoredCatalogDocument(document *CatalogDocument, raw []byte, resolve catalogArticleLinkResolver) *CatalogDocument {
-	if resolve == nil || !bytes.Contains(raw, []byte(`"target_ref_sha256"`)) {
+type retainedCatalogLink struct {
+	labelSHA256  string
+	targetSHA256 string
+}
+
+type catalogArticleLinkProjection struct {
+	resolve  catalogArticleLinkResolver
+	retained map[string]retainedCatalogLink
+}
+
+func projectStoredCatalogDocument(document *CatalogDocument, raw []byte, links catalogArticleLinkProjection) *CatalogDocument {
+	if links.resolve == nil || (len(links.retained) == 0 && !bytes.Contains(raw, []byte(`"target_ref_sha256"`))) {
 		return publicCatalogDocument(document)
 	}
-	return projectCatalogDocument(raw, resolve)
+	return projectCatalogDocument(raw, links)
+}
+
+// Retained rows bind an immutable body and the currently effective published
+// revision. An unavailable binding lookup leaves the original view readable.
+func (s *postgresCatalogStore) retainedArticleLinkBindings(ctx context.Context, article string, source, canonical *string, bodySHA256 string, document []byte) map[string]retainedCatalogLink {
+	if source == nil || canonical == nil || !catalogArticleReferenceDigest.MatchString(bodySHA256) ||
+		!bytes.Contains(document, []byte(`"link"`)) {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, catalogStatusReadTimeout)
+	defer cancel()
+	rows, err := s.pool.Query(ctx, `
+		SELECT binding.block_id, binding.label_sha256, binding.target_ref_sha256
+		FROM canonical_article_link_bindings binding
+		JOIN canonical_articles a ON a.canonical_article_id=binding.canonical_article_id
+		`+paidArticleCurrentJoinSQL+`
+		WHERE binding.canonical_article_revision_id=$3::uuid AND binding.source_revision_id=$2::uuid
+		  AND binding.canonical_article_id=$1::uuid AND binding.body_sha256=$4
+		  AND a.provider_slug='bankone' AND a.membership_status='active'
+		  AND c.canonical_revision_id=binding.canonical_article_revision_id
+		  AND c.source_revision_id=binding.source_revision_id AND c.takedown_status='active'
+		  AND c.source_content_sha256::text=binding.body_sha256
+		LIMIT $5`, article, *source, *canonical, bodySHA256, maxCatalogArticleLinkTargets+1)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	links := make(map[string]retainedCatalogLink)
+	for rows.Next() {
+		var blockID string
+		var link retainedCatalogLink
+		if err := rows.Scan(&blockID, &link.labelSHA256, &link.targetSHA256); err != nil {
+			return nil
+		}
+		if blockID == "" || !catalogArticleReferenceDigest.MatchString(link.labelSHA256) ||
+			!catalogArticleReferenceDigest.MatchString(link.targetSHA256) || len(links) >= maxCatalogArticleLinkTargets {
+			return nil
+		}
+		links[blockID] = link
+	}
+	if rows.Err() != nil {
+		return nil
+	}
+	return links
+}
+
+func collectRetainedCatalogLink(retained map[string]retainedCatalogLink, matches map[string]map[string]any, node, out map[string]any) {
+	blockID, _ := node["block_id"].(string)
+	link, exists := retained[blockID]
+	if !exists {
+		return
+	}
+	_, duplicate := matches[blockID]
+	matches[blockID] = nil
+	label, hasLabel := node["text"].(string)
+	_, hasAuthoredHash := node["target_ref_sha256"]
+	if duplicate || node["type"] != "link" || !hasLabel || label == "" || hasAuthoredHash {
+		return
+	}
+	digest := sha256.Sum256([]byte(label))
+	if hex.EncodeToString(digest[:]) == link.labelSHA256 {
+		matches[blockID] = out
+	}
+}
+
+// Keep the in-document bindings and their original limit even if the combined
+// lookup would exceed that limit. Retained bindings can only fill unused slots.
+func addRetainedCatalogLinkSlots(slots map[string][]map[string]any, retained map[string]retainedCatalogLink, matches map[string]map[string]any) {
+	extra := make(map[string]struct{})
+	for blockID, block := range matches {
+		hash := retained[blockID].targetSHA256
+		if block != nil && len(slots[hash]) == 0 {
+			extra[hash] = struct{}{}
+		}
+	}
+	if len(slots)+len(extra) > maxCatalogArticleLinkTargets {
+		return
+	}
+	for blockID, block := range matches {
+		if block != nil {
+			hash := retained[blockID].targetSHA256
+			slots[hash] = append(slots[hash], block)
+		}
+	}
 }
 
 func addResolvedCatalogArticleLinks(slots map[string][]map[string]any, resolve catalogArticleLinkResolver) {

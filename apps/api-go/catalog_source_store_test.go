@@ -88,7 +88,7 @@ func TestCatalogSourceProjectionPreservesDisplayIdentity(t *testing.T) {
 	before.Body, before.SourceRevisionID, before.ContentOrigin = text, source.SourceRevisionID, stringPointer("source")
 	before.Document = publicCatalogDocument(before.Document)
 	view := lifecycleArticle(before)
-	result, err := decodeCatalogSourceProjection(source, document, images, text, steps, nil)
+	result, err := decodeCatalogSourceProjection(source, document, images, text, steps, catalogArticleLinkProjection{})
 	if err != nil || result.ViewRevision == nil || !samePaidCatalogID(result.ViewRevision, view.ViewRevision) || !reflect.DeepEqual(result.Document, before.Document) {
 		t.Fatal("scoped decoding changed source document or view revision", err)
 	}

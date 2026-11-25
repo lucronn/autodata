@@ -329,13 +329,17 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 	}
 	article.canonicalVehicleID = row.VehicleID
 	article.canonicalConfigurationID = row.ConfigurationID
-	var resolve catalogArticleLinkResolver
+	var links catalogArticleLinkProjection
 	if paid && !scope.openDemo && row.Takedown == "active" && scope.identity != nil &&
 		scope.configuration.ID == v && row.ConfigurationID != nil && *row.ConfigurationID == v &&
 		row.CanonicalArticleID == scope.identity.CanonicalArticleID {
-		resolve = s.authoredArticleLinkResolver(ctx, *scope.identity)
+		links.resolve = s.authoredArticleLinkResolver(ctx, *scope.identity)
+		if links.resolve != nil && article.Complete {
+			links.retained = s.retainedArticleLinkBindings(ctx, row.CanonicalArticleID, row.SourceRevisionID,
+				row.CanonicalRevisionID, article.sourceContentSHA256, row.Document)
+		}
 	}
-	article.Document = projectStoredCatalogDocument(document, row.Document, resolve)
+	article.Document = projectStoredCatalogDocument(document, row.Document, links)
 	article = catalogArticleLifecycle(article)
 	view := CatalogArticleView{Article: article, Withdrawn: row.Takedown != "active", CanSchedule: row.JobID == nil && row.Takedown == "active"}
 	if originalRevision != nil && !view.Withdrawn {
@@ -623,10 +627,10 @@ func (s *postgresCatalogStore) ArticleSourceRevision(ctx context.Context, p Prin
 		return CatalogSourceContent{}, err
 	}
 	result.SourceRevisionID = &sourceID
-	return decodeCatalogSourceProjection(result, doc, images, body, steps, nil)
+	return decodeCatalogSourceProjection(result, doc, images, body, steps, catalogArticleLinkProjection{})
 }
 
-func decodeCatalogSourceProjection(result CatalogSourceContent, doc, images []byte, body string, steps []byte, resolve catalogArticleLinkResolver) (CatalogSourceContent, error) {
+func decodeCatalogSourceProjection(result CatalogSourceContent, doc, images []byte, body string, steps []byte, links catalogArticleLinkProjection) (CatalogSourceContent, error) {
 	var document CatalogDocument
 	if err := json.Unmarshal(doc, &document); err != nil {
 		return CatalogSourceContent{}, err
@@ -634,7 +638,7 @@ func decodeCatalogSourceProjection(result CatalogSourceContent, doc, images []by
 	if err := json.Unmarshal(images, &result.Images); err != nil {
 		return CatalogSourceContent{}, err
 	}
-	article := CatalogArticle{SourceRevisionID: result.SourceRevisionID, ContentOrigin: stringPointer("source"), Document: projectStoredCatalogDocument(&document, doc, resolve), Images: result.Images, Body: body}
+	article := CatalogArticle{SourceRevisionID: result.SourceRevisionID, ContentOrigin: stringPointer("source"), Document: projectStoredCatalogDocument(&document, doc, links), Images: result.Images, Body: body}
 	_ = json.Unmarshal(steps, &article.Steps)
 	article = catalogArticleLifecycle(article)
 	result.Document = article.Document
@@ -662,17 +666,21 @@ func publicCatalogDocument(document *CatalogDocument) *CatalogDocument {
 	if err != nil {
 		return nil
 	}
-	return projectCatalogDocument(raw, nil)
+	return projectCatalogDocument(raw, catalogArticleLinkProjection{})
 }
 
-func projectCatalogDocument(raw []byte, resolve catalogArticleLinkResolver) *CatalogDocument {
+func projectCatalogDocument(raw []byte, links catalogArticleLinkProjection) *CatalogDocument {
 	var value any
 	if json.Unmarshal(raw, &value) != nil {
 		return nil
 	}
 	var slots map[string][]map[string]any
-	if resolve != nil {
+	if links.resolve != nil {
 		slots = make(map[string][]map[string]any)
+	}
+	var retainedMatches map[string]map[string]any
+	if links.resolve != nil && len(links.retained) != 0 {
+		retainedMatches = make(map[string]map[string]any)
 	}
 	var project func(any) any
 	project = func(value any) any {
@@ -718,14 +726,20 @@ func projectCatalogDocument(raw []byte, resolve catalogArticleLinkResolver) *Cat
 			if id, ok := out["image_id"].(string); ok && id != "" {
 				out["asset_id"] = id
 			}
+			if retainedMatches != nil {
+				collectRetainedCatalogLink(links.retained, retainedMatches, node, out)
+			}
 			return out
 		default:
 			return value
 		}
 	}
 	projectedValue := project(value)
+	if len(retainedMatches) != 0 && len(slots) <= maxCatalogArticleLinkTargets {
+		addRetainedCatalogLinkSlots(slots, links.retained, retainedMatches)
+	}
 	if len(slots) != 0 && len(slots) <= maxCatalogArticleLinkTargets {
-		addResolvedCatalogArticleLinks(slots, resolve)
+		addResolvedCatalogArticleLinks(slots, links.resolve)
 	}
 	raw, err := json.Marshal(projectedValue)
 	if err != nil {
