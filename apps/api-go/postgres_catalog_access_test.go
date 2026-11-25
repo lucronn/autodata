@@ -656,7 +656,7 @@ func TestPostgresPaidCatalogExactTitleSearch(t *testing.T) {
 
 func TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse(t *testing.T) {
 	f := paidSetup(t)
-	f.grant(0, f.configuration, "US")
+	order := f.grant(0, f.configuration, "US")
 	f.grant(1, f.configuration, "US")
 	cold := f.snapshot("cold")
 	f.expect(0, "GET", f.path("/"+f.article), "", 503)
@@ -693,6 +693,25 @@ func TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse(t *testing.T) {
 	f.check("actual_model_response_held", held["response_captured"] == true)
 	source := f.detail(0)
 	f.check("source_readable_during_hold", r3Origin(source, "source") && source.Processing != nil)
+	if source.SourceRevisionID == nil || source.CanonicalRevisionID != nil ||
+		len(source.Images) == 0 || source.Images[0].URL == "" {
+		t.Fatal("first publication fixture needs a source-only article figure")
+	}
+	sourcePath := catalogPinnedSourceURL(f.configuration, f.article, source.SourceRevisionID)
+	var original CatalogSourceContentResponse
+	if err := json.Unmarshal(f.expect(0, http.MethodGet, sourcePath, "", http.StatusOK), &original); err != nil ||
+		original.Source.URL != sourcePath || original.Document == nil || len(original.Images) == 0 || original.Images[0].URL == "" {
+		t.Fatal("first publication fixture needs the pinned Original document and figure", err)
+	}
+	originalImage := original.Images[0].URL
+	articleImage := source.Images[0].URL
+	originalRef, err := openPaidCatalogImageReference(strings.TrimPrefix(originalImage, "/v1/catalog/images/"), f.applications[0].catalogImageKey, time.Now())
+	if err != nil || originalRef.Projection != "source" || originalRef.AnchorCanonicalRevisionID != nil ||
+		originalRef.AnchorSourceRevisionID != *source.SourceRevisionID || originalRef.SelectedSourceRevisionID != *source.SourceRevisionID {
+		t.Fatal("Original figure did not bind the exact prepublication source", err)
+	}
+	priorBytes := f.expect(0, http.MethodGet, originalImage, "", http.StatusOK)
+	f.image(0, articleImage, http.StatusOK)
 	// The fixture source says "Remove the pump."; the held model rewrites it to
 	// "Take off the pump." Neither phrase appears in the "Pump" descriptor.
 	sourceSearch := f.contentSearch(0, "Remove the pump")
@@ -701,6 +720,28 @@ func TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse(t *testing.T) {
 	f.control.controlCall("POST", "release-model")
 	f.control.wait("snapshot", func(m map[string]any) bool { return r3Int(r3Map(m, "counts"), "published_revisions") == 1 })
 	first := f.detail(0)
+	if first.CanonicalRevisionID == nil || !samePaidCatalogID(source.SourceRevisionID, first.SourceRevisionID) ||
+		first.SourceReview == nil || first.SourceReview.URL != sourcePath {
+		t.Fatal("first publication changed the selected Original")
+	}
+	beforeImages := f.reader.calls.Load()
+	publishedBytes := f.expect(0, http.MethodGet, originalImage, "", http.StatusOK)
+	if !bytes.Equal(priorBytes, publishedBytes) || len(publishedBytes) == 0 || f.reader.calls.Load() != beforeImages+1 {
+		t.Fatal("prepublication Original figure did not read the same stored bytes after publication")
+	}
+	beforeDenials := f.reader.calls.Load()
+	f.image(0, articleImage, http.StatusNotFound)
+	f.image(-1, originalImage, http.StatusUnauthorized)
+	f.image(1, originalImage, http.StatusNotFound)
+	wrongSource := originalRef
+	wrongSource.SelectedSourceRevisionID = f.other
+	f.image(0, f.token(wrongSource, time.Now()), http.StatusNotFound)
+	missingAsset := originalRef
+	missingAsset.AssetID = "unmapped-asset"
+	f.image(0, f.token(missingAsset, time.Now()), http.StatusNotFound)
+	if f.reader.calls.Load() != beforeDenials {
+		t.Fatal("an invalid prepublication figure request reached object storage")
+	}
 	canonicalSearch := f.contentSearch(0, "Take off the pump")
 	f.check("canonical_content_search_current_projection", paidSearchHas(canonicalSearch, f.article, "canonical"))
 	if !f.supersededTermAbsent("Remove the pump") {
@@ -756,6 +797,13 @@ func TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse(t *testing.T) {
 	want, _ := json.Marshal(expectedArticle.Steps)
 	f.check("canonical_steps_preserved", bytes.Equal(actual, want) && len(first.Steps) > 0 && first.Steps[0].Action != "" && first.Steps[0].Number == 0)
 	f.check("payment_grants_persist", r3Int(after, "payment_calls") == 0 && len(r3Map(after, "paid_rows")["entitlements"].([]any)) == 2)
+	beforeDenials = f.reader.calls.Load()
+	f.exec(`UPDATE entitlements SET status='revoked',revoked_at=now(),revoke_reason='fixture' WHERE commerce_order_id=$1::uuid`, order)
+	f.image(0, originalImage, http.StatusForbidden)
+	if f.reader.calls.Load() != beforeDenials {
+		t.Fatal("revocation allowed the prepublication Original figure to reach object storage")
+	}
+	f.exec(`UPDATE entitlements SET status='active',revoked_at=NULL,revoke_reason=NULL WHERE commerce_order_id=$1::uuid`, order)
 }
 
 func TestPostgresPaidCatalogSourceBodyPreviewRights(t *testing.T) {
@@ -1153,6 +1201,14 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 	f.controlPaid("refresh-source")
 	f.control.wait("snapshot", func(s map[string]any) bool { return r3Int(r3Map(s, "counts"), "published_revisions") == 2 })
 	fresh := f.detail(0)
+	if fresh.SourceRevisionID == nil || *fresh.SourceRevisionID == oldSource {
+		t.Fatal("historical Original fixture did not replace the current source")
+	}
+	beforeReplacementDenial := f.reader.calls.Load()
+	f.image(0, source.Images[0].URL, http.StatusNotFound)
+	if f.reader.calls.Load() != beforeReplacementDenial {
+		t.Fatal("a stale Original figure capability reached object storage after source replacement")
+	}
 	store := newPostgresCatalogStore(f.pool)
 	for _, revision := range []string{"", *fresh.SourceRevisionID, oldSource} {
 		full, fullErr := store.ArticleSourceRevision(context.Background(), Principal{}, f.configuration, f.article, revision)
@@ -1181,11 +1237,12 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 	}
 	f.check("historical_source_selected", ref.SelectedSourceRevisionID == oldSource && ref.AnchorSourceRevisionID == *fresh.SourceRevisionID)
 	f.image(0, source.Images[0].URL, 200)
+	before := f.reader.calls.Load()
 	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=(SELECT body_source_snapshot_id FROM canonical_article_source_revisions WHERE source_revision_id=$1::uuid)`, oldSource)
 	f.expect(0, "GET", sourcePath, "", 404)
+	f.image(0, source.Images[0].URL, http.StatusNotFound)
 	f.expect(0, "GET", f.path("/"+f.article+"/source"), "", 200)
 	f.exec(`UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=(SELECT body_source_snapshot_id FROM canonical_article_source_revisions WHERE source_revision_id=$1::uuid)`, oldSource)
-	before := f.reader.calls.Load()
 	rightsBefore := f.snapshot("rights_before")
 	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=(SELECT body_source_snapshot_id FROM canonical_article_source_revisions WHERE source_revision_id=$1::uuid)`, *fresh.SourceRevisionID)
 	f.expect(0, "GET", f.path("/"+f.article), "", 410)
@@ -1239,6 +1296,7 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 		f.expect(0, "GET", f.path("/"+f.article), "", 404)
 		f.expect(0, "GET", sourcePath, "", 404)
 		f.image(0, fresh.Images[0].URL, 404)
+		f.image(0, source.Images[0].URL, http.StatusNotFound)
 		var index CatalogArticlesResponse
 		if err := json.Unmarshal(f.expect(0, "GET", f.path(""), "", 200), &index); err != nil {
 			t.Fatal(err)
