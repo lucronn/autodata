@@ -4,9 +4,11 @@ import json
 import pytest
 
 from autodata_ingestion.article_lifecycle_types import digest_json
-from autodata_ingestion.procedure_rewrite_auto import build_auto_prompt
+from autodata_ingestion.procedure_rewrite_auto import build_auto_prompt, render_auto
+from autodata_ingestion.procedure_rewrite_cooling_recovery import recast_cooling_passage
 from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_COOLING_RECOVERY_METHOD,
+    FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
     FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
@@ -362,3 +364,132 @@ def test_recovers_loosen_and_fill_bleed_with_a_source_based_introduction():
 ])
 def test_cooling_recovery_does_not_infer_conditions_sequence_or_system(original):
     assert _equivalent_cooling_directive(original) is None
+
+
+@pytest.mark.parametrize("original", [
+    "Close the valve and discard the seal.",
+    "Close the gate without letting go.",
+    "Install the plug and select service mode until it contacts the stop.",
+    "Repeat Steps 1 through 2 a total of 3 times to remove residue and alert the operator.",
+])
+def test_cooling_sequence_rejects_extra_clauses_in_a_target(original):
+    assert recast_cooling_passage(original, "REWRITE_ACTION_MUTATION") is None
+
+
+def test_cooling_sequence_recovers_ratio_and_closure_without_touching_passing_rows():
+    ratio = "Maximum additive mixture is 7/9 for a cold climate."
+    closure = "Close the fixture valve."
+    warning = "Warning: Do not release the fitting while the assembly is hot."
+    source = document(ratio, closure, "Remove the access cover.", warning)
+    raw = response(
+        "The additive mixture must not exceed 7/9.",
+        "Open the fixture valve.",
+        "The access cover must be removed.",
+        warning,
+        introduction="This article describes the service information that follows.",
+    )
+    raw["replacements"][3].update(action="retain", reason="Preserve the exact safety wording.")
+    saved = deepcopy(raw)
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    method = FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD
+
+    result = recover_first_draft(source, raw, prompt_version=version)
+
+    assert result.evidence["method"] == method
+    assert result.evidence["original_error_code"] == "REWRITE_TECHNICAL_MUTATION"
+    assert result.evidence["corrected_paths"] == ["/blocks/0/text", "/blocks/1/text"]
+    assert result.evidence["raw_response_hash"] == digest_json(saved)
+    assert result.evidence["output_hash"] == digest_json(result.document)
+    assert raw == saved
+    assert result.response["introduction"] == saved["introduction"]
+    assert result.response["replacements"][2:] == saved["replacements"][2:]
+    assert result.response["replacements"][0]["text"] == (
+        "The additive mixture has a maximum of 7/9 for a cold climate."
+    )
+    assert result.response["replacements"][1]["text"] == "The fixture valve must be closed."
+    assert recover_first_draft(source, raw, prompt_version=version, method=method) == result
+    assert recover_first_draft(
+        source, raw, prompt_version=version, method=FIRST_DRAFT_COOLING_RECOVERY_METHOD,
+    ) is None
+
+    for wording, error in (
+        ("The additive mixture has a maximum of 7/8 for a cold climate.", "REWRITE_TECHNICAL_MUTATION"),
+        ("The additive mixture must not exceed 7/9 for a cold climate.", "REWRITE_SAFETY_MUTATION"),
+    ):
+        changed = deepcopy(result.response)
+        changed["replacements"][0]["text"] = wording
+        with pytest.raises(ValueError, match=error):
+            render_auto(source, changed, prompt_version=version)
+
+
+def test_cooling_sequence_refuses_publication_when_an_authored_warning_changes():
+    source = document(
+        "Maximum additive mixture is 7/9 for a cold climate.",
+        "Warning: Do not release the fitting while the assembly is hot.",
+    )
+    raw = response(
+        "The additive mixture must not exceed 7/9.",
+        "Warning: Release the fitting while the assembly is hot.",
+    )
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+
+    assert recover_first_draft(
+        source, raw, prompt_version=version, method=FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
+    ) is None
+
+
+def test_cooling_sequence_preserves_the_contact_endpoint_and_exact_step_range():
+    endpoint = "Install the fixture cap until it contacts the positive stop."
+    repetition = "Repeat Steps 2 through 4 a total of 3 times to remove residue from the chamber."
+    heading = "Filling and Bleeding with a service adapter"
+    source = document(endpoint, repetition, heading)
+    raw = response(
+        "Remove the fixture cap at the positive stop.",
+        "Perform Steps 2 through 4 a total of 3 times to leave residue in the chamber.",
+        heading,
+        introduction="This article describes the service information that follows.",
+    )
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    method = FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD
+
+    result = recover_first_draft(source, raw, prompt_version=version, method=method)
+
+    assert result.evidence["corrected_paths"] == [row["path"] for row in raw["replacements"]]
+    assert [row["text"] for row in result.response["replacements"]] == [
+        "Install the fixture cap. Continue until it contacts the positive stop.",
+        "Remove residue from the chamber by repeating Steps 2 through 4 a total of 3 times.",
+        "How to fill and bleed with a service adapter",
+    ]
+
+    source["blocks"][0]["text"] = "Install the fixture cap until it contacts the stop only if the seal is cool."
+    assert recover_first_draft(source, raw, prompt_version=version, method=method) is None
+
+
+def test_cooling_sequence_keeps_both_idle_conditions_and_their_observation():
+    instruction = (
+        "Start the drive motor and let it idle until the chamber temperature reaches operating temperature "
+        "and the bypass valve is fully open. A fully open bypass valve is verified by the status lamp "
+        "cycling on at least once."
+    )
+    source = document(instruction)
+    raw = response(
+        "The drive motor can idle until the chamber reaches its operating temperature.",
+        introduction="This article describes the service information that follows.",
+    )
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    method = FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD
+
+    result = recover_first_draft(source, raw, prompt_version=version, method=method)
+
+    assert result.evidence["original_error_code"] == "REWRITE_ACTION_MUTATION"
+    assert result.response["replacements"][0]["text"] == (
+        "Start the drive motor. Keep it idling until both conditions are met: "
+        "the chamber temperature has reached operating temperature, and the bypass valve is fully open. "
+        "The status lamp cycling on at least once verifies a fully open bypass valve."
+    )
+    for changed in (
+        instruction.replace("and the bypass valve", "or the bypass valve"),
+        instruction.replace("A fully open bypass valve", "A fully open drain valve"),
+        instruction.replace("at least once", "briefly"),
+    ):
+        assert recover_first_draft(document(changed), raw, prompt_version=version, method=method) is None
