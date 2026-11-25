@@ -90,8 +90,7 @@ def test_retained_rewrite_keeps_stored_instructions_readable_when_draft_weakens_
         assert conn.execute("SELECT count(*) AS total FROM publication_events").fetchone()["total"] == before
 
 
-@pytest.fixture
-def retained_job(runtime):
+def _failed_first_draft(runtime):
     configuration = seed_configuration(runtime.repo, runtime.vehicle)
     with runtime.repo.connect() as conn:
         conn.execute(
@@ -123,12 +122,22 @@ def retained_job(runtime):
     assert source["canonical_revision_id"] is None
     assert copied.calls == [AUTOMATIC_REWRITE_PROFILE]
     assert runtime.counters()["source"] == 1
-    source_id = source["source_revision_id"]
+    return first.job_id, source["source_revision_id"]
+
+
+@pytest.fixture
+def failed_first_draft(runtime):
+    return _failed_first_draft(runtime)
+
+
+@pytest.fixture
+def retained_job(runtime):
+    first_id, source_id = _failed_first_draft(runtime)
     scheduled = schedule_source_bound_rewrite(
-        runtime.repo, runtime.article_id, expected_job_id=first.job_id,
+        runtime.repo, runtime.article_id, expected_job_id=first_id,
         expected_source_revision_id=source_id, actor="fixture-editor", reason="Retry the exact retained source.",
     )
-    return first.job_id, source_id, scheduled.job_id
+    return first_id, source_id, scheduled.job_id
 
 
 def test_retained_rewrite_replays_and_publishes_new_profile_without_recapture(runtime, retained_job):

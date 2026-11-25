@@ -1,19 +1,21 @@
-"""Sentence correction with the saved v2 draft and real publication leases."""
+"""Sentence correction with saved drafts and real publication leases."""
 
 from hashlib import sha256
 import json
 
 import pytest
+from psycopg.types.json import Jsonb
 
 from autodata_ingestion import article_lifecycle_store as store
 from autodata_ingestion.article_lifecycle_types import (
-    SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, digest_json,
+    AUTOMATIC_REWRITE_PROFILE, SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, digest_json,
 )
 from autodata_ingestion.published_media_publication import _publication_evidence
+from autodata_ingestion.procedure_rewrite_auto import build_auto_prompt
 from autodata_ingestion.source_job_persistence import schedule_source_bound_correction
 from lifecycle_support import fresh_database, runtime
 from test_source_bound_correction_worker import CopiedSource, InvalidIntroduction, attempt_rows, retained_media
-from test_source_bound_rewrite_worker import retained_job, run_job
+from test_source_bound_rewrite_worker import failed_first_draft, retained_job, run_job
 
 
 SENTENCE_METHOD = "source-bound-sentence-correction-v1"
@@ -60,11 +62,11 @@ def pump_draft(runtime, retained_job):
     return first_job_id, prior_id, current
 
 
-def schedule(runtime, prior_id, source_id, *, budget=2):
+def schedule(runtime, prior_id, source_id, *, budget=2, first_draft=False):
     return schedule_source_bound_correction(
         runtime.repo, runtime.article_id, expected_job_id=prior_id, expected_source_revision_id=source_id,
         actor="fixture-editor", reason="Correct unresolved sentences in the retained draft.",
-        model_call_budget=budget, by_sentence=True,
+        model_call_budget=budget, by_sentence=True, first_draft=first_draft,
     )
 
 
@@ -82,12 +84,20 @@ def stop_after_candidate(phase):
         raise WorkerStopped
 
 
-@pytest.mark.parametrize("fixture_name", ("pump_draft", "retained_media"), ids=("two-rounds", "retained-figure"))
+@pytest.mark.parametrize(
+    "fixture_name", ("pump_draft", "retained_media", "failed_first_draft"),
+    ids=("two-rounds", "retained-figure", "direct-from-first-draft"),
+)
 def test_sentence_correction_replays_saved_rounds_without_refetch(runtime, request, fixture_name):
     fixture = request.getfixturevalue(fixture_name)
+    first_draft = fixture_name == "failed_first_draft"
     if fixture_name == "pump_draft":
         _, prior_id, source = fixture
         expected_calls = 2
+    elif first_draft:
+        prior_id, _ = fixture
+        source = runtime.read_current()
+        expected_calls = 1
     else:
         prior_id, source, _ = fixture
         expected_calls = 1
@@ -95,16 +105,24 @@ def test_sentence_correction_replays_saved_rounds_without_refetch(runtime, reque
     [original_attempt] = attempt_rows(runtime, prior_id)
     prior = source_job(runtime, prior_id)
     assert (prior["status"], prior["phase"], prior["source_revision_id"]) == ("dead_letter", "validating", source_id)
-    assert original_attempt["profile_version"] == SOURCE_BOUND_REWRITE_PROFILE
+    expected_profile = AUTOMATIC_REWRITE_PROFILE if first_draft else SOURCE_BOUND_REWRITE_PROFILE
+    assert original_attempt["profile_version"] == expected_profile
     assert original_attempt["status"] == "failed" and original_attempt["error_code"] == "REWRITE_UNCHANGED"
     assert original_attempt["response_hash"] == digest_json(original_attempt["response"])
-    job = schedule(runtime, prior_id, source_id, budget=expected_calls)
+    job = schedule(runtime, prior_id, source_id, budget=expected_calls, first_draft=first_draft)
     binding = source_job(runtime, job.job_id)["checkpoint"]["source_bound_rewrite"]
     assert binding["correction_method"] == SENTENCE_METHOD and binding["model_call_budget"] == expected_calls
     assert binding["prior_job_id"] == str(prior_id) and binding["source_revision_id"] == str(source_id)
     assert binding["prior_attempt_id"] == str(original_attempt["rewrite_attempt_id"])
     assert binding["prior_response_hash"] == original_attempt["response_hash"]
-    assert not schedule(runtime, prior_id, source_id, budget=expected_calls).created
+    if first_draft:
+        with runtime.repo.connect() as conn:
+            observation = conn.execute("""SELECT source_observation_id FROM canonical_article_source_observations
+                WHERE source_fetch_job_id=%s AND source_revision_id=%s""", (prior_id, source_id)).fetchone()
+            assert binding["first_draft_observation_id"] == str(observation["source_observation_id"])
+    else:
+        assert "first_draft_observation_id" not in binding
+    assert not schedule(runtime, prior_id, source_id, budget=expected_calls, first_draft=first_draft).created
     model = SentenceReplies(defer_install=expected_calls == 2)
     observed_dispatches = []
     runtime.reset_counters()
@@ -142,7 +160,7 @@ def test_sentence_correction_replays_saved_rounds_without_refetch(runtime, reque
 
     current = runtime.read_current()
     assert current["content_origin"] == "canonical" and current["source_revision_id"] == source_id
-    if expected_calls == 2:
+    if fixture_name != "retained_media":
         assert "The pump must be removed." in current["body"] and "Fit the pump." in current["body"]
         assert "Tighten the bolts to 18 N·m." in current["body"]
     else:
@@ -164,6 +182,12 @@ def test_sentence_correction_replays_saved_rounds_without_refetch(runtime, reque
             cur, article, source_binding, fixture_mode=True, lock=False,
         )
         events = cur.execute("SELECT canonical_article_revision_id FROM publication_events").fetchall()
+        if first_draft:
+            profiles = cur.execute("""SELECT rewrite_profile_version FROM source_fetch_jobs
+                WHERE canonical_article_id=%s ORDER BY request_generation""", (runtime.article_id,)).fetchall()
+            assert [row["rewrite_profile_version"] for row in profiles] == [
+                AUTOMATIC_REWRITE_PROFILE, SOURCE_BOUND_CORRECTION_PROFILE,
+            ]
     assert revision["model_metadata"]["transformation_method"] == SENTENCE_METHOD
     assert revision["validation_report"]["passed"] and attempt == archived[-1]
     assert events == [{"canonical_article_revision_id": current["canonical_revision_id"]}]
@@ -229,4 +253,53 @@ def test_sentence_schedule_rejects_over_budget_or_stale_predecessor(runtime, pum
     with pytest.raises(ValueError, match="SOURCE_BOUND_REWRITE_PRIOR_JOB_CHANGED"):
         schedule(runtime, first_id, source_id, budget=2)
     assert runtime.read_current()["job_id"] == prior_id
+    assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 0}
+
+
+@pytest.mark.parametrize("damage", ("prompt-context", "slot-position", "descriptor"))
+def test_first_draft_correction_rejects_mismatched_saved_evidence(runtime, failed_first_draft, damage):
+    prior_id, source_id = failed_first_draft
+    [original] = attempt_rows(runtime, prior_id)
+    with runtime.repo.connect() as conn:
+        if damage == "prompt-context":
+            prior = source_job(runtime, prior_id)
+            source = prior["checkpoint"]["normalized_document"]
+            empty_context_hash = sha256(build_auto_prompt(source, context={}).encode()).hexdigest()
+            assert empty_context_hash != original["prompt_hash"]
+            conn.execute("""UPDATE canonical_article_rewrite_attempts SET prompt_hash=%s WHERE rewrite_attempt_id=%s""",
+                         (empty_context_hash, original["rewrite_attempt_id"]))
+            conn.execute("""UPDATE canonical_article_revisions
+                SET model_metadata=jsonb_set(model_metadata,'{prompt_hash}',to_jsonb(%s::text))
+                WHERE canonical_article_revision_id=%s""",
+                         (empty_context_hash, original["canonical_article_revision_id"]))
+        elif damage == "slot-position":
+            reply = original["response"]
+            reply["replacements"].reverse()
+            conn.execute("""UPDATE canonical_article_rewrite_attempts SET response=%s,response_hash=%s
+                WHERE rewrite_attempt_id=%s""", (Jsonb(reply), digest_json(reply), original["rewrite_attempt_id"]))
+        else:
+            conn.execute("""UPDATE canonical_articles
+                SET descriptor_source_snapshot_id=(SELECT resolution_source_snapshot_id
+                    FROM canonical_article_source_observations WHERE source_fetch_job_id=%s)
+                WHERE canonical_article_id=%s""", (prior_id, runtime.article_id))
+
+    runtime.reset_counters()
+    with pytest.raises(ValueError, match="SOURCE_BOUND_CORRECTION_PRIOR_DRAFT_INVALID"):
+        schedule(runtime, prior_id, source_id, budget=1, first_draft=True)
+    assert runtime.read_current()["job_id"] == prior_id
+    assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 0}
+
+
+def test_first_draft_correction_rechecks_bound_resolution_before_dispatch(runtime, failed_first_draft):
+    prior_id, source_id = failed_first_draft
+    job = schedule(runtime, prior_id, source_id, budget=1, first_draft=True)
+    with runtime.repo.connect() as conn:
+        conn.execute("""UPDATE source_snapshots SET takedown_status='takedown'
+            WHERE source_snapshot_id=(SELECT resolution_source_snapshot_id
+                FROM canonical_article_source_observations WHERE source_fetch_job_id=%s)""", (prior_id,))
+    runtime.reset_counters()
+    model = SentenceReplies()
+    run_job(runtime, job.job_id, model, registry=runtime.registry)
+    assert model.prompts == [] and attempt_rows(runtime, job.job_id) == []
+    assert runtime.read_current()["canonical_revision_id"] is None
     assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 0}

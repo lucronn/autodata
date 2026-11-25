@@ -292,11 +292,12 @@ def schedule_source_bound_rewrite(
     )
 
 
-def source_bound_correction_prior_attempt(cur, prior_job):
-    """Load the completed, exact v2 failure that can supply a corrective draft."""
+def source_bound_correction_prior_attempt(cur, prior_job, *, first_draft=False):
+    """Load the exact failed draft that can supply source-bound correction."""
     rejected = "SOURCE_BOUND_CORRECTION_PRIOR_DRAFT_INVALID"
+    profile = AUTOMATIC_REWRITE_PROFILE if first_draft else SOURCE_BOUND_REWRITE_PROFILE
     if (prior_job is None or prior_job["job_kind"] != "article"
-        or prior_job["rewrite_profile_version"] != SOURCE_BOUND_REWRITE_PROFILE
+        or prior_job["rewrite_profile_version"] != profile
         or prior_job["status"] != "dead_letter" or prior_job["phase"] != "validating"
         or prior_job["retryable"] or prior_job["lease_owner"] is not None
         or not prior_job["source_revision_id"] or not prior_job["transformation_key"]):
@@ -308,6 +309,34 @@ def source_bound_correction_prior_attempt(cur, prior_job):
         or prior_job["error_code"] != checkpoint["rewrite_error_code"]
         or checkpoint.get("normalized_hash") != digest_json(source)):
         raise ValueError(rejected)
+    observed = None
+    context = {}
+    if first_draft:
+        if prior_job["retry_count"] != 1 or cur.execute("""
+            SELECT count(*) AS total FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s
+            """, (prior_job["source_fetch_job_id"],)).fetchone()["total"] != 1:
+            raise ValueError(rejected)
+        observed = cur.execute("""
+            SELECT o.source_observation_id,o.captured_context->'vehicle' AS vehicle,o.captured_at
+            FROM canonical_article_source_observations o
+            JOIN canonical_articles a USING(canonical_article_id)
+            JOIN vehicle_configurations c ON c.vehicle_configuration_id=a.vehicle_configuration_id
+                                         AND c.vehicle_id=a.vehicle_id
+            JOIN vehicle_identity_bases b ON b.vehicle_identity_base_id=c.vehicle_identity_base_id
+                                          AND b.vehicle_id=a.vehicle_id
+            JOIN catalog_article_provider_scopes p ON p.scope_key=a.scope_key
+                                                  AND p.provider_slug=a.provider_slug
+                                                  AND p.source_vehicle_ref=a.source_vehicle_ref
+            WHERE o.source_fetch_job_id=%s AND o.canonical_article_id=%s AND o.source_revision_id=%s
+              AND o.request_generation=%s AND o.descriptor_source_snapshot_id=a.descriptor_source_snapshot_id
+              AND o.resolution_source_snapshot_id=p.resolution_source_snapshot_id
+              AND o.captured_context->'vehicle'->>'region'=b.region
+            """, (prior_job["source_fetch_job_id"], prior_job["canonical_article_id"], prior_job["source_revision_id"],
+                  prior_job["request_generation"])).fetchone()
+        if (observed is None or not isinstance(observed["vehicle"], dict)
+            or observed["captured_at"] < prior_job["created_at"]):
+            raise ValueError(rejected)
+        context = observed["vehicle"]
     attempts = cur.execute("""SELECT r.* FROM canonical_article_rewrite_attempts r
         JOIN canonical_article_revisions c
           ON c.canonical_article_revision_id=r.canonical_article_revision_id
@@ -325,9 +354,9 @@ def source_bound_correction_prior_attempt(cur, prior_job):
           AND c.model_metadata->>'profile_version'=r.profile_version
           AND c.model_metadata->>'prompt_hash'=r.prompt_hash
         """, (prior_job["source_fetch_job_id"], prior_job["lease_token"], prior_job["retry_count"],
-              SOURCE_BOUND_REWRITE_PROFILE, prior_job["error_code"], checkpoint["normalized_hash"],
+              profile, prior_job["error_code"], checkpoint["normalized_hash"],
               prior_job["canonical_article_id"], prior_job["source_revision_id"], prior_job["transformation_key"],
-              SOURCE_BOUND_REWRITE_PROFILE, prior_job["normalization_version"], checkpoint.get("candidate_revision_id"),
+              profile, prior_job["normalization_version"], checkpoint.get("candidate_revision_id"),
               Jsonb(source))).fetchall()
     if len(attempts) != 1:
         raise ValueError(rejected)
@@ -338,27 +367,41 @@ def source_bound_correction_prior_attempt(cur, prior_job):
         or attempt["response_hash"] != digest_json(response)):
         raise ValueError(rejected)
     from .procedure_rewrite_auto import _auto_prompt_version
-    guard_version = _auto_prompt_version(source, context={}, prompt_hash=attempt["prompt_hash"],
-                                         profile_version=SOURCE_BOUND_REWRITE_PROFILE)
+    guard_version = _auto_prompt_version(source, context=context, prompt_hash=attempt["prompt_hash"],
+                                         profile_version=profile)
     if guard_version is None:
         raise ValueError(rejected)
+    if first_draft:
+        from .procedure_rewrite_auto import _NOTE_LABEL_PROMPT_VERSION
+        from .procedure_rewrite_correction import _initial_draft
+
+        if (not isinstance(response["introduction"], str) or not response["introduction"].strip()
+            or not observed["captured_at"] <= attempt["dispatched_at"] <= attempt["completed_at"]):
+            raise ValueError(rejected)
+        try:
+            _initial_draft(source, response, preserve_notes=guard_version == _NOTE_LABEL_PROMPT_VERSION)
+        except ValueError:
+            raise ValueError(rejected) from None
+        return {**attempt, "guard_version": guard_version, "observation_id": observed["source_observation_id"]}
     return {**attempt, "guard_version": guard_version}
 
 
 def schedule_source_bound_correction(
     repo, canonical_article_id, *, expected_job_id, expected_source_revision_id, actor, reason, model_call_budget,
-    by_sentence=False,
+    by_sentence=False, first_draft=False,
 ):
-    """Queue an explicit correction of an unchanged source and its bound failed v2 draft."""
+    """Queue an explicit correction of an unchanged source and its bound failed draft."""
     from .procedure_rewrite_sentence_correction import MAX_SENTENCE_CORRECTION_CALLS
     limit = MAX_SENTENCE_CORRECTION_CALLS if by_sentence else MAX_CORRECTION_CALLS
-    if (type(by_sentence) is not bool or type(model_call_budget) is not int
+    if (type(by_sentence) is not bool or type(first_draft) is not bool or (first_draft and not by_sentence)
+        or type(model_call_budget) is not int
         or not 1 <= model_call_budget <= limit):
         raise ValueError("SOURCE_BOUND_CORRECTION_BUDGET_INVALID")
     return _schedule_source_bound_job(
         repo, canonical_article_id, expected_job_id=expected_job_id,
         expected_source_revision_id=expected_source_revision_id, actor=actor, reason=reason,
-        prior_profile=SOURCE_BOUND_REWRITE_PROFILE, next_profile=SOURCE_BOUND_CORRECTION_PROFILE,
+        prior_profile=AUTOMATIC_REWRITE_PROFILE if first_draft else SOURCE_BOUND_REWRITE_PROFILE,
+        next_profile=SOURCE_BOUND_CORRECTION_PROFILE,
         model_call_budget=model_call_budget, by_sentence=by_sentence,
     )
 
@@ -376,6 +419,7 @@ def _schedule_source_bound_job(
         for value, limit in ((actor, 256), (reason, 2048))
     ):
         raise ValueError("SOURCE_BOUND_REWRITE_AUDIT_INVALID")
+    first_draft = model_call_budget is not None and prior_profile == AUTOMATIC_REWRITE_PROFILE
     binding = {
         "version": 1, "prior_job_id": str(expected_job_id),
         "source_revision_id": str(expected_source_revision_id), "actor": actor, "reason": reason,
@@ -443,11 +487,19 @@ def _schedule_source_bound_job(
                 from .procedure_rewrite_sentence_correction import SENTENCE_CORRECTION_METHOD
                 _require_source_bound_rewrite_rights(cur, prior, article)
                 binding["correction_method"] = SENTENCE_CORRECTION_METHOD
-            attempt = source_bound_correction_prior_attempt(cur, prior)
+            attempt = source_bound_correction_prior_attempt(cur, prior, first_draft=first_draft)
             binding.update(
                 version=2, prior_attempt_id=str(attempt["rewrite_attempt_id"]),
                 prior_response_hash=attempt["response_hash"], model_call_budget=model_call_budget,
             )
+            if first_draft:
+                observation_id = attempt["observation_id"]
+                if not source_bound_rewrite_source_allowed(
+                    cur, article, expected_source_revision_id,
+                    predecessor_observation=(observation_id, expected_job_id, prior["request_generation"]),
+                ):
+                    raise ValueError("SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE")
+                binding["first_draft_observation_id"] = str(observation_id)
         key = transformation_key(*key_inputs, next_profile, projection_version=projection)
         generation = article["request_generation"]
         if article["target_rewrite_profile_version"] == next_profile:
@@ -465,7 +517,7 @@ def _schedule_source_bound_job(
             raise ValueError("SOURCE_BOUND_REWRITE_ALREADY_SCHEDULED")
         if (article["target_rewrite_profile_version"] != prior_profile
             or article["current_job_id"] != expected_job_id or prior["request_generation"] > generation
-            or (source_only and prior["request_generation"] != generation)):
+            or ((source_only or first_draft) and prior["request_generation"] != generation)):
             raise ValueError("SOURCE_BOUND_REWRITE_CURRENT_JOB_CHANGED")
         if article["current_canonical_revision_id"] is not None or cur.execute("""
             SELECT 1 FROM canonical_article_revisions WHERE status='published'
