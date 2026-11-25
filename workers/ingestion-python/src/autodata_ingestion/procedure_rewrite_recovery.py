@@ -21,16 +21,20 @@ FIRST_DRAFT_RECOVERY_METHOD = "source-bound-first-draft-recovery-v1"
 FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v2"
 FIRST_DRAFT_COOLING_RECOVERY_METHOD = "source-bound-first-draft-recovery-v3"
 FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD = "source-bound-first-draft-recovery-v4"
+FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD = "source-bound-first-draft-recovery-v5"
+REQUIRED_ACTION_WEAKENED = "REWRITE_REQUIRED_ACTION_WEAKENED"
 FIRST_DRAFT_RECOVERY_METHODS = (
     FIRST_DRAFT_RECOVERY_METHOD, FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD, FIRST_DRAFT_COOLING_RECOVERY_METHOD,
-    FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
+    FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD, FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
 )
 _FIRST_DRAFT_RECASTABLE_ERRORS = frozenset({
     "REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR", "REWRITE_ACTION_MUTATION",
     "REWRITE_QUALIFIER_MUTATION", "REWRITE_TECHNICAL_MUTATION",
     "REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM",
 })
-FIRST_DRAFT_RECOVERABLE_ERRORS = _FIRST_DRAFT_RECASTABLE_ERRORS | {"REWRITE_SPEC_SCOPE_MUTATION"}
+FIRST_DRAFT_RECOVERABLE_ERRORS = _FIRST_DRAFT_RECASTABLE_ERRORS | {
+    "REWRITE_SPEC_SCOPE_MUTATION", REQUIRED_ACTION_WEAKENED,
+}
 _PART_WORD = r"[a-z]+(?:-[a-z]+)*"
 _PART = rf"{_PART_WORD}(?: {_PART_WORD}){{0,9}}"
 _REFERENCE = r"\([0-9]{1,4}\)"
@@ -75,6 +79,13 @@ _OPEN_PLACEMENT = re.compile(
 _DIRECTIVE_LABEL_EXCLUSIONS = auto._TARGET_DELIMITERS | frozenset(
     "against down during facing finger inside instead last must never no not only outside should tight together up".split()
 )
+_PASSIVE_REQUIRED_ACTION = re.compile(
+    rf"(?P<subject>(?:the|a|an|each|both) (?P<part>{_PART})) (?P<modal>should) be "
+    rf"(?P<verb>installed|removed|tightened)"
+    rf"(?P<scope> (?:at|from|in|into|on|onto|over|through|to|under) (?:the|a|an) (?P<target>{_PART}))?\.",
+    re.I,
+)
+_IMPERATIVE_VERB = {"installed": "install", "removed": "remove", "tightened": "tighten"}
 _COMPONENT_ENDINGS = frozenset(
     "belt bolt bolts bracket cover duct fasteners gasket housing mount nut nuts pipe plate pulley pump retainer "
     "ring screw screws seal shield spacer tube".split()
@@ -162,6 +173,30 @@ def _restore_open_placement(source, replacement):
     return replacement[:start] + original["state"] + replacement[end:]
 
 
+def _restore_required_action(source, replacement):
+    modal = auto.advisory_required_action(source, replacement)
+    if modal is None:
+        return None
+    prefix = auto.authored_note_prefix(replacement) or ""
+    if prefix != (auto.authored_note_prefix(source) or ""):
+        return None
+    passive = _PASSIVE_REQUIRED_ACTION.fullmatch(replacement, len(prefix))
+    if passive is None or passive.start("modal") != modal.start():
+        return None
+    if not _plain_label(passive["part"]) or (passive["target"] and not _plain_label(passive["target"])):
+        return None
+
+    # Reconstruct the authored directive from the explicit passive subject
+    # and the stationary scope phrase. Every word outside the verb must match.
+    verb = _IMPERATIVE_VERB[passive["verb"].casefold()]
+    imperative = f"{verb} {passive['subject']}{passive['scope'] or ''}."
+    if source[len(prefix):].casefold() != imperative.casefold():
+        return None
+    start, end = passive.span("modal")
+    required = "MUST" if passive["modal"].isupper() else "must"
+    return replacement[:start] + required + replacement[end:]
+
+
 def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version, method, original_error):
     introduction_replaced = raw["introduction"] != draft["introduction"]
     if not corrected_paths and not introduction_replaced:
@@ -172,6 +207,11 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
         if not validation.passed:
             return None
         auto.require_current_publication_checks(source, document, saved_prompt_version=prompt_version)
+        if method == FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD:
+            rewritten_paths = validation.report["changed_prose_slots"]
+            auto.require_distinct_generated_introduction(source, document, rewritten_paths=rewritten_paths)
+            auto.require_preserved_display_quotations(source, document, rewritten_paths=rewritten_paths)
+            auto.require_required_procedure_actions(source, document, rewritten_paths=rewritten_paths)
     except ValueError:
         return None
     return CorrectionResult(draft, document, None, {
@@ -219,6 +259,19 @@ def _recover_placement_draft(source, raw, slots, *, prompt_version, original_err
     )
 
 
+def _recover_required_action_draft(source, raw, slots, *, prompt_version):
+    draft = deepcopy(raw)
+    corrected = []
+    for slot, row in zip(slots, draft["replacements"], strict=True):
+        if row["action"] == "rewrite" and (wording := _restore_required_action(slot["text"], row["text"])):
+            row["text"] = wording
+            corrected.append(slot["path"])
+    return _validate_first_draft(
+        source, raw, draft, corrected, prompt_version=prompt_version,
+        method=FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD, original_error=REQUIRED_ACTION_WEAKENED,
+    )
+
+
 def recover_first_draft(source, raw, *, prompt_version, method=None):
     """Rebuild an automatic draft from the saved reply and source-only recasts."""
     if (not full._source_valid(source) or not isinstance(raw, dict)
@@ -242,6 +295,10 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
     except ValueError as error:
         original_error = str(error)
     else:
+        if method == FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD:
+            return _recover_required_action_draft(source, raw, slots, prompt_version=prompt_version)
+        return None
+    if method == FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD:
         return None
     if original_error not in FIRST_DRAFT_RECOVERABLE_ERRORS:
         return None

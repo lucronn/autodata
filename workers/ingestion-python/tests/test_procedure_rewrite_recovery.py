@@ -10,6 +10,7 @@ from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
     FIRST_DRAFT_RECOVERY_METHOD,
+    FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
     _equivalent_cooling_directive,
     _equivalent_directive,
     _equivalent_wording,
@@ -194,6 +195,65 @@ def test_first_draft_placement_leaves_unbound_facts_rejected(placement, specific
     raw["replacements"][1].update(action="retain", reason="Exact source measurement.")
     version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
     assert recover_first_draft(source, raw, prompt_version=version) is None
+
+
+@pytest.mark.parametrize(("instruction", "advisory"), [
+    ("Install the protective cap over the port.", "The protective cap should be installed over the port."),
+    ("Tighten the sleeve clamp on the bracket.", "The sleeve clamp should be tightened on the bracket."),
+    ("Note: Remove the left-side cover.", "Note: The left-side cover should be removed."),
+])
+def test_recovers_only_the_modal_in_a_bound_required_action(instruction, advisory):
+    source = document(instruction, "Clamp width: 18 mm.")
+    raw = response(advisory, "Clamp width: 18 mm.", introduction="This article describes service information.")
+    raw["replacements"][1].update(action="retain", reason="Exact source measurement.")
+    saved = deepcopy(raw)
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    method = FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD
+
+    result = recover_first_draft(source, raw, prompt_version=version, method=method)
+
+    assert raw == saved
+    assert result.evidence["method"] == method
+    assert result.evidence["original_error_code"] == "REWRITE_REQUIRED_ACTION_WEAKENED"
+    assert result.evidence["raw_response_hash"] == digest_json(saved)
+    assert result.evidence["corrected_paths"] == ["/blocks/0/text"]
+    assert result.response["introduction"] == saved["introduction"]
+    assert result.response["replacements"] == [
+        {**saved["replacements"][0], "text": advisory.replace("should", "must")}, saved["replacements"][1],
+    ]
+    assert recover_first_draft(source, raw, prompt_version=version) is None
+
+
+@pytest.mark.parametrize(("instruction", "advisory"), [
+    ("Install the protective cap over the port.", "The dust cap should be installed over the port."),
+    ("Install the protective cap over the port.", "The protective cap should be installed on the port."),
+    ("Install the protective cap over the port.", "The protective cap over the port should be installed."),
+    ("Install the protective cap over the port.", "You should install the port's protective cap."),
+    ("Install the protective cap if desired.", "The protective cap should be installed if desired."),
+    ("Install the protective cap.", "The protective cap must be installed."),
+])
+def test_required_action_recovery_leaves_unproved_modal_changes_alone(instruction, advisory):
+    source = document(instruction)
+    raw = response(advisory, introduction="This article describes service information.")
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+
+    assert recover_first_draft(
+        source, raw, prompt_version=version, method=FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
+    ) is None
+
+
+def test_required_action_recovery_never_publishes_a_partly_fixed_draft():
+    source = document("Remove the left-side cover.", "Install the protective cap over the port.")
+    raw = response(
+        "The left-side cover should be removed.",
+        "You should install the port's protective cap.",
+        introduction="This article describes service information.",
+    )
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+
+    assert recover_first_draft(
+        source, raw, prompt_version=version, method=FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
+    ) is None
 
 
 def test_cooling_recovery_requires_a_source_aligned_reply():
