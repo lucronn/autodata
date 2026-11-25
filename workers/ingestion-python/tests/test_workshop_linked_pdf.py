@@ -732,7 +732,7 @@ def test_v10_promotion_preserves_an_unchanged_sibling_pdf_across_refreshes(runti
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 @pytest.mark.parametrize("scoped", [False, True])
-def test_published_pdf_anchor_reuses_the_same_digest(runtime, provider, scoped):
+def test_published_pdf_anchor_reuses_the_same_digest(runtime, monkeypatch, provider, scoped):
     if scoped:
         from test_article_lifecycle_integration import scoped_runtime_article
 
@@ -770,7 +770,7 @@ def test_published_pdf_anchor_reuses_the_same_digest(runtime, provider, scoped):
         )
         assert run_article_worker_once(
             runtime.repo, worker_id=uuid4(), registry=runtime.registry,
-            object_store=runtime.objects, model_client=draft if complete else None, job_id=job.job_id,
+            object_store=runtime.objects, model_client=draft, job_id=job.job_id,
         )
         view = runtime.read_current()
         assert view["content_origin"] == ("canonical" if complete else "source"), runtime.diagnostics()
@@ -793,7 +793,9 @@ def test_published_pdf_anchor_reuses_the_same_digest(runtime, provider, scoped):
     assert retained.get("pdf_figure_encoding") == (PDF_FAST_PNG_ENCODING if scoped else None)
     if scoped:
         saved = connector.resources.pop(_PDF_REF)
-        partial = refresh(complete=False)
+        with monkeypatch.context() as missing_attachment:
+            missing_attachment.setattr(draft, "complete_json", lambda _: {})
+            partial = refresh(complete=False)
         partial_source = load_source_revision(runtime.repo, partial["source_revision_id"])
         assert partial_source.source_revision_id != source.source_revision_id
         assert partial_source.projection_status == "partial"
