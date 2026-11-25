@@ -229,11 +229,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics.handler)
-	mux.Handle(workshopEntryPath, workshopAssetsHandler)
+	workshopAssets := func(w http.ResponseWriter, r *http.Request) {
+		workshopAssetsHandler(w, r, s.paidCatalogEnabled())
+	}
+	mux.HandleFunc(workshopEntryPath, workshopAssets)
 	mux.HandleFunc("/workshop/purchase-config.json", s.workshopPurchaseConfig)
 	mux.HandleFunc("/workshop/demo-mode.json", s.workshopDemoMode)
 	mux.HandleFunc("/workshop/test-notices/", s.workshopTestNotice)
-	mux.Handle(workshopEntryPath+"/", workshopAssetsHandler)
+	mux.HandleFunc(workshopEntryPath+"/", workshopAssets)
 	s.mountCatalogSelector(mux, "/v1/catalog/years", s.listCatalogYears)
 	s.mountCatalogSelector(mux, "/v1/catalog/years/{year}/makes", s.listCatalogMakes)
 	s.mountCatalogSelector(mux, "/v1/catalog/years/{year}/makes/{make}/models", s.listCatalogModels)

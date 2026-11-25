@@ -438,10 +438,17 @@ func (s *Server) catalogPurchaseQuote(ctx context.Context, configuration Catalog
 
 func (s *Server) mountCatalogSelector(mux *http.ServeMux, path string, next authenticatedHandler) {
 	if !s.paidCatalogEnabled() {
-		mux.Handle("GET "+path, s.requireRole("dataset_viewer", next))
+		handler := s.requireRole("dataset_viewer", next)
+		mux.HandleFunc("GET "+path, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "private, no-store")
+			handler.ServeHTTP(w, r)
+		})
 		return
 	}
-	mountPublicRead(mux, path, func(w http.ResponseWriter, r *http.Request) { next(w, r, Principal{}) })
+	mountPublicRead(mux, path, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
+		next(w, r, Principal{})
+	})
 }
 func (s *Server) catalogProtected(next authenticatedHandler, article bool) http.Handler {
 	if !s.paidCatalogEnabled() {

@@ -34,6 +34,78 @@ func TestWorkshopRootEntry(t *testing.T) {
 	})
 }
 
+func TestWorkshopEntryStartsOnlyMatchingPublicSelectorReads(t *testing.T) {
+	const years = "/v1/catalog/years"
+	const makes = years + "/2024/makes"
+	const models = makes + "/buick-truck/models"
+	const query = "?region=US&stored_only=1"
+	const appModules = 4
+	for _, tc := range []struct {
+		name, search, purpose string
+		modules               int
+		reads                 []string
+	}{
+		{name: "default", modules: appModules, reads: []string{years}},
+		{name: "saved year", search: "?year=2024", modules: appModules, reads: []string{years, makes + query}},
+		{
+			name: "saved model", search: "?year=2024&make=buick-truck&model=envision-awd&region=US", modules: appModules,
+			reads: []string{years, makes + query, models + query, models + "/envision-awd/configurations" + query},
+		},
+		{name: "invalid parent", search: "?year=2024&make=%3Efoo&model=envision-awd", modules: appModules, reads: []string{years, makes + query}},
+		{name: "invalid year", search: "?year=2101&make=buick-truck", modules: appModules, reads: []string{years}},
+		{name: "different region", search: "?year=2024&region=CA", modules: appModules},
+		{name: "library", search: "?view=library", modules: appModules},
+		{name: "configuration", search: "?year=2024&configuration=selected", modules: appModules},
+		{name: "article", search: "?year=2024&article=saved", modules: appModules},
+		{name: "order", search: "?order=returning", modules: appModules},
+		{name: "demo", search: "?demo=1"},
+		{name: "sample", search: "?sample=1"},
+		{name: "document prefetch", purpose: "prefetch;prerender"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/workshop"+tc.search, nil)
+			request.Header.Set("Sec-Purpose", tc.purpose)
+			recorder := httptest.NewRecorder()
+			workshopAssetsHandler(recorder, request, true)
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("entry status = %d", recorder.Code)
+			}
+			body := recorder.Body.String()
+			var reads []string
+			var modules int
+			for _, link := range recorder.Header().Values("Link") {
+				uri, rel, hasRel := strings.Cut(link, ">; ")
+				if !hasRel || !strings.HasPrefix(uri, "<") {
+					t.Fatalf("invalid preload %q", link)
+				}
+				uri = strings.TrimPrefix(uri, "<")
+				switch rel {
+				case "rel=modulepreload":
+					if !strings.HasPrefix(uri, "/workshop/assets/") ||
+						!strings.Contains(body, uri[:strings.LastIndex(uri, "/")+1]+"bootstrap.mjs") {
+						t.Fatalf("module hint is outside the active asset release: %q", uri)
+					}
+					modules++
+				case "rel=preload; as=fetch; crossorigin=anonymous":
+					reads = append(reads, uri)
+				default:
+					t.Fatalf("unexpected preload %q", link)
+				}
+			}
+			if modules != tc.modules || !reflect.DeepEqual(reads, tc.reads) {
+				t.Fatalf("preloads = %d modules and %v reads, want %d and %v", modules, reads, tc.modules, tc.reads)
+			}
+		})
+	}
+	legacy := httptest.NewRecorder()
+	workshopAssetsHandler(legacy, httptest.NewRequest(http.MethodGet, "/workshop", nil), false)
+	for _, link := range legacy.Header().Values("Link") {
+		if strings.Contains(link, "/v1/catalog/") {
+			t.Fatalf("legacy entry hinted a protected selector: %q", link)
+		}
+	}
+}
+
 func TestWorkshopAssetsAvailableWithoutCatalogCredentials(t *testing.T) {
 	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
 	for _, asset := range []struct{ path, contentType string }{
