@@ -9692,6 +9692,73 @@ test('verified scheduling failures reuse a pending exact read and can recover wi
   assert.equal(h.calls.length, 1);
 });
 
+test('a fast paid prepare outage opens the exact stored source and its figure', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const source = mediaArticle([
+    { type: 'paragraph', text: 'Stored Ford procedure.' },
+    { type: 'image', asset_id: 'figure' },
+  ], [{ id: 'figure', url: mediaURL('stored') }]);
+  const outages = [
+    [503, JSON.stringify({ error: { code: 'CATALOG_UNAVAILABLE', retryable: true } })],
+    [502, '<html>Bad Gateway</html>'],
+    [503, '<html>Service Unavailable</html>'],
+    [504, '<html>Gateway Timeout</html>'],
+  ];
+  for (const savedLink of [false, true]) {
+    for (const [status, body] of outages) {
+      const h = retainedReaderHarness((path, options) => requestArticleJSON(path, {
+        ...options,
+        fetcher: async (_url, { method }) => method === 'POST'
+          ? new Response(body, { status })
+          : new Response(JSON.stringify({ article: source, configuration: h.configuration })),
+      }));
+      assert.equal(await h.context.loadArticle('a', h.g, { savedLink }), true);
+      const detailPath = `/v1/catalog/vehicles/${h.configuration.id}/articles/a`;
+      assert.deepEqual(h.calls.map(call => [call.method || 'GET', call.path]), [
+        ['POST', `${detailPath}/prepare?region=US`], ['GET', `${detailPath}?region=US`],
+      ]);
+      assert.equal(h.probeSignal.aborted, true);
+      assert.equal(h.nodes.get('article-kind').textContent, 'Stored source');
+      const content = h.nodes.get('article-content');
+      assert.match(content.textContent, /Stored Ford procedure/);
+      assert.deepEqual(mediaIDs(content), ['figure']);
+    }
+  }
+});
+
+test('a paid prepare outage keeps exact read denials and ignores another article or vehicle', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const source = mediaArticle([{ type: 'paragraph', text: 'Protected procedure.' }]);
+  for (const result of ['revoked', 'other article', 'other vehicle', 'other region']) {
+    const h = retainedReaderHarness((path, options) => requestArticleJSON(path, {
+      ...options,
+      fetcher: async (_url, { method }) => {
+        if (method === 'POST') {
+          return new Response(JSON.stringify({ error: { code: 'CATALOG_UNAVAILABLE', retryable: true } }), { status: 503 });
+        }
+        if (result === 'revoked') {
+          return new Response(JSON.stringify({ error: { code: 'ENTITLEMENT_REVOKED' } }), { status: 403 });
+        }
+        return new Response(JSON.stringify({
+          article: result === 'other article' ? { ...source, id: 'b' } : source,
+          configuration: {
+            ...h.configuration,
+            id: result === 'other vehicle' ? routeOrder : h.configuration.id,
+            region: result === 'other region' ? 'CA' : h.configuration.region,
+          },
+        }));
+      },
+    }));
+    const expected = result === 'revoked'
+      ? { status: 403, code: 'ENTITLEMENT_REVOKED' }
+      : { status: 503, code: 'CATALOG_UNAVAILABLE' };
+    await assert.rejects(h.context.loadArticle('a', h.g), expected);
+    assert.deepEqual(h.calls.map(call => call.method || 'GET'), ['POST', 'GET']);
+    assert.equal(h.nodes.get('article-content').textContent, '');
+    assert.equal(h.nodes.get('print').disabled, true);
+  }
+});
+
 test('the optional prepare read ignores wrong articles and vehicles', async () => {
   const source = mediaArticle([{ type: 'paragraph', text: 'Protected text.' }]);
   for (const wrong of ['article', 'region', 'configuration']) {
