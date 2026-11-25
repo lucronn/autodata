@@ -211,7 +211,7 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 fail_source_job(repo, lease, code="SOURCE_BOUND_REWRITE_BINDING_INVALID", retryable=False)
                 return
             if lease.source_revision_id is None:
-                from .source_article_capture import capture_source_article
+                from .source_article_capture import WORKSHOP_CAPTURE_OPTIONS, capture_source_article
                 context=_capture_context(repo,lease)
                 if context.key.provider not in registry:raise ValueError("SOURCE_NOT_CONFIGURED")
 
@@ -238,34 +238,7 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                         if context.key.vehicle_configuration_id is not None and not context.has_stored_source
                         else None
                     ),
-                    keep_embedded_pdf=True, keep_html_headings=True, keep_bound_pdf_iframes=True,
-                    keep_pdf_figure_order=True, keep_multiple_pdf_figures=True,
-                    keep_html_table_image_order=True, keep_repeated_pdf_figures=True,
-                    keep_pdf_figures_with_margins=True,
-                    keep_compact_pdf_figures=True,
-                    keep_single_line_pdf_figures=True,
-                    skip_blank_linked_pdf_pages=True,
-                    keep_wordless_linked_pdf_figures=True,
-                    keep_html_figure_captions=True,
-                    keep_html_flow_figure_captions=True,
-                    keep_html_multiline_figure_captions=True,
-                    keep_html_table_captions=True,
-                    keep_html_media_table_headers=True,
-                    keep_html_table_spans=True,
-                    keep_html_nested_tables=True,
-                    keep_structured_table_columns=True,
-                    keep_structured_table_cell_order=True,
-                    keep_structured_table_column_order=True,
-                    keep_image_only_headings=True,
-                    keep_ordered_step_instructions=True,
-                    keep_image_only_step_instructions=True,
-                    keep_leading_decimals=True,
-                    keep_html_numeric_superscripts=True,
-                    keep_html_document_links=True,
-                    keep_html_section_titles=True,
-                    keep_bankone_html_flow=True,
-                    keep_mixed_html_pdf_embeds=True,
-                    keep_bound_html_images=True,
+                    **WORKSHOP_CAPTURE_OPTIONS,
                 )
                 if lost.is_set():raise LeaseLost("heartbeat lost during source IO")
                 _hook(hooks,"before_source_commit")
