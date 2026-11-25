@@ -77,7 +77,10 @@ _ASSEMBLY_LABEL_PROMPT_VERSION = "full-prose-auto-prompt-v60"
 _NOTE_LABEL_PROMPT_VERSION = "full-prose-auto-prompt-v61"
 _PROCEDURE_FIDELITY_PROMPT_VERSION = "full-prose-auto-prompt-v62"
 _DRAIN_SUBJECT_PROMPT_VERSION = "full-prose-auto-prompt-v63"
-_PROCEDURE_FIDELITY_PROMPT_VERSIONS = (_PROCEDURE_FIDELITY_PROMPT_VERSION, _DRAIN_SUBJECT_PROMPT_VERSION)
+_ROTATION_REMOVAL_PROMPT_VERSION = "full-prose-auto-prompt-v64"
+_PROCEDURE_FIDELITY_PROMPT_VERSIONS = (
+    _PROCEDURE_FIDELITY_PROMPT_VERSION, _DRAIN_SUBJECT_PROMPT_VERSION, _ROTATION_REMOVAL_PROMPT_VERSION,
+)
 _AUTHORED_NOTE_PREFIX = re.compile(r"^\s*note\s*:\s*", re.IGNORECASE)
 _NUMERIC_SUPERSCRIPT = re.compile(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]|\^\([+−-]?(?:[0-9]*\.[0-9]+|[0-9]+/[0-9]+)\)")
 _WORDS = re.compile(r"\w+")
@@ -559,6 +562,15 @@ _CLAUSE_TIMING = re.compile(r"\s+(before|after)\s+", re.IGNORECASE)
 _CLAUSE_THEN = re.compile(r"(?:[.,;]\s*|\s+)(?:and\s+)?then[,\s]+", re.IGNORECASE)
 _ROTARY_STEP_SEPARATOR = re.compile(rf"{_CLAUSE_THEN.pattern}|;", re.IGNORECASE)
 _ROTARY_FOLLOWING_STEP = re.compile(r"^(?:then|next)[,\s]+", re.IGNORECASE)
+_ROTATION_REMOVAL_TARGET = rf"{_TARGET_WORD}(?:\s+{_TARGET_WORD}){{0,5}}"
+_ROTATION_REMOVAL_AUTHORED = re.compile(
+    rf"rotate the (?P<rotation>{_ROTATION_REMOVAL_TARGET}) (?P<direction>(?:counter)?clockwise)"
+    rf" and remove the (?P<removal>{_ROTATION_REMOVAL_TARGET})\.", re.IGNORECASE,
+)
+_ROTATION_REMOVAL_RECAST = re.compile(
+    rf"turn the (?P<rotation>{_ROTATION_REMOVAL_TARGET}) in a (?P<direction>(?:counter)?clockwise)"
+    rf" direction and take the (?P<removal>{_ROTATION_REMOVAL_TARGET}) off\.", re.IGNORECASE,
+)
 _LUBRICANT_CLAUSE_SEPARATOR = re.compile(rf"{_SENTENCES.pattern}|;")
 _LUBRICANT_SEQUENCE_MARKER = re.compile(r"^(first|next|then)[,\s]+")
 _LUBRICANT_DIRECTIVE_MARKER = re.compile(r"\b(?:apply|applied|lubricated?|greased?)\s+", re.IGNORECASE)
@@ -1818,12 +1830,13 @@ def _build_auto_prompt_v49(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v50(document, *, context):
+def _auto_prompt_payload_v50(document, *, context, allow_rotation_removal=False):
     payload = _auto_prompt_payload_v49(document, context=context)
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_V50
         for slot in payload["slots"]:
-            if slot["required_action"] == "rewrite" and _qualitative_rotations(slot["text"]) is None:
+            if (slot["required_action"] == "rewrite"
+                    and _qualitative_rotations(slot["text"], allow_removal=allow_rotation_removal) is None):
                 slot["required_action"] = "retain"
         payload["rules"].append(
             "Keep each clockwise or counterclockwise rotation on the same component and preserve its order "
@@ -1838,8 +1851,8 @@ def _build_auto_prompt_v50(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v51(document, *, context):
-    payload = _auto_prompt_payload_v50(document, context=context)
+def _auto_prompt_payload_v51(document, *, context, allow_rotation_removal=False):
+    payload = _auto_prompt_payload_v50(document, context=context, allow_rotation_removal=allow_rotation_removal)
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_V51
         for slot in payload["slots"]:
@@ -1859,8 +1872,8 @@ def _build_auto_prompt_v51(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v52(document, *, context):
-    payload = _auto_prompt_payload_v51(document, context=context)
+def _auto_prompt_payload_v52(document, *, context, allow_rotation_removal=False):
+    payload = _auto_prompt_payload_v51(document, context=context, allow_rotation_removal=allow_rotation_removal)
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_V52
         for slot in payload["slots"]:
@@ -1880,8 +1893,8 @@ def _build_auto_prompt_v52(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v53(document, *, context):
-    payload = _auto_prompt_payload_v52(document, context=context)
+def _auto_prompt_payload_v53(document, *, context, allow_rotation_removal=False):
+    payload = _auto_prompt_payload_v52(document, context=context, allow_rotation_removal=allow_rotation_removal)
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_V53
         for slot in payload["slots"]:
@@ -1900,8 +1913,8 @@ def _build_auto_prompt_v53(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v54(document, *, context):
-    payload = _auto_prompt_payload_v53(document, context=context)
+def _auto_prompt_payload_v54(document, *, context, allow_rotation_removal=False):
+    payload = _auto_prompt_payload_v53(document, context=context, allow_rotation_removal=allow_rotation_removal)
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_V54
         for slot in payload["slots"]:
@@ -1922,8 +1935,8 @@ def _build_auto_prompt_v54(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v55(document, *, context):
-    payload = _auto_prompt_payload_v54(document, context=context)
+def _auto_prompt_payload_v55(document, *, context, allow_rotation_removal=False):
+    payload = _auto_prompt_payload_v54(document, context=context, allow_rotation_removal=allow_rotation_removal)
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_VERSION
         for slot in payload["slots"]:
@@ -1941,8 +1954,8 @@ def _build_auto_prompt_v55(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v56(document, *, context):
-    payload = _auto_prompt_payload_v55(document, context=context)
+def _auto_prompt_payload_v56(document, *, context, allow_rotation_removal=False):
+    payload = _auto_prompt_payload_v55(document, context=context, allow_rotation_removal=allow_rotation_removal)
     superscript_slots = [slot for slot in payload["slots"] if _NUMERIC_SUPERSCRIPT.search(slot["text"])]
     if superscript_slots:
         payload["prompt_version"] = _SUPERSCRIPT_PROMPT_VERSION
@@ -1960,8 +1973,8 @@ def _build_auto_prompt_v56(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _compound_measurement_prompt_payload(document, *, context, include_fluid_ounces):
-    payload = _auto_prompt_payload_v56(document, context=context)
+def _compound_measurement_prompt_payload(document, *, context, include_fluid_ounces, allow_rotation_removal=False):
+    payload = _auto_prompt_payload_v56(document, context=context, allow_rotation_removal=allow_rotation_removal)
     measurements = _COMPOUND_MEASUREMENT
     version = _COMPOUND_MEASUREMENT_PROMPT_VERSION
     has_fluid_ounce_rate = include_fluid_ounces and payload["slots"] and any(
@@ -1996,8 +2009,10 @@ def _has_spatial_scope(text):
     return any(pattern.search(text) for pattern in (_ORIENTED_BOUNDARY, _PROXIMITY, _CLOSE_TO))
 
 
-def _auto_prompt_payload_v59(document, *, context):
-    payload = _compound_measurement_prompt_payload(document, context=context, include_fluid_ounces=True)
+def _auto_prompt_payload_v59(document, *, context, allow_rotation_removal=False):
+    payload = _compound_measurement_prompt_payload(
+        document, context=context, include_fluid_ounces=True, allow_rotation_removal=allow_rotation_removal,
+    )
     if any(_has_spatial_scope(slot["text"]) for slot in payload["slots"]):
         payload["prompt_version"] = _SPATIAL_SCOPE_PROMPT_VERSION
         payload["rules"].append(
@@ -2024,16 +2039,23 @@ def _keeps_authored_note_labels(prompt_version):
 
 def build_auto_prompt(document, *, context, profile_version=PROFILE):
     if profile_version == PROFILE:
-        return _build_auto_prompt_v63(document, context=context)
+        return _build_auto_prompt_v64(document, context=context)
     if profile_version != SOURCE_BOUND_REWRITE_PROFILE:
         raise ValueError("REWRITE_PROFILE_UNSUPPORTED")
-    return _build_source_bound_prompt(document, preserve_notes=True, procedure_fidelity=True, allow_drain_subject=True)
+    return _build_source_bound_prompt(
+        document, preserve_notes=True, procedure_fidelity=True,
+        allow_drain_subject=True, allow_rotation_removal=True,
+    )
 
 
-def _build_source_bound_prompt(document, *, preserve_notes, procedure_fidelity=False, allow_drain_subject=False):
+def _build_source_bound_prompt(
+    document, *, preserve_notes, procedure_fidelity=False, allow_drain_subject=False, allow_rotation_removal=False,
+):
     builder = _auto_prompt_payload_v61 if preserve_notes else _auto_prompt_payload_v60
     if procedure_fidelity:
         builder = _auto_prompt_payload_v63 if allow_drain_subject else _auto_prompt_payload_v62
+    if allow_rotation_removal:
+        builder = _auto_prompt_payload_v64
     payload = builder(document, context={})
     payload.pop("context", None)
     payload["profile_version"] = SOURCE_BOUND_REWRITE_PROFILE
@@ -2052,8 +2074,8 @@ def _build_source_bound_prompt(document, *, preserve_notes, procedure_fidelity=F
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v60(document, *, context):
-    payload = _auto_prompt_payload_v59(document, context=context)
+def _auto_prompt_payload_v60(document, *, context, allow_rotation_removal=False):
+    payload = _auto_prompt_payload_v59(document, context=context, allow_rotation_removal=allow_rotation_removal)
     if any(_source_assembly_component(slot) for slot in payload["slots"]):
         payload["prompt_version"] = _ASSEMBLY_LABEL_PROMPT_VERSION
         payload["rules"].append(
@@ -2068,8 +2090,8 @@ def _build_auto_prompt_v60(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v61(document, *, context):
-    payload = _auto_prompt_payload_v60(document, context=context)
+def _auto_prompt_payload_v61(document, *, context, allow_rotation_removal=False):
+    payload = _auto_prompt_payload_v60(document, context=context, allow_rotation_removal=allow_rotation_removal)
     if any(authored_note_prefix(slot["text"]) for slot in payload["slots"]):
         payload["prompt_version"] = _NOTE_LABEL_PROMPT_VERSION
         payload["rules"].append(
@@ -2089,8 +2111,8 @@ def _passage_procedure_facts(text, *, allow_drain_subject):
     return procedure_facts(text[len(label):] if label else text, allow_drain_subject=allow_drain_subject)
 
 
-def _auto_procedure_prompt_payload(document, *, context, allow_drain_subject):
-    payload = _auto_prompt_payload_v61(document, context=context)
+def _auto_procedure_prompt_payload(document, *, context, allow_drain_subject, allow_rotation_removal=False):
+    payload = _auto_prompt_payload_v61(document, context=context, allow_rotation_removal=allow_rotation_removal)
     version = None
     for slot in payload["slots"]:
         if slot["required_action"] != "rewrite":
@@ -2125,8 +2147,10 @@ def _auto_prompt_payload_v62(document, *, context):
     return _auto_procedure_prompt_payload(document, context=context, allow_drain_subject=False)
 
 
-def _auto_prompt_payload_v63(document, *, context):
-    return _auto_procedure_prompt_payload(document, context=context, allow_drain_subject=True)
+def _auto_prompt_payload_v63(document, *, context, allow_rotation_removal=False):
+    return _auto_procedure_prompt_payload(
+        document, context=context, allow_drain_subject=True, allow_rotation_removal=allow_rotation_removal,
+    )
 
 
 def _build_auto_prompt_v62(document, *, context):
@@ -2139,15 +2163,34 @@ def _build_auto_prompt_v63(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
+def _auto_prompt_payload_v64(document, *, context):
+    payload = _auto_prompt_payload_v63(document, context=context, allow_rotation_removal=True)
+    if any(slot["required_action"] == "rewrite" and _rotation_removal_binding(slot["text"])
+           for slot in payload["slots"]):
+        payload["prompt_version"] = _ROTATION_REMOVAL_PROMPT_VERSION
+        payload["rules"].append(
+            "For a single plain instruction to rotate a named part and remove a named part, keep both "
+            "complete part names and the exact direction. Keep rotation first and removal second, both "
+            "required. Switch between rotate and remove, and turn in the specified direction and take the part off."
+        )
+    return payload
+
+
+def _build_auto_prompt_v64(document, *, context):
+    payload = _auto_prompt_payload_v64(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
 def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROFILE):
     """Identify the rules bound to the saved model attempt."""
     if profile_version == SOURCE_BOUND_REWRITE_PROFILE:
-        for preserve_notes, procedure_fidelity, allow_drain_subject in (
-            (True, True, True), (True, True, False), (True, False, False), (False, False, False),
+        for preserve_notes, procedure_fidelity, allow_drain_subject, allow_rotation_removal in (
+            (True, True, True, True), (True, True, True, False), (True, True, False, False),
+            (True, False, False, False), (False, False, False, False),
         ):
             payload = _build_source_bound_prompt(
                 document, preserve_notes=preserve_notes, procedure_fidelity=procedure_fidelity,
-                allow_drain_subject=allow_drain_subject,
+                allow_drain_subject=allow_drain_subject, allow_rotation_removal=allow_rotation_removal,
             )
             if sha256(payload.encode()).hexdigest() == prompt_hash:
                 return json.loads(payload)["prompt_version"]
@@ -2155,6 +2198,7 @@ def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROF
     if profile_version != PROFILE:
         return None
     for builder in (
+        _build_auto_prompt_v64,
         _build_auto_prompt_v63,
         _build_auto_prompt_v62,
         _build_auto_prompt_v61,
@@ -2375,9 +2419,23 @@ def _rotations_in_clause(clause):
     return rotations
 
 
-def _qualitative_rotations(text):
+def _rotation_removal_binding(text):
+    if _ROTARY_UNCERTAIN.search(text):
+        return None
+    match = _ROTATION_REMOVAL_AUTHORED.fullmatch(text) or _ROTATION_REMOVAL_RECAST.fullmatch(text)
+    if match is None:
+        return None
+    rotation, direction, removal = match.group("rotation", "direction", "removal")
+    if not _TARGET_DELIMITERS.isdisjoint(_WORDS.findall(rotation.casefold()) + _WORDS.findall(removal.casefold())):
+        return None
+    return "rotate and remove", rotation, direction.casefold(), removal
+
+
+def _qualitative_rotations(text, *, allow_removal=False):
     if not _ROTARY_DIRECTION.search(text):
         return ()
+    if allow_removal and (binding := _rotation_removal_binding(text)):
+        return (binding,)
     rotations = []
     # Remove wrapped direction spellings before sentence or timing boundaries
     # are inspected, otherwise the clockwise suffix can look like a new claim.
@@ -2407,8 +2465,8 @@ def _qualitative_rotations(text):
     return tuple(rotations)
 
 
-def _check_qualitative_rotation(original, replacement, source_rotations):
-    if source_rotations != _qualitative_rotations(replacement):
+def _check_qualitative_rotation(original, replacement, source_rotations, *, allow_removal=False):
+    if source_rotations != _qualitative_rotations(replacement, allow_removal=allow_removal):
         raise ValueError("REWRITE_DIRECTION_MUTATION")
     if not source_rotations:
         return
@@ -3665,12 +3723,15 @@ def _include_cell_blocks(prompt_version):
 
 def _require_changes(
     source, candidate, *, prompt_version, include_cell_blocks=None, slot_errors=None, introduction_only=False,
-    bankone_structure=None, verified_color_notes=False,
+    bankone_structure=None, verified_color_notes=False, allow_rotation_removal=False,
 ):
     # The introduced first block is the only offset in source paths.
     restored = {"blocks": candidate["blocks"][1:]}
     if include_cell_blocks is None:
         include_cell_blocks = _include_cell_blocks(prompt_version)
+    if prompt_version == _ROTATION_REMOVAL_PROMPT_VERSION:
+        allow_rotation_removal = True
+        prompt_version = _auto_prompt_payload_v63(source, context={}, allow_rotation_removal=True)["prompt_version"]
     guard_procedure_fidelity = prompt_version in _PROCEDURE_FIDELITY_PROMPT_VERSIONS
     allow_drain_subject = prompt_version == _DRAIN_SUBJECT_PROMPT_VERSION
     if guard_procedure_fidelity:
@@ -3938,7 +3999,7 @@ def _require_changes(
             if original_condition is None:
                 return
         if guard_qualitative_rotation:
-            source_rotations = _qualitative_rotations(original)
+            source_rotations = _qualitative_rotations(original, allow_removal=allow_rotation_removal)
             if source_rotations is None:
                 if original != replacement:
                     raise ValueError("REWRITE_DIRECTION_MUTATION")
@@ -4047,7 +4108,7 @@ def _require_changes(
         ):
             raise ValueError("REWRITE_QUALIFIER_MUTATION")
         if guard_qualitative_rotation:
-            _check_qualitative_rotation(original, replacement, source_rotations)
+            _check_qualitative_rotation(original, replacement, source_rotations, allow_removal=allow_rotation_removal)
         if guard_procedure_fidelity and (
             facts := _passage_procedure_facts(original, allow_drain_subject=allow_drain_subject)
         ):
@@ -4079,6 +4140,7 @@ def _require_changes(
 
 def require_current_publication_checks(source, candidate, *, saved_prompt_version, bankone_structure=None):
     """Apply current prose rules to the saved prompt's editable slots."""
+    allow_rotation_removal = saved_prompt_version == _ROTATION_REMOVAL_PROMPT_VERSION
     if saved_prompt_version in _PROCEDURE_FIDELITY_PROMPT_VERSIONS:
         _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure)
         saved_prompt_version = _auto_prompt_payload_v61(source, context={})["prompt_version"]
@@ -4115,7 +4177,7 @@ def require_current_publication_checks(source, candidate, *, saved_prompt_versio
     _require_changes(
         source, candidate, prompt_version=current_version,
         include_cell_blocks=_include_cell_blocks(saved_prompt_version),
-        bankone_structure=bankone_structure,
+        bankone_structure=bankone_structure, allow_rotation_removal=allow_rotation_removal,
     )
 
 
@@ -4283,6 +4345,7 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None, prof
             _NOTE_LABEL_PROMPT_VERSION: "full-prose-auto-validator-v59",
             _PROCEDURE_FIDELITY_PROMPT_VERSION: "full-prose-auto-validator-v60",
             _DRAIN_SUBJECT_PROMPT_VERSION: "full-prose-auto-validator-v61",
+            _ROTATION_REMOVAL_PROMPT_VERSION: "full-prose-auto-validator-v62",
         }.get(prompt_version, "full-prose-auto-validator-v53")
     if verified_color_notes:
         validator_version = "full-prose-color-note-replay-validator-v1"
