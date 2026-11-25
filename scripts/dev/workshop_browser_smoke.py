@@ -1424,7 +1424,9 @@ async def expect_html_list_figure(article):
 
     figure = 'ol[start="4"] > li[value="9"] > figure:has(img[alt="Shim"])'
     await expect(article.locator(f'{figure} > figcaption')).to_have_text('Shim A')
-    await expect(article.locator(f'{figure} > img')).to_have_js_property('naturalWidth', 1)
+    await expect(article.locator(
+        f'{figure} > .figure-viewport > img[alt="Shim"]',
+    )).to_have_js_property('naturalWidth', 1)
     await expect(article.locator(
         f'{figure} + .table-scroll > table, {figure} + a.source-reference + .table-scroll > table',
     )).to_have_count(1)
