@@ -506,12 +506,12 @@ export function startSavedSelectorReads(params, request = requestJSON) {
   const selection = { year, make: params.get('make'), model: params.get('model') };
   const reads = {};
   for (const name of ['year', 'make', 'model', 'configuration']) {
-    const result = requestStoredSelector(vehicleSelectorPath(name, selection), { signal: controller.signal }, request)
+    const path = vehicleSelectorPath(name, selection);
+    const options = { signal: controller.signal };
+    // Years have no parent to verify. One read can return stored years and
+    // start hydration. Descendants wait for their parents before scheduling.
+    reads[name] = (name === 'year' ? request(path, options) : requestStoredSelector(path, options, request))
       .catch(() => null);
-    // The regular year request starts hydration when the stored list is incomplete.
-    reads[name] = name === 'year' ? result.then(response =>
-      response?.complete === true && Array.isArray(response.items) ? response : null
-    ) : result;
     const value = selection[name];
     if (!value || value.length > 128 || value === '.' || value === '..') break;
   }
