@@ -12,11 +12,12 @@ from .procedure_rewrite_correction import (
     CorrectionResult, _MARKER, _MAX_PROMPT_BYTES, _MAX_REPLY_BYTES, _apply_variants,
     _initial_draft, _mask_literals, _passage_errors, _replay_transcript, _validated_document, _variants,
 )
-from .procedure_rewrite_recovery import _equivalent_wording
+from .procedure_rewrite_recovery import _PART, _REFERENCE, _equivalent_wording, _plain_label
 
 
 SENTENCE_CORRECTION_METHOD = "source-bound-sentence-correction-v1"
 SENTENCE_RECOVERY_METHOD = "source-bound-sentence-recovery-v1"
+SENTENCE_INSTRUCTION_RECOVERY_METHOD = "source-bound-sentence-recovery-v2"
 MAX_SENTENCE_CORRECTION_CALLS = 2
 _MAX_STATEMENTS = 60
 _MAX_COMBINATIONS = 27
@@ -30,6 +31,27 @@ _WIRING_EXPLANATION = re.compile(
     rf"(?P<subject>{_NOUN_PHRASE}) are not wired to (?P<target>the {_NOUN_PHRASE}), thus "
     rf"the (?P<component>{_NOUN_PHRASE}) does not communicate directly on a (?P<network>{_NOUN_PHRASE})\."
 )
+_HARNESS_CONNECTION = re.compile(
+    rf"(?P<owner>{_PART}) Wiring Harness ?(?P<harness>{_REFERENCE}) *@ *"
+    rf"(?P<target>{_PART}) ?(?P<reference>{_REFERENCE}) *» *(?P<action>Connect|Disconnect)",
+    re.I,
+)
+_LINKED_REMOVAL = re.compile(
+    rf"(?P<part>{_PART}) ?(?P<reference>{_REFERENCE}) *» *Remove— *(?P<title>{_PART} Replacement)",
+    re.I,
+)
+_ASSEMBLY_REMOVAL = re.compile(
+    rf"Remove the (?P<first>{_PART}) and (?:the )?(?P<second>{_PART}) "
+    rf"as an assembly (?P<reference>{_REFERENCE})\.",
+    re.I,
+)
+_LOOSEN_THEN_SLIDE = re.compile(
+    rf"Loosen the (?P<screw>(?P<tool>[A-Z]{{2,5}}-[0-9]{{4,6}}) {_PART} screw {_REFERENCE}), then slide "
+    rf"the (?P<part>{_PART}) of the (?P<assembly>(?P=tool) {_PART} {_REFERENCE}) "
+    rf"away from the (?P<target>{_PART})\.",
+    re.I,
+)
+_COPY_REJECTIONS = {"REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR"}
 
 
 def _statement_facts(text):
@@ -152,6 +174,37 @@ def _wiring_equivalent(statement):
     return (f'{match["subject"]} lack wiring to {match["target"]}, so the {match["component"]} '
             f'has no direct communication on a {match["network"]}.')
 
+
+
+def _instruction_equivalent(statement):
+    if match := _HARNESS_CONNECTION.fullmatch(statement):
+        owner, target = match["owner"], match["target"]
+        # A directional label could describe the harness or its owner.
+        if all(_plain_label(label) and not auto._direction_labels(label) for label in (owner, target)):
+            action = match["action"].capitalize()
+            relation = "from" if action == "Disconnect" else "to"
+            return (
+                f'{action} wiring harness {match["harness"]} for the {owner} '
+                f'{relation} the {target} {match["reference"]}.'
+            )
+    if match := _LINKED_REMOVAL.fullmatch(statement):
+        part, title = match["part"], match["title"]
+        if _plain_label(part) and title.casefold() == f"{part} Replacement".casefold():
+            return f'Remove the component identified by {match["reference"]} using the steps in {title}.'
+    if match := _ASSEMBLY_REMOVAL.fullmatch(statement):
+        first, second = match["first"], match["second"]
+        if _plain_label(first) and _plain_label(second):
+            return (
+                f'Remove assembly {match["reference"]} in one piece, '
+                f"keeping the {first} together with the {second}."
+            )
+    if match := _LOOSEN_THEN_SLIDE.fullmatch(statement):
+        if all(_plain_label(match[label]) for label in ("screw", "part", "assembly", "target")):
+            return (
+                f'Loosen the {match["screw"]} first. Then move the {match["part"]} of the {match["assembly"]} '
+                f'by sliding it away from the {match["target"]}.'
+            )
+    return None
 
 
 def _statement_options(source, alternatives):
@@ -291,3 +344,31 @@ def recover_sentence_correction(source, previous, *, model_call_budget, attempts
 
     return _replay_transcript(recover, source, previous, model_call_budget=model_call_budget, attempts=attempts,
                               preserve_notes=preserve_notes)
+
+
+def recover_numbered_sentence_instructions(source, previous, *, model_call_budget, attempts, preserve_notes=False):
+    """Finish recognized diagram instructions using the exact saved correction."""
+    baseline = recover_sentence_correction(
+        source, previous, model_call_budget=model_call_budget, attempts=attempts, preserve_notes=preserve_notes,
+    )
+    if baseline.document is not None:
+        return baseline
+
+    version, slots, _ = _initial_draft(source, previous, preserve_notes=preserve_notes)
+    draft = baseline.response
+    indices, proposals = [], []
+    for index, error in _remaining_passage_errors(source, slots, draft).items():
+        if error not in _COPY_REJECTIONS:
+            continue
+        original = slots[index]["text"].strip()
+        wording = _instruction_equivalent(original)
+        if wording and wording in _statement_options(original, [wording]):
+            indices.append(index)
+            proposals.append([wording])
+    if not proposals:
+        return baseline
+    _apply_variants(source, slots, draft, indices, proposals)
+    document, error_code = _validate_sentence_draft(source, slots, draft, version)
+    evidence = {**baseline.evidence, "method": SENTENCE_INSTRUCTION_RECOVERY_METHOD,
+                "draft_hash": digest_json(draft)}
+    return CorrectionResult(draft, document, error_code, evidence)

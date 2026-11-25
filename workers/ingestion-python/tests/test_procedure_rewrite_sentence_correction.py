@@ -8,8 +8,9 @@ import pytest
 
 from autodata_ingestion.article_lifecycle_types import digest_json
 from autodata_ingestion.procedure_rewrite_sentence_correction import (
-    MAX_SENTENCE_CORRECTION_CALLS, SENTENCE_CORRECTION_METHOD, SENTENCE_RECOVERY_METHOD,
-    correct_sentence_draft, recover_sentence_correction,
+    MAX_SENTENCE_CORRECTION_CALLS, SENTENCE_CORRECTION_METHOD, SENTENCE_INSTRUCTION_RECOVERY_METHOD,
+    SENTENCE_RECOVERY_METHOD, _instruction_equivalent, correct_sentence_draft,
+    recover_numbered_sentence_instructions, recover_sentence_correction,
 )
 from test_procedure_rewrite_full import document, response
 
@@ -178,6 +179,56 @@ def test_sentence_archive_recovery_preserves_wiring_and_communication_state(subj
     archive[-1]["response_hash"] = "0" * 64
     with pytest.raises(ValueError, match="^REWRITE_CORRECTION_EVIDENCE_INVALID$"):
         recover_sentence_correction(source, previous, model_call_budget=2, attempts=archive)
+
+
+@pytest.mark.parametrize(("source_text", "wording"), [
+    ("Vehicle Fuel Management System Control Wiring Harness(1)@Main Pressure Regulator Connector(2)»Disconnect",
+     "Disconnect wiring harness (1) for the Vehicle Fuel Management System Control from the Main Pressure Regulator Connector (2)."),
+    ("Vehicle Fuel Management System Control Wiring Harness(1)@Main Pressure Regulator Connector(2)»Connect",
+     "Connect wiring harness (1) for the Vehicle Fuel Management System Control to the Main Pressure Regulator Connector (2)."),
+    ("Engine Coolant Supply Air Bleed Pipe(3)»Remove— Engine Coolant Supply Air Bleed Pipe Replacement",
+     "Remove the component identified by (3) using the steps in Engine Coolant Supply Air Bleed Pipe Replacement."),
+    ("Remove the engine lower oil pan and the pressure supply baffle as an assembly (4).",
+     "Remove assembly (4) in one piece, keeping the engine lower oil pan together with the pressure supply baffle."),
+    ("Loosen the EN-12345 locking screw (5), then slide the retaining arm of the EN-12345 holding fixture (6) "
+     "away from the engine block.",
+     "Loosen the EN-12345 locking screw (5) first. Then move the retaining arm of the EN-12345 holding fixture (6) "
+     "by sliding it away from the engine block."),
+])
+def test_numbered_instruction_recovery_keeps_bound_meaning_and_saved_rounds(source_text, wording):
+    source, previous = document(source_text), response(source_text)
+    replies = Replies(echo_passages, echo_statements)
+    archive = []
+
+    def record(prompt):
+        reply = replies.complete(prompt)
+        archive.append({**replies.exchanges[-1], "response": reply})
+        return reply
+
+    original = correct_sentence_draft(source, previous, complete_json=record, model_call_budget=2)
+    legacy = recover_sentence_correction(source, previous, model_call_budget=2, attempts=archive)
+    result = recover_numbered_sentence_instructions(source, previous, model_call_budget=2, attempts=archive)
+
+    assert original.document is None and original.error_code == "REWRITE_UNCHANGED"
+    assert legacy.document is None and legacy.evidence["method"] == SENTENCE_RECOVERY_METHOD
+    assert result.error_code is None and result.document["blocks"][1]["text"] == wording
+    assert result.evidence == {
+        **legacy.evidence, "method": SENTENCE_INSTRUCTION_RECOVERY_METHOD, "draft_hash": digest_json(result.response),
+    }
+    assert len(replies.exchanges) == 2
+
+
+@pytest.mark.parametrize("text", [
+    "Upper Pump Wiring Harness(1)@Main Switch Connector(2)»Disconnect",
+    "Pump Supply Pipe(1)»Remove— Return Pipe Replacement",
+    "Remove the engine lower oil pan or the pressure supply baffle as an assembly (4).",
+    "Loosen the EN-12345 locking screw (5), then slide the retaining arm of the EN-54321 holding fixture (6) "
+    "away from the engine block.",
+    "Loosen the EN-12345 locking screw (5), then slide the retaining arm of the EN-12345 holding fixture (6) "
+    "toward the engine block.",
+])
+def test_numbered_instruction_recovery_declines_ambiguous_or_different_actions(text):
+    assert _instruction_equivalent(text) is None
 
 
 def test_single_call_budget_keeps_unresolved_source():
