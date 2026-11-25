@@ -362,6 +362,7 @@ def test_continuous_overlaps_providers_and_refills_a_finished_slot(continuous_st
     stop = Event()
     banktwo_started = Event()
     next_bankone_started = Event()
+    waiting_for_completion = Event()
     first, next_one, first_two, next_two = [uuid4() for _ in range(4)]
     queued = [(first, "bankone"), (next_one, "bankone"), (first_two, "banktwo"), (next_two, "banktwo")]
     reserved = []
@@ -379,6 +380,7 @@ def test_continuous_overlaps_providers_and_refills_a_finished_slot(continuous_st
             with model_slot() as allowed:
                 assert allowed
                 assert banktwo_started.wait(3)
+                assert waiting_for_completion.wait(3)
                 assert not next_bankone_started.is_set()
         elif job == first_two:
             banktwo_started.set()
@@ -393,7 +395,16 @@ def test_continuous_overlaps_providers_and_refills_a_finished_slot(continuous_st
     def no_poll(seconds):
         pytest.fail(f"Worker polled for {seconds}s while jobs were active")
 
+    select = worker.select
+
+    def wait_for_completion(*args):
+        waiting_for_completion.set()
+        ready = select(*args)
+        assert ready[0], "A finished job must wake the coordinator before its polling timeout"
+        return ready
+
     monkeypatch.setattr(stop, "wait", no_poll)
+    monkeypatch.setattr(worker, "select", wait_for_completion)
     monkeypatch.setattr(worker, "database_now", lambda repo: NOW)
     monkeypatch.setattr(worker, "_subscribe_to_article_jobs", lambda repo: None)
     monkeypatch.setattr(worker, "_reserve_next_article", reserve)
