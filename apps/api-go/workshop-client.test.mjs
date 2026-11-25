@@ -4637,7 +4637,7 @@ function articleIndexHarness(responses, { wait = async () => {}, now = () => per
         for (const child of [...this.children]) child.remove();
         this.append(...children);
       },
-      focus() { document.activeElement = this; },
+      focus(options) { this.focusOptions = options; document.activeElement = this; },
       scrollIntoView(options) { this.scrollOptions = options; },
       addEventListener(name, callback) { this.events[name] = callback; },
       setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -4844,6 +4844,9 @@ test('in-app Back traverses the original index entry once and focuses its articl
   h.returnToIndex();
   assert.deepEqual(h.routes, [{ article: 'first', replace: false }]);
   assert.equal(h.context.document.activeElement, h.link);
+  assert.equal(h.link.focusOptions?.preventScroll, true);
+  assert.equal(h.link.scrollOptions?.behavior, 'instant');
+  assert.equal(h.link.scrollOptions?.block, 'center');
   assert.deepEqual(h.restores, []);
   assert.equal(h.requests.length, 1);
 });
@@ -4854,6 +4857,8 @@ test('in-app Back falls back to its index heading when the prior link is gone', 
   h.$('back').events.click();
   h.returnToIndex();
   assert.equal(h.context.document.activeElement, h.$('catalog-title'));
+  assert.equal(h.$('catalog-title').scrollOptions?.behavior, 'instant');
+  assert.equal(h.$('catalog-title').scrollOptions?.block, 'nearest');
   assert.deepEqual(h.restores, []);
 });
 
