@@ -146,6 +146,9 @@ def test_current_guard_preserves_distinct_equivalent_prose(layout, profile, orig
     "The fixture reservoir must be filled, then proceed with service.",
     "The fixture reservoir must be drained before inspection.",
     "The fixture reservoir needs to be drained into a separate container.",
+    "The fixture's reservoir must be filled.",
+    "The fixture’s reservoir must be filled.",
+    "The fixture reservoir that holds coolant must be filled.",
 ))
 def test_drain_subject_prompt_rejects_fluid_instructions_in_introduction(introduction):
     source = document(_DRAIN)
