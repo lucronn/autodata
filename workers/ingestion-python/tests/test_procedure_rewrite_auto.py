@@ -4295,6 +4295,62 @@ def test_automatic_rewrite_accepts_restructured_qualitative_rotation(in_cell, or
     assert draft in project_ordered_document(result.document)["body"]
 
 
+_ROTATE_REMOVE = "Rotate the retaining sleeve clockwise and remove the guide plate."
+_ROTATE_REMOVE_REPHRASED = "Turn the retaining sleeve in a clockwise direction and take the guide plate off."
+
+
+@pytest.mark.parametrize("profile", [PROFILE, SOURCE_BOUND_REWRITE_PROFILE])
+@pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
+def test_plain_rotation_and_removal_rewrites_use_a_separate_prompt_version(profile, in_cell):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source = _scoped_prose_source(_ROTATE_REMOVE, in_cell=in_cell)
+    prompt = auto.build_auto_prompt(source, context={}, profile_version=profile)
+    version = json.loads(prompt)["prompt_version"]
+    assert version == auto._ROTATION_REMOVAL_PROMPT_VERSION
+    assert json.loads(prompt)["slots"][-1]["required_action"] == "rewrite"
+    payload = _scoped_prose_response(prompt, _ROTATE_REMOVE_REPHRASED)
+    result = rewrite.rewrite_ordered_document(source, client=Draft(payload), context={}, profile_version=profile)
+    assert result.error_code is None
+
+    report = auto.validate_auto(source, result.document, response=payload, prompt_version=version, profile_version=profile)
+    assert report.passed
+    assert report.report["validator_version"] == "full-prose-auto-validator-v62"
+    auto.require_current_publication_checks(source, result.document, saved_prompt_version=version)
+    assert auto._auto_prompt_version(source, context={}, prompt_hash=sha256(prompt.encode()).hexdigest(),
+                                     profile_version=profile) == version
+    archived = (auto._build_source_bound_prompt(source, preserve_notes=True, procedure_fidelity=True,
+                                                allow_drain_subject=True)
+                if profile == SOURCE_BOUND_REWRITE_PROFILE else auto._build_auto_prompt_v63(source, context={}))
+    archived_version = json.loads(archived)["prompt_version"]
+    assert archived_version != version
+    assert json.loads(archived)["slots"][-1]["required_action"] == "retain"
+    assert auto._auto_prompt_version(source, context={}, prompt_hash=sha256(archived.encode()).hexdigest(),
+                                     profile_version=profile) == archived_version
+    assert not auto.validate_auto(source, result.document, response=payload, prompt_version=archived_version,
+                                  profile_version=profile).passed
+
+
+@pytest.mark.parametrize("replacement", [
+    _ROTATE_REMOVE_REPHRASED.replace("clockwise", "counterclockwise"),
+    _ROTATE_REMOVE_REPHRASED.replace("retaining sleeve", "guide plate"),
+    _ROTATE_REMOVE_REPHRASED.replace("guide plate", "retaining sleeve"),
+    _ROTATE_REMOVE_REPHRASED.replace(" and ", " or "),
+    _ROTATE_REMOVE_REPHRASED.replace("take the", "optionally take the"),
+    "Take the guide plate off and turn the retaining sleeve in a clockwise direction.",
+    "Turn the retaining sleeve in a clockwise direction.",
+])
+def test_plain_rotation_and_removal_rejects_technical_mutations(replacement):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source = _scoped_prose_source(_ROTATE_REMOVE, in_cell=False)
+    prompt = auto.build_auto_prompt(source, context={})
+    rejected = run(source, _scoped_prose_response(prompt, replacement))
+    assert rejected.error_code in {"REWRITE_DIRECTION_MUTATION", "REWRITE_ACTION_MUTATION"}
+    assert rejected.document == source
+
+
+
 @pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
 @pytest.mark.parametrize("direction", ["counter-\nclockwise", "counter- clockwise", "counter–clockwise", "anti‑clockwise"])
 def test_automatic_rewrite_preserves_wrapped_rotary_direction(in_cell, direction):
