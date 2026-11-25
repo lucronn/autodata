@@ -4,6 +4,7 @@ import * as commerce from "./commerce.mjs";
 import {
   NavigationGeneration,
   awaitingArticleRewrite,
+  readyReprojectedSource,
   readArticle,
   readableArticle,
   processingArticle,
@@ -1149,12 +1150,15 @@ function renderArticleLinks(items) {
       link.addEventListener("click", (event) => {
         if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
-        openArticle(item.id, link);
+        openArticle(item.id, link, { preferRetained: link.dataset.retained === "true" });
       });
       row.append(link);
     }
     previous.delete(item.id);
     const link = row.firstElementChild;
+    link.dataset.retained = String(item.availability === "available" &&
+      (item.content_origin === "canonical" && uuid(item.canonical_revision_id) ||
+        item.content_origin === "source" && uuid(item.source_revision_id)));
     const kind = typeof item.kind === "string"
       ? item.kind.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ")
       : "";
@@ -1787,7 +1791,8 @@ function renderArticle(article, g, redraw = false) {
       ["normalizing", "rewriting", "validating", "publishing"].includes(article.processing.state);
     notes.push(rewriting ? "Preparing the Workshop rewrite." : "An update is in progress.");
   }
-  if (readable && article.review_status === "UNREVIEWED" && (!processing || article.content_origin === "canonical")) {
+  if (readable && article.review_status === "UNREVIEWED" && !readyReprojectedSource(article) &&
+      (!processing || article.content_origin === "canonical")) {
     notes.push("Draft content has not been reviewed. Check the stored source before using this procedure.");
   }
   $("article-note").hidden = !notes.length;
@@ -1806,6 +1811,10 @@ function renderArticle(article, g, redraw = false) {
   document.title = `${article.title || "Article"} | AutoData`;
 }
 function showArticleReadStatus(id, article, timedOut = false) {
+  if (readyReprojectedSource(article)) {
+    status("Stored source ready.", { complete: true });
+    return;
+  }
   const readable = readableArticle(article);
   const checkUpdate = readable && !openDemo && session.state.mode === "firebase" &&
     (timedOut || article.content_origin === "source");
@@ -1846,7 +1855,9 @@ async function loadArticle(id, g, options) {
     order.loading = false;
   }
 }
-async function loadArticleView(id, g, order, { savedLink = false, refreshOnly = false, verifiedDetail = null } = {}) {
+async function loadArticleView(id, g, order, {
+  savedLink = false, refreshOnly = false, preferRetained = false, verifiedDetail = null,
+} = {}) {
   const sameArticle = currentArticle?.id === id;
   let refreshVisibleArticle = sameArticle && !$("reader").hidden && readableArticle(currentArticle);
   const heading = $("article-title");
@@ -1872,7 +1883,6 @@ async function loadArticleView(id, g, order, { savedLink = false, refreshOnly = 
     for (const type of ["wheel", "touchmove", "keydown", "pointerdown"])
       window.addEventListener(type, keepPosition, { passive: true, signal });
   }
-  const prepare = !verifiedDetail && !refreshOnly && !openDemo && session.state.mode !== "local";
   const selected = vehicle;
   const matchesConfiguration = (configuration) =>
     configuration?.id === selected.id && configuration?.region === selected.region;
@@ -1894,6 +1904,33 @@ async function loadArticleView(id, g, order, { savedLink = false, refreshOnly = 
       clearUnavailableArticle();
     throw error;
   };
+  let retainedReadStartedAt;
+  if (preferRetained && !verifiedDetail && !refreshOnly && !openDemo &&
+      session.state.mode === "firebase" && access === "owned" &&
+      validScope({ configuration_id: selected.id, region: selected.region })) {
+    // The index advertises retained content. Read it with current authorization.
+    const startedAt = performance.now();
+    try {
+      const response = await requestArticleDetail(order, detailPath, readOptions);
+      const article = response.data?.article;
+      if (article?.id !== id || !matchesConfiguration(response.data?.configuration))
+        throw new Error("The article response does not match the selected vehicle.");
+      if (response.status === 200 && readableArticle(article) ||
+          response.status === 202 && processingArticle(article)) {
+        verifiedDetail = response;
+        retainedReadStartedAt = startedAt;
+      }
+    } catch (error) {
+      if (!g.current()) return;
+      const unavailable = error.status === 503 && error.retryable === true &&
+        ["CATALOG_SOURCE_UNAVAILABLE", "CATALOG_UNAVAILABLE"].includes(error.code);
+      const transport = error.status === 0 && error.code === "NETWORK_UNAVAILABLE";
+      const gateway = [502, 503, 504].includes(error.status) && error.code === "HTTP_ERROR" && !error.retryAfterSeconds;
+      if (!unavailable && !transport && !gateway) handleReadError(error);
+    }
+    if (!g.current()) return;
+  }
+  const prepare = !verifiedDetail && !refreshOnly && !openDemo && session.state.mode !== "local";
   let readingStatus = "";
   const updateReader = (response, early = false) => {
     if (!g.current() || Object.hasOwn($("reader").dataset, "rechecking")) return;
@@ -1934,7 +1971,7 @@ async function loadArticleView(id, g, order, { savedLink = false, refreshOnly = 
   const earlySignal = earlyCheck && AbortSignal.any([g.signal, earlyCheck.signal]);
   let preparing = prepare;
   let keepEarlyRead = false;
-  let initialReadStartedAt = performance.now();
+  let initialReadStartedAt = retainedReadStartedAt ?? performance.now();
   let detailRead, detailStartedAt, detailPending = false;
   const pendingDetail = (response) => response?.status === 202 &&
     response.data?.article?.id === id && matchesConfiguration(response.data.configuration) &&
@@ -2077,7 +2114,7 @@ async function loadArticleView(id, g, order, { savedLink = false, refreshOnly = 
     showArticleReadStatus(id, retained ? currentArticle : result.data?.article, result.timedOut);
   return true;
 }
-function openArticle(id, indexLink = null, { refreshOnly = false } = {}) {
+function openArticle(id, indexLink = null, { refreshOnly = false, preferRetained = false } = {}) {
   const indexURL = location.href;
   const params = indexLink && new URL(indexURL).searchParams;
   updateURL({ article: id });
@@ -2093,9 +2130,9 @@ function openArticle(id, indexLink = null, { refreshOnly = false } = {}) {
     (g) => {
       if (articleIndexOrigin && articleIndexOrigin.readerURL === location.href)
         articleIndexOrigin.generation = g;
-      return loadArticle(id, g, { refreshOnly });
+      return loadArticle(id, g, { refreshOnly, preferRetained });
     },
-    () => openArticle(id, null, { refreshOnly }),
+    () => openArticle(id, null, { refreshOnly, preferRetained }),
   );
 }
 function validSourceURL(value) {

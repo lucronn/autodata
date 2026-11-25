@@ -365,6 +365,8 @@ func publicProcessingError(code *string) *string {
 	switch *code {
 	case "CANONICAL_REVIEW_REJECTED":
 		safe = "CATALOG_REVIEW_REQUIRED"
+	case "SOURCE_ONLY_REPROJECTION":
+		safe = "CATALOG_SOURCE_REPROJECTED"
 	case "CATALOG_SOURCE_UNAVAILABLE":
 		safe = *code
 	case "CATALOG_REWRITE_REJECTED":

@@ -43,6 +43,12 @@ export function awaitingArticleRewrite(article) {
     article.processing?.state === "failed" && article.processing.error_code === "MODEL_NOT_CONFIGURED" &&
     readableArticle(article);
 }
+export function readyReprojectedSource(article) {
+  return article?.content_origin === "source" && Boolean(article.source_revision_id) &&
+    article.source_body_preview !== true && article.processing?.state === "needs_review" &&
+    article.processing.retryable !== true && article.processing.error_code === "CATALOG_SOURCE_REPROJECTED" &&
+    readableArticle(article);
+}
 export function processingArticle(article) {
   const processing = article?.processing;
   return Boolean(
