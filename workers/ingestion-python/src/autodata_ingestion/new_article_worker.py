@@ -421,6 +421,8 @@ def run_new_article_worker(repo, state, *, registry, object_store, model_client,
                     listener = None
                 dispatched = dispatch_next(repo, state, worker_id=worker_id, registry=registry,
                                            object_store=object_store, model_client=model_client, stop=stop)
+                if dispatched and can_wait_for_jobs:
+                    continue
                 if listener is not None and not dispatched and not stop.is_set():
                     try:
                         for _ in listener.notifies(timeout=2, stop_after=1):
@@ -430,7 +432,7 @@ def run_new_article_worker(repo, state, *, registry, object_store, model_client,
                         listener = None
                     else:
                         continue
-                # Poll on listener failure, at quota, and after a dispatch.
+                # Poll on listener failure, at quota, and in finite mode.
                 stop.wait(2)
         finally:
             if listener is not None:
