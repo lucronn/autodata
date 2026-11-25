@@ -296,7 +296,11 @@ func (s *Server) servePaidCatalogImage(w http.ResponseWriter, r *http.Request, p
 		s.writePaidCatalogError(w, r, ErrCatalogWithdrawn)
 		return
 	}
-	if !paidCatalogViewMatches(view, identity) || !samePaidCatalogID(view.Article.CanonicalRevisionID, ref.AnchorCanonicalRevisionID) ||
+	// First publication keeps the selected Original on its immutable source.
+	originalAtFirstPublication := ref.Projection == "source" && ref.AnchorCanonicalRevisionID == nil &&
+		view.Article.CanonicalRevisionID != nil && ref.SelectedSourceRevisionID == ref.AnchorSourceRevisionID
+	if !paidCatalogViewMatches(view, identity) ||
+		(!originalAtFirstPublication && !samePaidCatalogID(view.Article.CanonicalRevisionID, ref.AnchorCanonicalRevisionID)) ||
 		view.Article.SourceRevisionID == nil || *view.Article.SourceRevisionID != ref.AnchorSourceRevisionID ||
 		(articleProjection && *view.Article.SourceRevisionID != ref.SelectedSourceRevisionID) {
 		s.writePaidCatalogError(w, r, ErrCatalogNotFound)

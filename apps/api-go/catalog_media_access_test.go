@@ -311,6 +311,69 @@ func TestPaidCatalogFigureURLReuseMatchesBothAssetAndObject(t *testing.T) {
 	}
 }
 
+func TestPaidCatalogOriginalFigureSurvivesFirstPublication(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		change func(*paidMediaCatalog, *paidMediaGrant, *Principal, *paidCatalogImageReference)
+	}{
+		{"original-same-source", http.StatusOK, nil},
+		{"old-article-figure", http.StatusNotFound, func(_ *paidMediaCatalog, _ *paidMediaGrant, _ *Principal, r *paidCatalogImageReference) {
+			r.Projection = "article"
+		}},
+		{"source-changed", http.StatusNotFound, func(c *paidMediaCatalog, _ *paidMediaGrant, _ *Principal, _ *paidCatalogImageReference) {
+			c.identity.CurrentSourceRevisionID = stringPointer("99999999-9999-4999-8999-999999999999")
+		}},
+		{"source-changed-after-identity-read", http.StatusNotFound, func(c *paidMediaCatalog, _ *paidMediaGrant, _ *Principal, _ *paidCatalogImageReference) {
+			c.view.Article.SourceRevisionID = stringPointer("99999999-9999-4999-8999-999999999999")
+		}},
+		{"historical-selected-source", http.StatusNotFound, func(c *paidMediaCatalog, _ *paidMediaGrant, _ *Principal, r *paidCatalogImageReference) {
+			r.SelectedSourceRevisionID = "99999999-9999-4999-8999-999999999999"
+			c.source.SourceRevisionID = stringPointer(r.SelectedSourceRevisionID)
+		}},
+		{"canonical-replaced", http.StatusNotFound, func(_ *paidMediaCatalog, _ *paidMediaGrant, _ *Principal, r *paidCatalogImageReference) {
+			r.AnchorCanonicalRevisionID = stringPointer("99999999-9999-4999-8999-999999999999")
+		}},
+		{"wrong-account", http.StatusNotFound, func(_ *paidMediaCatalog, _ *paidMediaGrant, p *Principal, _ *paidCatalogImageReference) {
+			p.CustomerAccountID = "99999999-9999-4999-8999-999999999999"
+		}},
+		{"source-asset-removed", http.StatusNotFound, func(c *paidMediaCatalog, _ *paidMediaGrant, _ *Principal, _ *paidCatalogImageReference) {
+			c.source.Images = nil
+		}},
+		{"withdrawn", http.StatusGone, func(c *paidMediaCatalog, _ *paidMediaGrant, _ *Principal, _ *paidCatalogImageReference) {
+			c.view.Withdrawn = true
+		}},
+		{"revoked-after-first-grant-check", http.StatusForbidden, func(_ *paidMediaCatalog, g *paidMediaGrant, _ *Principal, _ *paidCatalogImageReference) {
+			g.errorAfterFirst = ErrVehicleGrantRevoked
+		}},
+	}
+	for _, item := range cases {
+		t.Run(item.name, func(t *testing.T) {
+			s, catalog, grants, objects, principal, reference := paidMediaFixture()
+			reference.AnchorCanonicalRevisionID = nil
+			reference.Projection = "source"
+			if item.change != nil {
+				item.change(catalog, grants, &principal, &reference)
+			}
+			token, err := sealPaidCatalogImageReference(reference, s.catalogImageKey, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := paidMediaRequest(s, principal, token)
+			if response.Code != item.status {
+				t.Fatalf("status=%d, want %d", response.Code, item.status)
+			}
+			if item.status == http.StatusOK {
+				if !bytes.Equal(response.Body.Bytes(), objects.body) || grants.calls.Load() != 2 || objects.calls.Load() != 1 {
+					t.Fatal("reply lost the retained bytes or required checks")
+				}
+			} else if objects.calls.Load() != 0 {
+				t.Fatal("denial reached storage")
+			}
+		})
+	}
+}
+
 func TestPaidCatalogMediaRevalidatesBeforeObjectRead(t *testing.T) {
 	cases := []struct {
 		name   string
