@@ -1671,7 +1671,10 @@ async def expect_paid_same_index_reopen(page, origin, scope, link, index_url, so
         figure = page.locator('#article-content figure:has(img[alt="Alignment marks"])')
         await expect_figure_after_text(figure, 'Check the pump alignment marks')
         image = figure.locator('img')
-        await asyncio.wait_for(image.evaluate('image => image.decode()'), timeout=5)
+        await figure.scroll_into_view_if_needed()
+        await page.wait_for_function(
+            'image => image.complete && image.naturalWidth > 0', arg=await image.element_handle(), timeout=5000,
+        )
         image_url = await image.get_attribute('src')
         assert image_url.startswith(origin + '/v1/catalog/images/v2.')
         delivery = await page.request.get(image_url)
