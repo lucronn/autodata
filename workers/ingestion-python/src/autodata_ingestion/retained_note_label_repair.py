@@ -1,8 +1,9 @@
-"""Repair notes in one exact, completed Banktwo v3 publication."""
+"""Repair wording in a completed Banktwo publication using its archived reply."""
 
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
+from functools import partial
 import re
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -13,14 +14,20 @@ from psycopg.types.json import Jsonb
 from .article_document import project_ordered_document
 from .article_lifecycle_types import (
     RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE as CONDITIONAL_PROFILE,
-    RETAINED_NOTE_LABEL_REPAIR_PROFILE as PROFILE, SOURCE_BOUND_CORRECTION_PROFILE, ValidationResult,
+    RETAINED_NOTE_LABEL_REPAIR_PROFILE as PROFILE,
+    RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE as ROTATION_REMOVAL_PROFILE,
+    SOURCE_BOUND_CORRECTION_PROFILE, ValidationResult,
     digest_json, transformation_key,
 )
-from .procedure_rewrite_auto import authored_note_prefix, render_auto, require_current_publication_checks, validate_auto
+from .procedure_rewrite_auto import (
+    _ROTATION_REMOVAL_PROMPT_VERSION, authored_note_prefix, recast_authored_rotation_removal,
+    render_auto, require_current_publication_checks, validate_auto,
+)
 from .procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
 from .procedure_rewrite_fidelity import recast_conditional_color_note
 from .procedure_rewrite_full import _get, _set
 from .procedure_rewrite_recovery import RECOVERY_METHOD
+from .procedure_rewrite_sentence_correction import SENTENCE_CORRECTION_METHOD
 from .retained_procedure_repair import _valid_audit
 from .source_job_persistence import _lease_from_row, source_bound_rewrite_source_allowed
 from .source_media_replay import _check_review_quarantine, _load_snapshots, _source_replay_row
@@ -35,6 +42,9 @@ _UNAVAILABLE = "RETAINED_NOTE_LABEL_REPAIR_SOURCE_UNAVAILABLE"
 CONDITIONAL_METHOD = "retained-conditional-note-archived-reply-repair-v1"
 CONDITIONAL_CHECKPOINT = "retained_conditional_note_repair"
 _CONDITIONAL_INVALID = "RETAINED_CONDITIONAL_NOTE_REPAIR_INVALID"
+ROTATION_REMOVAL_METHOD = "retained-rotation-removal-archived-reply-repair-v1"
+ROTATION_REMOVAL_CHECKPOINT = "retained_rotation_removal_repair"
+_ROTATION_REMOVAL_INVALID = "RETAINED_ROTATION_REMOVAL_REPAIR_INVALID"
 _HASH = re.compile(r"[a-f0-9]{64}")
 
 
@@ -77,7 +87,8 @@ def _restore_reply(source, retained, old_document, old_reply, *, prompt_version)
     return document, validation, reply, sorted(changed)
 
 
-def _recast_reply(source, retained, old_document, old_reply, *, prompt_version):
+def _recast_reply(source, retained, old_document, old_reply, *, prompt_version, recast, invalid,
+                  verified_color_notes=False):
     reply = deepcopy(old_reply)
     old_leaves = {"blocks": old_document["blocks"][1:]}
     changed = {}
@@ -86,18 +97,19 @@ def _recast_reply(source, retained, old_document, old_reply, *, prompt_version):
             continue
         path = row["path"]
         original = _get(source, path)
-        wording = recast_conditional_color_note(original)
+        wording = recast(original)
         if wording is None:
             continue
         if original != row["text"] or original != _get(retained, path) or original != _get(old_leaves, path):
-            raise ValueError(_CONDITIONAL_INVALID)
+            raise ValueError(invalid)
         row.update(action="rewrite", text=wording, reason="")
         changed[path] = original
     if not changed:
-        raise ValueError(_CONDITIONAL_INVALID)
+        raise ValueError(invalid)
 
     options = dict(
-        prompt_version=prompt_version, profile_version=SOURCE_BOUND_CORRECTION_PROFILE, verified_color_notes=True,
+        prompt_version=prompt_version, profile_version=SOURCE_BOUND_CORRECTION_PROFILE,
+        verified_color_notes=verified_color_notes,
     )
     document = render_auto(source, reply, **options)
     validation = validate_auto(source, document, response=reply, **options)
@@ -105,7 +117,7 @@ def _recast_reply(source, retained, old_document, old_reply, *, prompt_version):
     for path, text in changed.items():
         _set({"blocks": reverted["blocks"][1:]}, path, text)
     if not validation.passed or reverted != old_document:
-        raise ValueError(_CONDITIONAL_INVALID)
+        raise ValueError(invalid)
     return document, validation, reply, sorted(changed)
 
 
@@ -118,12 +130,20 @@ class _Repair:
     invalid: str
     stale: str
     edit_reply: Callable
+    successor_guard: str | None = None
 
 
 _LABELS = _Repair(PROFILE, METHOD, CHECKPOINT, RECOVERY_METHOD, _INVALID, _STALE, _restore_reply)
 _CONDITIONAL = _Repair(
     CONDITIONAL_PROFILE, CONDITIONAL_METHOD, CONDITIONAL_CHECKPOINT, ARCHIVED_FIRST_DRAFT_METHOD,
-    _CONDITIONAL_INVALID, "RETAINED_CONDITIONAL_NOTE_REPAIR_STALE", _recast_reply,
+    _CONDITIONAL_INVALID, "RETAINED_CONDITIONAL_NOTE_REPAIR_STALE",
+    partial(_recast_reply, recast=recast_conditional_color_note, invalid=_CONDITIONAL_INVALID, verified_color_notes=True),
+)
+_ROTATION_REMOVAL = _Repair(
+    ROTATION_REMOVAL_PROFILE, ROTATION_REMOVAL_METHOD, ROTATION_REMOVAL_CHECKPOINT, SENTENCE_CORRECTION_METHOD,
+    _ROTATION_REMOVAL_INVALID, "RETAINED_ROTATION_REMOVAL_REPAIR_STALE",
+    partial(_recast_reply, recast=recast_authored_rotation_removal, invalid=_ROTATION_REMOVAL_INVALID),
+    successor_guard=_ROTATION_REMOVAL_PROMPT_VERSION,
 )
 
 
@@ -169,6 +189,7 @@ def _source_evidence(cur, article, source_id, descriptor_id, *, lock):
 
 
 def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_id, old_hash, *, lock, repair=_LABELS):
+    from .article_lifecycle_store import _require_source_bound_rewrite_rights
     from .published_media_publication import _publication_evidence_for_revision
 
     if (prior_job is None or article["provider_slug"] != "banktwo" or prior_job["provider_slug"] != "banktwo"
@@ -184,6 +205,8 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
         or prior["rewrite_result_hash"] != old_hash):
         raise ValueError(repair.stale)
     bound_source = _source_evidence(cur, article, source_id, descriptor_id, lock=lock)
+    if lock and repair is _ROTATION_REMOVAL:
+        _require_source_bound_rewrite_rights(cur, prior_job, article)
     prior, review, decision, attempt, archived_reply, version, _ = _publication_evidence_for_revision(
         cur, article, SimpleNamespace(source_revision_id=source_id), prior_revision_id,
         fixture_mode=False, lock=lock, expected_profile=SOURCE_BOUND_CORRECTION_PROFILE,
@@ -192,12 +215,13 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
         raise ValueError(repair.invalid)
 
     source = prior["normalized_source_document"]
+    guard = repair.successor_guard or version
     document, validation, reply, paths = repair.edit_reply(
-        source, bound_source["source_document"], prior["canonical_document"], archived_reply, prompt_version=version,
+        source, bound_source["source_document"], prior["canonical_document"], archived_reply, prompt_version=guard,
     )
     if lock:
         checked = prior["canonical_document"] if repair is _CONDITIONAL else document
-        require_current_publication_checks(source, checked, saved_prompt_version=version)
+        require_current_publication_checks(source, checked, saved_prompt_version=guard)
     facts = {
         "source_revision_id": str(source_id),
         "source_observation_id": str(bound_source["source_observation_id"]),
@@ -211,11 +235,13 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
         "archived_correction_evidence_hash": digest_json(prior["model_metadata"]["correction_evidence"]),
         "archived_attempt_id": str(attempt["rewrite_attempt_id"]),
         "archived_final_reply_hash": digest_json(archived_reply),
-        "guard_version": version,
+        "guard_version": guard,
         "restored_paths": paths,
         "repaired_reply_hash": digest_json(reply),
         "repaired_document_hash": digest_json(document),
     }
+    if repair.successor_guard is not None:
+        facts["archived_guard_version"] = version
     key = transformation_key(
         article["canonical_article_id"], bound_source["source_fingerprint"], prior["normalization_version"],
         repair.profile, projection_version=bound_source["projection_version"],
@@ -231,6 +257,11 @@ def resolve_retained_note_label_repair(cur, job, article, candidate, *, publishi
 def resolve_retained_conditional_note_repair(cur, job, article, candidate, *, publishing=False):
     """Rebuild the exact successor from the retained source and archived reply."""
     return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_CONDITIONAL)
+
+
+def resolve_retained_rotation_removal_repair(cur, job, article, candidate, *, publishing=False):
+    """Replay the archived reply and validate the exact rotation and removal rewording."""
+    return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_ROTATION_REMOVAL)
 
 
 def _resolve_repair(cur, job, article, candidate, *, publishing, repair):
@@ -297,6 +328,19 @@ def repair_retained_conditional_note(
         expected_descriptor_snapshot_id=expected_descriptor_snapshot_id,
         expected_published_revision_id=expected_published_revision_id, expected_published_hash=expected_published_hash,
         expected_repaired_hash=expected_repaired_hash, actor=actor, reason=reason, hooks=hooks, repair=_CONDITIONAL,
+    )
+
+
+def repair_retained_rotation_removal(
+    repo, article_id, *, expected_job_id, expected_source_revision_id, expected_descriptor_snapshot_id,
+    expected_published_revision_id, expected_published_hash, expected_repaired_hash, actor, reason, hooks=None,
+):
+    """Publish the pinned rewording and its outbox event in one transaction."""
+    return _repair_retained_note(
+        repo, article_id, expected_job_id=expected_job_id, expected_source_revision_id=expected_source_revision_id,
+        expected_descriptor_snapshot_id=expected_descriptor_snapshot_id,
+        expected_published_revision_id=expected_published_revision_id, expected_published_hash=expected_published_hash,
+        expected_repaired_hash=expected_repaired_hash, actor=actor, reason=reason, hooks=hooks, repair=_ROTATION_REMOVAL,
     )
 
 

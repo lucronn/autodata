@@ -2431,6 +2431,14 @@ def _rotation_removal_binding(text):
     return "rotate and remove", rotation, direction.casefold(), removal
 
 
+def recast_authored_rotation_removal(text):
+    """Reword an authored rotation followed by removal using its exact targets."""
+    if not _ROTATION_REMOVAL_AUTHORED.fullmatch(text) or not (binding := _rotation_removal_binding(text)):
+        return None
+    _, rotation, direction, removal = binding
+    return f"Turn the {rotation} in a {direction} direction and take the {removal} off."
+
+
 def _qualitative_rotations(text, *, allow_removal=False):
     if not _ROTARY_DIRECTION.search(text):
         return ()

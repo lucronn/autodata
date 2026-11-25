@@ -15,6 +15,7 @@ SOURCE_BOUND_REWRITE_PROFILE = "full-prose-auto-v2"
 SOURCE_BOUND_CORRECTION_PROFILE = "full-prose-auto-v3"
 RETAINED_NOTE_LABEL_REPAIR_PROFILE = "full-prose-note-label-repair-v1"
 RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE = "full-prose-conditional-note-repair-v1"
+RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE = "full-prose-rotation-removal-repair-v1"
 RETAINED_REQUIRED_ACTION_REPAIR_PROFILE = "full-prose-required-action-repair-v1"
 MAX_CORRECTION_CALLS = 12
 MAX_LINKED_PDFS = 4

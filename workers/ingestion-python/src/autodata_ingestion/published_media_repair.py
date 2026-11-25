@@ -10,7 +10,8 @@ from .article_document import (
     has_only_list_ordinal_additions, has_only_table_span_additions, project_ordered_document,
 )
 from .article_lifecycle_types import (
-    AUTOMATIC_REWRITE_PROFILES, RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE, SOURCE_BOUND_CORRECTION_PROFILE,
+    AUTOMATIC_REWRITE_PROFILES, RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE, RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE,
+    SOURCE_BOUND_CORRECTION_PROFILE,
     ValidationResult, digest_json,
 )
 from .procedure_rewrite import _set_path, editable_slots, validate_article_rewrite
@@ -224,7 +225,8 @@ def repair_published_media(
     ):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH")
     conditional_note = profile == RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE
-    uses_automatic_reply = profile in AUTOMATIC_REWRITE_PROFILES or conditional_note
+    archived_reply_repair = profile in (RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE, RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE)
+    uses_automatic_reply = profile in AUTOMATIC_REWRITE_PROFILES or archived_reply_repair
     if uses_automatic_reply:
         supported_prompts = (
             _BOUND_AUTOMATIC_PROMPTS if conditional_note or bankone_structure is not None else _SUPPORTED_PROMPTS
@@ -233,7 +235,7 @@ def repair_published_media(
             raise ValueError("PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED")
         replay_options = {
             "prompt_version": prompt_version,
-            "profile_version": SOURCE_BOUND_CORRECTION_PROFILE if conditional_note else profile,
+            "profile_version": SOURCE_BOUND_CORRECTION_PROFILE if archived_reply_repair else profile,
             "verified_color_notes": conditional_note,
         }
         render = partial(render_auto, **replay_options)
