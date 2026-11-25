@@ -8629,6 +8629,82 @@ test('an incomplete model reopen reads storage once when hydration only describe
   assert.deepEqual(h.$('model').options.map(choice => choice.value), [first.id, sibling.id]);
 });
 
+test('reselecting a make or model scope renders its incomplete choices before stored refresh finishes', async () => {
+  for (const name of ['make', 'model']) {
+    const first = { id: 'first' };
+    const sibling = { id: 'sibling' };
+    const original = { items: [first], complete: false, hydrating: true };
+    const pending = deferredAuthOperation();
+    const h = selectorOptionsHarness(path => path.includes('stored_only') ? pending.promise : original);
+    await h.load('', null, null, name);
+    assert.deepEqual(h.requests, ['/choices']);
+
+    await h.load('', null, null, name);
+    const select = h.$(name);
+    select.value = first.id;
+    const option = select.options[0];
+    assert.equal(select.disabled, false);
+    assert.equal(h.context.pickerStates.get(name).incomplete, true);
+    await h.context.refreshPicker(name);
+    assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
+
+    pending.resolve({ ...original, items: [first, sibling] });
+    await new Promise(setImmediate);
+    assert.equal(select.value, first.id);
+    assert.equal(select.options[0], option);
+    assert.deepEqual(select.options.map(choice => choice.value), [first.id, sibling.id]);
+    assert.equal(h.context.cachedSelector('/choices').complete, false);
+  }
+});
+
+test('a stale partial-cache refresh cannot add models to another parent or region', async () => {
+  const first = { id: 'first' };
+  const other = { id: 'other' };
+  const pending = deferredAuthOperation();
+  let refreshSignal;
+  let path = '/first?region=US';
+  const h = selectorOptionsHarness((url, { signal }) => {
+    if (url === '/first?region=US&stored_only=1') {
+      refreshSignal = signal;
+      return pending.promise;
+    }
+    return url.startsWith('/first') ? { items: [first], complete: false, hydrating: true }
+      : { items: [other], complete: true };
+  });
+  h.context.selectorPath = () => path;
+  await h.load('', null, null, 'model');
+  await h.load('', null, null, 'model');
+  h.context.cancelPickerRefreshes();
+  path = '/other?region=CA';
+  await h.load('', null, null, 'model');
+
+  pending.resolve({ items: [first, { id: 'late' }], complete: true });
+  await new Promise(setImmediate);
+  assert.equal(refreshSignal.aborted, true);
+  assert.deepEqual(h.$('model').options.map(choice => choice.value), [other.id]);
+  assert.deepEqual(h.requests, ['/first?region=US', '/first?region=US&stored_only=1', '/other?region=CA']);
+  assert.equal(h.context.cachedSelector('/first?region=US').complete, false);
+});
+
+test('an incomplete model cache miss still reads normally for a saved choice', async () => {
+  const partial = { items: [{ id: 'first' }], complete: false, hydrating: true };
+  const missing = new CatalogRequestError('Models temporarily unavailable', { status: 503 });
+  const responses = [partial, missing];
+  const h = selectorOptionsHarness(() => {
+    const response = responses.shift();
+    if (response instanceof Error) throw response;
+    return response;
+  });
+  await h.load('', null, null, 'model');
+  assert.equal(h.context.cachedSelector('/choices', 'first').complete, false);
+  assert.equal(h.context.cachedSelector('/choices', 'missing'), null);
+  await h.load('missing', null, null, 'model');
+  assert.deepEqual(h.requests, ['/choices', '/choices']);
+  assert.equal(h.$('model').value, '');
+  assert.equal(h.statuses.at(-1).error, true);
+  assert.equal(h.statuses.at(-1).text, missing.message);
+});
+
 test('an unpinned year or make stays usable with its first rows', async () => {
   for (const [name, item] of [['year', { year: 2024 }], ['make', { id: 'buick-truck' }]]) {
     const partial = { items: [item], complete: false, hydrating: true };
