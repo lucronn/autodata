@@ -27,7 +27,7 @@ class _Cursor:
         self.reviews = []
         self.queries = []
 
-    def execute(self, sql, parameters):
+    def execute(self, sql, parameters=None):
         self.queries.append((sql, parameters))
         return self
 
@@ -148,16 +148,18 @@ def _html_fixture(provider, variant, *, embedded):
     return _Connector(provider, raw, None if embedded else png, bindings=bindings)
 
 
-def _retained_fixture(client, *, move_image):
+def _retained_fixture(client, *, move_image, descriptor=None, evidence_ids=(), capture_options=None):
     provider = client.provider
     context = SourceArticleContext(
         ArticleKey(provider, uuid4(), uuid4(), "fixture-vehicle", "fixture-article"),
         {"year": 2024},
-        {"title": "Pump", "resource_ref": "body"},
-        uuid4(), uuid4(), (),
+        {"title": "Pump", "resource_ref": "body", **(descriptor or {})},
+        uuid4(), uuid4(), evidence_ids,
     )
     objects = _Objects()
-    captured = capture_source_article(context, registry={provider: client}, object_store=objects)
+    captured = capture_source_article(
+        context, registry={provider: client}, object_store=objects, **(capture_options or {}),
+    )
     persisted_ids = {owner["source_snapshot_id"]: str(uuid4()) for owner in captured.resources}
     provenance = _remap_snapshot_references(captured.resource_provenance, persisted_ids)
     evidence = _remap_snapshot_references(captured.evidence_manifest, persisted_ids)
@@ -168,7 +170,7 @@ def _retained_fixture(client, *, move_image):
         blocks.append(image)
         for order, block in enumerate(blocks, start=1):
             block.update(source_order=order, block_id=f"{article_id(context.key)}:block:{order:04d}")
-    _, _, images = project_document(document)
+    body, steps, images = project_document(document)
     row = {
         "canonical_article_id": article_id(context.key),
         "source_revision_id": uuid4(),
@@ -179,6 +181,8 @@ def _retained_fixture(client, *, move_image):
         "resource_provenance": provenance,
         "evidence_manifest": evidence,
         "source_document": document,
+        "source_body": body,
+        "source_steps": steps,
         "source_images": images,
         "captured_at": captured.captured_at,
         "projection_status": captured.projection_status,
@@ -191,7 +195,9 @@ def _retained_fixture(client, *, move_image):
         "membership_status": "active",
         "takedown_status": "active",
         "body_provider_revision": provenance[0]["source_revision"],
-        "captured_context": {"vehicle": context.vehicle, "descriptor": context.descriptor, "evidence_ids": []},
+        "captured_context": {
+            "vehicle": context.vehicle, "descriptor": context.descriptor, "evidence_ids": list(evidence_ids),
+        },
         "descriptor_source_snapshot_id": context.descriptor_snapshot_id,
         "resolution_source_snapshot_id": context.resolution_snapshot_id,
     }

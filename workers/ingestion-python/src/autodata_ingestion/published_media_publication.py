@@ -109,6 +109,7 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
 
 
 def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fixture_mode, lock, expected_profile=None):
+    from .retained_bankone_order_reply import BANKONE_ORDER_METHOD
     from .retained_note_label_repair import METHOD as NOTE_LABEL_REPAIR_METHOD, PROFILE as NOTE_LABEL_REPAIR_PROFILE
     from .retained_note_label_repair import resolve_retained_note_label_repair
     from .retained_procedure_repair import METHOD as RETAINED_PROCEDURE_REPAIR_METHOD, resolve_retained_procedure_repair
@@ -172,6 +173,11 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
             authors.add(correction["actor"])
         if set(reason["retention_reviews"]) != set(validation.report.get("retained_paths", [])):
             raise ValueError("PUBLISHED_MEDIA_REPAIR_REVIEW_REQUIRED")
+    elif row["model_metadata"].get("transformation_method") == BANKONE_ORDER_METHOD:
+        from .retained_bankone_order_publication import resolve_bankone_order_publication
+
+        repaired, attempt, prompt_version = resolve_bankone_order_publication(cur, job, article, row, lock=lock)
+        validation, response = repaired.validation, repaired.remapped_response
     elif row["model_metadata"].get("transformation_method") == RETAINED_PROCEDURE_REPAIR_METHOD:
         recovered = resolve_retained_procedure_repair(cur, job, article, row)
         validation, attempt, response, prompt_version = (

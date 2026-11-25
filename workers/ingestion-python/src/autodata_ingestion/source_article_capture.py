@@ -454,6 +454,42 @@ def _source_body_preview(
     return document
 
 
+WORKSHOP_CAPTURE_OPTIONS = {
+    "keep_embedded_pdf": True,
+    "keep_html_headings": True,
+    "keep_bound_pdf_iframes": True,
+    "keep_pdf_figure_order": True,
+    "keep_multiple_pdf_figures": True,
+    "keep_html_table_image_order": True,
+    "keep_repeated_pdf_figures": True,
+    "keep_pdf_figures_with_margins": True,
+    "keep_compact_pdf_figures": True,
+    "keep_single_line_pdf_figures": True,
+    "skip_blank_linked_pdf_pages": True,
+    "keep_wordless_linked_pdf_figures": True,
+    "keep_html_figure_captions": True,
+    "keep_html_flow_figure_captions": True,
+    "keep_html_multiline_figure_captions": True,
+    "keep_html_table_captions": True,
+    "keep_html_media_table_headers": True,
+    "keep_html_table_spans": True,
+    "keep_html_nested_tables": True,
+    "keep_structured_table_columns": True,
+    "keep_structured_table_cell_order": True,
+    "keep_structured_table_column_order": True,
+    "keep_image_only_headings": True,
+    "keep_ordered_step_instructions": True,
+    "keep_image_only_step_instructions": True,
+    "keep_leading_decimals": True,
+    "keep_html_numeric_superscripts": True,
+    "keep_html_document_links": True,
+    "keep_html_section_titles": True,
+    "keep_bankone_html_flow": True,
+    "keep_mixed_html_pdf_embeds": True,
+    "keep_bound_html_images": True,
+}
+
+
 def capture_source_article(
     context, *, registry, object_store, deadline_seconds=30.0,
     keep_embedded_pdf=False, keep_html_headings=False, keep_bound_pdf_iframes=False,
