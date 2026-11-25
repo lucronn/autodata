@@ -80,6 +80,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "050_article_source_projection_v10.sql",
                 "051_source_bound_correction_attempts.sql",
                 "052_vehicle_engine_variant.sql",
+                "053_canonical_article_link_bindings.sql",
             ],
         )
 
@@ -289,6 +290,7 @@ class SharedDriverTests(unittest.TestCase):
         for path in migration_files(ROOT / "db/migrations"):
             self.assertIn(path.read_text(), result.stdout)
         self.assertIn("AUTODATA_APPLIED 033_catalog_scope_coverage.sql", result.stdout)
+        self.assertIn("AUTODATA_APPLIED 053_canonical_article_link_bindings.sql", result.stdout)
 
     def test_manifest_rejects_holes_unsafe_names_symlinks_and_wrong_stems(self):
         names = [p.name for p in migration_files(ROOT / "db/migrations")]
