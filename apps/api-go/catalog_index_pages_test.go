@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func fillPaidIndexPageFixture(store *paidHTTPStore, count int) []string {
@@ -183,6 +184,83 @@ type paidIndexProgressTimeoutStore struct{ *paidHTTPStore }
 
 func (s paidIndexProgressTimeoutStore) CatalogArticleProgress(context.Context, Principal, string) (*CatalogArticleProgress, error) {
 	return nil, context.DeadlineExceeded
+}
+
+type delayedOwnedIndexStore struct {
+	*paidHTTPStore
+	reads   []string
+	spans   []time.Duration
+	onRetry func() *CatalogArticleProgress
+}
+
+func (s *delayedOwnedIndexStore) PaidArticleDescriptors(ctx context.Context, p Principal, id string) ([]CatalogArticle, error) {
+	s.reads = append(s.reads, "rows")
+	return s.paidHTTPStore.PaidArticleDescriptors(ctx, p, id)
+}
+
+func (s *delayedOwnedIndexStore) CatalogArticleProgress(ctx context.Context, _ Principal, _ string) (*CatalogArticleProgress, error) {
+	s.reads = append(s.reads, "progress")
+	deadline, _ := ctx.Deadline()
+	s.spans = append(s.spans, time.Until(deadline))
+	if len(s.spans) == 1 {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	return s.onRetry(), nil
+}
+
+func TestOwnedCatalogIndexDoesNotWaitForSlowProgressWhenRowsExist(t *testing.T) {
+	server, store, grants := paidHTTPServer()
+	ids := fillPaidIndexPageFixture(store, 150)
+	delayed := &delayedOwnedIndexStore{paidHTTPStore: store}
+	server.catalog = delayed
+	handler := server.Handler()
+	denied := callCatalogIndexPage(handler, "", catalogIndexLivePagesPreference, "")
+	if denied.Code != http.StatusForbidden || len(delayed.reads) != 0 {
+		t.Fatalf("unauthorized index read: status=%d reads=%v", denied.Code, delayed.reads)
+	}
+	grants.err = nil
+
+	response := callCatalogIndexPage(handler, "&offset=100", catalogIndexLivePagesPreference, "")
+	var body CatalogArticlesResponse
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &body) != nil ||
+		body.Complete || body.Progress != nil || body.Hydrating || body.Page == nil ||
+		body.Page.Offset != 100 || body.Page.Total != 150 || len(body.Items) != 50 ||
+		body.Items[0].ID != ids[100] || body.Items[0].Body != "" || body.Items[0].Document != nil {
+		t.Fatalf("stored descriptors did not survive the stalled progress lookup: %d", response.Code)
+	}
+	if !slices.Equal(delayed.reads, []string{"progress", "rows"}) || delayed.spans[0] > ownedIndexStatusReadTimeout {
+		t.Fatalf("stored rows waited on a long progress read: reads=%v budgets=%v", delayed.reads, delayed.spans)
+	}
+}
+
+func TestOwnedEmptyCatalogIndexReadsRowsAgainAfterLateProgress(t *testing.T) {
+	for _, publish := range []bool{false, true} {
+		t.Run(fmt.Sprintf("publish=%t", publish), func(t *testing.T) {
+			server, store, grants := paidHTTPServer()
+			grants.err = nil
+			delayed := &delayedOwnedIndexStore{paidHTTPStore: store}
+			delayed.onRetry = func() *CatalogArticleProgress {
+				if publish {
+					fillPaidIndexPageFixture(store, 1)
+				}
+				return &CatalogArticleProgress{Status: "completed", Complete: true, CatalogEmpty: !publish}
+			}
+			server.catalog = delayed
+
+			response := callCatalogIndexPage(server.Handler(), "", catalogIndexLivePagesPreference, "")
+			var body CatalogArticlesResponse
+			if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &body) != nil ||
+				!body.Complete || body.Progress == nil || body.Progress.CatalogEmpty == publish ||
+				(len(body.Items) > 0) != publish {
+				t.Fatalf("completion was paired with an outdated index: %d", response.Code)
+			}
+			if !slices.Equal(delayed.reads, []string{"progress", "rows", "progress", "rows"}) ||
+				delayed.spans[1] > catalogStatusReadTimeout-ownedIndexStatusReadTimeout {
+				t.Fatalf("unexpected retry order or budget: reads=%v budgets=%v", delayed.reads, delayed.spans)
+			}
+		})
+	}
 }
 
 func TestPaidCatalogLivePagesUseCurrentAuthorizedRowsDuringRecovery(t *testing.T) {

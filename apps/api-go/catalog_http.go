@@ -25,6 +25,7 @@ var catalogDiscoveryInstance = rand.Text()
 // Discovery status is supplementary to stored catalog rows. Bound its
 // database read so it can't keep otherwise usable data waiting indefinitely.
 const catalogStatusReadTimeout = 250 * time.Millisecond
+const ownedIndexStatusReadTimeout = 25 * time.Millisecond
 
 type CatalogYearsResponse struct {
 	Version string        `json:"version"`
@@ -272,67 +273,40 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 			return
 		}
 	}
+	ctx := request.Context()
+	paid := s.paidCatalogEnabled()
+	scope, scoped := ctx.Value(paidCatalogContextKey{}).(paidCatalogContext)
+	statusBudget := catalogStatusReadTimeout
+	if paid && scoped && !scope.openDemo {
+		// The exact grant has already been checked. Do not make owned rows
+		// wait for preparation metadata when its read stalls.
+		statusBudget = ownedIndexStatusReadTimeout
+	}
+	readProgress := func(budget time.Duration) (*CatalogArticleProgress, error) {
+		statusCtx, cancel := context.WithTimeout(ctx, budget)
+		defer cancel()
+		return s.catalog.CatalogArticleProgress(statusCtx, principal, vehicleID)
+	}
 	// Read progress before the rows. A completion committed after the row
 	// snapshot must not make that older snapshot look complete.
-	statusCtx, cancelStatus := context.WithTimeout(request.Context(), catalogStatusReadTimeout)
-	progress, statusErr := s.catalog.CatalogArticleProgress(statusCtx, principal, vehicleID)
-	cancelStatus()
-	var items []CatalogArticle
-	var err error
-	paid := s.paidCatalogEnabled()
-	if paid {
-		if query == "" {
-			repository, ok := s.catalog.(paidArticleDescriptorStore)
-			if !ok {
-				s.writePaidCatalogError(response, request, ErrVehicleGrantUnavailable)
-				return
-			}
-			items, err = repository.PaidArticleDescriptors(request.Context(), principal, vehicleID)
-		} else {
-			repository, ok := s.catalog.(paidArticleSearchStore)
-			if !ok {
-				s.writePaidCatalogError(response, request, ErrVehicleGrantUnavailable)
-				return
-			}
-			items, err = repository.PaidArticleSearchDescriptors(request.Context(), principal, vehicleID, query)
-		}
-	} else {
-		items, err = s.catalog.Articles(request.Context(), principal, vehicleID)
-		if err == nil && query != "" {
-			items = filterCatalogArticleSearch(items, query)
+	progress, statusErr := readProgress(statusBudget)
+	items, err := s.catalogIndexRows(ctx, principal, vehicleID, query, title)
+	if err == nil && len(items) == 0 && statusBudget < catalogStatusReadTimeout &&
+		errors.Is(statusErr, context.DeadlineExceeded) && ctx.Err() == nil {
+		// An empty read needs progress to distinguish waiting from an empty
+		// catalog. Preserve the rest of the budget, then take a new snapshot.
+		progress, statusErr = readProgress(catalogStatusReadTimeout - statusBudget)
+		if statusErr == nil {
+			items, err = s.catalogIndexRows(ctx, principal, vehicleID, query, title)
 		}
 	}
 	if err != nil {
-		s.writeCatalogError(response, request, err)
+		if errors.Is(err, ErrVehicleGrantUnavailable) {
+			s.writePaidCatalogError(response, request, err)
+		} else {
+			s.writeCatalogError(response, request, err)
+		}
 		return
-	}
-	if title != "" {
-		items = filterCatalogArticleTitle(items, title)
-	}
-	if scope, ok := request.Context().Value(paidCatalogContextKey{}).(paidCatalogContext); ok && scope.openDemo && (query != "" || title != "") {
-		available := make([]CatalogArticle, 0, len(items))
-		for _, item := range items {
-			if item.Availability == "available" {
-				available = append(available, item)
-			}
-		}
-		items = available
-	}
-	if paid || title != "" {
-		descriptors := make([]CatalogArticle, 0, len(items))
-		for _, item := range items {
-			if paid && (item.CanonicalArticleID == nil || item.ID != *item.CanonicalArticleID) {
-				continue
-			}
-			item.Document, item.Body, item.Steps, item.Images = nil, "", nil, []CatalogImage{}
-			item.SourceReview, item.OriginalSourceReview = nil, nil
-			descriptors = append(descriptors, item)
-		}
-		items = descriptors
-	} else {
-		for index := range items {
-			rewriteCatalogImageURLs(&items[index], s.catalogImageKey)
-		}
 	}
 	if !s.catalogCanServeRows(response, request, len(items), statusErr) {
 		return
@@ -362,7 +336,7 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 	}
 	var configuration *CatalogConfiguration
 	var page *CatalogArticleIndexPage
-	if scope, ok := request.Context().Value(paidCatalogContextKey{}).(paidCatalogContext); ok {
+	if scoped {
 		configuration = &scope.configuration
 		settled := progress != nil && (progress.Complete || (progress.Status == "failed" && !progress.Retryable))
 		if paid && !scope.openDemo && pagePreference != "" && !filters.Has("q") && !filters.Has("title") &&
@@ -375,6 +349,64 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		Version: "v1", Items: items, Complete: progress != nil && progress.Complete,
 		Hydrating: hydrating, Progress: progress, Configuration: configuration, Page: page,
 	})
+}
+
+func (s *Server) catalogIndexRows(ctx context.Context, principal Principal, vehicleID, query, title string) ([]CatalogArticle, error) {
+	var items []CatalogArticle
+	var err error
+	paid := s.paidCatalogEnabled()
+	if paid {
+		if query == "" {
+			repository, ok := s.catalog.(paidArticleDescriptorStore)
+			if !ok {
+				return nil, ErrVehicleGrantUnavailable
+			}
+			items, err = repository.PaidArticleDescriptors(ctx, principal, vehicleID)
+		} else {
+			repository, ok := s.catalog.(paidArticleSearchStore)
+			if !ok {
+				return nil, ErrVehicleGrantUnavailable
+			}
+			items, err = repository.PaidArticleSearchDescriptors(ctx, principal, vehicleID, query)
+		}
+	} else {
+		items, err = s.catalog.Articles(ctx, principal, vehicleID)
+		if err == nil && query != "" {
+			items = filterCatalogArticleSearch(items, query)
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if title != "" {
+		items = filterCatalogArticleTitle(items, title)
+	}
+	if scope, ok := ctx.Value(paidCatalogContextKey{}).(paidCatalogContext); ok && scope.openDemo && (query != "" || title != "") {
+		available := make([]CatalogArticle, 0, len(items))
+		for _, item := range items {
+			if item.Availability == "available" {
+				available = append(available, item)
+			}
+		}
+		items = available
+	}
+	if paid || title != "" {
+		descriptors := make([]CatalogArticle, 0, len(items))
+		for _, item := range items {
+			if paid && (item.CanonicalArticleID == nil || item.ID != *item.CanonicalArticleID) {
+				continue
+			}
+			item.Document, item.Body, item.Steps, item.Images = nil, "", nil, []CatalogImage{}
+			item.SourceReview, item.OriginalSourceReview = nil, nil
+			descriptors = append(descriptors, item)
+		}
+		items = descriptors
+	} else {
+		for index := range items {
+			rewriteCatalogImageURLs(&items[index], s.catalogImageKey)
+		}
+	}
+	return items, nil
 }
 
 func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.Request, principal Principal) {
