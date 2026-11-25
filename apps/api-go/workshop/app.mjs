@@ -218,7 +218,7 @@ function setSourceLoading(loading) {
   $("open-original").textContent = loading ? "Opening Original…" : "View Original";
   if (loading) $("original-error").hidden = true;
 }
-function resetSourceReview() {
+function resetSourceReview({ keepControls = false } = {}) {
   sourceImageRefresh = null;
   sourceDocumentRequest = null;
   mountedSource = null;
@@ -226,15 +226,17 @@ function resetSourceReview() {
   ++sourceRevision;
   displayedSourceRevision = sourceRevision;
   delete $("reader").dataset.readingOriginal;
-  $("source-review").hidden = true;
-  $("open-original").hidden = true;
+  if (!keepControls) {
+    $("source-review").hidden = true;
+    $("open-original").hidden = true;
+    $("source-review-link").removeAttribute("href");
+    $("source-review-meta").textContent = "";
+  }
   $("original-error").hidden = true;
   $("back-to-article").hidden = true;
   setSourceLoading(false);
   $("source-review-frame").replaceChildren();
   $("source-review-frame").hidden = true;
-  $("source-review-link").removeAttribute("href");
-  $("source-review-meta").textContent = "";
 }
 function resetReaderContent() {
   currentArticle = null;
@@ -1656,7 +1658,7 @@ function originalSourceReview(article) {
   return article?.original_source_review?.available ? article.original_source_review : article?.source_review;
 }
 function renderArticle(article, g, redraw = false) {
-  if (!g.current()) return;
+  if (!g.current() || Object.hasOwn($("reader").dataset, "rechecking")) return;
   const revision = articleViewRevision(article);
   const review = originalSourceReview(article);
   const previousOriginal = originalSourceReview(currentArticle);
@@ -1761,8 +1763,17 @@ function showArticleReadStatus(id, article, timedOut = false) {
     },
   );
 }
-async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {}) {
+async function loadArticle(id, g, options) {
   if ((!openDemo && !session.state.authenticated) || !g.current()) return;
+  const order = articleDetailOrder(g, id);
+  order.loading = true;
+  try {
+    return await loadArticleView(id, g, order, options);
+  } finally {
+    order.loading = false;
+  }
+}
+async function loadArticleView(id, g, order, { savedLink = false, refreshOnly = false, verifiedDetail = null } = {}) {
   const sameArticle = currentArticle?.id === id;
   let refreshVisibleArticle = sameArticle && !$("reader").hidden && readableArticle(currentArticle);
   const heading = $("article-title");
@@ -1773,11 +1784,12 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
   }
   show("reader");
   stage("article");
-  if (refreshVisibleArticle)
-    status("Checking for an article update…", { cancelable: true });
-  else {
-    status("Opening article…", { busy: true });
-    heading.focus();
+  if (!verifiedDetail) {
+    if (refreshVisibleArticle) status("Checking for an article update…", { cancelable: true });
+    else {
+      status("Opening article…", { busy: true });
+      heading.focus();
+    }
   }
   let readerAlignment = sameArticle ? null : new AbortController();
   if (readerAlignment) {
@@ -1787,11 +1799,10 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
     for (const type of ["wheel", "touchmove", "keydown", "pointerdown"])
       window.addEventListener(type, keepPosition, { passive: true, signal });
   }
-  const prepare = !refreshOnly && !openDemo && session.state.mode !== "local";
+  const prepare = !verifiedDetail && !refreshOnly && !openDemo && session.state.mode !== "local";
   const selected = vehicle;
   const matchesConfiguration = (configuration) =>
     configuration?.id === selected.id && configuration?.region === selected.region;
-  const order = articleDetailOrder(g, id);
   const detailPath = articleRequestPath(id);
   const preferPreviewSourceCheck = !openDemo && session.state.mode === "firebase";
   const readOptions = { signal: g.signal, preferShortPublicationCheck: true, preferPreviewSourceCheck };
@@ -1812,11 +1823,11 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
   };
   let readingStatus = "";
   const updateReader = (response, early = false) => {
-    if (!g.current()) return;
+    if (!g.current() || Object.hasOwn($("reader").dataset, "rechecking")) return;
     const article = response.data.article;
     const readable = readableArticle(article);
     if (retained && (!readable || olderThanRetained(response))) return;
-    renderArticle(article, g, refreshVisibleArticle);
+    renderArticle(article, g, refreshVisibleArticle && !verifiedDetail);
     refreshVisibleArticle = false;
     if (readerAlignment && readable) {
       const controller = readerAlignment;
@@ -1870,7 +1881,7 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
     }
     return detailRead;
   };
-  const primary = (prepare
+  const primary = (verifiedDetail ? Promise.resolve(verifiedDetail) : prepare
     ? requestArticleDetail(order, articleRequestPath(id, "/prepare"), {
         ...readOptions,
         method: "POST",
@@ -1989,7 +2000,8 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
     .catch(handleReadError)
     .finally(() => earlyCheck?.abort());
   if (!g.current()) return;
-  showArticleReadStatus(id, retained ? currentArticle : result.data?.article, result.timedOut);
+  if (!Object.hasOwn($("reader").dataset, "rechecking"))
+    showArticleReadStatus(id, retained ? currentArticle : result.data?.article, result.timedOut);
   return true;
 }
 function openArticle(id, indexLink = null, { refreshOnly = false } = {}) {
@@ -3077,6 +3089,20 @@ async function recheck(preservePicker = false) {
     lifecycleCheck = null;
   }
 }
+async function handleReaderCheckError(error, g, keepReadable = false) {
+  if (!g.current()) return;
+  const denied = [401, 403, 410].includes(error.status);
+  if (keepReadable && !denied && error.status !== 404 && readableArticle(currentArticle)) {
+    showArticleReadStatus(currentArticle.id, currentArticle, true);
+    return;
+  }
+  invalidate();
+  if (denied) {
+    await operation(async () => { throw error; }, () => restoreRoute());
+  } else {
+    await recheck();
+  }
+}
 async function recheckReader(g) {
   const opened = currentArticle;
   const selected = scope();
@@ -3089,46 +3115,63 @@ async function recheckReader(g) {
       focused.focus({ preventScroll: true });
   };
   // Reopening a folded source will request a fresh authorized copy.
-  if (sourceURL && !$("article-reference").open) resetSourceReview();
-  const pinned = sourceURL ? validSourceURL(sourceURL) : null;
-  if (sourceURL && !pinned) resetSourceReview();
+  const pinned = sourceURL && $("article-reference").open ? validSourceURL(sourceURL) : null;
+  if (sourceURL && !pinned) resetSourceReview({ keepControls: true });
   const pin = pinned?.searchParams.get("source_revision_id");
   const stagedPin = validSourceURL(opened.original_source_review?.url)?.searchParams.get("source_revision_id");
   const checkedSourceRevision = sourceRevision;
   const order = articleDetailOrder(g, opened.id);
   const { signal } = g;
+  const sourceFrame = $("source-review-frame");
+  const backToArticle = $("back-to-article");
+  const layout = pinned
+    ? [reader, ...[sourceFrame, backToArticle].filter((node) => !node.hidden)]
+    : [reader];
+  const releaseLayout = () => {
+    for (const node of layout) delete node.dataset.rechecking;
+  };
+  signal.addEventListener("abort", releaseLayout, { once: true });
   // Each view stays hidden until its own read verifies current access.
+  for (const node of layout) node.dataset.rechecking = "";
   reader.hidden = true;
   document.body.dataset.printable = "false";
   if (pinned) {
-    $("source-review-frame").hidden = true;
-    $("back-to-article").hidden = true;
+    sourceFrame.hidden = true;
+    backToArticle.hidden = true;
     setSourceLoading(true);
     $("source-review-meta").textContent = "Checking the stored source…";
   }
   try {
     const articleRead = Promise.all([
       session.matchesCurrentSession({ signal }),
-      requestArticleDetail(order, articleRequestPath(opened.id), { signal }),
+      requestArticleDetail(order, articleRequestPath(opened.id), { signal, preferShortPublicationCheck: true }),
     ]);
     const sourceRead = pinned ? requestJSON(pinned.pathname + pinned.search, { signal, headers: sourceDocumentHeaders })
       .then(value => ({ value }), error => ({ error })) : null;
     const [sameSession, detail] = await articleRead;
     if (!g.current()) return;
-    const article = acceptArticleDetail(order, detail)?.data?.article;
+    const checked = acceptArticleDetail(order, detail);
+    const article = checked?.data?.article;
     if (!sameSession || detail.status !== 200 || !scopeMatches(detail.data?.configuration) ||
-        article?.id !== opened.id || !readableArticle(article) || processingArticle(article)) {
+        article?.id !== opened.id || !readableArticle(article)) {
       invalidate();
       await recheck();
       return;
     }
     vehicle = detail.data.configuration;
     renderPurchase();
-    renderArticle(article, g);
-    if (articleViewRevision(opened) !== articleViewRevision(article) || opened.processing?.state !== article.processing?.state)
-      showArticleReadStatus(opened.id, article);
+    delete reader.dataset.rechecking;
     show("reader");
+    renderArticle(article, g);
+    if (!processingArticle(article) && (articleViewRevision(opened) !== articleViewRevision(article) ||
+        opened.processing?.state !== article.processing?.state))
+      showArticleReadStatus(opened.id, article);
     restoreFocus();
+    if (processingArticle(article) && !order.loading) {
+      // A background tab can exhaust the first read's budget.
+      void loadArticle(opened.id, g, { verifiedDetail: checked })
+        .catch((error) => handleReaderCheckError(error, g, true));
+    }
     if (!sourceRead) return;
     const { value, error } = await sourceRead;
     if (!g.current()) return;
@@ -3137,8 +3180,8 @@ async function recheckReader(g) {
     const returned = validSourceURL(value?.source?.url);
     if (returned?.pathname === pinned.pathname &&
         returned.searchParams.get("source_revision_id") === pin) {
-      $("source-review-frame").hidden = false;
-      $("back-to-article").hidden = false;
+      sourceFrame.hidden = false;
+      backToArticle.hidden = false;
       setSourceLoading(false);
       $("source-review-meta").textContent = "Stored source loaded.";
     } else {
@@ -3150,13 +3193,10 @@ async function recheckReader(g) {
     }
     restoreFocus();
   } catch (error) {
-    if (!g.current()) return;
-    invalidate();
-    if ([401, 403, 410].includes(error.status)) {
-      await operation(async () => { throw error; }, () => restoreRoute());
-    } else {
-      await recheck();
-    }
+    await handleReaderCheckError(error, g);
+  } finally {
+    signal.removeEventListener("abort", releaseLayout);
+    if (g.current()) releaseLayout();
   }
 }
 function recheckOnFocus() {
@@ -3172,7 +3212,7 @@ function recheckOnFocus() {
   if (!g?.current() || lifecycleCheck || !sessionEstablished || openDemo || signingIn ||
       document.visibilityState === "hidden" || !session.state.authenticated ||
       session.state.mode !== "firebase" || $("reader").hidden || !readableArticle(currentArticle) ||
-      processingArticle(currentArticle) || sourceDocumentRequest || document.body.dataset.busy === "true") {
+      sourceDocumentRequest || document.body.dataset.busy === "true") {
     void recheck();
     return;
   }

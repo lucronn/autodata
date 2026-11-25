@@ -83,6 +83,14 @@ button {
 [hidden] {
   display: none !important;
 }
+@media screen {
+  #reader[hidden][data-rechecking],
+  #source-review-frame[hidden][data-rechecking],
+  #back-to-article[hidden][data-rechecking] {
+    display: block !important;
+    visibility: hidden;
+  }
+}
 ::selection {
   background: #dbe2ff;
   color: var(--ink);
