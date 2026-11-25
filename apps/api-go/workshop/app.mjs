@@ -1347,12 +1347,44 @@ function addImage(parent, image, reference, g, figures = null, useAltCaption = f
     img.alt = imageAlt || image.alt || visibleCaption || "Article illustration";
     img.decoding = "async";
     img.referrerPolicy = "no-referrer";
+    const viewport = element("div", undefined, "figure-viewport");
+    const size = element("button", undefined, "text-button figure-size");
+    size.type = "button";
+    size.hidden = true;
+    size.setAttribute("aria-pressed", "false");
+    const setFullSize = (fullSize) => {
+      size.setAttribute("aria-pressed", String(fullSize));
+      if (fullSize) {
+        viewport.dataset.fullSize = "";
+        viewport.setAttribute("tabindex", "0");
+        viewport.setAttribute("role", "region");
+        viewport.setAttribute("aria-label", img.alt);
+      } else {
+        delete viewport.dataset.fullSize;
+        viewport.removeAttribute("tabindex");
+        viewport.removeAttribute("role");
+        viewport.removeAttribute("aria-label");
+        viewport.scrollLeft = viewport.scrollTop = 0;
+      }
+    };
+    size.addEventListener("click", () => {
+      if (g.current() && !size.hidden) setFullSize(!("fullSize" in viewport.dataset));
+    });
+    img.addEventListener("load", () => {
+      if (!g.current() || !img.naturalWidth) return;
+      size.textContent = "Full size";
+      size.hidden = false;
+    });
     img.addEventListener("error", () => {
+      size.hidden = true;
+      size.textContent = "";
+      if ("fullSize" in viewport.dataset) setFullSize(false);
       if (g.current()) void renewMedia(g, img);
     });
     if (figures) figures.push({ img, url });
     else img.src = url;
-    figure.append(img);
+    viewport.append(img);
+    figure.append(size, viewport);
   } else {
     const missingID = missing ? imageReferenceID(reference) : "";
     if (missingID) figure.dataset.missingImagePlacement = missingImagePlacement(missingID, caption);

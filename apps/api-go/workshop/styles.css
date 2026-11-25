@@ -712,6 +712,22 @@ select:enabled:hover {
   color: var(--quiet);
   margin-top: 8px;
 }
+.article-content .figure-size {
+  min-height: 28px;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+@media screen {
+  .figure-viewport[data-full-size] {
+    contain: inline-size;
+    max-block-size: min(70vh, 650px);
+    overflow: auto;
+  }
+  .article-content .figure-viewport[data-full-size] img {
+    max-width: none;
+    max-height: none;
+  }
+}
 .body-text {
   white-space: pre-wrap;
 }
@@ -1282,6 +1298,7 @@ button {
 }
 @media print {
   .purchase,
+  .figure-size,
   #library,
   #account-status,
   #completion-status,
