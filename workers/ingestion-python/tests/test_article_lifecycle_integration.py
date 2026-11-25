@@ -2493,8 +2493,9 @@ def test_continuous_paid_overflow_preserves_ledger_and_provider_cooldown(runtime
         def read_resource(self, resource_ref, *, timeout):
             raise SourceConnectorError("RATE_LIMITED", retryable=True, retry_after_seconds=120)
 
-    with pytest.raises(SourceConnectorError, match="RATE_LIMITED"):
+    with pytest.raises(SourceConnectorError) as limited:
         _CooldownConnector(LimitedConnector(), repo, first).read_resource("optional-picture", timeout=2)
+    assert limited.value.code == "RATE_LIMITED"
     with repo.connect() as conn:
         origin = conn.execute("""UPDATE source_fetch_jobs SET checkpoint=
             checkpoint||'{"paid_source_reserved_at":"2020-01-01T00:00:00Z"}'::jsonb
