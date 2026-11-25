@@ -464,12 +464,12 @@ _TIMING = re.compile(r"\b(before|after|once|ahead of)\b", re.IGNORECASE)
 _SENTENCES = re.compile(r"(?<=[.!?])\s+|\n+")
 _STATE_CLAUSE = re.compile(r"\b(?:that|whether)\b[^,;.!?]*$", re.IGNORECASE)
 _ACTION_BOUNDARY = re.compile(r"[,;.!?]|\b(?:and|then|but)\b", re.IGNORECASE)
-_INTRO_DIRECTIVE_PREFIX = (
-    r"(?:^|[.!?,;]\s+)\s*(?:(?:first|next|then|please)\s*,?\s+)*"
+_INTRO_COMMAND_PREFIX = (
+    r"\s*(?:(?:first|next|then|please)\s*,?\s+)*"
     r"(?:(?:you\s+)?(?:must|should|need to)\s+|you\s+will\s+need to\s+)?"
 )
 _INTRO_DIRECTIVE = re.compile(
-    _INTRO_DIRECTIVE_PREFIX
+    r"(?:^|[.!?,;]\s+)" + _INTRO_COMMAND_PREFIX
     + r"(?:attach|check|close|connect|detach|disconnect|discard|fit|inspect|install|isolate|"
     r"lift|loosen|open|reconnect|remove|replace|seat|shut|start|stop|switch|take|tighten|"
     r"torque|turn|use|wait|wear)\b"
@@ -478,10 +478,11 @@ _INTRO_DIRECTIVE = re.compile(
     re.IGNORECASE,
 )
 _INTRO_FLUID_DIRECTIVE = re.compile(
-    _INTRO_DIRECTIVE_PREFIX
+    r"(?:^|[.!?,;]\s+|:\s*)" + _INTRO_COMMAND_PREFIX
     + r"(?:(?:drain|empty(?:\s+out)?|fill)\s+the\b"
-    r"|(?:let|allow)\s+the\s+[^,;.!?\n]+?\s+(?:drain|fill)\b)"
-    r"|\b(?:must|shall|should|needs?\s+to)\s+be\s+(?:drained|emptied|filled)\b",
+    r"|(?:let|allow)\s+the\s+[^,;.!?\n]+?\s+(?:drain|fill)\b"
+    r"|the\s+[^,;.!?\n]+?\s+(?:must|shall|should|needs?\s+to)\s+be\s+"
+    r"(?:drained|emptied|filled)(?=\s*(?:[.!?;]|$)))",
     re.IGNORECASE,
 )
 

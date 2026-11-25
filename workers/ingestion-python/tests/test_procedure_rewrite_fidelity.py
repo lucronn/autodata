@@ -140,6 +140,8 @@ def test_current_guard_preserves_distinct_equivalent_prose(layout, profile, orig
 @pytest.mark.parametrize("introduction", (
     _LET_DRAIN, "Let the fixture reservoir fill.", "Let the catch reservoir drain.",
     "This article covers reservoir service. Then drain the fixture reservoir.",
+    "This article covers reservoir service: let the other reservoir drain.",
+    "The fixture reservoir must be drained.",
 ))
 def test_drain_subject_prompt_rejects_fluid_instructions_in_introduction(introduction):
     source = document(_DRAIN)
@@ -165,6 +167,14 @@ def test_drain_subject_prompt_keeps_existing_contact_guard_in_the_same_article()
     raw["replacements"][1]["text"] = "Fit the fixture cap to the positive stop."
     with pytest.raises(ValueError, match="^REWRITE_QUALIFIER_MUTATION$"):
         auto.render_auto(source, raw, prompt_version=version)
+
+
+def test_drain_subject_prompt_allows_a_descriptive_introduction():
+    source = document(_DRAIN)
+    introduction = "This article describes service on reservoirs that need to be drained."
+    candidate = auto.render_auto(source, response(_LET_DRAIN, introduction=introduction),
+                                 prompt_version="full-prose-auto-prompt-v63")
+    assert candidate["blocks"][0]["text"] == introduction
 
 
 @pytest.mark.parametrize("profile,version,prompt_hash,document_hash,report_hash", [
