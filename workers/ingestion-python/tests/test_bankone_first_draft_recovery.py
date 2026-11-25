@@ -1,6 +1,7 @@
 """Synthetic controls for checked Bankone prose and exact authored scopes."""
 
 from copy import deepcopy
+from hashlib import sha256
 
 import pytest
 
@@ -9,6 +10,9 @@ from autodata_ingestion.bankone_first_draft_recovery import _plain_wording, chec
 from autodata_ingestion.bankone_first_draft_structure import extract_bankone_structure
 from autodata_ingestion.procedure_rewrite_auto import (
     _NOTE_LABEL_PROMPT_VERSION, _near_copy, render_auto, validate_auto,
+)
+from autodata_ingestion.procedure_rewrite_recovery import (
+    BANKONE_LINKED_RECOVERY_METHOD, recover_archived_first_draft, recover_structured_bankone_first_draft,
 )
 from test_procedure_rewrite_full import document, response
 
@@ -143,3 +147,125 @@ def test_recovery_keeps_mixture_scope_and_instruction_sequence():
         "In the reservoir, adjust the detergent level to the upper mark.",
         "With a funnel, add to the fixture reservoir the detergent.",
     ]
+
+
+def linked_fixture():
+    instructions = (
+        "Removal Procedure",
+        "Fixture Filter (7) » Remove—Fixture Filter Replacement",
+        "Guide Plate (8) » Remove",
+        "Installation Procedure",
+        "Fixture Filter (7) » Install—Fixture Filter Replacement",
+        "Remove the shield.",
+    )
+    html = (
+        '<dl><dt>Removal Procedure</dt><dd><ol><li>Fixture Filter (7) » Remove—'
+        '<mtr-doc-link id="fixture-removal">Fixture Filter Replacement</mtr-doc-link></li>'
+        '<li>Guide Plate (8) » Remove</li></ol></dd>'
+        '<dt>Installation Procedure</dt><dd><ol><li>Fixture Filter (7) » Install—'
+        '<mtr-doc-link id="fixture-install">Fixture Filter Replacement</mtr-doc-link></li>'
+        '</ol></dd></dl><p>Remove the shield.</p>'
+    ).encode()
+    source = document(*instructions)
+    raw = response(
+        "Preparation for working on the fixture.", instructions[1], instructions[2],
+        "Restore the parts to their original positions.", instructions[4], "The shield must be removed.",
+        introduction="This article describes the service information that follows.",
+    )
+    for index in (1, 2, 4):
+        block = source["blocks"][index]
+        block.update(type="ordered_list", items=[block.pop("text")])
+        raw["replacements"][index]["path"] = f"/blocks/{index}/items/0"
+    return source, raw, html
+
+
+def test_versioned_recovery_recasts_only_failed_sections_and_linked_instructions():
+    source, raw, html = linked_fixture()
+    legacy = extract_bankone_structure(source, html)
+    assert legacy == {"source_hash": digest_json(source), "slots": {}}
+    proof = extract_bankone_structure(source, html, version=2)
+    assert proof["version"] == 2
+    assert proof["slots"] == {
+        "/blocks/0/text": {"block_id": "p0", "kind": "procedure_section"},
+        "/blocks/1/items/0": {"block_id": "p1", "kind": "single_link_directive",
+                              "reference_hash": sha256(b"fixture-removal").hexdigest()},
+        "/blocks/3/text": {"block_id": "p3", "kind": "procedure_section"},
+        "/blocks/4/items/0": {"block_id": "p4", "kind": "single_link_directive",
+                              "reference_hash": sha256(b"fixture-install").hexdigest()},
+    }
+    guard = "full-prose-auto-prompt-v55"
+    with pytest.raises(ValueError) as rejected:
+        render_auto(source, raw, prompt_version=guard)
+    attempt = {"guard_version": guard, "response": raw, "error_code": str(rejected.value),
+               "rewrite_attempt_id": "fixture-attempt", "prompt_hash": "fixture-prompt"}
+    before = deepcopy(raw)
+    assert recover_structured_bankone_first_draft(source, attempt, proof) is None
+    assert recover_structured_bankone_first_draft(source, attempt, legacy, method=BANKONE_LINKED_RECOVERY_METHOD) is None
+
+    checked = recover_structured_bankone_first_draft(source, attempt, proof, method=BANKONE_LINKED_RECOVERY_METHOD)
+    assert checked is not None
+    assert checked.evidence["method"] == BANKONE_LINKED_RECOVERY_METHOD
+    assert checked.evidence["bankone_structure_hash"] == digest_json(proof)
+    assert checked.evidence["corrected_paths"] == [row["path"] for row in raw["replacements"][:5]]
+    assert [row["text"] for row in checked.response["replacements"]] == [
+        "Steps for removal",
+        "Remove the component identified by (7) as described in Fixture Filter Replacement.",
+        "Remove Guide Plate (8).",
+        "Steps for installation",
+        "Install the component identified by (7) as described in Fixture Filter Replacement.",
+        "The shield must be removed.",
+    ]
+    assert raw == before and checked.response["replacements"][5] == raw["replacements"][5]
+    rebuilt = recover_archived_first_draft(
+        source, attempt, method=BANKONE_LINKED_RECOVERY_METHOD, expected_hash=checked.evidence["output_hash"],
+        bankone_structure=proof,
+    )
+    assert rebuilt.response == checked.response
+    assert rebuilt.evidence["first_draft_recovery"] == checked.evidence
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda html: html.replace(b"<dt>Removal Procedure</dt>", b"<dt>Removal Procedure</dt><dt>Removal Procedure</dt>"),
+    lambda html: html.replace(b"</dt><dd>", b"</dt><dd hidden>", 1),
+    lambda html: html.replace(b"<dt>Removal Procedure</dt>", b"<p>Removal Procedure</p>"),
+])
+def test_section_proof_requires_a_unique_authored_definition_pair(mutation):
+    source, _, html = linked_fixture()
+    proof = extract_bankone_structure(source, mutation(html), version=2)
+    assert "/blocks/0/text" not in proof["slots"]
+    assert "/blocks/3/text" in proof["slots"]
+
+
+@pytest.mark.parametrize("replace", [
+    (b'id="fixture-removal"', b'id="fixture-removal" aria-hidden="true"'),
+    (b'id="fixture-removal"', b'id="fixture-removal" id="extra-id"'),
+    (b'<mtr-doc-link id="fixture-removal">Fixture Filter Replacement</mtr-doc-link>',
+     b'<mtr-doc-link id="fixture-removal">Fixture Filter</mtr-doc-link> Replacement'),
+    (b'<mtr-doc-link id="fixture-removal">Fixture Filter Replacement</mtr-doc-link>',
+     b'Fixture Filter Replacement<mtr-doc-link id="fixture-removal"></mtr-doc-link>'),
+])
+def test_single_link_requires_the_complete_authored_link(replace):
+    source, _, html = linked_fixture()
+    proof = extract_bankone_structure(source, html.replace(*replace), version=2)
+    assert "/blocks/1/items/0" not in proof["slots"]
+    assert "/blocks/4/items/0" in proof["slots"]
+
+
+@pytest.mark.parametrize("index", [1, 4])
+@pytest.mark.parametrize("mutation", ["title", "operation", "marker"])
+def test_link_proof_rejects_changes_to_the_referenced_procedure(index, mutation):
+    source, raw, html = linked_fixture()
+    proof = extract_bankone_structure(source, html, version=2)
+    guard = "full-prose-auto-prompt-v55"
+    draft, _ = recover_bankone_draft(source, raw, prompt_version=guard, structure=proof)
+    row = draft["replacements"][index]
+    text = row["text"]
+    if mutation == "title":
+        row["text"] = text.replace("Fixture Filter Replacement", "Fixture Valve Replacement")
+        render_auto(source, draft, prompt_version=guard)
+    elif mutation == "operation":
+        row["text"] = text.replace("Remove", "Install", 1) if index == 1 else text.replace("Install", "Remove", 1)
+    else:
+        row["text"] = text.replace("(7)", "(8)")
+    with pytest.raises(ValueError, match="REWRITE_(?:BANKONE_PROCEDURE_SCOPE|TECHNICAL)_MUTATION"):
+        render_auto(source, draft, prompt_version=guard, bankone_structure=proof)

@@ -800,14 +800,16 @@ def _bound_correction_draft(cur, job, document, *, lock_bankone_archive=False):
     budget = binding["model_call_budget"]
     bankone_archive = None
     if method == ARCHIVED_FIRST_DRAFT_METHOD:
-        from .procedure_rewrite_recovery import ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_STRUCTURAL_RECOVERY_METHOD
+        from .procedure_rewrite_recovery import (
+            ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_ARCHIVE_STRUCTURE_VERSIONS,
+        )
 
         replay = binding.get("archived_recovery")
         if (budget != 0 or not first_draft or not isinstance(replay, dict)
             or replay.get("method") not in ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
         fields = {"method", "output_hash"}
-        if replay["method"] == BANKONE_STRUCTURAL_RECOVERY_METHOD:
+        if structure_version := BANKONE_ARCHIVE_STRUCTURE_VERSIONS.get(replay["method"]):
             fields.add("bankone_structure")
             bankone_archive = replay.get("bankone_structure")
             if not isinstance(bankone_archive, dict) or set(bankone_archive) != {"body_sha256", "observation_id", "proof"}:
@@ -862,7 +864,7 @@ def _bound_correction_draft(cur, job, document, *, lock_bankone_archive=False):
         if (bankone_archive["observation_id"] != str(attempt["observation_id"])
             or bankone_archive["body_sha256"] != original.digest):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
-        validate_bankone_structure(document, bankone_archive["proof"])
+        validate_bankone_structure(document, bankone_archive["proof"], expected_version=structure_version)
     return {**binding, "preserve_notes": _keeps_authored_note_labels(attempt["guard_version"])}, attempt
 
 

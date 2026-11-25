@@ -1,6 +1,6 @@
 """Recover exact Bankone authoring boundaries lost in the prose projection."""
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from hashlib import sha256
 from html.parser import HTMLParser
@@ -8,6 +8,7 @@ import re
 
 from . import procedure_rewrite_auto as auto, procedure_rewrite_full as full
 from .article_lifecycle_types import digest_json
+from .procedure_rewrite_recovery import _PART, _REFERENCE, _plain_label
 
 
 _INVALID = "BANKONE_STRUCTURE_INVALID"
@@ -17,10 +18,18 @@ _OR_WORD = re.compile(r"\bor\b", re.IGNORECASE)
 _TOOL_HEADING = re.compile(r"(?:(?:special|required|service) )?tools?(?: required)?[ :]*", re.IGNORECASE)
 _TOOL_ID = re.compile(r"[a-z0-9]+(?:[./-]+[a-z0-9]+)*", re.IGNORECASE | re.ASCII)
 _ROOT_PARAGRAPH = re.compile(r"/blocks/([0-9]+)/text")
+_ROOT_LIST_ITEM = re.compile(r"/blocks/([0-9]+)/items/[0-9]+(?:/text)?")
+_PROCEDURE_SECTION = re.compile(r"(Removal|Installation) (?:procedure|instructions|steps)", re.I)
+_SINGLE_LINK_DIRECTIVE = re.compile(
+    rf"(?P<part>{_PART}) ?(?P<marker>{_REFERENCE})\s*»\s*(?P<verb>Remove|Install)"
+    rf"—\s*(?P<title>{_PART} Replacement)", re.I,
+)
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _VOID_TAGS = frozenset("area base br col embed hr img input link meta param source track wbr".split())
 _NONDISPLAY_TAGS = frozenset({"iframe", "noscript", "object", "script", "style", "template"})
 _HIDDEN_STYLE = re.compile(r"(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse))\b", re.I)
+LINKED_STRUCTURE_VERSION = 2
+LINKED_STRUCTURE_KINDS = frozenset({"procedure_section", "single_link_directive"})
 
 
 @dataclass(frozen=True)
@@ -29,6 +38,19 @@ class BankoneAlternatives:
     verb: str
     suffix: str
     options: tuple[str, ...]
+
+
+def bankone_procedure_section(text):
+    match = _PROCEDURE_SECTION.fullmatch(text)
+    return match[1].casefold() if match else None
+
+
+def bankone_linked_directive(text):
+    match = _SINGLE_LINK_DIRECTIVE.fullmatch(text)
+    if (match and _plain_label(match["part"])
+            and match["title"].casefold() == f'{match["part"]} Replacement'.casefold()):
+        return match
+    return None
 
 
 def bankone_alternatives(text: str) -> BankoneAlternatives | None:
@@ -115,7 +137,7 @@ class _Markup(HTMLParser):
         self.text = "".join(self._parts)
         self._spans = defaultdict(list)
         for element in self.elements:
-            if not element.hidden and element.tag in {"li", "p"}:
+            if not element.hidden and element.tag in {"li", "p", "dt"}:
                 self._spans[(element.tag, self.label(element))].append(element)
 
     def handle_starttag(self, tag, attrs):
@@ -256,10 +278,50 @@ def _standalone_paragraph(source, path):
     return block["type"] == "paragraph" and not block.get("images")
 
 
-def extract_bankone_structure(source: dict, html: bytes) -> dict:
+def _ordered_list_item(source, path):
+    match = _ROOT_LIST_ITEM.fullmatch(path)
+    return match is not None and source["blocks"][int(match[1])]["type"] == "ordered_list"
+
+
+def _authored_procedure_section(markup, text):
+    term = markup.unique_span("dt", text)
+    if term is None or term.children or term.parent.tag != "dl":
+        return False
+    siblings = term.parent.children
+    following = siblings[siblings.index(term) + 1:]
+    return bool(following and following[0].tag == "dd" and not following[0].hidden and markup.label(following[0]))
+
+
+def _single_link_reference_hash(markup, text, directive):
+    item = markup.unique_span("li", text)
+    if item is None or item.parent.tag != "ol" or len(item.children) != 1:
+        return None
+    [link] = item.children
+    if (link.hidden or link.tag != "mtr-doc-link" or link.children or not link.reference
+            or markup.label(link) != directive["title"] or markup.text[link.end:item.end].strip()):
+        return None
+    return sha256(link.reference.encode()).hexdigest()
+
+
+def _linked_slots(source, prose, markup):
+    duplicates = Counter(_compact(slot["text"]) for slot in prose.values())
+    for path, slot in prose.items():
+        text = slot["text"]
+        if duplicates[_compact(text)] != 1:
+            continue
+        if (_standalone_paragraph(source, path) and bankone_procedure_section(text)
+                and _authored_procedure_section(markup, text)):
+            yield path, {"block_id": slot["block_id"], "kind": "procedure_section"}
+        elif _ordered_list_item(source, path) and (directive := bankone_linked_directive(text)):
+            if reference_hash := _single_link_reference_hash(markup, text, directive):
+                yield path, {"block_id": slot["block_id"], "kind": "single_link_directive",
+                             "reference_hash": reference_hash}
+
+
+def extract_bankone_structure(source: dict, html: bytes, *, version: int = 1) -> dict:
     """Build an exact, JSON-safe proof from a caller-verified retained body."""
     prose = _prose_slots(source)
-    if not isinstance(html, bytes):
+    if not isinstance(html, bytes) or type(version) is not int or version not in (1, LINKED_STRUCTURE_VERSION):
         raise ValueError(_INVALID)
     try:
         markup = _Markup(html.decode("utf-8-sig"))
@@ -281,21 +343,34 @@ def extract_bankone_structure(source: dict, html: bytes) -> dict:
         elif _standalone_paragraph(source, path) and (identifier := _tool_identifier(value)):
             if _authored_tool_label(markup, value, identifier):
                 slots[path] = {"block_id": block_id, "kind": "tool_label"}
-    return {"source_hash": digest_json(source), "slots": slots}
+    proof = {"source_hash": digest_json(source), "slots": slots}
+    if version == LINKED_STRUCTURE_VERSION:
+        proof["version"] = version
+        slots.update(_linked_slots(source, prose, markup))
+    return proof
 
 
-def validate_bankone_structure(source, proof) -> None:
+def validate_bankone_structure(source, proof, *, expected_version=None) -> None:
     """Check exact proof shape against the immutable source prose slots."""
     prose = _prose_slots(source)
-    if (not isinstance(proof, dict) or set(proof) != {"source_hash", "slots"}
-            or proof["source_hash"] != digest_json(source) or not isinstance(proof["slots"], dict)):
+    if not isinstance(proof, dict):
         raise ValueError(_INVALID)
+    version = proof.get("version", 1)
+    fields = {"source_hash", "slots", "version"} if version == LINKED_STRUCTURE_VERSION else {"source_hash", "slots"}
+    if (type(version) is not int or version not in (1, LINKED_STRUCTURE_VERSION)
+            or (expected_version is not None and version != expected_version)
+            or set(proof) != fields or proof["source_hash"] != digest_json(source)
+            or not isinstance(proof["slots"], dict)):
+        raise ValueError(_INVALID)
+    counts = Counter(_compact(slot["text"]) for slot in prose.values()) if version == LINKED_STRUCTURE_VERSION else {}
     for path, entry in proof["slots"].items():
         slot = prose.get(path)
         if slot is None or not isinstance(entry, dict) or entry.get("block_id") != slot["block_id"]:
             raise ValueError(_INVALID)
         kind = entry.get("kind")
         value = slot["text"]
+        if not isinstance(kind, str):
+            raise ValueError(_INVALID)
         if kind == "alternatives":
             alternatives = bankone_alternatives(value)
             hashes = entry.get("reference_hashes")
@@ -304,6 +379,19 @@ def validate_bankone_structure(source, proof) -> None:
                     or not all(isinstance(digest, str) and _SHA256.fullmatch(digest) for digest in hashes)
                     or len(set(hashes)) != len(hashes)):
                 raise ValueError(_INVALID)
+        elif version == LINKED_STRUCTURE_VERSION and kind in LINKED_STRUCTURE_KINDS:
+            if counts[_compact(value)] != 1:
+                raise ValueError(_INVALID)
+            if kind == "procedure_section":
+                if (set(entry) != {"block_id", "kind"} or not _standalone_paragraph(source, path)
+                        or bankone_procedure_section(value) is None):
+                    raise ValueError(_INVALID)
+            else:
+                reference_hash = entry.get("reference_hash")
+                if (set(entry) != {"block_id", "kind", "reference_hash"} or not _ordered_list_item(source, path)
+                        or bankone_linked_directive(value) is None or not isinstance(reference_hash, str)
+                        or not _SHA256.fullmatch(reference_hash)):
+                    raise ValueError(_INVALID)
         elif (set(entry) != {"block_id", "kind"} or not _standalone_paragraph(source, path)
               or not ((kind == "note_label" and _bare_note(value))
                       or (kind == "tool_label" and _tool_identifier(value)))):

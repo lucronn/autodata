@@ -32,7 +32,7 @@ from autodata_ingestion.article_lifecycle_store import recover_source_bound_corr
 from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILES, MAX_CORRECTION_CALLS
 from autodata_ingestion.procedure_rewrite_auto import PROFILE
 from autodata_ingestion.procedure_rewrite_recovery import (
-    ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_STRUCTURAL_RECOVERY_METHOD,
+    ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_ARCHIVE_STRUCTURE_VERSIONS,
 )
 from autodata_ingestion.procedure_rewrite_sentence_correction import MAX_SENTENCE_CORRECTION_CALLS
 from autodata_ingestion.retained_note_label_repair import repair_retained_note_labels
@@ -188,7 +188,7 @@ def main(argv=None, *, repo=None, object_store=None):
             )
             results = [{**target, "job_id": str(retained_job), "revision_id": str(revision), "action": "published"}]
         elif args.recover_first_draft_from is not None:
-            if args.first_draft_recovery_method == BANKONE_STRUCTURAL_RECOVERY_METHOD:
+            if args.first_draft_recovery_method in BANKONE_ARCHIVE_STRUCTURE_VERSIONS:
                 from reproject_article_source import article_archive
 
                 _, objects = article_archive(repo=repo, object_store=object_store)

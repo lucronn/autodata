@@ -14,6 +14,7 @@ from autodata_ingestion.article_lifecycle_types import (
 from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
 from autodata_ingestion.procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
 from autodata_ingestion.procedure_rewrite_recovery import (
+    BANKONE_LINKED_RECOVERY_METHOD,
     BANKONE_STRUCTURAL_RECOVERY_METHOD,
     FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
@@ -318,6 +319,82 @@ def test_bankone_archive_requires_verified_body_and_retains_authored_alternative
     assert current["source_revision_id"] == source_id and current["content_origin"] == "canonical"
     assert "follow the applicable removal option" in current["body"]
     assert current["images"] == [{**image, "source_order": image["source_order"]+1} for image in source["images"]]
+    assert not attempt_rows(runtime, published.job_id)
+    assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}
+
+
+def test_bankone_linked_archive_publishes_from_the_exact_retained_body(runtime):
+    scope_fixture_article(runtime)
+    prior_id = queue_article(runtime, figure=True)
+    body = (
+        "<h2>Filter Service</h2><dl><dt>Removal Procedure</dt><dd><ol>"
+        '<li>Fixture Filter (7) » Remove—<mtr-doc-link id="fixture-removal">'
+        "Fixture Filter Replacement</mtr-doc-link></li><li>Guide Plate (8) » Remove</li></ol></dd>"
+        "<dt>Installation Procedure</dt><dd><ol>"
+        '<li>Fixture Filter (7) » Install—<mtr-doc-link id="fixture-install">'
+        "Fixture Filter Replacement</mtr-doc-link></li></ol></dd></dl>"
+        "<img src='/fixture/diagram' alt='Filter locations'>"
+    ).encode()
+    runtime.servers["bankone"].body(body, assets=["figure"], asset_bindings=[
+        {"source_url": "/fixture/diagram", "resource_ref": "figure"},
+    ])
+
+    class CopyDraft:
+        _model = "fixture-auto"
+
+        def complete_json(self, prompt):
+            return {"introduction": "This article covers the service information that follows.", "replacements": [
+                {"block_id": slot["block_id"], "path": slot["path"], "action": slot["required_action"],
+                 "text": slot["text"], "reason": "Preserve the authored parameter."}
+                for slot in json.loads(prompt)["slots"]
+            ]}
+
+    assert run_job(runtime, prior_id, CopyDraft(), registry=runtime.registry)
+    current = runtime.read_current()
+    assert current["availability"] == "available" and current["content_origin"] == "source"
+    assert current["processing_error_code"] == "REWRITE_UNCHANGED"
+    source_id = current["source_revision_id"]
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        prior = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (prior_id,)).fetchone()
+        attempt = source_bound_correction_prior_attempt(cur, prior, first_draft=True)
+    archived = read_bankone_archive_structure(
+        runtime.repo, runtime.article_id, prior_id, source_id, object_store=runtime.objects, structure_version=2,
+    )
+    proof = archived["proof"]
+    assert [entry["kind"] for entry in proof["slots"].values()].count("procedure_section") == 2
+    assert [entry["kind"] for entry in proof["slots"].values()].count("single_link_directive") == 2
+    method = BANKONE_LINKED_RECOVERY_METHOD
+    checked = recovery.recover_structured_bankone_first_draft(
+        prior["checkpoint"]["normalized_document"], attempt, proof, method=method,
+    )
+    assert checked is not None and checked.error_code is None
+    arguments = dict(
+        expected_job_id=prior_id, expected_source_revision_id=source_id, recovery_method=method,
+        expected_recovery_hash=checked.evidence["output_hash"], actor="fixture-editor", reason="Check the retained links.",
+    )
+
+    class ChangedLinkIdentity:
+        def get_object(self, key, *, max_bytes):
+            return body.replace(b'id="fixture-install"', b'id="fixture-other"')
+
+    runtime.reset_counters()
+    with pytest.raises(ValueError, match="FIRST_DRAFT_ARCHIVE_STRUCTURE_MISMATCH"):
+        publish_source_bound_first_draft(runtime.repo, runtime.article_id, object_store=ChangedLinkIdentity(), **arguments)
+    assert runtime.read_current() == current
+    with pytest.raises(ValueError, match="FIRST_DRAFT_ARCHIVE_RECOVERY_MISMATCH"):
+        publish_source_bound_first_draft(
+            runtime.repo, runtime.article_id, object_store=runtime.objects,
+            **{**arguments, "recovery_method": BANKONE_STRUCTURAL_RECOVERY_METHOD},
+        )
+    published = publish_source_bound_first_draft(runtime.repo, runtime.article_id, object_store=runtime.objects, **arguments)
+    retry = publish_source_bound_first_draft(runtime.repo, runtime.article_id, object_store=runtime.objects, **arguments)
+    assert published.created and not retry.created and retry.published_revision_id == published.published_revision_id
+    projection = runtime.read_current()
+    assert projection["canonical_revision_id"] == published.published_revision_id
+    assert projection["source_revision_id"] == source_id and projection["content_origin"] == "canonical"
+    for action in ("Remove", "Install"):
+        assert f"{action} the component identified by (7) as described in Fixture Filter Replacement." in projection["body"]
+    assert projection["images"] == [{**image, "source_order": image["source_order"]+1} for image in current["images"]]
     assert not attempt_rows(runtime, published.job_id)
     assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}
 
