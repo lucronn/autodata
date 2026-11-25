@@ -12,6 +12,8 @@ from lifecycle_support import (ROOT, fresh_database, apply_migration, seed_vehic
                                seed_legacy_jobs_and_read_invariants,
                                read_imported_job_invariants)
 
+MIGRATION_NAMES = [path.name for path in sorted((ROOT / "db/migrations").glob("*.sql"))]
+
 
 def run_driver(repo, directory=None, check=True, **extra):
     args = ['sh', str(ROOT / 'scripts/dev/migrate_sql.sh')]
@@ -55,7 +57,7 @@ def test_full_chain_restart_preserves_every_marker_and_schema(fresh_database):
     before = versions(repo)
     schema = snapshot(repo)
     result = run_driver(repo)
-    assert result.stdout.count('AUTODATA_SKIPPED ') == 51
+    assert result.stdout.count('AUTODATA_SKIPPED ') == len(MIGRATION_NAMES)
     assert 'AUTODATA_APPLIED ' not in result.stdout
     assert versions(repo) == before
     assert snapshot(repo) == schema
@@ -90,9 +92,10 @@ def test_empty_bootstrap_and_untracked_application_rejection(fresh_database, emp
     if empty_ledger:
         with repo.connect() as conn:
             conn.execute('CREATE TABLE schema_migrations(version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())')
-    assert len(applied(run_driver(repo))) == 51
-    assert len(versions(repo)) == 51
-    for table in ('vehicles', 'canonical_article_revisions', 'customer_accounts', 'auth_sessions', 'workshop_orders', 'workshop_checkout_requests'):
+    assert applied(run_driver(repo)) == MIGRATION_NAMES
+    assert len(versions(repo)) == len(MIGRATION_NAMES)
+    for table in ('vehicles', 'canonical_article_revisions', 'customer_accounts', 'auth_sessions',
+                  'workshop_orders', 'workshop_checkout_requests', 'canonical_article_link_bindings'):
         untracked = fresh_database(through=0)
         with untracked.connect() as conn:
             if empty_ledger:
@@ -167,9 +170,7 @@ def test_genuine_036_upgrade_preserves_jobs_and_matches_fresh_schema(fresh_datab
     jobs = seed_legacy_jobs_and_read_invariants(legacy)
     apply_migration(legacy, 36)
     old_versions = versions(legacy)
-    assert applied(run_driver(legacy)) == ['033_catalog_scope_coverage.sql',
-        '037_article_source_lifecycle.sql', '038_article_transform_publication.sql',
-        '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql', '047_article_source_projection_v7.sql', '048_article_source_projection_v8.sql', '049_article_source_projection_v9.sql', '050_article_source_projection_v10.sql', '051_source_bound_correction_attempts.sql']
+    assert applied(run_driver(legacy)) == ['033_catalog_scope_coverage.sql', *MIGRATION_NAMES[36:]]
     assert read_imported_job_invariants(legacy) == jobs
     assert [r for r in versions(legacy) if r['version'] in {v['version'] for v in old_versions}] == old_versions
     assert snapshot(legacy) == snapshot(fresh_database())
@@ -177,7 +178,7 @@ def test_genuine_036_upgrade_preserves_jobs_and_matches_fresh_schema(fresh_datab
     assert read_imported_job_invariants(legacy) == jobs
 
 
-@pytest.mark.parametrize('number', [2, 33, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51])
+@pytest.mark.parametrize('number', [2, 33, *range(36, len(MIGRATION_NAMES) + 1)])
 def test_migration_failure_rolls_back_only_active_file_then_retry(fresh_database, tmp_path, number):
     repo = fresh_database(through=number - 1)
     directory = fixture_prefix(tmp_path, number)
@@ -207,8 +208,8 @@ def test_recorded_001_and_partial_unmarked_next_file_remain_retryable(fresh_data
     body = (ROOT / 'db/migrations/002_platform_spine.sql').read_text()
     with repo.connect() as conn:
         conn.execute(body[:body.index(';') + 1])
-    assert len(applied(run_driver(repo))) == 50
-    assert len(versions(repo)) == 51
+    assert applied(run_driver(repo)) == MIGRATION_NAMES[1:]
+    assert len(versions(repo)) == len(MIGRATION_NAMES)
 
 
 @pytest.mark.parametrize('upgrade', [False, True])
@@ -216,7 +217,7 @@ def test_two_full_runners_serialize_and_apply_each_version_once(fresh_database, 
     repo = fresh_database(through=0)
     if upgrade:
         raw_chain(repo, through=36)
-    directory = fixture_prefix(tmp_path, 39)
+    directory = fixture_prefix(tmp_path, len(MIGRATION_NAMES))
     number = 33 if upgrade else 1
     path = next(directory.glob(f'{number:03d}_*.sql'))
     path.write_text(path.read_text() + '\nSELECT pg_sleep(4);\n')
@@ -241,9 +242,9 @@ def test_two_full_runners_serialize_and_apply_each_version_once(fresh_database, 
         wait_for_driver('workshop-migration-second', 'advisory', 4)
         results = [first.result(), second.result()]
     all_applied = sum((applied(r) for r in results), [])
-    expected = ['033_catalog_scope_coverage.sql', '037_article_source_lifecycle.sql', '038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql', '047_article_source_projection_v7.sql', '048_article_source_projection_v8.sql', '049_article_source_projection_v9.sql', '050_article_source_projection_v10.sql', '051_source_bound_correction_attempts.sql'] if upgrade else [p.name for p in sorted((ROOT/'db/migrations').glob('*.sql'))]
+    expected = ['033_catalog_scope_coverage.sql', *MIGRATION_NAMES[36:]] if upgrade else MIGRATION_NAMES
     assert sorted(all_applied) == sorted(expected)
-    assert len(versions(repo)) == 51
+    assert len(versions(repo)) == len(MIGRATION_NAMES)
     assert applied(run_driver(repo)) == []
 
 
@@ -273,17 +274,17 @@ def test_connection_death_releases_lock_and_rolls_back_active_file(fresh_databas
         with repo.connect() as conn:
             assert conn.execute("SELECT to_regclass('killed_backend_ddl') AS object").fetchone()['object'] is None
             assert conn.execute("SELECT to_regclass('dataset_products') AS object").fetchone()['object'] is None
-        assert len(applied(run_driver(repo))) == 50
+        assert applied(run_driver(repo)) == MIGRATION_NAMES[1:]
     finally:
         if process.poll() is None:
             process.kill()
             process.communicate(timeout=5)
 
 
-def test_restart_after_committed_037_only_applies_038_and_039(fresh_database):
+def test_restart_after_committed_037_applies_only_pending_migrations(fresh_database):
     repo = fresh_database(through=37)
     old_versions = versions(repo)
-    assert applied(run_driver(repo)) == ['038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql', '047_article_source_projection_v7.sql', '048_article_source_projection_v8.sql', '049_article_source_projection_v9.sql', '050_article_source_projection_v10.sql', '051_source_bound_correction_attempts.sql']
+    assert applied(run_driver(repo)) == MIGRATION_NAMES[37:]
     assert versions(repo)[:37] == old_versions
     assert applied(run_driver(repo)) == []
 
@@ -296,7 +297,7 @@ def test_native_python_adapter_applies_then_skips_in_one_session(fresh_database)
     from unittest.mock import patch
     with patch.dict(os.environ, {'AUTODATA_POSTGRES_USER':'lifecycle_test',
          'AUTODATA_POSTGRES_PASSWORD':'lifecycle_test_only', 'AUTODATA_POSTGRES_DB':repo.database_name}):
-        assert len(apply_migrations(ROOT, 'postgres:5432')) == 51
+        assert len(apply_migrations(ROOT, 'postgres:5432')) == len(MIGRATION_NAMES)
         old_versions, schema = versions(repo), snapshot(repo)
         assert apply_migrations(ROOT, 'postgres:5432') == []
     assert versions(repo) == old_versions
@@ -362,7 +363,7 @@ def test_populated_038_upgrade_only_adds_identity_schema(fresh_database, tmp_pat
         assert conn.execute("SELECT to_regclass('customer_accounts') AS name").fetchone()['name']
         assert conn.execute("SELECT to_regclass('auth_sessions') AS name").fetchone()['name']
     assert snapshot(repo) == snapshot(fresh_database(through=39))
-    assert applied(run_driver(repo)) == ['040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql', '047_article_source_projection_v7.sql', '048_article_source_projection_v8.sql', '049_article_source_projection_v9.sql', '050_article_source_projection_v10.sql', '051_source_bound_correction_attempts.sql']
+    assert applied(run_driver(repo)) == MIGRATION_NAMES[39:]
     assert snapshot(repo) == snapshot(fresh_database())
     assert applied(run_driver(repo)) == []
 
@@ -390,7 +391,7 @@ def test_populated_040_projection_upgrade_and_restart_preserve_rows(fresh_databa
     repo = fresh_database(through=40)
     _, source = seed_v1_publication(repo)
     before, ledger = lifecycle_history(repo), versions(repo)
-    assert applied(run_driver(repo)) == ['041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql', '047_article_source_projection_v7.sql', '048_article_source_projection_v8.sql', '049_article_source_projection_v9.sql', '050_article_source_projection_v10.sql', '051_source_bound_correction_attempts.sql']
+    assert applied(run_driver(repo)) == MIGRATION_NAMES[40:]
     assert lifecycle_history(repo) == before
     assert versions(repo)[:40] == ledger
     append_projection(repo, source, 'source-projection-v2')
@@ -398,7 +399,96 @@ def test_populated_040_projection_upgrade_and_restart_preserve_rows(fresh_databa
     populated, upgraded_schema, upgraded_ledger = lifecycle_history(repo), snapshot(repo), versions(repo)
     result = run_driver(repo)
     assert applied(result) == []
-    assert result.stdout.count('AUTODATA_SKIPPED ') == 51
+    assert result.stdout.count('AUTODATA_SKIPPED ') == len(MIGRATION_NAMES)
     assert lifecycle_history(repo) == populated
     assert snapshot(repo) == upgraded_schema
     assert versions(repo) == upgraded_ledger
+
+
+def test_retained_article_link_bindings_upgrade_from_populated_052(fresh_database):
+    from uuid import uuid4
+
+    from psycopg.errors import CheckViolation, ForeignKeyViolation, UniqueViolation
+
+    from autodata_ingestion.article_lifecycle_types import ArticleKey
+    from lifecycle_support import insert_descriptor
+    from test_article_lifecycle_schema import append_projection, lifecycle_history, seed_v1_publication
+
+    repo = fresh_database(through=52)
+    article, source = seed_v1_publication(repo)
+    second_source = append_projection(repo, source, "source-projection-v10")
+    other_article = insert_descriptor(repo, ArticleKey("banktwo", seed_vehicle(repo), None, "fixture-v", "fixture-a"))
+    second_job, second_revision = uuid4(), uuid4()
+    with repo.connect() as conn:
+        prior = conn.execute(
+            "SELECT current_job_id, current_canonical_revision_id FROM canonical_articles WHERE canonical_article_id=%s",
+            (article,),
+        ).fetchone()
+        revision = prior["current_canonical_revision_id"]
+        conn.execute("""
+            INSERT INTO source_fetch_jobs
+            SELECT (jsonb_populate_record(NULL::source_fetch_jobs,
+                to_jsonb(j) || jsonb_build_object('source_fetch_job_id', %s::uuid, 'idempotency_key', %s::text,
+                    'request_generation', 1, 'source_revision_id', %s::uuid, 'transformation_key', %s::text))).*
+            FROM source_fetch_jobs j WHERE j.source_fetch_job_id=%s
+        """, (second_job, str(second_job), second_source, "f"*64, prior["current_job_id"]))
+        conn.execute("""
+            INSERT INTO canonical_article_revisions
+            SELECT (jsonb_populate_record(NULL::canonical_article_revisions,
+                to_jsonb(r) || jsonb_build_object('canonical_article_revision_id', %s::uuid,
+                    'source_revision_id', %s::uuid, 'transformation_key', %s::text))).*
+            FROM canonical_article_revisions r WHERE r.canonical_article_revision_id=%s
+        """, (second_revision, second_source, "f"*64, revision))
+
+    def legacy_read():
+        with repo.connect() as conn:
+            return conn.execute("SELECT * FROM catalog_article_current WHERE canonical_article_id=%s", (article,)).fetchone()
+
+    before, old_ledger, old_read = lifecycle_history(repo), versions(repo), legacy_read()
+    assert old_read["canonical_revision_id"] == revision
+    assert applied(run_driver(repo)) == ["053_canonical_article_link_bindings.sql"]
+    ledger = versions(repo)
+    assert ledger[:-1] == old_ledger
+    assert ledger[-1]["version"] == "053_canonical_article_link_bindings"
+    assert snapshot(repo) == snapshot(fresh_database())
+
+    binding = {
+        "canonical_article_id": article, "source_revision_id": source, "canonical_article_revision_id": revision,
+        "block_id": "x"*256, "label_sha256": "1"*64, "authored_id_sha256": "2"*64,
+        "target_ref_sha256": "a"*64, "body_sha256": "b"*64,
+    }
+    insert = """
+        INSERT INTO canonical_article_link_bindings
+            (canonical_article_id, source_revision_id, canonical_article_revision_id,
+             block_id, label_sha256, authored_id_sha256, target_ref_sha256, body_sha256)
+        VALUES (%(canonical_article_id)s, %(source_revision_id)s, %(canonical_article_revision_id)s,
+                %(block_id)s, %(label_sha256)s, %(authored_id_sha256)s, %(target_ref_sha256)s, %(body_sha256)s)
+        RETURNING created_at
+    """
+    with repo.connect() as conn:
+        assert conn.execute(insert, binding).fetchone()["created_at"] is not None
+        conn.execute(insert, {**binding, "canonical_article_revision_id": second_revision, "source_revision_id": second_source})
+    with pytest.raises(UniqueViolation), repo.connect() as conn:
+        conn.execute(insert, {**binding, "target_ref_sha256": "c"*64})
+    for mismatched in ({"canonical_article_id": other_article}, {"source_revision_id": second_source}):
+        with pytest.raises(ForeignKeyViolation), repo.connect() as conn:
+            conn.execute(insert, {**binding, "block_id": "other-block", **mismatched})
+    for block_id in ("", " \t\n", "x"*257, "é"*129):
+        with pytest.raises(CheckViolation), repo.connect() as conn:
+            conn.execute(insert, {**binding, "block_id": block_id})
+    for digest in ("label_sha256", "authored_id_sha256", "target_ref_sha256", "body_sha256"):
+        for malformed in ("a"*63, "a"*64 + "\n", "A"*64, "g"*64):
+            with pytest.raises(CheckViolation), repo.connect() as conn:
+                conn.execute(insert, {**binding, "block_id": "other-block", digest: malformed})
+
+    def bindings():
+        with repo.connect() as conn:
+            return conn.execute("SELECT * FROM canonical_article_link_bindings ORDER BY canonical_article_revision_id").fetchall()
+
+    stored = bindings()
+    assert len(stored) == 2
+    assert applied(run_driver(repo)) == []
+    assert versions(repo) == ledger
+    assert bindings() == stored
+    assert lifecycle_history(repo) == before
+    assert legacy_read() == old_read

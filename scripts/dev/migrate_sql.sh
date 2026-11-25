@@ -72,6 +72,7 @@ canonical=$(cat <<'MANIFEST'
 050_article_source_projection_v10.sql
 051_source_bound_correction_attempts.sql
 052_vehicle_engine_variant.sql
+053_canonical_article_link_bindings.sql
 MANIFEST
 )
 # Validate everything before producing even the first byte of SQL.
@@ -89,7 +90,7 @@ for path in "$migrations_dir"/* "$migrations_dir"/.[!.]* "$migrations_dir"/..?*;
     # prevents inline psql commands, including commands after SQL on one line.
     if grep -F '\' "$path" >/dev/null; then fail "psql metacommand/backslash in $name"; fi
     case "$name" in
-        036_*|037_*|038_*|039_*|040_*|041_*|042_*|043_*|044_*|045_*|046_*|047_*|048_*|049_*|050_*|051_*|052_*)
+        036_*|037_*|038_*|039_*|040_*|041_*|042_*|043_*|044_*|045_*|046_*|047_*|048_*|049_*|050_*|051_*|052_*|053_*)
             [ "$(sed '/^[[:space:]]*$/d' "$path" | head -n 1)" = 'BEGIN;' ] || fail "missing audited BEGIN in $name"
             [ "$(sed '/^[[:space:]]*$/d' "$path" | tail -n 1)" = 'COMMIT;' ] || fail "missing audited COMMIT in $name"
             [ "$(grep -Ec '^(BEGIN|COMMIT);$' "$path")" -eq 2 ] || fail "unsupported transaction delimiters in $name"
@@ -170,6 +171,7 @@ BEGIN
             'catalog_article_index_pages',
             'canonical_article_aliases',
             'canonical_article_revisions',
+            'canonical_article_link_bindings',
             'canonical_article_reviews',
             'canonical_article_rewrite_attempts'
         )
@@ -249,15 +251,15 @@ for path in "$migrations_dir"/*.sql; do
         printf '%s\n' '\else' '\set autodata_skip false' '\endif'
     fi
     printf '%s\n' '\if :autodata_skip' "\echo AUTODATA_SKIPPED $name" '\else'
-    case "$name" in 036_*|037_*|038_*|039_*|040_*|041_*|042_*|043_*|044_*|045_*|046_*|047_*|048_*|049_*|050_*|051_*|052_*) ;; *) printf '%s\n' 'BEGIN;' ;; esac
+    case "$name" in 036_*|037_*|038_*|039_*|040_*|041_*|042_*|043_*|044_*|045_*|046_*|047_*|048_*|049_*|050_*|051_*|052_*|053_*) ;; *) printf '%s\n' 'BEGIN;' ;; esac
     cat "$path"
     printf '\n'
     case "$name" in
-        036_*|037_*|038_*|039_*|040_*|041_*|042_*|043_*|044_*|045_*|046_*|047_*|048_*|049_*|050_*|051_*|052_*) ;;
+        036_*|037_*|038_*|039_*|040_*|041_*|042_*|043_*|044_*|045_*|046_*|047_*|048_*|049_*|050_*|051_*|052_*|053_*) ;;
         *) printf '%s\n' "INSERT INTO schema_migrations(version) VALUES ('$version') ON CONFLICT(version) DO NOTHING;" ;;
     esac
     printf '%s\n' "DO \$driver_check\$ BEGIN IF NOT EXISTS (SELECT FROM schema_migrations WHERE version='$version') THEN RAISE EXCEPTION 'expected migration marker missing: $version'; END IF; END \$driver_check\$;"
-    case "$name" in 036_*|037_*|038_*|039_*|040_*|041_*|042_*|043_*|044_*|045_*|046_*|047_*|048_*|049_*|050_*|051_*|052_*) ;; *) printf '%s\n' 'COMMIT;' ;; esac
+    case "$name" in 036_*|037_*|038_*|039_*|040_*|041_*|042_*|043_*|044_*|045_*|046_*|047_*|048_*|049_*|050_*|051_*|052_*|053_*) ;; *) printf '%s\n' 'COMMIT;' ;; esac
     printf '%s\n' "\echo AUTODATA_APPLIED $name" '\endif'
 done
 printf '%s\n' 'SELECT pg_advisory_unlock(186,3738);'
