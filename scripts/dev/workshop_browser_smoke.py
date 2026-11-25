@@ -1523,13 +1523,19 @@ async def expect_html_list_figure(article):
     )).to_have_count(1)
 
 
-async def expect_paid_table_caption_search(page, origin, configuration, article_id):
+async def expect_paid_table_caption_search(page, origin, configuration, article_id, *, retained=None):
     from playwright.async_api import expect
 
     path = f'/v1/catalog/vehicles/{configuration}/articles'
+    detail = f'{path}/{article_id}'
     caption = 'Alignment service data'
     search = page.locator('#search')
     links = page.locator('#articles a')
+    if retained is not None:
+        revision_fields = ('source_revision_id', 'canonical_revision_id')
+        revisions = {field: retained[field] for field in revision_fields}
+        for revision in revisions.values():
+            assert re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}', revision)
     for query in (f'{caption} witness marks', caption):
         def matches_search(response):
             url = urlsplit(response.url)
@@ -1542,6 +1548,9 @@ async def expect_paid_table_caption_search(page, origin, configuration, article_
         assert response.status == 200
         [descriptor] = (await response.json())['items']
         assert descriptor['id'] == article_id and descriptor['content_origin'] == 'canonical'
+        if retained is not None:
+            assert descriptor['availability'] == 'available'
+            assert all(descriptor.get(field) == revision for field, revision in revisions.items())
         assert all(not descriptor.get(field) for field in ('body', 'document', 'steps', 'images', 'source_review'))
         await expect(links).to_have_count(1)
         await expect(links).to_have_attribute('href', re.compile(f'[?&]article={article_id}(?:&|$)'))
@@ -1550,9 +1559,40 @@ async def expect_paid_table_caption_search(page, origin, configuration, article_
     assert denied.status == 404
     denial = await denied.text()
     assert caption not in denial and article_id not in denial
-    await links.click()
-    await expect(page.locator('#article-kind')).to_have_text('Workshop article')
-    await expect_html_table_figure(page.locator('#article-content'))
+    article = page.locator('#article-content')
+    if retained is None:
+        await links.click()
+        await expect(page.locator('#article-kind')).to_have_text('Workshop article')
+        await expect_html_table_figure(article)
+        return
+
+    requests = []
+    def record_detail(request):
+        url = urlsplit(request.url)
+        if request.url.startswith(origin + '/') and url.path in (detail, detail + '/prepare'):
+            requests.append((request.method, url.path, parse_qs(url.query)))
+
+    page.on('request', record_detail)
+    try:
+        async with page.expect_response(lambda response: response.url.startswith(origin + '/') and
+                                        urlsplit(response.url).path in (detail, detail + '/prepare')) as opened:
+            await links.click()
+        selected = await opened.value
+        assert selected.request.method == 'GET' and selected.status == 200
+        payload = await selected.json()
+        assert payload['configuration']['id'] == configuration and payload['configuration']['region'] == 'US'
+        actual = payload['article']
+        for field in ('id', 'availability', 'content_origin', 'document', *revision_fields):
+            assert actual[field] == retained[field]
+        def image_references(view):
+            return [{key: value for key, value in image.items() if key != 'url'} for image in view['images']]
+        assert image_references(actual) == image_references(retained)
+        await expect(page.locator('#article-kind')).to_have_text('Workshop article')
+        await expect_html_table_figure(article)
+        await expect_linked_pdf(article, rewritten=True)
+        assert requests == [('GET', detail, {'region': ['US']})]
+    finally:
+        page.remove_listener('request', record_detail)
 
 
 async def expect_paid_reader_refocus(page, configuration, article_id):
@@ -1593,7 +1633,7 @@ async def expect_paid_reader_refocus(page, configuration, article_id):
         page.remove_listener('request', record)
 
 
-async def api_case(browser,origin,name,output,observations=None,*,verify_reader_refocus=False):
+async def api_case(browser,origin,name,output,observations=None,*,verify_paid_reader_requests=False):
     from playwright.async_api import expect
     context=page=None;failure=None;result=None
     transport=APIFixture(origin,name,observations=observations)
@@ -1732,8 +1772,11 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
         else:
             await api_control(context,origin,'control/start-workers','start-workers-control')
             if observations:observations.phase='source-page-http'
+            first_open = len(transport.requests)
             await page.goto(route+'&article='+article_id)
             await expect(page.locator('#article-kind')).to_have_text('Stored source',timeout=15000)
+            if verify_paid_reader_requests:
+                assert {'method': 'POST', 'path': '/v1/catalog/vehicles/{uuid}/articles/{uuid}/prepare'} in transport.requests[first_open:]
             await expect(page.locator('#activity-text')).to_have_text('Stored source is ready.')
             await expect(page.locator('#loading-progress')).to_be_hidden()
             await expect(page.locator('#article-note')).to_have_text('Preparing the Workshop rewrite.')
@@ -1855,12 +1898,13 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
             if linked_pdf:
                 await expect_html_table_figure(article_content)
                 await expect(article_content).to_contain_text(LINKED_PDF_FIXTURE_EXPONENTS)
-            # The page can render a warm article from the prepare response.
-            # Capture the actual read endpoint separately after the GUI reload.
+            # The saved reader can render from prepare. Capture the GET
+            # contract separately for the saved URL and the later index open.
             warm_detail=await api21_get(context,origin+f'/v1/catalog/vehicles/{configuration}/articles/{article_id}',
                                         phase='warm-page-http')
             assert warm_detail.status==200
-            assert (await warm_detail.json())['article']['content_origin']=='canonical'
+            warm_article = (await warm_detail.json())['article']
+            assert warm_article['content_origin']=='canonical'
             await expect(page.locator('#article-content img')).not_to_have_count(0)
             warm_image=await article_content.locator(image_locator).first.get_attribute('src')
             delivered=await api21_get(context,warm_image,phase='warm-image-http');assert delivered.status==200 and len(await delivered.body())>0
@@ -1875,7 +1919,7 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
             warm_receipt={'before':warm_before,'after':warm_after,'reader_before':reader_before,'reader_after':reader_after}
             assertions['source_to_canonical_and_warm_reuse']=True
             assertions['warm_raw_runtime_unchanged_with_approved_s3_delivery']=True
-            if verify_reader_refocus and name == API_CASES[1] and scope['provider'] == 'bankone':
+            if verify_paid_reader_requests and name == API_CASES[1] and scope['provider'] == 'bankone':
                 if observations:observations.phase='setup'
                 await expect_paid_reader_refocus(page, configuration, article_id)
             if linked_pdf:
@@ -1909,7 +1953,10 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
                 await expect(page.locator('#catalog')).to_be_visible()
                 await expect(page.locator(f'#articles a[href*="article={article_id}"]')).to_be_visible()
                 await expect(page.locator('#catalog-title')).to_be_focused()
-                await expect_paid_table_caption_search(page, origin, configuration, article_id)
+                await expect_paid_table_caption_search(
+                    page, origin, configuration, article_id,
+                    retained=warm_article if verify_paid_reader_requests else None,
+                )
             if name==API_CASES[2]:
                 for denial_phase,denied in zip(('adjacent-denial','other-region-denial','unscoped-article-denial','legacy-vehicle-denial'),(f'/v1/catalog/vehicles/{scope["adjacent"]}/articles',f'/v1/catalog/vehicles/{scope["other_region"]}/articles',f'/v1/catalog/vehicles/{configuration}/articles/{scope["unscoped"]}',f'/v1/catalog/vehicles/{scope["vehicle"]}/articles')):
                     denied_response=await api21_get(context,origin+denied,phase=denial_phase)
@@ -2203,7 +2250,7 @@ async def run(args):
             stage='case';start=time.monotonic()
             try:
                 result=await asyncio.wait_for(api_case(
-                    browser,args.base_url,name,output/engines[0],observations=observations,verify_reader_refocus=True,
+                    browser,args.base_url,name,output/engines[0],observations=observations,verify_paid_reader_requests=True,
                 ),timeout=65)
                 rows.append(dict(browser=engines[0],scenario=name,elapsed_seconds=round(time.monotonic()-start,3),**result))
                 evidence['browser_versions']={engines[0]:browser.version}
