@@ -2338,6 +2338,21 @@ def test_new_article_worker_disable_during_inflight_and_failed_source_fallback(r
         assert conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()==before
 
 
+def test_new_article_worker_disable_drains_a_committed_admission(runtime, tmp_path, monkeypatch):
+    from autodata_ingestion.new_article_worker import _dispatch_reserved_job, _reserve_next_article
+
+    state, job, model = prepare_new_article_runtime(runtime, tmp_path, monkeypatch, continuous=True)
+    assert _reserve_next_article(runtime.repo, state, providers=["bankone"]) == (job, "bankone")
+    state.set_enabled(False)
+    assert _dispatch_reserved_job(
+        runtime.repo, state, job, worker_id=uuid4(), provider="bankone", registry=runtime.registry,
+        object_store=runtime.objects, model_client=model,
+    )
+    assert runtime.read_current()["processing_state"] == "completed"
+    assert runtime.model.calls == 1
+    assert _reserve_next_article(runtime.repo, state) is None
+
+
 def new_article_uncertain_delivery_child(repo, directory, env, arrived):
     """Hold a real HTTP response after delivery, before saving it, until SIGKILL."""
     import os

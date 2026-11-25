@@ -374,8 +374,9 @@ def dispatch_next(repo, state, *, worker_id, registry, object_store, model_clien
 
 def _dispatch_reserved_job(repo, state, job_id, *, worker_id, registry, object_store, model_client,
                            provider=None, hooks=None, stop=None, model_slot=None):
+    # Rollout disable prevents new reservations. An admitted job can drain.
     snapshot = state.read()
-    if not snapshot['enabled'] or (stop is not None and stop.is_set()):
+    if stop is not None and stop.is_set():
         return False
     providers = [item for item in snapshot['providers'] if provider is None or item == provider]
     params = {'providers': providers, 'cutoff': _timestamp(snapshot['cutoff']), 'job_id': job_id}
