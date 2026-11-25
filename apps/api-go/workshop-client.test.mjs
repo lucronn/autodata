@@ -2778,7 +2778,7 @@ test('saved hierarchy restores all exact vehicle choices and query over prior st
 
 const savedPickerRoute = '?year=2024&make=buick-truck&model=envision-awd';
 const savedPickerPaths = [
-  '/v1/catalog/years?stored_only=1',
+  '/v1/catalog/years',
   '/v1/catalog/years/2024/makes?region=US&stored_only=1',
   '/v1/catalog/years/2024/makes/buick-truck/models?region=US&stored_only=1',
   '/v1/catalog/years/2024/makes/buick-truck/models/envision-awd/configurations?region=US&stored_only=1',
@@ -2940,30 +2940,50 @@ test('early saved selectors skip independent or session-dependent routes', () =>
   }
 });
 
-test('early stored-only reads stop at the first unresolved selector and let an incomplete missing year fall back', async () => {
+test('early reads stop at the first unresolved selector and keep incomplete year rows', async () => {
   const calls = [];
+  const partial = { items: [{ year: 2023 }], complete: false, hydrating: true };
   const initial = startSavedSelectorReads(new URLSearchParams('?year=2024&model=envision-awd'), async path => {
     calls.push(path);
-    return { items: [{ year: 2023 }], complete: false, hydrating: true };
+    return partial;
   });
   assert.deepEqual(calls, savedPickerPaths.slice(0, 2));
-  assert.equal(await initial.reads.year, null);
+  assert.equal(await initial.reads.year, partial);
   initial.abort();
 });
 
-test('a partial stored year list still triggers the regular read when it already contains the saved year', async () => {
+test('the first incomplete year read can restore the saved choice without a second request', async () => {
+  const partial = { ...savedPickerRows[0], complete: false, hydrating: true };
   const initialSelectors = startSavedSelectorReads(new URLSearchParams('?year=2024'), async path => {
-    assert.equal(path, savedPickerPaths[0]);
-    return { ...savedPickerRows[0], complete: false, hydrating: true };
+    if (path === '/v1/catalog/years') return partial;
+    assert.equal(path, savedPickerPaths[1]);
+    return savedPickerRows[1];
   });
-  const years = [{ year: 2024 }, { year: 2023 }];
-  const h = selectorOptionsHarness({ items: years, complete: true });
+  const h = selectorOptionsHarness(() => assert.fail('the saved year is already available'));
   h.context.selectorPath = () => '/v1/catalog/years';
   await h.load('2024', undefined, initialSelectors.reads.year, 'year');
-  assert.deepEqual(h.requests, ['/v1/catalog/years']);
-  assert.deepEqual(h.displayed, [years]);
+  assert.deepEqual(h.requests, []);
+  assert.deepEqual(h.displayed, [partial.items]);
   assert.equal(h.$('year').value, '2024');
   initialSelectors.abort();
+});
+
+test('other stored years are visible while waiting for a missing saved year', async () => {
+  const partial = { items: [{ year: 2023 }], complete: false, hydrating: true };
+  const complete = { items: [...partial.items, { year: 2024 }], complete: true };
+  const pending = deferredAuthOperation();
+  const h = selectorOptionsHarness(() => pending.promise);
+  h.context.selectorPath = () => '/v1/catalog/years';
+  const opening = h.load('2024', undefined, Promise.resolve(partial), 'year');
+  await new Promise(setImmediate);
+  assert.deepEqual(h.displayed, [partial.items]);
+  assert.equal(h.$('year').disabled, false);
+  assert.equal(h.$('year').value, '');
+  assert.deepEqual(h.requests, ['/v1/catalog/years']);
+  pending.resolve(complete);
+  await opening;
+  assert.deepEqual(h.displayed, [partial.items, complete.items]);
+  assert.equal(h.$('year').value, '2024');
 });
 
 test('superseding a saved picker restore aborts every early request and leaves stale choices hidden', async () => {
