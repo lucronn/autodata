@@ -33,6 +33,7 @@ from .article_lifecycle_types import (
     MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V3,
     PDF_BLANK_PAGE_LAYOUT,
     PDF_COMPACT_FIGURE_LAYOUT,
+    PDF_FAST_PNG_ENCODING,
     PDF_LEGACY_FIGURE_LAYOUT,
     PDF_REPEAT_MARGIN_LAYOUT,
     PDF_SINGLE_LINE_FIGURE_LAYOUT,
@@ -626,6 +627,14 @@ def capture_source_article(
                 if payload.media_type != "application/pdf":
                     return ref, role, None, "UNSUPPORTED_DOCUMENT_MEDIA", originals, None
                 resource = upload_resource(envelope, ref, role, bounded_objects)
+                # Use the fast codec for a first capture. Match the encoding
+                # in the stored manifest when recapturing the same document.
+                fast_png = (
+                    payload.content_sha256 in context.fast_linked_pdf_png_roots
+                    or on_linked_preview is not None
+                )
+                if fast_png:
+                    resource["pdf_figure_encoding"] = PDF_FAST_PNG_ENCODING
 
                 def native_text(page_texts):
                     blocks = native_pdf_blocks(page_texts)
@@ -644,6 +653,7 @@ def capture_source_article(
                         keep_wordless_pdf_figures=keep_wordless_linked_pdf_figures,
                         step_parser=linked_step_parser,
                         on_native_text=native_text if native_ready is not None else None,
+                        fast_png=fast_png,
                         skip_blank_pages=(
                             skip_blank_linked_pdf_pages
                             and payload.content_sha256 not in context.legacy_published_pdf_blank_roots
@@ -1148,7 +1158,7 @@ def capture_source_article(
                 {key: resource[key] for key in (
                     "role", "opaque_ref", "sha256", "media_type", "derived_from_sha256", "derivation_version",
                     "pdf_figure_layout", "pdf_compact_figure_layout", "pdf_blank_page_layout", "pdf_single_line_figure_layout",
-                    "pdf_wordless_figure_layout",
+                    "pdf_wordless_figure_layout", "pdf_figure_encoding",
                 ) if key in resource}
             )
             if role == "asset":

@@ -21,7 +21,7 @@ from autodata_ingestion.article_lifecycle import run_article_worker_once
 from autodata_ingestion.article_lifecycle_store import load_source_revision
 from autodata_ingestion.article_lifecycle_types import (
     HTML_DOCUMENT_LINK_LAYOUT, PDF_BLANK_PAGE_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT, PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT,
-    PDF_SINGLE_LINE_FIGURE_LAYOUT, PDF_WORDLESS_FIGURE_LAYOUT,
+    PDF_FAST_PNG_ENCODING, PDF_SINGLE_LINE_FIGURE_LAYOUT, PDF_WORDLESS_FIGURE_LAYOUT,
 )
 from autodata_ingestion.procedure_rewrite_auto import PROFILE as AUTO_PROFILE
 from autodata_ingestion.ocr import OCRUnavailable
@@ -731,8 +731,19 @@ def test_v10_promotion_preserves_an_unchanged_sibling_pdf_across_refreshes(runti
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
-def test_published_pdf_anchor_reuses_the_same_digest(runtime, provider):
-    runtime.article_id = runtime.articles[provider]
+@pytest.mark.parametrize("scoped", [False, True])
+def test_published_pdf_anchor_reuses_the_same_digest(runtime, provider, scoped):
+    if scoped:
+        from test_article_lifecycle_integration import scoped_runtime_article
+
+        configuration = scoped_runtime_article(runtime)
+        with runtime.repo.connect() as conn:
+            runtime.article_id = conn.execute("""
+                SELECT canonical_article_id FROM canonical_articles
+                WHERE vehicle_configuration_id=%s AND provider_slug=%s
+            """, (configuration, provider)).fetchone()["canonical_article_id"]
+    else:
+        runtime.article_id = runtime.articles[provider]
     connector = runtime.servers[provider]
     label = "Pump service addendum"
     html = (
@@ -752,17 +763,17 @@ def test_published_pdf_anchor_reuses_the_same_digest(runtime, provider):
     connector.body(pdf, "application/pdf", ref=_PDF_REF, kind="binary")
     draft = FixtureDraft()
 
-    def refresh():
+    def refresh(*, complete=True):
         job = refresh_article_job(
             runtime.repo, runtime.article_id, actor="fixture", reason="refresh PDF anchor without changing bytes",
             rewrite_profile_version=AUTO_PROFILE,
         )
         assert run_article_worker_once(
             runtime.repo, worker_id=uuid4(), registry=runtime.registry,
-            object_store=runtime.objects, model_client=draft, job_id=job.job_id,
+            object_store=runtime.objects, model_client=draft if complete else None, job_id=job.job_id,
         )
         view = runtime.read_current()
-        assert view["content_origin"] == "canonical", runtime.diagnostics()
+        assert view["content_origin"] == ("canonical" if complete else "source"), runtime.diagnostics()
         return view
 
     first = refresh()
@@ -779,6 +790,18 @@ def test_published_pdf_anchor_reuses_the_same_digest(runtime, provider):
     assert source.resource_manifest[0]["html_document_link_layout"] == HTML_DOCUMENT_LINK_LAYOUT
     [retained] = [item for item in source.resource_manifest if item["role"] == "document_asset"]
     assert retained["sha256"] == sha256(pdf).hexdigest()
+    assert retained.get("pdf_figure_encoding") == (PDF_FAST_PNG_ENCODING if scoped else None)
+    if scoped:
+        saved = connector.resources.pop(_PDF_REF)
+        partial = refresh(complete=False)
+        partial_source = load_source_revision(runtime.repo, partial["source_revision_id"])
+        assert partial_source.source_revision_id != source.source_revision_id
+        assert partial_source.projection_status == "partial"
+        assert not any(item.get("pdf_figure_encoding") for item in partial_source.resource_manifest)
+        connector.resources[_PDF_REF] = saved
+        recovered = refresh()
+        for field in ("source_revision_id", "canonical_revision_id", "document", "images"):
+            assert recovered[field] == first[field]
     assert draft.requests == [list(("Remove the pump.", "Inspect the seal.", "Install the replacement."))]
 
 

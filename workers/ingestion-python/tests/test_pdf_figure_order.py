@@ -27,6 +27,24 @@ def _image(seed):
     return ImageReader(Image.frombytes("RGB", (96, 96), Random(seed).randbytes(96 * 96 * 3)))
 
 
+def test_fast_pdf_png_keeps_pixels_and_falls_back_at_the_serve_limit(monkeypatch):
+    with BytesIO() as buffer:
+        image = Image.new("RGBA", (160, 160), (31, 50, 60, 128))
+        image.save(buffer, format="PNG")
+        payload = buffer.getvalue()
+    encode = source_adapters._browser_safe_image_payload
+    mime, legacy = encode(payload)
+    fast_mime, fast = encode(payload, fast_png=True)
+    assert mime == fast_mime == "image/png"
+    assert len(fast) > len(legacy)
+    with Image.open(BytesIO(legacy)) as original, Image.open(BytesIO(fast)) as derived:
+        assert original.mode == derived.mode == "RGB"
+        assert original.size == derived.size
+        assert original.tobytes() == derived.tobytes()
+    monkeypatch.setattr(source_adapters, "_MAX_WORKSHOP_IMAGE_BYTES", len(fast) - 1)
+    assert encode(payload, fast_png=True) == (mime, legacy)
+
+
 def test_complete_native_pdf_encodes_two_pages_concurrently_in_source_order(monkeypatch):
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, invariant=True, pagesize=(612, 792))

@@ -20,6 +20,7 @@ from collections import Counter, deque
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any, Callable, Protocol
 from urllib.parse import unquote, urljoin, urlparse, urlsplit
 from xml.etree import ElementTree
@@ -41,6 +42,8 @@ _IMAGE_TYPES = {"image/bmp", "image/jpeg", "image/png", "image/tiff", "image/web
 _GENERIC_MEDIA_TYPES = {"application/octet-stream", "binary/octet-stream", "text/plain"}
 _MAX_BOUND_EMBEDDED_PDF_BYTES = 6 * 1024 * 1024
 _MAX_BOUND_EMBEDDED_PDF_PAGES = 24
+# Keep in sync with catalogImageMaxBytes in the Workshop media endpoint.
+_MAX_WORKSHOP_IMAGE_BYTES = 12 * 1024 * 1024
 
 
 class SourceConnector(Protocol):
@@ -752,6 +755,7 @@ def _pdf_page_image_records(page_number, images):
                 "byte_count": len(safe_payload),
                 "source_name": source_name,
                 "pdf_key": str(pdf_key) if isinstance(pdf_key, str) else None,
+                "pdf_index": index,
                 **({"_compact_pdf_figure": True} if compact else {}),
                 "url": (
                     f"data:{media_type};base64,"
@@ -764,18 +768,26 @@ def _pdf_page_image_records(page_number, images):
 
 def _extract_pdf_page_images(
     page: Any, *, page_number: int, allow_compact_figure: bool = False,
+    encode=None,
 ) -> tuple[list[dict[str, Any]], list[Any]]:
     """Return browser-safe embedded images from one PDF page."""
+    if encode is None:
+        encode = _browser_safe_image_payload
     inputs, keys = _pdf_page_image_inputs(page, allow_compact_figure)
-    images = ((index, key, name, compact, _browser_safe_image_payload(payload))
+    images = ((index, key, name, compact, encode(payload))
               for index, key, name, compact, payload in inputs)
     return _pdf_page_image_records(page_number, images), keys
 
 
-def _pdf_page_figures(pages, *, parallel):
+def _pdf_page_figures(pages, *, parallel, fast_png=False):
+    encode = _browser_safe_image_payload
+    if fast_png:
+        encode = partial(encode, fast_png=True)
     if not parallel:
         for index, page, text, single_line, compact in pages:
-            images, keys = _extract_pdf_page_images(page, page_number=index, allow_compact_figure=compact)
+            images, keys = _extract_pdf_page_images(
+                page, page_number=index, allow_compact_figure=compact, encode=encode,
+            )
             yield index, page, text, single_line, images, keys
         return
 
@@ -791,7 +803,7 @@ def _pdf_page_figures(pages, *, parallel):
     with ThreadPoolExecutor(max_workers=2) as pool:
         for index, page, text, single_line, compact in pages:
             inputs, keys = _pdf_page_image_inputs(page, compact)
-            work = [(image_index, key, name, compact, pool.submit(_browser_safe_image_payload, payload))
+            work = [(image_index, key, name, compact, pool.submit(encode, payload))
                     for image_index, key, name, compact, payload in inputs]
             pending.append((index, page, text, single_line, keys, work))
             if len(pending) == 3:
@@ -800,7 +812,7 @@ def _pdf_page_figures(pages, *, parallel):
             yield finish(pending.popleft())
 
 
-def _browser_safe_image_payload(payload: bytes) -> tuple[str, bytes] | None:
+def _browser_safe_image_payload(payload: bytes, *, fast_png=False) -> tuple[str, bytes] | None:
     """Normalize PDF-embedded images to RGB PNG/JPEG browsers can display."""
 
     try:
@@ -828,6 +840,11 @@ def _browser_safe_image_payload(payload: bytes) -> tuple[str, bytes] | None:
     elif image.mode == "L":
         image = image.convert("RGB")
     buffer = io.BytesIO()
+    if fast_png:
+        image.save(buffer, format="PNG", compress_level=3)
+        if buffer.tell() <= _MAX_WORKSHOP_IMAGE_BYTES:
+            return "image/png", buffer.getvalue()
+        buffer = io.BytesIO()
     image.save(buffer, format="PNG", optimize=True)
     return "image/png", buffer.getvalue()
 
@@ -862,6 +879,7 @@ def _adapt_pdf_resource(
     keep_wordless_pdf_figures: bool = False,
     step_parser=None,
     on_native_text=None,
+    fast_png=False,
 ) -> SourceArtifact:
     """Extract native PDF text and OCR pages that contain no native text."""
 
@@ -943,7 +961,7 @@ def _adapt_pdf_resource(
             yield index, page, text, single_line, allow_compact
 
     for index, page, text, single_line, extracted_images, page_image_keys in _pdf_page_figures(
-        figure_pages(), parallel=parallel_figures,
+        figure_pages(), parallel=parallel_figures, fast_png=fast_png,
     ):
         if extracted_images and extracted_images[0].get("_compact_pdf_figure") is True:
             [figure] = extracted_images
@@ -1024,11 +1042,25 @@ def _adapt_pdf_resource(
                     margin_ids.add(image["image_id"])
     repeated_ids = {image["image_id"] for image in repeats}
     if not kept_images and not repeats:
-        kept_images = [
-            payload
-            for payload in page_image_payloads.values()
-            if int(payload.get("byte_count") or 0) >= 8_000
-        ]
+        if fast_png:
+            # Encoding effort must not change which recurring artwork passes
+            # the legacy compressed-size cutoff.
+            read_page, inputs_by_index = None, {}
+            for payload in page_image_payloads.values():
+                page_number = payload["page"]
+                if page_number != read_page:
+                    inputs, _ = _pdf_page_image_inputs(pages[page_number - 1], False)
+                    inputs_by_index = {index: value for index, _, _, _, value in inputs}
+                    read_page = page_number
+                raw = inputs_by_index.get(payload["pdf_index"])
+                legacy = _browser_safe_image_payload(raw) if raw is not None else None
+                if legacy is not None and len(legacy[1]) >= 8_000:
+                    kept_images.append(payload)
+        else:
+            kept_images = [
+                payload for payload in page_image_payloads.values()
+                if int(payload.get("byte_count") or 0) >= 8_000
+            ]
         if figure_gaps is not None:
             # The legacy fallback keeps one copy of recurring artwork.
             figure_gaps.clear()
@@ -2295,6 +2327,7 @@ def adapt_bound_pdf_embed(
     keep_wordless_pdf_figures: bool = False,
     step_parser=None,
     on_native_text=None,
+    fast_png=False,
 ) -> dict[str, Any]:
     return _adapt_bound_pdf(
         resource, embedded=True, require_complete_ocr=require_complete_ocr,
@@ -2308,6 +2341,7 @@ def adapt_bound_pdf_embed(
         keep_wordless_pdf_figures=keep_wordless_pdf_figures,
         step_parser=step_parser,
         on_native_text=on_native_text,
+        fast_png=fast_png,
     )
 
 
@@ -2315,7 +2349,7 @@ def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, ke
                      keep_multiple_pdf_figures=False, keep_repeated_pdf_figures=False,
                      keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False, skip_blank_pages=False,
                      keep_single_line_compact_figures=False, keep_wordless_pdf_figures=False, step_parser=None,
-                     on_native_text=None):
+                     on_native_text=None, fast_png=False):
     if embedded and (resource.media_type != "application/pdf"
             or len(resource.payload) > _MAX_BOUND_EMBEDDED_PDF_BYTES
             or not resource.payload.startswith(b"%PDF-")):
@@ -2334,6 +2368,7 @@ def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, ke
             keep_wordless_pdf_figures=keep_wordless_pdf_figures,
             step_parser=step_parser,
             on_native_text=on_native_text,
+            fast_png=fast_png,
         )
     else:
         artifact = adapt_source_resource(resource)
