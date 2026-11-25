@@ -179,6 +179,8 @@ def test_drain_subject_prompt_keeps_existing_contact_guard_in_the_same_article()
 @pytest.mark.parametrize("introduction", (
     "This article describes service on reservoirs that need to be drained.",
     "The reservoirs that need to be drained are covered in this procedure.",
+    "The reservoirs that still need to be drained are covered in this procedure.",
+    "The procedure explains which reservoirs must be drained.",
 ))
 def test_drain_subject_prompt_allows_a_descriptive_introduction(introduction):
     source = document(_DRAIN)

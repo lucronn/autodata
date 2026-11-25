@@ -477,12 +477,16 @@ _INTRO_DIRECTIVE = re.compile(
     r"(?:attached|connected|detached|disconnected|installed|removed|started|stopped|tightened)\b",
     re.IGNORECASE,
 )
+_INTRO_FLUID_SUBJECT_WORD = (
+    r"(?!(?:that|which|who|where|how|what|whether|explains?|describes?|covers?)\b)[\w'’/-]+"
+)
 _INTRO_FLUID_DIRECTIVE = re.compile(
     r"(?:^|[.!?,;]\s+|:\s*)" + _INTRO_COMMAND_PREFIX
     + r"(?:(?:drain|empty(?:\s+out)?|fill)\s+the\b"
     r"|(?:let|allow)\s+the\s+[^,;.!?\n]+?\s+(?:drain|fill)\b"
-    r"|the\s+[^,;.!?\n]+?(?<!\s)(?<!\bthat)(?<!\bwhich)(?<!\bwho)(?<!\bwhere)"
-    r"\s+(?:must|shall|should|needs?\s+to)\s+be\s+(?:drained|emptied|filled)\b)",
+    rf"|the\s+(?:{_INTRO_FLUID_SUBJECT_WORD}\s+){{1,12}}"
+    rf"(?:(?:that|which)\s+(?:holds?|contains?)\s+(?:{_INTRO_FLUID_SUBJECT_WORD}\s+){{1,8}})?"
+    r"(?:must|shall|should|needs?\s+to)\s+be\s+(?:drained|emptied|filled)\b)",
     re.IGNORECASE,
 )
 
