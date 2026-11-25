@@ -1633,6 +1633,57 @@ async def expect_paid_reader_refocus(page, configuration, article_id):
         page.remove_listener('request', record)
 
 
+async def expect_paid_same_index_reopen(page, origin, scope, link, index_url, source_path, image_bytes):
+    from playwright.async_api import expect
+
+    collection = f'/v1/catalog/vehicles/{scope["configuration"]}/articles'
+    detail = f'{collection}/{scope["article"]}'
+    [source_revision] = parse_qs(urlsplit(source_path).query)['source_revision_id']
+    requests = []
+
+    def record(request):
+        url = urlsplit(request.url)
+        if request.url.startswith(origin + '/') and url.path in (collection, detail, detail + '/prepare'):
+            requests.append((request.method, url.path, parse_qs(url.query)))
+
+    row = await link.element_handle()
+    page.on('request', record)
+    try:
+        await page.locator('#back').click()
+        await expect(page.locator('#catalog')).to_be_visible()
+        await expect(link).to_be_focused()
+        assert page.url == index_url and await link.evaluate('(link, row) => link === row', row)
+        assert not requests, 'in-app Back read the already visible article index again'
+        async with page.expect_response(lambda response: response.url.startswith(origin + '/') and
+                                        urlsplit(response.url).path in (detail, detail + '/prepare')) as opened:
+            await link.click()
+        response = await opened.value
+        assert response.request.method == 'GET' and response.status == 200
+        payload = await response.json()
+        configuration = payload['configuration']
+        assert configuration['id'] == scope['configuration'] and configuration['region'] == 'US'
+        article = payload['article']
+        assert article['id'] == scope['article'] and article['content_origin'] == 'canonical'
+        assert article['availability'] == 'available' and article['canonical_revision_id']
+        assert article['source_revision_id'] == source_revision
+        await expect(page.locator('#article-kind')).to_have_text('Workshop article')
+        await expect(page.locator('#article-content')).to_contain_text('Take off the pump.')
+        figure = page.locator('#article-content figure:has(img[alt="Alignment marks"])')
+        await expect_figure_after_text(figure, 'Check the pump alignment marks')
+        image = figure.locator('img')
+        await figure.scroll_into_view_if_needed()
+        await page.wait_for_function(
+            'image => image.complete && image.naturalWidth > 0', arg=await image.element_handle(), timeout=5000,
+        )
+        image_url = await image.get_attribute('src')
+        assert image_url.startswith(origin + '/v1/catalog/images/v2.')
+        delivery = await page.request.get(image_url)
+        assert delivery.status == 200 and await delivery.body() == image_bytes
+        assert requests == [('GET', detail, {'region': ['US']})]
+    finally:
+        page.remove_listener('request', record)
+
+
 async def api_case(browser,origin,name,output,observations=None,*,verify_paid_reader_requests=False):
     from playwright.async_api import expect
     context=page=None;failure=None;result=None
@@ -1657,6 +1708,7 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_paid_re
         assert metadata['kind']=='api-fixture'
         scope=metadata['scope'];configuration=scope['configuration'];article_id=scope['article']
         linked_pdf = name == API_CASES[1] and scope['provider'] == 'banktwo'
+        same_index_reopen = verify_paid_reader_requests and name == API_CASES[1] and scope['provider'] == 'bankone'
         if observations:observations.scope=dict(scope)
         route=origin+'/workshop/?configuration='+configuration+'&region=US'
         before=await api_measure(context,origin,'initial-measurement')
@@ -1772,8 +1824,26 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_paid_re
         else:
             await api_control(context,origin,'control/start-workers','start-workers-control')
             if observations:observations.phase='source-page-http'
-            first_open = len(transport.requests)
-            await page.goto(route+'&article='+article_id)
+            if same_index_reopen:
+                collection = f'/v1/catalog/vehicles/{configuration}/articles'
+                async with page.expect_response(lambda response: response.request.method == 'GET' and
+                                                urlsplit(response.url).path == collection and
+                                                response.status == 200) as indexed:
+                    await page.get_by_role('button', name='Open articles', exact=True).click()
+                cold_index = (await (await indexed.value).json())['items']
+                [cold_descriptor] = [item for item in cold_index if item['id'] == article_id]
+                assert cold_descriptor['availability'] != 'available'
+                assert not cold_descriptor.get('source_revision_id') and not cold_descriptor.get('canonical_revision_id')
+                link = page.locator(f'#articles a[href*="article={article_id}"]')
+                await expect(link).to_be_visible()
+                index_url = page.url
+                first_open = len(transport.requests)
+                async with page.expect_request(lambda request: request.method == 'POST' and
+                                               request.url == origin + f'{collection}/{article_id}/prepare?region=US'):
+                    await link.click()
+            else:
+                first_open = len(transport.requests)
+                await page.goto(route+'&article='+article_id)
             await expect(page.locator('#article-kind')).to_have_text('Stored source',timeout=15000)
             if verify_paid_reader_requests:
                 assert {'method': 'POST', 'path': '/v1/catalog/vehicles/{uuid}/articles/{uuid}/prepare'} in transport.requests[first_open:]
@@ -1877,6 +1947,10 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_paid_re
             await expect(page.locator('#article-content .source-reference').first).to_be_visible()
             await expect(page.locator('#source-review-frame')).to_be_visible()
             await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
+            if same_index_reopen:
+                await expect_paid_same_index_reopen(
+                    page, origin, scope, link, index_url, source_path, await image.body(),
+                )
             if linked_pdf and observations:
                 # The later keyboard check deliberately opens Original again.
                 observations.phase = 'warm-before-snapshot'
@@ -1919,7 +1993,7 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_paid_re
             warm_receipt={'before':warm_before,'after':warm_after,'reader_before':reader_before,'reader_after':reader_after}
             assertions['source_to_canonical_and_warm_reuse']=True
             assertions['warm_raw_runtime_unchanged_with_approved_s3_delivery']=True
-            if verify_paid_reader_requests and name == API_CASES[1] and scope['provider'] == 'bankone':
+            if same_index_reopen:
                 if observations:observations.phase='setup'
                 await expect_paid_reader_refocus(page, configuration, article_id)
             if linked_pdf:
