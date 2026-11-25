@@ -6613,6 +6613,8 @@ test('reader refocus discards a folded source so only the current account and ar
   assert.deepEqual(calls, ['session', 'article']);
   assert.equal(frame.hidden, true);
   assert.equal(frame.textContent, '');
+  assert.equal(h.nodes.get('open-original').hidden, false);
+  assert.equal(h.nodes.get('source-review-link').href, article.source_review.url);
   assert.equal(h.nodes.get('reader').hidden, true);
   assert.equal(h.context.document.body.dataset.printable, 'false');
   detail.resolve({ status: 200, data: { configuration, article } });
@@ -9478,6 +9480,173 @@ function retainedReaderHarness(request) {
   return { ...h, configuration, calls, gracePeriod,
     get probeSignal() { return probeSignal; } };
 }
+
+function refocusingStoredSource({ ended = false } = {}) {
+  const source = mediaArticle([
+    { type: 'paragraph', text: 'Stored Ford procedure.' },
+    { type: 'image', asset_id: 'figure' },
+  ], [{ id: 'figure', url: mediaURL('refocus') }], {
+    id: routeArticle, processing: { job_id: routeOrder, state: 'rewriting' },
+  });
+  const published = { ...source, content_origin: 'canonical', view_revision: 'published',
+    processing: { ...source.processing, state: 'completed' } };
+  const account = deferredAuthOperation(), detail = deferredAuthOperation();
+  const waiting = deferredAuthOperation(), releasePoll = deferredAuthOperation();
+  const checked = deferredAuthOperation();
+  const accountReads = [];
+  let getReads = 0, bootstraps = 0, polls = 0, time = 1000;
+  const h = retainedReaderHarness(async (_path, options) => {
+    if (options.method === 'POST') return { status: 200, data: { configuration: h.configuration, article: source } };
+    if (++getReads === 1) return detail.promise;
+    return { status: 200, data: { configuration: h.configuration, article: published } };
+  });
+  for (const id of ['cancel', 'loading-progress']) h.nodes.set(id, new ArticleMediaNode('div'));
+  Object.assign(h.context, {
+    viewGeneration: h.g, sessionEstablished: true, signingIn: false, currentOrder: '',
+    scope: () => ({ configuration_id: h.configuration.id, region: h.configuration.region }),
+    bootstrap() {
+      bootstraps++;
+      h.context.invalidate();
+    },
+    show(id) { h.nodes.get('reader').hidden = id !== 'reader'; },
+    performance: { now: () => time },
+    async readArticle(read, options) {
+      const { readArticle } = await import('./workshop/article-read.mjs');
+      const run = ++polls;
+      const result = await readArticle(read, {
+        ...options,
+        now: () => time,
+        async wait(milliseconds, signal) {
+          if (ended && run === 1) {
+            time += 120_000;
+            return;
+          }
+          waiting.resolve();
+          await releasePoll.promise;
+          signal?.throwIfAborted();
+          time += milliseconds;
+        },
+      });
+      if (result.data?.article?.view_revision === 'published') checked.resolve();
+      return result;
+    },
+  });
+  h.context.document.visibilityState = 'visible';
+  h.context.location.search = '?' + new URLSearchParams({
+    configuration: h.configuration.id, region: h.configuration.region, article: routeArticle,
+  });
+  h.context.session.matchesCurrentSession = ({ signal }) => {
+    accountReads.push(signal);
+    return account.promise;
+  };
+  runInNewContext(appSection('async function operation(', 'function updateURL(') +
+    appSection('let lifecycleCheck = null;', 'const channel ='), h.context);
+  const opening = h.context.loadArticle(routeArticle, h.g).catch(error => {
+    if (h.g.current()) throw error;
+  });
+  const ready = ended ? opening : waiting.promise;
+  return { ...h, account, accountReads, detail, source, ready, releasePoll, checked,
+    bootstraps: () => bootstraps, polls: () => polls,
+    focus() { h.context.window.dispatchEvent(new Event('focus')); },
+    methods() { return h.calls.map(call => call.method || 'GET'); },
+    async dispose() {
+      h.navigation.clear();
+      releasePoll.resolve();
+      account.resolve(false);
+      detail.resolve(null);
+      await opening;
+    },
+  };
+}
+
+test('refocusing a stored article reuses its authorized figure DOM while rewriting', async t => {
+  for (const ended of [false, true]) {
+    await t.test(ended ? 'resumes an ended poll' : 'keeps an active poll', async () => {
+      const h = refocusingStoredSource({ ended });
+      try {
+        await h.ready;
+        const content = h.nodes.get('article-content'), reader = h.nodes.get('reader');
+        const [figure] = mediaDescendants(content, 'img');
+        assert.ok(figure?.src);
+        assert.deepEqual(h.methods(), ['POST']);
+        h.focus();
+        h.focus();
+        assert.equal(h.bootstraps(), 0);
+        assert.equal(h.g.current(), true);
+        assert.deepEqual(h.accountReads, [h.g.signal]);
+        assert.deepEqual(h.methods(), ['POST', 'GET']);
+        assert.equal(h.calls[1].path,
+          `/v1/catalog/vehicles/${h.configuration.id}/articles/${routeArticle}?region=US`);
+        assert.equal(reader.hidden, true);
+        assert.equal(h.context.document.body.dataset.printable, 'false');
+        assert.equal(mediaDescendants(content, 'img')[0], figure);
+        h.detail.resolve({ status: 200, data: { configuration: h.configuration, article: h.source } });
+        await new Promise(setImmediate);
+        assert.equal(reader.hidden, true);
+        h.account.resolve(true);
+        await new Promise(setImmediate);
+        assert.equal(reader.hidden, false);
+        assert.equal(h.context.document.body.dataset.printable, 'true');
+        assert.match(content.textContent, /Stored Ford procedure/);
+        assert.equal(mediaDescendants(content, 'img')[0], figure);
+        assert.equal(h.polls(), ended ? 2 : 1);
+        assert.deepEqual(h.methods(), ['POST', 'GET']);
+        h.releasePoll.resolve();
+        await h.checked.promise;
+        assert.equal(h.context.currentArticle.content_origin, 'canonical');
+        assert.deepEqual(h.methods(), ['POST', 'GET', 'GET']);
+      } finally {
+        await h.dispose();
+      }
+    });
+  }
+});
+
+test('refocusing a stored article clears held text and figures on exact access denial', async () => {
+  const h = refocusingStoredSource();
+  try {
+    await h.ready;
+    h.focus();
+    assert.equal(h.bootstraps(), 0);
+    assert.deepEqual(h.methods(), ['POST', 'GET']);
+    h.account.resolve(true);
+    h.detail.reject(Object.assign(new Error('Article access was revoked'), { status: 403, code: 'ENTITLEMENT_REVOKED' }));
+    await new Promise(setImmediate);
+    const content = h.nodes.get('article-content');
+    assert.equal(h.g.current(), false);
+    assert.equal(h.nodes.get('reader').hidden, true);
+    assert.equal(h.context.document.body.dataset.printable, 'false');
+    assert.equal(content.textContent, '');
+    assert.deepEqual(mediaDescendants(content, 'img'), []);
+    assert.equal(h.bootstraps(), 0);
+  } finally {
+    await h.dispose();
+  }
+});
+
+test('publication during refocus keeps the reader unavailable for printing until access is verified', async () => {
+  const h = refocusingStoredSource();
+  try {
+    await h.ready;
+    const content = h.nodes.get('article-content'), reader = h.nodes.get('reader');
+    const [figure] = mediaDescendants(content, 'img');
+    h.focus();
+    h.releasePoll.resolve();
+    await h.checked.promise;
+    assert.equal(reader.hidden, true);
+    assert.equal(h.context.document.body.dataset.printable, 'false');
+    assert.equal(mediaDescendants(content, 'img')[0], figure);
+    h.detail.resolve({ status: 200, data: { configuration: h.configuration, article: h.source } });
+    h.account.resolve(true);
+    await new Promise(setImmediate);
+    assert.equal(reader.hidden, false);
+    assert.equal(h.context.document.body.dataset.printable, 'true');
+    assert.equal(h.context.currentArticle.content_origin, 'canonical');
+    assert.deepEqual(h.methods(), ['POST', 'GET', 'GET']);
+  } finally {
+    await h.dispose();
+  }
+});
 
 test('a slow paid prepare opens retained text before the POST finishes on saved and regular entries', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
