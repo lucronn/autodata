@@ -355,6 +355,44 @@ def test_continuous_preview_unit_is_inert_and_throttled():
     assert 'ExecStartPre=' not in unit and '--initialize' not in unit and '--enable' not in unit
 
 
+def test_continuous_rechecks_ready_jobs_without_sleeping_after_a_dispatch(continuous_state, monkeypatch):
+    continuous_state.set_enabled(True)
+    events = []
+
+    class Stop:
+        stopped = False
+
+        def is_set(self):
+            return self.stopped
+
+        def wait(self, seconds):
+            pytest.fail(f"Worker slept {seconds}s with another job ready")
+
+    class Listener:
+        def notifies(self, **_):
+            pytest.fail("Worker waited for a notification with another job ready")
+
+        def close(self):
+            events.append("listener closed")
+
+    stop = Stop()
+
+    def dispatch(*args, **kwargs):
+        events.append("job")
+        stop.stopped = len(events) == 2
+        return True
+
+    monkeypatch.setattr(worker, "database_now", lambda repo: NOW)
+    monkeypatch.setattr(worker, "_subscribe_to_article_jobs", lambda repo: Listener())
+    monkeypatch.setattr(worker, "dispatch_next", dispatch)
+
+    worker.run_new_article_worker(
+        None, continuous_state, registry={}, object_store=None, model_client=object(), stop=stop,
+    )
+
+    assert events == ["job", "job", "listener closed"]
+
+
 def test_continuous_clock_before_activation_fails_closed(continuous_state):
     continuous_state.set_enabled(True)
     with pytest.raises(worker.WorkerBlocked):continuous_state.reserve(uuid4(),NOW-timedelta(microseconds=1))
