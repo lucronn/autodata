@@ -3060,8 +3060,10 @@ function showReturnedArticleIndex(indexLink = null) {
   if (needsIndex) return refreshIndex();
   show("catalog");
   renderArticles();
-  const focus = indexLink && $("articles").contains(indexLink) ? indexLink : $("catalog-title");
-  focus.focus();
+  const link = indexLink && $("articles").contains(indexLink) ? indexLink : null;
+  const target = link || $("catalog-title");
+  target.focus({ preventScroll: true });
+  target.scrollIntoView({ behavior: "instant", block: link ? "center" : "nearest" });
   if (indexHydrating) return refreshIndex();
   stage("articles");
   showArticleIndexStatus();
