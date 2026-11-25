@@ -6,7 +6,8 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from .article_lifecycle_types import (
     AUTOMATIC_REWRITE_PROFILE, AUTOMATIC_REWRITE_PROFILES, MAX_CORRECTION_CALLS,
-    NORMALIZATION_VERSION, RETAINED_NOTE_LABEL_REPAIR_PROFILE, SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE,
+    NORMALIZATION_VERSION, RETAINED_NOTE_LABEL_REPAIR_PROFILE, RETAINED_REQUIRED_ACTION_REPAIR_PROFILE,
+    SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE,
     EnsureResult, JobLease, digest_json, transformation_key,
 )
 
@@ -21,6 +22,9 @@ class ProfileRefreshRequired(ValueError):
 
 ACTIVE = ("pending", "processing", "failed")
 ARTICLE_JOB_CHANNEL = "autodata_article_job"
+_OPERATOR_REWRITE_PROFILES = (
+    SOURCE_BOUND_CORRECTION_PROFILE, RETAINED_NOTE_LABEL_REPAIR_PROFILE, RETAINED_REQUIRED_ACTION_REPAIR_PROFILE,
+)
 STAGED_MEDIA_REFRESH = "staged_media_refresh"
 REQUIRE_POSITIONED_SVG_REFRESH = "require_positioned_svg_refresh"
 
@@ -94,7 +98,7 @@ def _ensure_locked(cur, article, *, force_new=False):
         # The authoritative pointer may be to an older terminal transformation.
         if job:
             return _result(cur, article, job)
-    if article["target_rewrite_profile_version"] in (SOURCE_BOUND_CORRECTION_PROFILE, RETAINED_NOTE_LABEL_REPAIR_PROFILE):
+    if article["target_rewrite_profile_version"] in _OPERATOR_REWRITE_PROFILES:
         raise ProfileRefreshRequired()
     job_id = uuid4()
     job = cur.execute(
@@ -154,7 +158,7 @@ def refresh_article_job(
 ):
     if not actor.strip() or not reason.strip():
         raise ValueError("refresh actor and reason required")
-    if rewrite_profile_version in (SOURCE_BOUND_CORRECTION_PROFILE, RETAINED_NOTE_LABEL_REPAIR_PROFILE):
+    if rewrite_profile_version in _OPERATOR_REWRITE_PROFILES:
         raise ProfileRefreshRequired()
     if expected_published_revision_id is not None and (
         expected_source_revision_id is None or normalization_version is not None or rewrite_profile_version is not None
@@ -195,9 +199,7 @@ def refresh_article_job(
                 ):
                     raise ValueError("LEGACY_SVG_REFRESH_BUSY")
                 return _result(cur, article, job)
-        if rewrite_profile_version is None and article["target_rewrite_profile_version"] in (
-            SOURCE_BOUND_CORRECTION_PROFILE, RETAINED_NOTE_LABEL_REPAIR_PROFILE,
-        ):
+        if rewrite_profile_version is None and article["target_rewrite_profile_version"] in _OPERATOR_REWRITE_PROFILES:
             raise ProfileRefreshRequired()
         article = cur.execute(
             """UPDATE canonical_articles SET request_generation=request_generation+1,

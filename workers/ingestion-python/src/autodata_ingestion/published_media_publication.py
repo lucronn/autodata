@@ -112,6 +112,9 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
     from .retained_note_label_repair import METHOD as NOTE_LABEL_REPAIR_METHOD, PROFILE as NOTE_LABEL_REPAIR_PROFILE
     from .retained_note_label_repair import resolve_retained_note_label_repair
     from .retained_procedure_repair import METHOD as RETAINED_PROCEDURE_REPAIR_METHOD, resolve_retained_procedure_repair
+    from .retained_required_action_repair import (
+        METHOD as REQUIRED_ACTION_METHOD, PROFILE as REQUIRED_ACTION_PROFILE, resolve_retained_required_action_repair,
+    )
     from .staged_media_reply_recovery import METHOD as STAGED_MEDIA_REPLY_RECOVERY_METHOD
 
     article_id = article["canonical_article_id"]
@@ -128,8 +131,10 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PRIOR_REPAIR_UNSUPPORTED")
 
     profile = row["rewrite_profile_version"]
-    if (profile not in (*AUTOMATIC_REWRITE_PROFILES, REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2, NOTE_LABEL_REPAIR_PROFILE)
+    if (profile not in (*AUTOMATIC_REWRITE_PROFILES, REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2,
+                        NOTE_LABEL_REPAIR_PROFILE, REQUIRED_ACTION_PROFILE)
         or (profile == NOTE_LABEL_REPAIR_PROFILE and row["model_metadata"].get("transformation_method") != NOTE_LABEL_REPAIR_METHOD)
+        or (profile == REQUIRED_ACTION_PROFILE and row["model_metadata"].get("transformation_method") != REQUIRED_ACTION_METHOD)
         or profile != (expected_profile or article["target_rewrite_profile_version"])
         or row["normalization_version"] != article["target_normalization_version"]):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PROFILE_UNSUPPORTED")
@@ -172,8 +177,10 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
         validation, attempt, response, prompt_version = (
             recovered.validation, recovered.attempt, recovered.response, recovered.prompt_version,
         )
-    elif row["model_metadata"].get("transformation_method") == NOTE_LABEL_REPAIR_METHOD:
-        recovered = resolve_retained_note_label_repair(cur, job, article, row)
+    elif profile in (NOTE_LABEL_REPAIR_PROFILE, REQUIRED_ACTION_PROFILE):
+        resolve = (resolve_retained_note_label_repair if profile == NOTE_LABEL_REPAIR_PROFILE
+                   else resolve_retained_required_action_repair)
+        recovered = resolve(cur, job, article, row)
         validation, attempt, response, prompt_version = (
             recovered.validation, recovered.attempt, recovered.reply, recovered.evidence["guard_version"],
         )
