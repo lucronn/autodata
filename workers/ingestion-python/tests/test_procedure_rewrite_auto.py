@@ -122,6 +122,10 @@ def test_new_automatic_drafts_preserve_required_directives_and_replay_old_prompt
     ("Install the protective cap. Inspect the seal.", "Fit the cap in place. You should inspect the seal."),
     ("Tighten the clamp.", "The clamp must be tightened."),
     ("Install the cap.", "The technician should check the cap."),
+    ('Remove the frame. The screen says “You should remove the central cover.”',
+     'The display reads “You should remove the central cover.” Take the frame off.'),
+    ("Install the protective cap. The shop note recommends installing the neighboring cap.",
+     "You should install the neighboring cap, as the workshop suggests. Fit the protective cap into place."),
 ])
 def test_required_action_guard_is_bound_to_the_source_directive(original, wording):
     from autodata_ingestion import procedure_rewrite_auto as auto
@@ -129,6 +133,23 @@ def test_required_action_guard_is_bound_to_the_source_directive(original, wordin
     auto.require_required_procedure_actions(
         document(original), document("This covers service information.", wording), rewritten_paths=("/blocks/0/text",),
     )
+
+
+@pytest.mark.parametrize(("original", "wording"), [
+    ("Install the dust cap. Tighten the clamp.",
+     "Fit the protective cap in place. The clamp should be tightened."),
+    ("Install the protective cap.", "A separate note about setup. The protective cap should be installed."),
+    ("Install the dust cap, then optionally tighten the retainer.",
+     "The dust cap should be fitted first, followed by optional tightening of the retainer."),
+    ("Note: Install the cap over the port.", "Note: The port's cap should carefully be installed."),
+])
+def test_required_action_guard_tracks_the_complete_rewritten_passage(original, wording):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    with pytest.raises(ValueError, match="^REWRITE_REQUIRED_ACTION_WEAKENED$"):
+        auto.require_required_procedure_actions(
+            document(original), document("This covers service information.", wording), rewritten_paths=("/blocks/0/text",),
+        )
 
 
 @pytest.mark.parametrize(("source_text", "introduction", "rewritten_paths"), [
