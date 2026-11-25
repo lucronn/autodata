@@ -24,7 +24,8 @@ from autodata_ingestion.retained_note_label_repair import (
 from autodata_ingestion.source_job_persistence import ProfileRefreshRequired, ensure_article_job, refresh_article_job, schedule_source_bound_rewrite
 from lifecycle_support import fresh_database, runtime, seed_configuration, seed_snapshot
 from test_source_bound_correction_recovery import recover
-from test_source_bound_correction_worker import CopiedSource, CorrectedSource, schedule_correction
+from test_source_bound_correction_worker import CopiedSource, schedule_correction
+from test_source_bound_sentence_worker import SentenceReplies, schedule as schedule_sentence_correction
 from test_source_bound_rewrite_worker import run_job
 from test_source_revision_reprojection import all_rows
 
@@ -69,7 +70,7 @@ def seed_banktwo_figure(runtime, raw):
     return figure
 
 
-def seed_banktwo_correction_job(runtime, *, preserve_notes):
+def seed_banktwo_correction_job(runtime, *, preserve_notes, first_draft=False):
     def historical_prompt(document, *, context, profile_version=AUTOMATIC_REWRITE_PROFILE):
         if profile_version == AUTOMATIC_REWRITE_PROFILE:
             builder = auto._build_auto_prompt_v61 if preserve_notes else auto._build_auto_prompt_v60
@@ -87,6 +88,9 @@ def seed_banktwo_correction_job(runtime, *, preserve_notes):
         assert current["content_origin"] == "source", current["processing_error_code"]
         assert len(current["images"]) == 1 and current["images"][0]["status"] == "available"
         source_id = current["source_revision_id"]
+        if first_draft:
+            corrected = schedule_sentence_correction(runtime, captured.job_id, source_id, first_draft=True)
+            return corrected.job_id, source_id
         prior = schedule_source_bound_rewrite(
             runtime.repo, runtime.article_id, expected_job_id=captured.job_id, expected_source_revision_id=source_id,
             actor="fixture-editor", reason="Create a retained source draft.",
@@ -326,8 +330,8 @@ def test_retained_rotation_removal_replays_exact_v61_archive_and_publishes_one_v
         f"<h2>Service procedure</h2><ol start='3'><li>{original}</li></ol>"
         "<img src='/fixture/figure' alt='Fixture component'><p>Note: Remove the upper cover.</p>"
     ).encode())
-    job_id, source_id = seed_banktwo_correction_job(runtime, preserve_notes=True)
-    assert run_job(runtime, job_id, CorrectedSource())
+    job_id, source_id = seed_banktwo_correction_job(runtime, preserve_notes=True, first_draft=True)
+    assert run_job(runtime, job_id, SentenceReplies())
     current = runtime.read_current()
     assert current["content_origin"] == "canonical", current["processing_error_code"]
     binding = SimpleNamespace(source_revision_id=source_id)
@@ -340,6 +344,8 @@ def test_retained_rotation_removal_replays_exact_v61_archive_and_publishes_one_v
         source = cur.execute("SELECT * FROM canonical_article_source_revisions WHERE source_revision_id=%s",
                              (source_id,)).fetchone()
         owner = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (job_id,)).fetchone()
+        figure_snapshot = cur.execute("SELECT source_snapshot_id FROM source_artifacts WHERE content_sha256=%s",
+                                      (source["resource_manifest"][1]["sha256"],)).fetchone()["source_snapshot_id"]
     assert prior["model_metadata"]["transformation_method"] == SENTENCE_CORRECTION_METHOD
     assert owner["request_generation"] == 1
     assert review is None and decision == "UNREVIEWED"
@@ -371,8 +377,7 @@ def test_retained_rotation_removal_replays_exact_v61_archive_and_publishes_one_v
             repair_retained_rotation_removal(runtime.repo, runtime.article_id, **(pins | {key: value}))
         assert _state(runtime) == before
 
-    body_snapshot, figure_snapshot = (item["source_snapshot_id"] for item in source["resource_provenance"])
-    for snapshot in (body_snapshot, figure_snapshot):
+    for snapshot in (source["body_source_snapshot_id"], figure_snapshot):
         with runtime.repo.connect() as conn:
             conn.execute("UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=%s",
                          (snapshot,))
