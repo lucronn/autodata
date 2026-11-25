@@ -277,9 +277,10 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 	paid := s.paidCatalogEnabled()
 	scope, scoped := ctx.Value(paidCatalogContextKey{}).(paidCatalogContext)
 	statusBudget := catalogStatusReadTimeout
-	if paid && scoped && !scope.openDemo {
+	if paid && scoped && !scope.openDemo && pagePreference != catalogIndexPagesPreference {
 		// The exact grant has already been checked. Do not make owned rows
-		// wait for preparation metadata when its read stalls.
+		// wait for preparation metadata when its read stalls. The older
+		// paging preference still needs that metadata to choose its shape.
 		statusBudget = ownedIndexStatusReadTimeout
 	}
 	readProgress := func(budget time.Duration) (*CatalogArticleProgress, error) {

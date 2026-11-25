@@ -188,9 +188,10 @@ func (s paidIndexProgressTimeoutStore) CatalogArticleProgress(context.Context, P
 
 type delayedOwnedIndexStore struct {
 	*paidHTTPStore
-	reads   []string
-	spans   []time.Duration
-	onRetry func() *CatalogArticleProgress
+	reads         []string
+	spans         []time.Duration
+	onRetry       func() *CatalogArticleProgress
+	completeAfter time.Duration
 }
 
 func (s *delayedOwnedIndexStore) PaidArticleDescriptors(ctx context.Context, p Principal, id string) ([]CatalogArticle, error) {
@@ -203,6 +204,16 @@ func (s *delayedOwnedIndexStore) CatalogArticleProgress(ctx context.Context, _ P
 	deadline, _ := ctx.Deadline()
 	s.spans = append(s.spans, time.Until(deadline))
 	if len(s.spans) == 1 {
+		if s.completeAfter > 0 {
+			timer := time.NewTimer(s.completeAfter)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+				return &CatalogArticleProgress{Status: "completed", Complete: true}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
@@ -260,6 +271,21 @@ func TestOwnedEmptyCatalogIndexReadsRowsAgainAfterLateProgress(t *testing.T) {
 				t.Fatalf("unexpected retry order or budget: reads=%v budgets=%v", delayed.reads, delayed.spans)
 			}
 		})
+	}
+}
+
+func TestLegacyPaidCatalogPagingHasTimeToDetermineSettledStatus(t *testing.T) {
+	server, store, grants := paidHTTPServer()
+	grants.err = nil
+	ids := fillPaidIndexPageFixture(store, 150)
+	server.catalog = &delayedOwnedIndexStore{paidHTTPStore: store, completeAfter: 2 * ownedIndexStatusReadTimeout}
+
+	response := callCatalogIndexPage(server.Handler(), "&offset=100", catalogIndexPagesPreference, "")
+	var body CatalogArticlesResponse
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &body) != nil ||
+		!body.Complete || body.Page == nil || body.Page.Offset != 100 ||
+		len(body.Items) != 50 || body.Items[0].ID != ids[100] {
+		t.Fatalf("settled-only paging lost its status decision: %d", response.Code)
 	}
 }
 
