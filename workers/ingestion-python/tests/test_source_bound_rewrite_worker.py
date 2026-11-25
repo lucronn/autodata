@@ -20,8 +20,10 @@ from lifecycle_support import fresh_database, runtime, seed_configuration
 class FixtureDraft:
     _model = "fixture-mercury"
 
-    def __init__(self, *, copy_source=False):
+    def __init__(self, *, copy_source=False, drain=False):
         self.copy_source = copy_source
+        self.original = "Drain the fixture reservoir." if drain else "Remove the pump."
+        self.rewritten = "Let the fixture reservoir drain." if drain else "Take off the pump."
         self.calls = []
 
     def complete_json(self, prompt):
@@ -29,7 +31,7 @@ class FixtureDraft:
         self.calls.append(prompt["profile_version"])
         slots = prompt["slots"]
         assert [slot["text"] for slot in slots] == [
-            "Remove the pump.", "Tighten the bolts to 18 N·m.", "Install the pump.",
+            self.original, "Tighten the bolts to 18 N·m.", "Install the pump.",
         ]
         assert slots[1]["required_action"] == "retain"
         replacements = [
@@ -44,7 +46,7 @@ class FixtureDraft:
                 slots,
                 ("rewrite", "retain", "rewrite"),
                 (
-                    "Remove the pump." if self.copy_source else "Take off the pump.",
+                    self.original if self.copy_source else self.rewritten,
                     "Tighten the bolts to 18 N·m.",
                     "Fit the pump.",
                 ),
@@ -90,7 +92,7 @@ def test_retained_rewrite_keeps_stored_instructions_readable_when_draft_weakens_
         assert conn.execute("SELECT count(*) AS total FROM publication_events").fetchone()["total"] == before
 
 
-def _failed_first_draft(runtime):
+def _failed_first_draft(runtime, *, drain=False):
     configuration = seed_configuration(runtime.repo, runtime.vehicle)
     with runtime.repo.connect() as conn:
         conn.execute(
@@ -105,16 +107,16 @@ def _failed_first_draft(runtime):
             SELECT canonical_article_id FROM canonical_articles
             WHERE vehicle_configuration_id=%s AND provider_slug='bankone'
             """, (configuration,)).fetchone()["canonical_article_id"]
+    copied = FixtureDraft(copy_source=True, drain=drain)
     runtime.servers["bankone"].body(
-        b"<ol start='3'><li>Remove the pump.</li><li>Tighten the bolts to 18 N\xc2\xb7m.</li>"
-        b"<li>Install the pump.</li></ol>"
+        (f"<ol start='3'><li>{copied.original}</li><li>Tighten the bolts to 18 N·m.</li>"
+         "<li>Install the pump.</li></ol>").encode()
     )
     runtime.reset_counters()
     first = ensure_article_job(
         runtime.repo, runtime.article_id,
         normalization_version=NORMALIZATION_VERSION, rewrite_profile_version=AUTOMATIC_REWRITE_PROFILE,
     )
-    copied = FixtureDraft(copy_source=True)
     assert run_job(runtime, first.job_id, copied, registry=runtime.registry)
     source = runtime.read_current()
     assert source["content_origin"] == "source"
@@ -130,9 +132,8 @@ def failed_first_draft(runtime):
     return _failed_first_draft(runtime)
 
 
-@pytest.fixture
-def retained_job(runtime):
-    first_id, source_id = _failed_first_draft(runtime)
+def _retained_job(runtime, *, drain=False):
+    first_id, source_id = _failed_first_draft(runtime, drain=drain)
     scheduled = schedule_source_bound_rewrite(
         runtime.repo, runtime.article_id, expected_job_id=first_id,
         expected_source_revision_id=source_id, actor="fixture-editor", reason="Retry the exact retained source.",
@@ -140,8 +141,14 @@ def retained_job(runtime):
     return first_id, source_id, scheduled.job_id
 
 
-def test_retained_rewrite_replays_and_publishes_new_profile_without_recapture(runtime, retained_job):
-    old_job_id, source_id, new_job_id = retained_job
+@pytest.fixture
+def retained_job(runtime):
+    return _retained_job(runtime)
+
+
+@pytest.mark.parametrize("drain", [False, True], ids=["ordinary", "drain-subject"])
+def test_retained_rewrite_replays_and_publishes_new_profile_without_recapture(runtime, drain):
+    old_job_id, source_id, new_job_id = _retained_job(runtime, drain=drain)
     with runtime.repo.connect() as conn:
         original = conn.execute(
             "SELECT * FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s", (old_job_id,),
@@ -149,7 +156,7 @@ def test_retained_rewrite_replays_and_publishes_new_profile_without_recapture(ru
         assert original["status"] == "failed"
         assert original["profile_version"] == AUTOMATIC_REWRITE_PROFILE
     runtime.reset_counters()
-    draft = FixtureDraft()
+    draft = FixtureDraft(drain=drain)
 
     class WorkerStopped(Exception):
         pass
@@ -168,7 +175,7 @@ def test_retained_rewrite_replays_and_publishes_new_profile_without_recapture(ru
     assert draft.calls == [SOURCE_BOUND_REWRITE_PROFILE]
     assert current["source_revision_id"] == source_id
     assert current["content_origin"] == "canonical"
-    assert "Take off the pump." in current["body"]
+    assert draft.rewritten in current["body"]
     assert "Tighten the bolts to 18 N·m." in current["body"]
     assert "Fit the pump." in current["body"]
     assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 0}
@@ -187,6 +194,12 @@ def test_retained_rewrite_replays_and_publishes_new_profile_without_recapture(ru
             }]
         assert conn.execute("SELECT count(*) AS n FROM canonical_article_source_revisions").fetchone()["n"] == 1
         assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
+        if drain:
+            report = conn.execute(
+                "SELECT validation_report FROM canonical_article_revisions WHERE canonical_article_revision_id=%s",
+                (current["canonical_revision_id"],),
+            ).fetchone()["validation_report"]
+            assert report["validator_version"] == "full-prose-auto-validator-v61"
 
 
 def test_retained_rewrite_rechecks_source_takedown_immediately_before_dispatch(runtime, retained_job, monkeypatch):

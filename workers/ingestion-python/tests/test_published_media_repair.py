@@ -516,7 +516,7 @@ def _conditional_note_repair_fixture(prompt_version, *, ordinals=False):
 
 
 @pytest.mark.parametrize("prompt_version", (
-    "full-prose-auto-prompt-v55", "full-prose-auto-prompt-v61", "full-prose-auto-prompt-v62",
+    "full-prose-auto-prompt-v55", "full-prose-auto-prompt-v61", "full-prose-auto-prompt-v62", "full-prose-auto-prompt-v63",
 ))
 @pytest.mark.parametrize("ordinals", [False, True], ids=["media", "ordinals"])
 def test_repair_replays_verified_conditional_note_with_saved_prompt(prompt_version, ordinals):
@@ -593,7 +593,9 @@ def _bankone_media_fixture(prompt_version, *, placement):
     return source, recovered.document, repaired, recovered.response, proof
 
 
-@pytest.mark.parametrize("prompt_version", ("full-prose-auto-prompt-v55", "full-prose-auto-prompt-v62"))
+@pytest.mark.parametrize("prompt_version", (
+    "full-prose-auto-prompt-v55", "full-prose-auto-prompt-v62", "full-prose-auto-prompt-v63",
+))
 @pytest.mark.parametrize("placement", ("inline", "block"))
 def test_bankone_media_repair_rebinds_exact_structural_slots(prompt_version, placement):
     old, published, repaired, response, proof = _bankone_media_fixture(prompt_version, placement=placement)
@@ -639,6 +641,7 @@ def test_bankone_media_repair_rejects_a_retargeted_published_link():
 
 @pytest.mark.parametrize("prompt_version", [
     None, "full-prose-auto-prompt-v0", "full-prose-auto-prompt-v61", "full-prose-auto-prompt-v62",
+    "full-prose-auto-prompt-v63",
     "full-prose-auto-prompt-v99",
 ])
 def test_repair_rejects_unrecognized_original_prompt_version(prompt_version):
