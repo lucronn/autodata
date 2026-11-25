@@ -2658,6 +2658,7 @@ def test_server_zero_slot_publishes_without_model_or_attempt(runtime, provider, 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 def test_image_only_article_finishes_with_readable_source(runtime, provider):
+    import json
     from hashlib import sha256
     from io import BytesIO
     from PIL import Image
