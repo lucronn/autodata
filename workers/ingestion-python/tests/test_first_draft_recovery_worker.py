@@ -10,6 +10,7 @@ from autodata_ingestion import article_lifecycle_store as store
 from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE, NORMALIZATION_VERSION, digest_json
 from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_COOLING_RECOVERY_METHOD,
+    FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
     FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
     FIRST_DRAFT_RECOVERY_METHOD,
@@ -200,6 +201,13 @@ def test_echoed_draft_does_not_relax_other_rewrite_guards(runtime, variant, erro
         "The protective cap must be installed over the port.",
         FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
     ),
+    (
+        "Remove the shield and the reservoir screen and return tube.",
+        "Separate the shield from the reservoir screen and return tube.",
+        "The article includes an 18 N·m torque specification.",
+        "The shield and the reservoir screen and return tube must be removed.",
+        FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
+    ),
 ])
 def test_worker_replays_recovery_with_its_original_response_and_media(
     runtime, instruction, bad_wording, introduction, expected, method,
@@ -249,6 +257,6 @@ def test_worker_replays_recovery_with_its_original_response_and_media(
     evidence = revision["model_metadata"]["first_draft_recovery"]
     assert evidence["raw_response_hash"] == digest_json(model.raw)
     assert effective["replacements"][0]["text"] == expected
-    if method == FIRST_DRAFT_COOLING_RECOVERY_METHOD:
+    if method in (FIRST_DRAFT_COOLING_RECOVERY_METHOD, FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD):
         assert evidence["introduction_replaced"] is True
         assert effective["introduction"] != introduction

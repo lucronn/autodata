@@ -7,6 +7,7 @@ from autodata_ingestion.article_lifecycle_types import digest_json
 from autodata_ingestion.procedure_rewrite_auto import build_auto_prompt
 from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_COOLING_RECOVERY_METHOD,
+    FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
     FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
     FIRST_DRAFT_RECOVERY_METHOD,
@@ -14,6 +15,7 @@ from autodata_ingestion.procedure_rewrite_recovery import (
     _equivalent_cooling_directive,
     _equivalent_directive,
     _equivalent_wording,
+    _recast_compound_removal,
     recover_first_draft,
 )
 from test_procedure_rewrite_full import document, response
@@ -195,6 +197,52 @@ def test_first_draft_placement_leaves_unbound_facts_rejected(placement, specific
     raw["replacements"][1].update(action="retain", reason="Exact source measurement.")
     version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
     assert recover_first_draft(source, raw, prompt_version=version) is None
+
+
+@pytest.mark.parametrize("has_intro_spec", [False, True])
+def test_recovers_unconditional_compound_removal_from_the_source(has_intro_spec):
+    instruction = "Remove the shield and the reservoir screen and return tube."
+    measurement = "Shield width: 18 mm."
+    source = document(instruction, measurement)
+    raw = response(
+        "Separate the shield from the reservoir screen and return tube.",
+        measurement,
+        introduction=("The shield has a width of 18 mm." if has_intro_spec
+                      else "This article describes the service information that follows."),
+    )
+    raw["replacements"][1].update(action="retain", reason="Preserve the exact measurement.")
+    saved = deepcopy(raw)
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+
+    result = recover_first_draft(source, raw, prompt_version=version)
+
+    assert raw == saved
+    assert result.evidence["method"] == FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD
+    assert result.evidence["original_error_code"] == (
+        "REWRITE_SPEC_SCOPE_MUTATION" if has_intro_spec else "REWRITE_ACTION_MUTATION"
+    )
+    assert result.evidence["introduction_replaced"] is has_intro_spec
+    assert result.evidence["corrected_paths"] == ["/blocks/0/text"]
+    assert result.response["replacements"][0]["text"] == (
+        "The shield and the reservoir screen and return tube must be removed."
+    )
+    assert result.response["replacements"][1] == saved["replacements"][1]
+    assert recover_first_draft(source, raw, prompt_version=version, method=result.evidence["method"]) == result
+    assert recover_first_draft(
+        source, raw, prompt_version=version, method=FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
+    ) is None
+
+
+@pytest.mark.parametrize(("original", "reply"), [
+    ("Remove the shield and the tube only after the tank is drained.", "Set aside the shield and tube."),
+    ("Remove the shield and the tube from the reservoir.", "Set aside the shield and tube."),
+    ("Remove the shield or the tube.", "Set aside the shield and tube."),
+    ("Remove the shield and the tube and discard the gasket.", "Set aside the shield and tube."),
+    ("Remove the shield and the tube.", "Install the shield and tube."),
+    ("Remove the shield (1) and the tube (2).", "Set aside the shield and tube."),
+])
+def test_compound_removal_recovery_rejects_qualifiers_and_competing_actions(original, reply):
+    assert _recast_compound_removal(original, reply) is None
 
 
 @pytest.mark.parametrize(("instruction", "advisory"), [
