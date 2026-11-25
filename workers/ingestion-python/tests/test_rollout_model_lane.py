@@ -257,6 +257,61 @@ def test_automatic_correction_uses_two_slots_in_shared_delivery_window(fresh_dat
     assert claim_rollout_model_job(repo, snapshot, worker_id=uuid4()) is None
 
 
+@pytest.mark.parametrize("spent_dispatches", [9, 10])
+def test_automatic_correction_finalizes_an_expired_delivery_without_model_budget(
+    fresh_database, monkeypatch, spent_dispatches,
+):
+    repo = fresh_database()
+    snapshot = rollout()
+    prior = rejected_first_draft(repo, snapshot)
+    grant_scope(repo, prior["vehicle_configuration_id"], monkeypatch)
+    filler, _ = parked_job(repo, snapshot)
+    now = datetime.now(timezone.utc)
+    for token in range(1, 8):
+        add_attempt(repo, filler, lease_token=token, dispatched_at=now)
+    correction = claim_rollout_model_job(repo, snapshot, worker_id=uuid4())
+    assert correction.rewrite_profile_version == SOURCE_BOUND_CORRECTION_PROFILE
+
+    class DeliveryInterrupted(Exception):
+        pass
+
+    class InterruptedModel:
+        _model = "fixture-sentence-correction"
+
+        def complete_json(self, prompt):
+            raise DeliveryInterrupted
+
+    with pytest.raises(DeliveryInterrupted):
+        run_article_job(repo, correction, registry={}, object_store=None, model_client=InterruptedModel())
+
+    with repo.connect() as conn:
+        dispatched, = conn.execute("""SELECT rewrite_attempt_id,dispatched_at,status
+            FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s""", (correction.job_id,)).fetchall()
+        assert dispatched["status"] == "dispatched" and dispatched["dispatched_at"]
+        conn.execute("""UPDATE source_fetch_jobs SET lease_expires_at=clock_timestamp()-interval '1 second'
+            WHERE source_fetch_job_id=%s""", (correction.job_id,))
+    if spent_dispatches == 10:
+        add_attempt(repo, filler, lease_token=8, dispatched_at=now)
+
+    # The first draft, seven filler dispatches, and the interrupted delivery
+    # leave at most one slot. Expiring the lease needs no further delivery.
+    assert claim_rollout_model_job(repo, snapshot, worker_id=uuid4()) is None
+    with repo.connect() as conn:
+        expired = conn.execute("""SELECT j.status,j.error_code,j.retryable,j.lease_owner,
+                j.source_revision_id,a.current_source_revision_id,a.current_canonical_revision_id
+            FROM source_fetch_jobs j JOIN canonical_articles a USING (canonical_article_id)
+            WHERE j.source_fetch_job_id=%s""", (correction.job_id,)).fetchone()
+        attempt, = conn.execute("""SELECT rewrite_attempt_id,dispatched_at,status,error_code
+            FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s""", (correction.job_id,)).fetchall()
+    assert (expired["status"], expired["error_code"]) == ("dead_letter", "LEASE_ATTEMPTS_EXHAUSTED")
+    assert not expired["retryable"] and expired["lease_owner"] is None
+    assert expired["source_revision_id"] == expired["current_source_revision_id"] == prior["source_revision_id"]
+    assert expired["current_canonical_revision_id"] is None
+    assert attempt == {
+        **dispatched, "status": "ambiguous", "error_code": "MODEL_DELIVERY_AMBIGUOUS",
+    }
+
+
 def test_automatic_correction_resumes_saved_publication_when_model_budget_is_exhausted(
     fresh_database, monkeypatch,
 ):

@@ -12,8 +12,8 @@ from .article_lifecycle_types import (
 from .new_article_worker import WINDOW, _PAID_SOURCE_SCOPE, _timestamp
 from .procedure_rewrite_sentence_correction import MAX_SENTENCE_CORRECTION_CALLS
 from .source_job_persistence import (
-    _SOURCE_BOUND_CURRENT_OWNER_SQL, _claim_automatic_resume, _lease_from_row, claim_source_job,
-    schedule_source_bound_correction, source_bound_rewrite_source_allowed,
+    _SOURCE_BOUND_CURRENT_OWNER_SQL, _claim_automatic_resume, _finalize_exhausted_source_jobs,
+    _lease_from_row, claim_source_job, schedule_source_bound_correction, source_bound_rewrite_source_allowed,
 )
 
 
@@ -43,9 +43,13 @@ def _claim_automatic_correction(repo, args, *, worker_id, model_budget_available
               AND failed.checkpoint->'new_article_rollout'->>'source_sha' ~ '^[a-f0-9]{{40}}$'
               AND a.membership_status='active' AND a.takedown_status='active'
               AND a.current_canonical_revision_id IS NULL AND {_PAID_SOURCE_SCOPE}
-              AND (%(model_budget_available)s OR (j.rewrite_profile_version=%(correction_profile)s
-                   AND j.phase IN ('validating','publishing')
-                   AND j.checkpoint->>'candidate_revision_id' IS NOT NULL))
+              AND (%(model_budget_available)s OR (j.rewrite_profile_version=%(correction_profile)s AND (
+                   (j.phase IN ('validating','publishing') AND j.checkpoint->>'candidate_revision_id' IS NOT NULL)
+                   OR (j.status='processing' AND j.retry_count>=j.max_attempts
+                       AND j.lease_expires_at<clock_timestamp()
+                       AND EXISTS (SELECT 1 FROM canonical_article_rewrite_attempts attempt
+                           WHERE attempt.source_fetch_job_id=j.source_fetch_job_id
+                             AND attempt.lease_token=j.lease_token AND attempt.dispatched_at IS NOT NULL)))))
               AND (j.source_fetch_job_id=failed.source_fetch_job_id OR (
                    j.rewrite_profile_version=%(correction_profile)s
                    AND j.checkpoint->'source_bound_rewrite'->>'actor'=%(correction_actor)s
@@ -58,10 +62,11 @@ def _claim_automatic_correction(repo, args, *, worker_id, model_budget_available
     for row in rows:
         job_id = row["current_id"]
         if not model_budget_available:
-            # A committed candidate can publish after a restart without
-            # using another dispatch or claiming a job that still needs one.
+            # Settle existing work without admitting another model call.
             with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
                 lease = _claim_automatic_resume(cur, worker_id, job_id)
+                if lease is None:
+                    _finalize_exhausted_source_jobs(cur, job_id)
             if lease is not None:
                 return lease
             continue

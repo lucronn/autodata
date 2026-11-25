@@ -1109,6 +1109,28 @@ def _finalize_expired_bankone_recovery(cur, job_id):
         (code, job["source_fetch_job_id"]))
 
 
+def _finalize_exhausted_source_jobs(cur, job_id):
+    cur.execute(
+        f"""WITH exhausted AS (SELECT j.source_fetch_job_id FROM source_fetch_jobs j
+        WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint ? 'bankone_exact_recovery')
+          AND (%s::uuid IS NULL OR source_fetch_job_id=%s)
+          AND NOT (rewrite_profile_version=ANY(%s) AND COALESCE(error_code,'')='MODEL_NOT_CONFIGURED')
+          AND NOT (checkpoint @> '{{"source_only_reprojection":true}}'::jsonb)
+          AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review')
+          AND status='processing' AND retry_count>=max_attempts AND lease_expires_at<clock_timestamp()
+          AND {_EXPLICIT_CORRECTION_SQL}
+          AND NOT ({_SOURCE_BOUND_NO_DELIVERY_EXPIRY_SQL}
+              AND EXISTS (SELECT 1 FROM canonical_articles a WHERE {_SOURCE_BOUND_CURRENT_OWNER_SQL}))
+        FOR UPDATE OF j SKIP LOCKED)
+        UPDATE source_fetch_jobs j SET status='dead_letter',error_code='LEASE_ATTEMPTS_EXHAUSTED',retryable=false,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=clock_timestamp()
+        FROM exhausted e WHERE j.source_fetch_job_id=e.source_fetch_job_id
+        RETURNING j.source_fetch_job_id,j.lease_token""",
+        (job_id, job_id, list(AUTOMATIC_REWRITE_PROFILES), job_id is not None),
+    )
+    for exhausted in cur.fetchall():
+        _mark_delivery_ambiguous(cur, exhausted)
+
+
 def claim_source_job(repo, *, worker_id, model_ready=True, job_id=None):
     claim_scope = (job_id, job_id, list(AUTOMATIC_REWRITE_PROFILES))
     with repo.connect() as conn, _cursor(conn) as cur:
@@ -1126,19 +1148,7 @@ def claim_source_job(repo, *, worker_id, model_ready=True, job_id=None):
         resumed = _claim_source_bound_predispatch_resume(cur, worker_id, job_id)
         if resumed is not None:
             return resumed
-        cur.execute(
-            f"""WITH exhausted AS (SELECT j.source_fetch_job_id FROM source_fetch_jobs j
-        WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint ? 'bankone_exact_recovery') AND (%s::uuid IS NULL OR source_fetch_job_id=%s) AND NOT (rewrite_profile_version=ANY(%s) AND COALESCE(error_code,'')='MODEL_NOT_CONFIGURED') AND NOT (checkpoint @> '{{"source_only_reprojection":true}}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND status='processing' AND retry_count>=max_attempts AND lease_expires_at<clock_timestamp()
-        AND {_EXPLICIT_CORRECTION_SQL}
-        AND NOT ({_SOURCE_BOUND_NO_DELIVERY_EXPIRY_SQL}
-            AND EXISTS (SELECT 1 FROM canonical_articles a WHERE {_SOURCE_BOUND_CURRENT_OWNER_SQL}))
-        FOR UPDATE OF j SKIP LOCKED)
-        UPDATE source_fetch_jobs j SET status='dead_letter',error_code='LEASE_ATTEMPTS_EXHAUSTED',retryable=false,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=clock_timestamp()
-        FROM exhausted e WHERE j.source_fetch_job_id=e.source_fetch_job_id
-        RETURNING j.source_fetch_job_id,j.lease_token""", (*claim_scope, job_id is not None)
-        )
-        for exhausted in cur.fetchall():
-            _mark_delivery_ambiguous(cur, exhausted)
+        _finalize_exhausted_source_jobs(cur, job_id)
         job = cur.execute(
             f"""SELECT j.* FROM source_fetch_jobs j
         WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint ? 'bankone_exact_recovery')
