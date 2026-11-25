@@ -322,10 +322,13 @@ def test_continuous_quota_waits_and_resumes(continuous_state,monkeypatch):
             else:stop.set()
     monkeypatch.setattr(worker,'database_now',lambda repo:clock[0])
     monkeypatch.setattr(worker,'_subscribe_to_article_jobs',lambda repo: subscriptions.append(clock[0]))
-    monkeypatch.setattr(worker,'_reserve_next_article',lambda *a,**k:observed.append(state.reserve(uuid4(),clock[0])))
+    def reserve(*args, **kwargs):
+        if not kwargs["paid_overflow"]:
+            observed.append(state.reserve(uuid4(), clock[0]))
+    monkeypatch.setattr(worker, '_reserve_next_article', reserve)
     worker.run_new_article_worker(None,state,registry={},object_store=None,model_client=None,stop=Stop())
     assert observed==[True] and len(state.read()['reservations'])==11
-    assert subscriptions == [NOW + timedelta(hours=24)]
+    assert subscriptions == [NOW, NOW + timedelta(hours=24)]
 
 
 @pytest.mark.parametrize("listener_fails", [False, True])
@@ -408,7 +411,8 @@ def test_continuous_overlaps_providers_and_refills_a_finished_slot(continuous_st
     queued = [(first, "bankone"), (next_one, "bankone"), (first_two, "banktwo"), (next_two, "banktwo")]
     reserved = []
 
-    def reserve(repo, state, *, providers, stop):
+    def reserve(repo, state, *, providers, stop, paid_overflow):
+        assert not paid_overflow
         for index, (job, provider) in enumerate(queued):
             if provider in providers:
                 assert state.reserve(job, NOW)

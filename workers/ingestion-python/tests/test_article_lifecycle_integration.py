@@ -2441,6 +2441,75 @@ def test_continuous_capture_passes_same_supplier_while_first_rewrite_waits(runti
     assert len(state.read()["reservations"]) == 2
 
 
+def test_continuous_paid_overflow_preserves_ledger_and_provider_cooldown(runtime, tmp_path, monkeypatch):
+    from autodata_ingestion import commerce_service as commerce
+    from autodata_ingestion.article_lifecycle_store import upsert_article_descriptor
+    from autodata_ingestion.article_lifecycle_types import ArticleKey
+    from autodata_ingestion.new_article_worker import _CooldownConnector, _reserve_next_article, database_now
+    from autodata_ingestion.source_connector_client import SourceConnectorError
+    from autodata_ingestion.source_job_persistence import claim_source_job, ensure_article_job
+    from lifecycle_support import seed_configuration, seed_snapshot
+    from test_commerce_simulation import account, call, setup_env
+
+    repo = runtime.repo
+    configuration = seed_configuration(repo, runtime.vehicle, engine_displacement_l=2)
+    other_config = seed_configuration(repo, runtime.vehicle, engine_displacement_l=3)
+    descriptor = seed_snapshot(repo, b"paid source descriptor")
+    state = new_article_rollout(repo, tmp_path, continuous=True)
+    runtime.stack.callback(state.__exit__, None, None, None)
+    now = database_now(repo)
+    for _ in range(10):
+        assert state.reserve(uuid4(), now)
+    before = state.read()
+
+    def queue(provider, config, reference):
+        key = ArticleKey(provider, runtime.vehicle, config, "source-vehicle", reference)
+        article = upsert_article_descriptor(repo, key, {"title": reference}, descriptor, 0,
+                                            rewrite_profile_version="full-prose-auto-v1")
+        return ensure_article_job(repo, article, normalization_version="ordered-article-v1",
+                                  rewrite_profile_version="full-prose-auto-v1").job_id
+
+    queue("bankone", other_config, "unowned")
+    first = queue("bankone", configuration, "first")
+    second = queue("bankone", configuration, "second")
+    other = queue("banktwo", configuration, "other-bank")
+    assert _reserve_next_article(repo, state, paid_overflow=True) is None
+    setup_env(monkeypatch)
+    service = commerce.configured_commerce(connection_factory=repo.connect)
+    receipt = call(service, "checkouts", dict(account(repo), configuration_id=str(configuration),
+                   region="US", expected_mode="simulation", terms_version=commerce.TERMS,
+                   idempotency_key=str(uuid4())))
+    assert receipt["state"] == "owned"
+
+    assert _reserve_next_article(repo, state) is None
+    assert _reserve_next_article(repo, state, providers=["bankone"], paid_overflow=True) == (first, "bankone")
+    assert _reserve_next_article(repo, state, providers=["bankone"], paid_overflow=True) is None
+    # The generic claimant cannot deliver any exact reserved job.
+    assert claim_source_job(repo, worker_id=uuid4()).job_id != first
+
+    class LimitedConnector:
+        provider = "bankone"
+
+        def read_resource(self, resource_ref, *, timeout):
+            raise SourceConnectorError("RATE_LIMITED", retryable=True, retry_after_seconds=120)
+
+    with pytest.raises(SourceConnectorError, match="RATE_LIMITED"):
+        _CooldownConnector(LimitedConnector(), repo, first).read_resource("optional-picture", timeout=2)
+    with repo.connect() as conn:
+        origin = conn.execute("""UPDATE source_fetch_jobs SET checkpoint=
+            checkpoint||'{"paid_source_reserved_at":"2020-01-01T00:00:00Z"}'::jsonb
+            WHERE source_fetch_job_id=%s RETURNING checkpoint""", (first,)).fetchone()["checkpoint"]
+        assert origin.get("source_cooldown_until")
+    assert _reserve_next_article(repo, state, providers=["bankone"], paid_overflow=True) is None
+    assert _reserve_next_article(repo, state, providers=["banktwo"], paid_overflow=True) == (other, "banktwo")
+    with repo.connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET checkpoint=checkpoint-'source_cooldown_until' WHERE source_fetch_job_id=%s",
+                     (first,))
+    assert _reserve_next_article(repo, state, providers=["bankone"], paid_overflow=True) == (second, "bankone")
+    assert state.read() == before
+
+
+
 def new_article_uncertain_delivery_child(repo, directory, env, arrived):
     """Hold a real HTTP response after delivery, before saving it, until SIGKILL."""
     import os

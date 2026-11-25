@@ -17,7 +17,7 @@ MAX_MODEL_DISPATCHES_PER_WINDOW = 10
 
 def claim_rollout_model_job(repo, snapshot, *, worker_id):
     """Claim a retained source while the coordinator holds its only model lane."""
-    if snapshot["schema"] != 2 or not snapshot["enabled"] or not snapshot["reservations"]:
+    if snapshot["schema"] != 2 or not snapshot["enabled"]:
         return None
     marker = {"rollout_id": snapshot["rollout_id"], "cutoff": snapshot["cutoff"], "max_model_attempts": 1}
     args = {
@@ -51,7 +51,8 @@ def claim_rollout_model_job(repo, snapshot, *, worker_id):
                  AND o.canonical_article_id=j.canonical_article_id AND o.source_revision_id=j.source_revision_id
                  AND o.request_generation=j.request_generation AND o.captured_at>=j.created_at
             WHERE {_SOURCE_BOUND_CURRENT_OWNER_SQL}
-              AND j.source_fetch_job_id=ANY(%(reserved)s::uuid[])
+              AND (j.source_fetch_job_id=ANY(%(reserved)s::uuid[])
+                   OR j.checkpoint ? 'paid_source_reserved_at')
               AND j.job_kind='article' AND j.status='failed' AND j.phase='rewriting'
               AND j.error_code='MODEL_NOT_CONFIGURED' AND j.retryable
               AND j.lease_owner IS NULL AND j.lease_expires_at IS NULL AND j.heartbeat_at IS NULL

@@ -3,9 +3,10 @@
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+import pytest
 from psycopg.types.json import Jsonb
 
-from autodata_ingestion.article_lifecycle_store import upsert_article_descriptor
+from autodata_ingestion.article_lifecycle_store import mark_rewrite_dispatched, prepare_rewrite_attempt, upsert_article_descriptor
 from autodata_ingestion.article_lifecycle_types import (
     AUTOMATIC_REWRITE_PROFILE, NORMALIZATION_VERSION, ArticleKey, digest_json, transformation_key,
 )
@@ -115,3 +116,21 @@ def test_actual_dispatch_fence_counts_rebound_jobs_and_ignores_expired_or_prepar
     parked_job(repo, snapshot)
     add_attempt(repo, rebound, lease_token=12, dispatched_at=now)
     assert claim_rollout_model_job(repo, snapshot, worker_id=uuid4()) is None
+
+
+def test_rollout_model_lane_rechecks_source_permission_at_dispatch(fresh_database):
+    repo = fresh_database()
+    snapshot = rollout()
+    job, resolution = parked_job(repo, snapshot)
+    lease = claim_rollout_model_job(repo, snapshot, worker_id=uuid4())
+    assert lease.job_id == job
+    normalized = lease.checkpoint["normalized_document"]
+    attempt = prepare_rewrite_attempt(repo, lease, normalized, context={"region": "US"}, model="fixture")
+    with repo.connect() as conn:
+        conn.execute("UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=%s", (resolution,))
+    with pytest.raises(ValueError, match="SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE"):
+        mark_rewrite_dispatched(repo, lease, attempt)
+    with repo.connect() as conn:
+        row = conn.execute("SELECT dispatched_at FROM canonical_article_rewrite_attempts WHERE rewrite_attempt_id=%s",
+                           (attempt,)).fetchone()
+    assert row["dispatched_at"] is None
