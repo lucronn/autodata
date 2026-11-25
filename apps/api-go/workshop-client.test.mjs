@@ -3419,7 +3419,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     (realArticleIndex ? appSection('function renderArticles(', 'const assetID =') : '') +
     (articleOpenError ? appSection('function openArticle(', 'function validSourceURL(') : '') +
     appSection('async function checkOrder(', 'async function signIn()') +
-    appSection('$("check-order").addEventListener', '$("search").addEventListener') +
+    appSection('$("check-order").addEventListener', '$("search").addEventListener("input"') +
     appSection('async function bootstrap(', 'for (const [index, name] of names.entries())') +
     appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'),
     context,
@@ -4622,6 +4622,58 @@ function articleIndexHarness(responses, { wait = async () => {}, now = () => per
 
 const indexResponse = (status, { complete = false, retryable = false, hydrating = false, items = [] } = {}) =>
   ({ items, complete, hydrating, progress: status ? { status, retryable } : null });
+
+for (const inputType of ['insertFromPaste', 'insertFromDrop', 'insertReplacementText']) {
+  test(`committed Workshop search input ${inputType} starts one protected search immediately`, async () => {
+    const hit = { id: 'second-page', title: 'Oil pump' };
+    const h = articleIndexHarness([
+      indexResponse('completed', { complete: true, items: [{ id: 'first-page', title: 'Brakes' }] }),
+      indexResponse('completed', { complete: true, items: [hit] }),
+    ]);
+    await h.load();
+    h.context.setTimeout = () => assert.fail('a committed search must not wait for typing');
+    const search = h.$('search');
+    search.value = hit.title;
+    search.events.input({ inputType });
+    assert.equal(h.requests[1]?.path, '/v1/catalog/vehicles/B/articles?q=Oil+pump&region=US');
+    await new Promise(setImmediate);
+    assert.equal(h.$('articles').firstElementChild.firstElementChild.dataset.articleId, hit.id);
+  });
+}
+
+test('Enter flushes a pending typed Workshop search exactly once', async () => {
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'first-page', title: 'Brakes' }] }),
+    indexResponse('completed', { complete: true, items: [{ id: 'second-page', title: 'Oil pump' }] }),
+  ]);
+  await h.load();
+  const pending = new Map();
+  let nextTimer = 0;
+  h.context.setTimeout = (callback, delay) => {
+    assert.equal(delay, 300);
+    pending.set(++nextTimer, callback);
+    return nextTimer;
+  };
+  h.context.clearTimeout = id => pending.delete(id);
+  const search = h.$('search');
+  for (const value of ['oil', 'oil pump']) {
+    search.value = value;
+    search.events.input({ inputType: 'insertText' });
+    assert.equal(pending.size, 1);
+    assert.equal(h.requests.length, 1);
+  }
+  search.events.keydown({ key: 'Enter', isComposing: true, preventDefault: () => assert.fail('IME Enter was consumed') });
+  assert.equal(h.requests.length, 1);
+  let prevented = 0;
+  const enter = { key: 'Enter', preventDefault: () => { prevented++; } };
+  search.events.keydown(enter);
+  search.events.keydown(enter);
+  assert.equal(pending.size, 0);
+  assert.equal(prevented, 1);
+  assert.equal(h.requests.length, 2);
+  assert.equal(h.requests[1].path, '/v1/catalog/vehicles/B/articles?q=oil+pump&region=US');
+  await new Promise(setImmediate);
+});
 
 test('returning from a direct reader focuses the first partial index without moving focus at completion', async () => {
   const article = { id: 'first', title: 'First procedure' };
