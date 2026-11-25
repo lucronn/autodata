@@ -407,18 +407,27 @@ function pickerOption({ value, label, disabled }) {
 function selectorPath(name, selection = { year: $("year").value, make: $("make").value, model: $("model").value }) {
   return vehicleSelectorPath(name, selection);
 }
-function cachedSelector(path) {
+function cachedSelector(path, desired = "") {
   if (session.state.mode !== "firebase") return null;
   const entry = selectorCache.get(path);
-  if (entry?.expires > performance.now()) return entry.response;
+  if (entry?.expires > performance.now()) {
+    const response = entry.response;
+    if (response.complete === false && desired &&
+        !response.items.some(item => String(item.id ?? item.year) === desired)) return null;
+    return response;
+  }
   selectorCache.delete(path);
   return null;
 }
 function rememberSelector(path, name, response) {
   // Local mode protects the same paths with a dataset role. Reuse anonymous
   // Firebase selector responses only.
-  if (session.state.mode !== "firebase" || !response.items.length || response.hydrating ||
-      !(response.complete === true || (name === "year" && response.complete === undefined))) return;
+  if (session.state.mode !== "firebase" || !response.items.length || response.refreshFailed || response.timedOut) return;
+  const complete = !response.hydrating &&
+    (response.complete === true || (name === "year" && response.complete === undefined));
+  // Makes and models can be chosen while their provider coverage is incomplete.
+  const partialChoices = (name === "make" || name === "model") && response.complete === false;
+  if (!complete && !partialChoices) return;
   selectorCache.delete(path);
   selectorCache.set(path, { response, expires: performance.now() + selectorCacheLifetime });
   if (selectorCache.size > selectorCacheSize) selectorCache.delete(selectorCache.keys().next().value);
@@ -623,6 +632,7 @@ async function loadOptions(name, g, desired = "", initial = null) {
       ? "Choose your vehicle to continue."
       : "No choices are available for this selection. Choose another vehicle.",
   );
+  if (result === cached && picker.incomplete) void refreshPicker(name);
 }
 function renderPurchase() {
   if (!$("purchase")) return;
@@ -2828,7 +2838,7 @@ async function restoreRoute(initialYears = null, {
         // the parent is confirmed, and only then may it queue missing data.
         for (const name of names) {
           const path = selectorPath(name, desired);
-          if (!initial[name] && !cachedSelector(path)) {
+          if (!initial[name] && !cachedSelector(path, desired[name])) {
             const pending = name === "year" ? requestJSON(path, { signal: g.signal }) : readStoredSelector(path, g.signal);
             initial[name] = pending.catch(() => null);
           }

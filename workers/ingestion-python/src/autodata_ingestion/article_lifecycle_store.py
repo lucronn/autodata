@@ -202,6 +202,12 @@ def _store_captured_source(cur, lease, captured):
         or not captured.source_document.get("blocks")
     ):
         raise ValueError("captured article identity/body mismatch")
+    if captured.image_only and (
+        captured.source_body != str(context.descriptor.get("title") or "").strip()
+        or not any(image.get("status") == "available" and image.get("storage_key")
+                   for image in captured.source_images)
+    ):
+        raise ValueError("captured image-only article is unreadable")
     job = lock_live_lease(cur, lease)
     source_only = job["checkpoint"].get("source_only_reprojection") is True
     article_query = """
@@ -292,12 +298,16 @@ def _store_captured_source(cur, lease, captured):
         cur, lease.canonical_article_id, lease.job_id, job["request_generation"], captured,
         verify_existing=source_only and projection == "source-projection-v3",
     )
-    if source_only:
+    if source_only or captured.image_only:
+        status = "needs_review" if source_only else "completed"
+        error_code = "SOURCE_ONLY_REPROJECTION" if source_only else None
+        marker = {"image_only_source": True} if captured.image_only else {}
         cur.execute("""UPDATE source_fetch_jobs SET source_revision_id=%s,transformation_key=NULL,
-            status='needs_review',phase='completed',error_code='SOURCE_ONLY_REPROJECTION',retryable=false,
+            status=%s,phase='completed',error_code=%s,retryable=false,last_error=NULL,
             next_attempt_at=NULL,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,
-            checkpoint=checkpoint-'source_body_preview',
-            updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""", (revision_id, lease.job_id))
+            checkpoint=(checkpoint-'source_body_preview')||%s,
+            updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""",
+            (revision_id, status, error_code, Jsonb(marker), lease.job_id))
         cur.execute("""UPDATE canonical_articles SET current_source_revision_id=%s,current_canonical_revision_id=NULL,
             current_job_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s""",
             (revision_id, lease.job_id, lease.canonical_article_id))
@@ -790,14 +800,16 @@ def _bound_correction_draft(cur, job, document, *, lock_bankone_archive=False):
     budget = binding["model_call_budget"]
     bankone_archive = None
     if method == ARCHIVED_FIRST_DRAFT_METHOD:
-        from .procedure_rewrite_recovery import ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_STRUCTURAL_RECOVERY_METHOD
+        from .procedure_rewrite_recovery import (
+            ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_ARCHIVE_STRUCTURE_VERSIONS,
+        )
 
         replay = binding.get("archived_recovery")
         if (budget != 0 or not first_draft or not isinstance(replay, dict)
             or replay.get("method") not in ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
         fields = {"method", "output_hash"}
-        if replay["method"] == BANKONE_STRUCTURAL_RECOVERY_METHOD:
+        if structure_version := BANKONE_ARCHIVE_STRUCTURE_VERSIONS.get(replay["method"]):
             fields.add("bankone_structure")
             bankone_archive = replay.get("bankone_structure")
             if not isinstance(bankone_archive, dict) or set(bankone_archive) != {"body_sha256", "observation_id", "proof"}:
@@ -852,7 +864,7 @@ def _bound_correction_draft(cur, job, document, *, lock_bankone_archive=False):
         if (bankone_archive["observation_id"] != str(attempt["observation_id"])
             or bankone_archive["body_sha256"] != original.digest):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
-        validate_bankone_structure(document, bankone_archive["proof"])
+        validate_bankone_structure(document, bankone_archive["proof"], expected_version=structure_version)
     return {**binding, "preserve_notes": _keeps_authored_note_labels(attempt["guard_version"])}, attempt
 
 

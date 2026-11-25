@@ -456,7 +456,7 @@ def bankone_archive_body_binding(cur, source_id, observation_id, *, lock=False):
     return body
 
 
-def read_bankone_archive_structure(repo, canonical_id, prior_id, source_id, *, object_store):
+def read_bankone_archive_structure(repo, canonical_id, prior_id, source_id, *, object_store, structure_version=1):
     """Extract exact authored slots from the retained, rights-checked HTML body."""
     from .bankone_first_draft_structure import extract_bankone_structure
     from .source_media_replay import _MAX_OBJECT_BYTES
@@ -486,7 +486,7 @@ def read_bankone_archive_structure(repo, canonical_id, prior_id, source_id, *, o
         or sha256(body).hexdigest() != binding.digest):
         raise ValueError("FIRST_DRAFT_ARCHIVE_STRUCTURE_MISMATCH")
     return {"observation_id": str(observation_id), "body_sha256": binding.digest,
-            "proof": extract_bankone_structure(source, body)}
+            "proof": extract_bankone_structure(source, body, version=structure_version)}
 
 
 def publish_source_bound_first_draft(
@@ -494,18 +494,19 @@ def publish_source_bound_first_draft(
     expected_recovery_hash, actor, reason, hooks=None, object_store=None,
 ):
     """Publish a checked first-draft recovery from its saved response in one transaction."""
-    from .procedure_rewrite_recovery import ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_STRUCTURAL_RECOVERY_METHOD
+    from .procedure_rewrite_recovery import ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_ARCHIVE_STRUCTURE_VERSIONS
 
     if (recovery_method not in ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS
         or not isinstance(expected_recovery_hash, str)
         or not re.fullmatch(r"[a-f0-9]{64}", expected_recovery_hash)):
         raise ValueError("FIRST_DRAFT_ARCHIVE_RECOVERY_MISMATCH")
     archive = {"method": recovery_method, "output_hash": expected_recovery_hash}
-    if recovery_method == BANKONE_STRUCTURAL_RECOVERY_METHOD:
+    if structure_version := BANKONE_ARCHIVE_STRUCTURE_VERSIONS.get(recovery_method):
         if object_store is None:
             raise ValueError("FIRST_DRAFT_ARCHIVE_BODY_UNAVAILABLE")
         archive["bankone_structure"] = read_bankone_archive_structure(
             repo, canonical_article_id, expected_job_id, expected_source_revision_id, object_store=object_store,
+            structure_version=structure_version,
         )
     return _schedule_source_bound_job(
         repo, canonical_article_id, expected_job_id=expected_job_id,

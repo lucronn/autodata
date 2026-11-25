@@ -99,7 +99,10 @@ def test_correction_cli_requires_explicit_budget_and_exact_job(
     assert json.loads(capsys.readouterr().out)["items"][0]["job_id"] == str(current)
 
 
-def test_publish_first_draft_cli_requires_a_method_and_recovered_document_hash(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("archive_version", [None, 1, 2])
+def test_publish_first_draft_cli_requires_a_method_and_recovered_document_hash(
+    tmp_path, monkeypatch, capsys, archive_version,
+):
     article, source, prior, current, revision = (uuid4() for _ in range(5))
     path = tmp_path / "selection.json"
     target = {"canonical_article_id": str(article), "expected_source_revision_id": str(source)}
@@ -115,7 +118,8 @@ def test_publish_first_draft_cli_requires_a_method_and_recovered_document_hash(t
     monkeypatch.setattr(refresh, "publish_source_bound_first_draft", publish)
     base = ["--selection", str(path), "--actor", "operator", "--reason", "Publish the saved draft"]
     apply_args = ["--recover-first-draft-from", str(prior), "--apply"]
-    method = refresh.ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS[0]
+    method = next((name for name, version in refresh.BANKONE_ARCHIVE_STRUCTURE_VERSIONS.items()
+                   if version == archive_version), refresh.ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS[0])
     method_args = ["--first-draft-recovery-method", method]
     output_hash = "1" * 64
     hash_args = ["--expected-first-draft-recovery-hash", output_hash]
@@ -126,8 +130,9 @@ def test_publish_first_draft_cli_requires_a_method_and_recovered_document_hash(t
     assert calls == []
 
     args = [*base, *apply_args, *method_args, *hash_args]
+    objects = object()
     for action in ("published", "joined_existing"):
-        assert refresh.main(args, repo=repo) == 0
+        assert refresh.main(args, repo=repo, object_store=objects) == 0
         assert json.loads(capsys.readouterr().out)["items"] == [{
             **target, "prior_job_id": str(prior), "job_id": str(current), "revision_id": str(revision), "action": action,
         }]
@@ -135,6 +140,7 @@ def test_publish_first_draft_cli_requires_a_method_and_recovered_document_hash(t
         "expected_job_id": prior, "expected_source_revision_id": source,
         "recovery_method": method, "expected_recovery_hash": output_hash,
         "actor": "operator", "reason": "Publish the saved draft",
+        **({"object_store": objects} if archive_version is not None else {}),
     })] * 2
 
 

@@ -11,6 +11,7 @@ import pytest
 
 from autodata_ingestion.article_document import validate_ordered_document
 from autodata_ingestion.source_article_capture import capture_source_article
+from autodata_ingestion.source_connector_client import SourceConnectorError
 from test_source_article_capture import capture_fixture
 
 
@@ -289,3 +290,32 @@ def test_localized_linked_svg_preserves_original_and_authored_table_order(captur
     png, media = capture_fixture.objects.data[figure["storage_key"]]
     assert media == "image/png" and sha256(png).hexdigest() == derivative["sha256"]
     assert url not in repr(captured.source_document)
+
+
+@pytest.mark.parametrize("placement", ["bound", "unbound", "unplaced"])
+def test_image_only_source_requires_a_verified_authored_image(capture_fixture, placement):
+    context = capture_fixture.context("banktwo")
+    title = context.descriptor["title"].strip()
+    url = "/fixture/diagram.png"
+    html = "" if placement == "unplaced" else f'<a href="/fixture/details"><img src="{url}"></a>'
+    body = json.dumps({"_embedded": {"data": {"article": {"content": html}}}}).encode()
+    bindings = [{"source_url": url, "resource_ref": "diagram"}] if placement == "bound" else []
+    with BytesIO() as output:
+        Image.new("RGB", (16, 12), "green").save(output, format="PNG")
+        image = output.getvalue()
+    capture_fixture.body("banktwo", body, "application/hal+json",
+                         assets=["diagram"], asset_bindings=bindings)
+    capture_fixture.body("banktwo", image, "image/png", ref="diagram", kind="asset")
+    if placement != "bound":
+        with pytest.raises(SourceConnectorError) as error:
+            _capture(capture_fixture, context)
+        assert error.value.code == "INVALID_ARTICLE_BODY"
+        return
+    captured = _capture(capture_fixture, context)
+    assert captured.image_only and captured.projection_status == "readable"
+    assert captured.source_body == title and captured.source_steps == []
+    [figure] = captured.source_document["blocks"]
+    assert figure["type"] == "image" and figure["status"] == "available"
+    assert figure["content_sha256"] == sha256(image).hexdigest()
+    assert capture_fixture.objects.data[figure["storage_key"]] == (image, "image/png")
+    assert captured.resources[0]["sha256"] == sha256(body).hexdigest()

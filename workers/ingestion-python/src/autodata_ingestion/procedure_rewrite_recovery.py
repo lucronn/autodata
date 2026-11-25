@@ -32,7 +32,12 @@ FIRST_DRAFT_RECOVERY_METHODS = (
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD, FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
 )
 BANKONE_STRUCTURAL_RECOVERY_METHOD = "source-bound-bankone-first-draft-v1"
-ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS = (*FIRST_DRAFT_RECOVERY_METHODS, BANKONE_STRUCTURAL_RECOVERY_METHOD)
+BANKONE_LINKED_RECOVERY_METHOD = "source-bound-bankone-first-draft-v2"
+BANKONE_ARCHIVE_STRUCTURE_VERSIONS = {
+    BANKONE_STRUCTURAL_RECOVERY_METHOD: 1,
+    BANKONE_LINKED_RECOVERY_METHOD: 2,
+}
+ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS = (*FIRST_DRAFT_RECOVERY_METHODS, *BANKONE_ARCHIVE_STRUCTURE_VERSIONS)
 _FIRST_DRAFT_RECASTABLE_ERRORS = frozenset({
     "REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR", "REWRITE_ACTION_MUTATION",
     "REWRITE_QUALIFIER_MUTATION", "REWRITE_TECHNICAL_MUTATION",
@@ -232,7 +237,7 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
             source, document, saved_prompt_version=prompt_version, bankone_structure=bankone_structure,
         )
         if method in (FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD, FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
-                      FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD, BANKONE_STRUCTURAL_RECOVERY_METHOD):
+                      FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD, *BANKONE_ARCHIVE_STRUCTURE_VERSIONS):
             rewritten_paths = validation.report["changed_prose_slots"]
             auto.require_distinct_generated_introduction(source, document, rewritten_paths=rewritten_paths)
             auto.require_preserved_display_quotations(source, document, rewritten_paths=rewritten_paths)
@@ -333,9 +338,20 @@ def _recover_cooling_sequence(source, raw, slots, invalid, *, prompt_version, or
     )
 
 
-def recover_structured_bankone_first_draft(source, attempt, bankone_structure):
+def recover_structured_bankone_first_draft(
+    source, attempt, bankone_structure, *, method=BANKONE_STRUCTURAL_RECOVERY_METHOD,
+):
     """Recover an exact stored Bankone reply with its verified authored slots."""
     from .bankone_first_draft_recovery import recover_bankone_draft
+    from .bankone_first_draft_structure import validate_bankone_structure
+
+    structure_version = BANKONE_ARCHIVE_STRUCTURE_VERSIONS.get(method)
+    if structure_version is None:
+        return None
+    try:
+        validate_bankone_structure(source, bankone_structure, expected_version=structure_version)
+    except ValueError:
+        return None
 
     guard, raw = attempt["guard_version"], attempt["response"]
     try:
@@ -351,7 +367,7 @@ def recover_structured_bankone_first_draft(source, attempt, bankone_structure):
         return None
     response, corrected_paths = recovered
     return _validate_first_draft(
-        source, raw, response, corrected_paths, prompt_version=guard, method=BANKONE_STRUCTURAL_RECOVERY_METHOD,
+        source, raw, response, corrected_paths, prompt_version=guard, method=method,
         original_error=original_error, bankone_structure=bankone_structure,
     )
 
@@ -359,8 +375,8 @@ def recover_structured_bankone_first_draft(source, attempt, bankone_structure):
 def recover_archived_first_draft(source, attempt, *, method, expected_hash, bankone_structure=None):
     """Check the recovered v1 digest and render the same reply under its new v3 owner."""
     guard = attempt["guard_version"]
-    if method == BANKONE_STRUCTURAL_RECOVERY_METHOD and bankone_structure is not None:
-        recovered = recover_structured_bankone_first_draft(source, attempt, bankone_structure)
+    if method in BANKONE_ARCHIVE_STRUCTURE_VERSIONS and bankone_structure is not None:
+        recovered = recover_structured_bankone_first_draft(source, attempt, bankone_structure, method=method)
     elif method in FIRST_DRAFT_RECOVERY_METHODS and bankone_structure is None:
         recovered = recover_first_draft(source, attempt["response"], prompt_version=guard, method=method)
     else:

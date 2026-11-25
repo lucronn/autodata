@@ -4,13 +4,18 @@ from copy import deepcopy
 import re
 
 from . import procedure_rewrite_auto as auto, procedure_rewrite_full as full
-from .bankone_first_draft_structure import bankone_alternatives, validate_bankone_structure
+from .bankone_first_draft_structure import (
+    LINKED_STRUCTURE_KINDS, LINKED_STRUCTURE_VERSION, _ordered_list_item, bankone_alternatives,
+    bankone_linked_directive, bankone_procedure_section, validate_bankone_structure,
+)
 from .procedure_rewrite_cooling_recovery import _object_name
 from .procedure_rewrite_correction import _introduction
+from .procedure_rewrite_recovery import _LABEL_DIRECTIVE, _equivalent_wording
 
 
 _STRUCTURE_INVALID = "REWRITE_BANKONE_STRUCTURE_INVALID"
 _VARIANT_MUTATION = "REWRITE_VARIANT_SCOPE_MUTATION"
+_PROCEDURE_SCOPE_MUTATION = "REWRITE_BANKONE_PROCEDURE_SCOPE_MUTATION"
 _DIGEST = re.compile(r"[a-f0-9]{64}")
 _LABEL_ERRORS = {
     "note_label": frozenset({"REWRITE_UNCHANGED", "REWRITE_NOTE_LABEL_MUTATION"}),
@@ -39,11 +44,34 @@ def _rewrite_alternatives(alternatives) -> str:
     return f"For {alternatives.target}, {_option_wrapper(alternatives)}: {alternatives.suffix}"
 
 
+def _linked_wording(original, kind):
+    if kind == "procedure_section":
+        if section := bankone_procedure_section(original):
+            return f"Steps for {section}"
+    elif directive := bankone_linked_directive(original):
+        return (f'{directive["verb"].capitalize()} the component identified by {directive["marker"]} '
+                f'as described in {directive["title"]}.')
+    return None
+
+
 def check_bankone_passage(original: str, replacement: str, entry: dict) -> tuple[str, str] | None:
     """Verify protected text separately before comparing rewritten wrapper prose."""
     if not isinstance(entry, dict) or not isinstance(entry.get("block_id"), str) or not entry["block_id"]:
         raise ValueError(_STRUCTURE_INVALID)
     kind = entry.get("kind")
+    if isinstance(kind, str) and kind in LINKED_STRUCTURE_KINDS:
+        wording = _linked_wording(original, kind)
+        fields = {"block_id", "kind"}
+        if kind == "single_link_directive":
+            fields.add("reference_hash")
+            identity = entry.get("reference_hash")
+            if not isinstance(identity, str) or not _DIGEST.fullmatch(identity):
+                raise ValueError(_STRUCTURE_INVALID)
+        if set(entry) != fields or wording is None:
+            raise ValueError(_STRUCTURE_INVALID)
+        if replacement not in (original, wording):
+            raise ValueError(_PROCEDURE_SCOPE_MUTATION)
+        return original, replacement
     if kind == "alternatives":
         alternatives = bankone_alternatives(original)
         hashes = entry.get("reference_hashes")
@@ -136,6 +164,7 @@ def recover_bankone_draft(source, raw, *, prompt_version, structure):
         return None
     if not structure["slots"] or structure["slots"].keys() - {slot["path"] for slot in slots}:
         return None
+    linked = structure.get("version") == LINKED_STRUCTURE_VERSION
     historical = _failure_paths(source, raw, prompt_version=prompt_version)
     if not historical:
         return None
@@ -146,6 +175,7 @@ def recover_bankone_draft(source, raw, *, prompt_version, structure):
     except ValueError:
         return None
     corrected = set()
+    corrected_linked_scope = False
     for slot, row in zip(slots, draft["replacements"], strict=True):
         path = slot["path"]
         entry = structure["slots"].get(path)
@@ -157,6 +187,11 @@ def recover_bankone_draft(source, raw, *, prompt_version, structure):
             if row["action"] != "rewrite" or historical[path] not in {"REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR"}:
                 return None
             row["text"] = _rewrite_alternatives(bankone_alternatives(original))
+        elif linked and kind in LINKED_STRUCTURE_KINDS:
+            if row["action"] != "rewrite" or historical[path] not in _PROSE_ERRORS:
+                return None
+            row["text"] = _linked_wording(original, kind)
+            corrected_linked_scope = True
         else:
             if historical[path] not in _LABEL_ERRORS[kind]:
                 return None
@@ -174,7 +209,10 @@ def recover_bankone_draft(source, raw, *, prompt_version, structure):
             or historical.get(path) not in _PROSE_ERRORS):
             continue
         original, saved_text = slot["text"], row["text"]
-        for wording in _plain_wording(original):
+        options = list(_plain_wording(original))
+        if linked and _ordered_list_item(source, path) and _LABEL_DIRECTIVE.fullmatch(original):
+            options.append(_equivalent_wording(original))
+        for wording in options:
             if (full._technical_tokens(original) != full._technical_tokens(wording)
                 or auto._execution_order(original) != auto._execution_order(wording)):
                 continue
@@ -186,6 +224,6 @@ def recover_bankone_draft(source, raw, *, prompt_version, structure):
                 break
             row["text"] = saved_text
 
-    if current or not corrected:
+    if current or not corrected or (linked and not corrected_linked_scope):
         return None
     return draft, [slot["path"] for slot in slots if slot["path"] in corrected]

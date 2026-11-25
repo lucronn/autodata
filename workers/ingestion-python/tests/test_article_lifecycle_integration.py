@@ -2656,6 +2656,54 @@ def test_server_zero_slot_publishes_without_model_or_attempt(runtime, provider, 
         object_store=runtime.objects, model_client=NoModelCalls(), job_id=job)
 
 
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_image_only_article_finishes_with_readable_source(runtime, provider):
+    import json
+    from hashlib import sha256
+    from io import BytesIO
+    from PIL import Image
+
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion.source_job_persistence import ensure_article_job
+
+    ensure = automatic_runtime(runtime, provider)
+    html = '<a href="/fixture/details"><img src="/fixture/diagram.png"></a>'
+    mime = "text/html"
+    body = html.encode()
+    if provider == "banktwo":
+        mime = "application/hal+json"
+        body = json.dumps({"_embedded": {"data": {"article": {"content": html}}}}).encode()
+    with BytesIO() as output:
+        Image.new("RGB", (16, 12), "green").save(output, format="PNG")
+        figure = output.getvalue()
+    runtime.servers[provider].body(
+        body, mime, assets=["diagram"],
+        asset_bindings=[{"source_url": "/fixture/diagram.png", "resource_ref": "diagram"}],
+    )
+    runtime.servers[provider].body(figure, "image/png", ref="diagram", kind="asset")
+    queued = ensure()
+    options = dict(worker_id=uuid4(), registry=runtime.registry, object_store=runtime.objects,
+                   model_client=NoModelCalls(), job_id=queued.job_id)
+    assert run_article_worker_once(runtime.repo, **options)
+    current = runtime.read_current()
+    assert current["content_origin"] == "source" and current["availability"] == "available"
+    assert current["processing_state"] == "completed" and current["processing_error_code"] is None
+    assert current["canonical_revision_id"] is None
+    [block] = current["document"]["blocks"]
+    assert block["type"] == "image" and block["content_sha256"] == sha256(figure).hexdigest()
+    with runtime.repo.connect() as conn:
+        job = conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",
+                           (queued.job_id,)).fetchone()
+        assert job["checkpoint"]["image_only_source"] is True
+        assert job["transformation_key"] is None and job["lease_owner"] is None
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_rewrite_attempts").fetchone()["n"] == 0
+    assert ensure_article_job(runtime.repo, runtime.article_id, normalization_version="ordered-article-v1",
+                              rewrite_profile_version="full-prose-auto-v1").job_id == queued.job_id
+    assert not run_article_worker_once(runtime.repo, **options)
+    assert runtime.counters()["source"] == runtime.counters()["asset"] == 1
+
+
+
 @pytest.mark.parametrize('point', ['after_source_preserving_candidate_commit', 'inside_publication'])
 def test_server_zero_slot_cap_one_crash_resume_exactly_once(runtime, point):
     job = server_zero_slot_runtime(runtime)
