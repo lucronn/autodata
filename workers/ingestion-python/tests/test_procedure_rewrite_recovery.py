@@ -8,6 +8,7 @@ from autodata_ingestion.procedure_rewrite_auto import build_auto_prompt
 from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
+    FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
     FIRST_DRAFT_RECOVERY_METHOD,
     _equivalent_cooling_directive,
     _equivalent_directive,
@@ -154,6 +155,45 @@ def test_earlier_recovery_cannot_rebuild_an_unbound_introduction():
     assert recovered.evidence["introduction_replaced"] is True
     assert recovered.response["introduction"] != raw["introduction"]
     assert recovered.response["replacements"][0]["text"] == "Tighten each of the 3 return bracket nuts."
+
+
+@pytest.mark.parametrize("has_intro_spec", [False, True])
+def test_first_draft_restores_bound_open_placement(has_intro_spec):
+    source = document("Place the gauge on the open part of the service tray.", "Gauge width: 18 mm.")
+    raw = response(
+        "Position the gauge on the exposed section of the service tray.",
+        "Gauge width: 18 mm.",
+        introduction=("The gauge has a width of 18 mm." if has_intro_spec
+                      else "This article describes the service information that follows."),
+    )
+    raw["replacements"][1].update(action="retain", reason="Exact source measurement.")
+    saved = deepcopy(raw)
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    result = recover_first_draft(source, raw, prompt_version=version)
+
+    assert raw == saved
+    assert result.evidence["method"] == FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD
+    assert result.evidence["introduction_replaced"] is has_intro_spec
+    assert result.evidence["corrected_paths"] == ["/blocks/0/text"]
+    assert result.response["replacements"][0]["text"] == "Position the gauge on the open section of the service tray."
+    assert result.response["replacements"][1] == raw["replacements"][1]
+    assert recover_first_draft(source, raw, prompt_version=version, method=result.evidence["method"]) == result
+    assert recover_first_draft(source, raw, prompt_version=version, method=FIRST_DRAFT_COOLING_RECOVERY_METHOD) is None
+
+
+@pytest.mark.parametrize(("placement", "specification"), [
+    ("Position the gauge in the exposed section of the service tray.", "Gauge width: 18 mm."),
+    ("Position the gauge on the exposed section of the storage tray.", "Gauge width: 18 mm."),
+    ("Position the spacer on the exposed section of the service tray.", "Gauge width: 18 mm."),
+    ("Position the gauge on the covered section of the service tray.", "Gauge width: 18 mm."),
+    ("Position the gauge on the exposed section of the service tray.", "Gauge width: 19 mm."),
+])
+def test_first_draft_placement_leaves_unbound_facts_rejected(placement, specification):
+    source = document("Place the gauge on the open part of the service tray.", "Gauge width: 18 mm.")
+    raw = response(placement, specification, introduction="The gauge has a width of 18 mm.")
+    raw["replacements"][1].update(action="retain", reason="Exact source measurement.")
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    assert recover_first_draft(source, raw, prompt_version=version) is None
 
 
 def test_cooling_recovery_requires_a_source_aligned_reply():
