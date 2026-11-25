@@ -31,6 +31,8 @@ FIRST_DRAFT_RECOVERY_METHODS = (
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD, FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD, FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
 )
+BANKONE_STRUCTURAL_RECOVERY_METHOD = "source-bound-bankone-first-draft-v1"
+ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS = (*FIRST_DRAFT_RECOVERY_METHODS, BANKONE_STRUCTURAL_RECOVERY_METHOD)
 _FIRST_DRAFT_RECASTABLE_ERRORS = frozenset({
     "REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR", "REWRITE_ACTION_MUTATION",
     "REWRITE_QUALIFIER_MUTATION", "REWRITE_TECHNICAL_MUTATION",
@@ -214,18 +216,23 @@ def _restore_required_action(source, replacement):
     return replacement[:start] + required + replacement[end:]
 
 
-def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version, method, original_error):
+def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version, method, original_error,
+                          bankone_structure=None):
     introduction_replaced = raw["introduction"] != draft["introduction"]
     if not corrected_paths and not introduction_replaced:
         return None
     try:
-        document = auto.render_auto(source, draft, prompt_version=prompt_version)
-        validation = auto.validate_auto(source, document, response=draft, prompt_version=prompt_version)
+        document = auto.render_auto(source, draft, prompt_version=prompt_version, bankone_structure=bankone_structure)
+        validation = auto.validate_auto(
+            source, document, response=draft, prompt_version=prompt_version, bankone_structure=bankone_structure,
+        )
         if not validation.passed:
             return None
-        auto.require_current_publication_checks(source, document, saved_prompt_version=prompt_version)
+        auto.require_current_publication_checks(
+            source, document, saved_prompt_version=prompt_version, bankone_structure=bankone_structure,
+        )
         if method in (FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD, FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
-                      FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD):
+                      FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD, BANKONE_STRUCTURAL_RECOVERY_METHOD):
             rewritten_paths = validation.report["changed_prose_slots"]
             auto.require_distinct_generated_introduction(source, document, rewritten_paths=rewritten_paths)
             auto.require_preserved_display_quotations(source, document, rewritten_paths=rewritten_paths)
@@ -244,6 +251,7 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
         **({"introduction_replaced": introduction_replaced}
            if method in (FIRST_DRAFT_COOLING_RECOVERY_METHOD, FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
                          FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD) else {}),
+        **({"bankone_structure_hash": digest_json(bankone_structure)} if bankone_structure is not None else {}),
     })
 
 
@@ -321,22 +329,52 @@ def _recover_cooling_sequence(source, raw, slots, invalid, *, prompt_version, or
     )
 
 
-def recover_archived_first_draft(source, attempt, *, method, expected_hash):
+def recover_structured_bankone_first_draft(source, attempt, bankone_structure):
+    """Recover an exact stored Bankone reply with its verified authored slots."""
+    from .bankone_first_draft_recovery import recover_bankone_draft
+
+    guard, raw = attempt["guard_version"], attempt["response"]
+    try:
+        auto.render_auto(source, raw, prompt_version=guard)
+    except ValueError as error:
+        original_error = str(error)
+    else:
+        return None
+    if original_error != attempt["error_code"]:
+        return None
+    recovered = recover_bankone_draft(source, raw, prompt_version=guard, structure=bankone_structure)
+    if recovered is None:
+        return None
+    response, corrected_paths = recovered
+    return _validate_first_draft(
+        source, raw, response, corrected_paths, prompt_version=guard, method=BANKONE_STRUCTURAL_RECOVERY_METHOD,
+        original_error=original_error, bankone_structure=bankone_structure,
+    )
+
+
+def recover_archived_first_draft(source, attempt, *, method, expected_hash, bankone_structure=None):
     """Check the recovered v1 digest and render the same reply under its new v3 owner."""
     guard = attempt["guard_version"]
-    recovered = recover_first_draft(source, attempt["response"], prompt_version=guard, method=method)
+    if method == BANKONE_STRUCTURAL_RECOVERY_METHOD and bankone_structure is not None:
+        recovered = recover_structured_bankone_first_draft(source, attempt, bankone_structure)
+    elif method in FIRST_DRAFT_RECOVERY_METHODS and bankone_structure is None:
+        recovered = recover_first_draft(source, attempt["response"], prompt_version=guard, method=method)
+    else:
+        recovered = None
     if (recovered is None or recovered.error_code is not None
         or recovered.evidence["original_error_code"] != attempt["error_code"]
         or recovered.evidence["output_hash"] != expected_hash):
         raise ValueError("FIRST_DRAFT_ARCHIVE_RECOVERY_MISMATCH")
     document = auto.render_auto(
         source, recovered.response, prompt_version=guard, profile_version=SOURCE_BOUND_CORRECTION_PROFILE,
+        bankone_structure=bankone_structure,
     )
     return CorrectionResult(recovered.response, document, None, {
         "method": ARCHIVED_FIRST_DRAFT_METHOD, "guard_version": guard, "exchanges": [],
         "first_draft_recovery": recovered.evidence,
         "prior_attempt_id": str(attempt["rewrite_attempt_id"]), "prior_prompt_hash": attempt["prompt_hash"],
-    }, archived_attempt={key: value for key, value in attempt.items() if key not in {"guard_version", "observation_id"}})
+    }, archived_attempt={key: value for key, value in attempt.items() if key not in {"guard_version", "observation_id"}},
+       bankone_structure=bankone_structure)
 
 
 def recover_first_draft(source, raw, *, prompt_version, method=None):

@@ -115,7 +115,7 @@ def test_publish_first_draft_cli_requires_a_method_and_recovered_document_hash(t
     monkeypatch.setattr(refresh, "publish_source_bound_first_draft", publish)
     base = ["--selection", str(path), "--actor", "operator", "--reason", "Publish the saved draft"]
     apply_args = ["--recover-first-draft-from", str(prior), "--apply"]
-    method = refresh.FIRST_DRAFT_RECOVERY_METHODS[0]
+    method = refresh.ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS[0]
     method_args = ["--first-draft-recovery-method", method]
     output_hash = "1" * 64
     hash_args = ["--expected-first-draft-recovery-hash", output_hash]

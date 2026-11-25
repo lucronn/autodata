@@ -1,5 +1,6 @@
 """Durable generic source jobs. PostgreSQL time/locks are lifecycle authority."""
 
+from hashlib import sha256
 import re
 from uuid import UUID, uuid4
 from psycopg.rows import dict_row
@@ -413,22 +414,99 @@ def schedule_source_bound_correction(
     )
 
 
+def bankone_archive_body_binding(cur, source_id, observation_id, *, lock=False):
+    from .source_media_replay import _check_review_quarantine, _key, _load_snapshots
+
+    mismatch = "FIRST_DRAFT_ARCHIVE_STRUCTURE_MISMATCH"
+    row = cur.execute("""
+        SELECT s.body_source_snapshot_id, s.resource_manifest, o.resource_provenance,
+               o.descriptor_source_snapshot_id, o.resolution_source_snapshot_id
+        FROM canonical_article_source_revisions s
+        JOIN canonical_article_source_observations o USING (source_revision_id, canonical_article_id)
+        JOIN canonical_articles a USING (canonical_article_id)
+        WHERE s.source_revision_id=%s AND o.source_observation_id=%s
+          AND a.provider_slug='bankone' AND a.membership_status='active' AND a.takedown_status='active'
+    """, (source_id, observation_id)).fetchone()
+    if row is None:
+        raise ValueError(mismatch)
+    try:
+        [resource] = [item for item in row["resource_provenance"] if item["role"] == "body"]
+        [manifest] = [item for item in row["resource_manifest"] if item["role"] == "body"]
+        snapshot_id = row["body_source_snapshot_id"]
+        resource_ids = {UUID(item["source_snapshot_id"]) for item in row["resource_provenance"]}
+        if (resource["provider"] != "bankone" or resource["media_type"] != "text/html"
+            or UUID(resource["source_snapshot_id"]) != snapshot_id
+            or any(manifest[field] != resource[field] for field in ("sha256", "media_type", "opaque_ref"))):
+            raise ValueError(mismatch)
+    except (AttributeError, KeyError, TypeError, ValueError):
+        raise ValueError(mismatch) from None
+    ids = resource_ids | {row["descriptor_source_snapshot_id"], row["resolution_source_snapshot_id"]}
+    snapshots = _load_snapshots(cur, ids, resource_ids=resource_ids, lock=lock)
+    _check_review_quarantine(cur, ids, lock=lock)
+    [body] = [snapshot for snapshot in snapshots if snapshot.id == snapshot_id]
+    if (body.digest != resource["sha256"] or body.artifact_digest != body.digest
+        or body.object_key != resource["object_key"] or body.artifact_key != body.object_key
+        or body.object_key != _key(body.digest) or body.media_type != "text/html"):
+        raise ValueError(mismatch)
+    return body
+
+
+def read_bankone_archive_structure(repo, canonical_id, prior_id, source_id, *, object_store):
+    """Extract exact authored slots from the retained, rights-checked HTML body."""
+    from .bankone_first_draft_structure import extract_bankone_structure
+    from .source_media_replay import _MAX_OBJECT_BYTES
+
+    canonical_id, prior_id, source_id = (UUID(str(value)) for value in (canonical_id, prior_id, source_id))
+    with repo.connect() as conn, _cursor(conn) as cur:
+        cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        prior = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (prior_id,)).fetchone()
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s", (canonical_id,)).fetchone()
+        if (article is None or prior is None or prior["canonical_article_id"] != canonical_id
+            or prior["source_revision_id"] != source_id):
+            raise ValueError("FIRST_DRAFT_ARCHIVE_STRUCTURE_MISMATCH")
+        attempt = source_bound_correction_prior_attempt(cur, prior, first_draft=True)
+        observation_id = attempt["observation_id"]
+        if not source_bound_rewrite_source_allowed(
+            cur, article, source_id, predecessor_observation=(observation_id, prior_id, prior["request_generation"]),
+            require_current_observation_scope=article["current_job_id"] == prior_id,
+        ):
+            raise ValueError("SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE")
+        binding = bankone_archive_body_binding(cur, source_id, observation_id)
+        source = prior["checkpoint"]["normalized_document"]
+    try:
+        body = object_store.get_object(binding.object_key, max_bytes=_MAX_OBJECT_BYTES)
+    except Exception:
+        raise ValueError("FIRST_DRAFT_ARCHIVE_BODY_UNAVAILABLE") from None
+    if (not isinstance(body, bytes) or not 0 < len(body) <= _MAX_OBJECT_BYTES
+        or sha256(body).hexdigest() != binding.digest):
+        raise ValueError("FIRST_DRAFT_ARCHIVE_STRUCTURE_MISMATCH")
+    return {"observation_id": str(observation_id), "body_sha256": binding.digest,
+            "proof": extract_bankone_structure(source, body)}
+
+
 def publish_source_bound_first_draft(
     repo, canonical_article_id, *, expected_job_id, expected_source_revision_id, recovery_method,
-    expected_recovery_hash, actor, reason, hooks=None,
+    expected_recovery_hash, actor, reason, hooks=None, object_store=None,
 ):
     """Publish a checked first-draft recovery from its saved response in one transaction."""
-    from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHODS
+    from .procedure_rewrite_recovery import ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_STRUCTURAL_RECOVERY_METHOD
 
-    if (recovery_method not in FIRST_DRAFT_RECOVERY_METHODS
+    if (recovery_method not in ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS
         or not isinstance(expected_recovery_hash, str)
         or not re.fullmatch(r"[a-f0-9]{64}", expected_recovery_hash)):
         raise ValueError("FIRST_DRAFT_ARCHIVE_RECOVERY_MISMATCH")
+    archive = {"method": recovery_method, "output_hash": expected_recovery_hash}
+    if recovery_method == BANKONE_STRUCTURAL_RECOVERY_METHOD:
+        if object_store is None:
+            raise ValueError("FIRST_DRAFT_ARCHIVE_BODY_UNAVAILABLE")
+        archive["bankone_structure"] = read_bankone_archive_structure(
+            repo, canonical_article_id, expected_job_id, expected_source_revision_id, object_store=object_store,
+        )
     return _schedule_source_bound_job(
         repo, canonical_article_id, expected_job_id=expected_job_id,
         expected_source_revision_id=expected_source_revision_id, actor=actor, reason=reason,
         prior_profile=AUTOMATIC_REWRITE_PROFILE, next_profile=SOURCE_BOUND_CORRECTION_PROFILE,
-        model_call_budget=0, archived_recovery={"method": recovery_method, "output_hash": expected_recovery_hash},
+        model_call_budget=0, archived_recovery=archive,
         hooks=hooks,
     )
 

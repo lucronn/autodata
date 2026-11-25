@@ -759,7 +759,7 @@ _CORRECTION_EVIDENCE_INVALID = "REWRITE_CORRECTION_EVIDENCE_INVALID"
 _CORRECTION_SERVER = "server-source-bound-correction"
 
 
-def _bound_correction_draft(cur, job, document):
+def _bound_correction_draft(cur, job, document, *, lock_bankone_archive=False):
     from .procedure_rewrite_auto import _NOTE_LABEL_PROMPT_VERSION
     from .procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
     from .source_job_persistence import source_bound_correction_prior_attempt
@@ -779,12 +779,21 @@ def _bound_correction_draft(cur, job, document):
     first_draft = "first_draft_observation_id" in binding
     method = binding.get("correction_method")
     budget = binding["model_call_budget"]
+    bankone_archive = None
     if method == ARCHIVED_FIRST_DRAFT_METHOD:
-        from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHODS
+        from .procedure_rewrite_recovery import ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_STRUCTURAL_RECOVERY_METHOD
 
         replay = binding.get("archived_recovery")
         if (budget != 0 or not first_draft or not isinstance(replay, dict)
-            or set(replay) != {"method", "output_hash"} or replay["method"] not in FIRST_DRAFT_RECOVERY_METHODS):
+            or replay.get("method") not in ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS):
+            raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+        fields = {"method", "output_hash"}
+        if replay["method"] == BANKONE_STRUCTURAL_RECOVERY_METHOD:
+            fields.add("bankone_structure")
+            bankone_archive = replay.get("bankone_structure")
+            if not isinstance(bankone_archive, dict) or set(bankone_archive) != {"body_sha256", "observation_id", "proof"}:
+                raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+        if set(replay) != fields:
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
     elif not 1 <= budget <= MAX_CORRECTION_CALLS or "archived_recovery" in binding:
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
@@ -824,6 +833,17 @@ def _bound_correction_draft(cur, job, document):
         or binding.get("prior_response_hash") != attempt["response_hash"]
         or (first_draft and binding["first_draft_observation_id"] != str(attempt["observation_id"]))):
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+    if bankone_archive is not None:
+        from .bankone_first_draft_structure import validate_bankone_structure
+        from .source_job_persistence import bankone_archive_body_binding
+
+        original = bankone_archive_body_binding(
+            cur, job["source_revision_id"], attempt["observation_id"], lock=lock_bankone_archive,
+        )
+        if (bankone_archive["observation_id"] != str(attempt["observation_id"])
+            or bankone_archive["body_sha256"] != original.digest):
+            raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+        validate_bankone_structure(document, bankone_archive["proof"])
     return {**binding, "preserve_notes": attempt["guard_version"] == _NOTE_LABEL_PROMPT_VERSION}, attempt
 
 
@@ -894,6 +914,7 @@ def resolve_source_bound_correction(cur, job, candidate):
         archive = binding["archived_recovery"]
         result = recover_archived_first_draft(
             source, prior_attempt, method=archive["method"], expected_hash=archive["output_hash"],
+            bankone_structure=archive.get("bankone_structure", {}).get("proof"),
         )
     elif method == scheduled_method:
         result = replay_retained_correction(
@@ -980,10 +1001,11 @@ def _publish_source_bound_first_draft(cur, job, document, *, hooks=None):
          job_id)).fetchone()
     if job is None:
         raise LeaseLost("archived first draft claim rejected")
-    binding, prior_attempt = _bound_correction_draft(cur, job, document)
+    binding, prior_attempt = _bound_correction_draft(cur, job, document, lock_bankone_archive=True)
     archive = binding["archived_recovery"]
     result = recover_archived_first_draft(
         document, prior_attempt, method=archive["method"], expected_hash=archive["output_hash"],
+        bankone_structure=archive.get("bankone_structure", {}).get("proof"),
     )
     revision, validation_hash = _stage_correction_candidate(
         cur, job, document, result, model=_CORRECTION_SERVER, token=job["lease_token"], attempts=[],
@@ -1318,6 +1340,7 @@ def automatic_candidate_validation(cur, job, candidate, *, require_current=False
         validation = validate_auto(
             source, correction.document, response=correction.response,
             prompt_version=correction.evidence["guard_version"], profile_version=profile,
+            bankone_structure=correction.bankone_structure,
         )
         if not validation.passed:
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
