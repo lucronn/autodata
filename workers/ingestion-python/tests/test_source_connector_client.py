@@ -66,6 +66,15 @@ def _envelope(provider="bankone", **extra):
     }
 
 
+def _html_article_envelope(**extra):
+    content = '<p><mtr-doc-link id="fixture-link">Fixture Procedure</mtr-doc-link></p>'
+    return _envelope(**{
+        "kind": "article", "media_type": "text/html", "content": content,
+        "sha256": hashlib.sha256(content.encode()).hexdigest(),
+        **extra,
+    })
+
+
 class SourceConnectorClientTests(unittest.TestCase):
     def test_closed_connection_catalog_body_remains_readable_with_deadline(self):
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -340,6 +349,82 @@ class SourceConnectorClientTests(unittest.TestCase):
         self.assertEqual(resource.source_version, "revision-1")
         self.assertEqual(resource.locator, source["source_locator"])
         self.assertEqual(resource.metadata["provider"], "autoapi")
+
+    def test_authenticated_bankone_html_keeps_article_link_bindings_as_metadata(self):
+        target = hashlib.sha256(b"fixture-catalog-reference").hexdigest()
+        # Distinct authored IDs may point to the same article.
+        bindings = [{"source_id_sha256": f"{index:064x}", "target_ref_sha256": target} for index in range(128)]
+
+        for selected in ([], bindings):
+            with self.subTest(count=len(selected)):
+                source = _html_article_envelope(article_link_bindings=selected)
+
+                def opener(request, timeout):
+                    self.assertEqual(request.get_header("Authorization"), "Bearer fixture")
+                    return _Response(source, url=request.full_url)
+
+                client = SourceConnectorClient("https://bankone.cars.tk", token="fixture",
+                                               provider="bankone", opener=opener)
+                resource = client.read_resource("fixture-article").to_source_resource()
+                self.assertEqual(resource.payload, source["content"].encode())
+                self.assertEqual(resource.content_sha256, source["sha256"])
+                self.assertEqual(resource.metadata["article_link_bindings"], selected)
+
+        source = _html_article_envelope()
+        legacy = SourceConnectorClient(
+            "https://bankone.cars.tk", provider="bankone",
+            opener=lambda request, timeout: _Response(source, url=request.full_url),
+        ).read_resource("fixture-article").to_source_resource()
+        self.assertEqual(legacy.payload, source["content"].encode())
+        self.assertNotIn("article_link_bindings", legacy.metadata)
+
+    def test_article_link_bindings_require_authenticated_bankone_html_article(self):
+        bindings = [{"source_id_sha256": "a" * 64, "target_ref_sha256": "b" * 64}]
+        cases = (
+            ("unauthenticated", "bankone", None, {}),
+            ("unbound provider", None, "fixture", {}),
+            ("other provider", "banktwo", "fixture", {"provider": "banktwo"}),
+            ("labor", "bankone", "fixture", {"kind": "labor"}),
+            ("text", "bankone", "fixture", {"kind": "text"}),
+            ("non-HTML", "bankone", "fixture", {"media_type": "application/hal+json"}),
+            ("parameterized HTML", "bankone", "fixture", {"media_type": "text/html; charset=utf-8"}),
+        )
+        for case, provider, token, fields in cases:
+            with self.subTest(case=case):
+                source = _html_article_envelope(article_link_bindings=bindings, **fields)
+                client = SourceConnectorClient(
+                    f"https://{provider or 'bankone'}.cars.tk", token=token, provider=provider,
+                    opener=lambda request, timeout: _Response(source, url=request.full_url),
+                )
+                with self.assertRaises(SourceConnectorError) as caught:
+                    client.read_resource("fixture-article")
+                self.assertEqual(caught.exception.code, "INVALID_UPSTREAM_RESPONSE")
+
+    def test_article_link_bindings_reject_invalid_shape_and_duplicate_source(self):
+        binding = {"source_id_sha256": "a" * 64, "target_ref_sha256": "b" * 64}
+        cases = (
+            ("null", None),
+            ("not a list", binding),
+            ("missing key", [{"source_id_sha256": "a" * 64}]),
+            ("raw identifier", [{**binding, "source_id": "fixture-link"}]),
+            ("raw target", [{**binding, "target_ref_sha256": "https://example.invalid/procedure"}]),
+            ("uppercase hash", [{**binding, "source_id_sha256": "A" * 64}]),
+            ("wrong length", [{**binding, "source_id_sha256": "a" * 63}]),
+            ("trailing newline", [{**binding, "target_ref_sha256": "b" * 64 + "\n"}]),
+            ("non-string hash", [{**binding, "target_ref_sha256": None}]),
+            ("duplicate source", [binding, {**binding, "target_ref_sha256": "c" * 64}]),
+            ("too many distinct IDs", [{**binding, "source_id_sha256": f"{index:064x}"} for index in range(129)]),
+        )
+        for case, bindings in cases:
+            with self.subTest(case=case):
+                source = _html_article_envelope(article_link_bindings=bindings)
+                client = SourceConnectorClient(
+                    "https://bankone.cars.tk", token="fixture", provider="bankone",
+                    opener=lambda request, timeout: _Response(source, url=request.full_url),
+                )
+                with self.assertRaises(SourceConnectorError) as caught:
+                    client.read_resource("fixture-article")
+                self.assertEqual(caught.exception.code, "INVALID_UPSTREAM_RESPONSE")
 
     def test_binary_octet_stream_requires_headers_and_valid_hash(self):
         payload = b"binary evidence"

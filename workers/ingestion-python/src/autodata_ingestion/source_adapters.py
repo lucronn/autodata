@@ -2001,6 +2001,8 @@ def adapt_bound_article(
         html = html_resource.payload.decode("utf-8-sig")
         parser = ArticleParser(
             asset_bindings=html_resource.metadata.get("asset_bindings", []),
+            article_link_bindings=(html_resource.metadata.get("article_link_bindings", ())
+                                   if context.key.provider == "bankone" else ()),
             preserve_legacy_list_starts=False,
             keep_html_headings=keep_html_headings,
             keep_html_section_titles=keep_html_section_titles,
