@@ -22,10 +22,12 @@ FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v2"
 FIRST_DRAFT_COOLING_RECOVERY_METHOD = "source-bound-first-draft-recovery-v3"
 FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD = "source-bound-first-draft-recovery-v4"
 FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD = "source-bound-first-draft-recovery-v5"
+FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD = "source-bound-first-draft-recovery-v6"
 REQUIRED_ACTION_WEAKENED = "REWRITE_REQUIRED_ACTION_WEAKENED"
 FIRST_DRAFT_RECOVERY_METHODS = (
     FIRST_DRAFT_RECOVERY_METHOD, FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD, FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD, FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
+    FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
 )
 _FIRST_DRAFT_RECASTABLE_ERRORS = frozenset({
     "REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR", "REWRITE_ACTION_MUTATION",
@@ -76,6 +78,7 @@ _OPEN_PLACEMENT = re.compile(
     rf"(?:Place|Position|Set) the (?P<part>{_PART}) (?P<relation>in|on) the "
     rf"(?P<state>open|exposed) (?:area|part|portion|section) of the (?P<target>{_PART})\.", re.I,
 )
+_COMPOUND_REMOVAL = re.compile(rf"Remove the (?P<first>{_PART}) and the (?P<rest>{_PART})\.", re.I)
 _DIRECTIVE_LABEL_EXCLUSIONS = auto._TARGET_DELIMITERS | frozenset(
     "against down during facing finger inside instead last must never no not only outside should tight together up".split()
 )
@@ -173,6 +176,18 @@ def _restore_open_placement(source, replacement):
     return replacement[:start] + original["state"] + replacement[end:]
 
 
+def _recast_compound_removal(source, replacement):
+    match = _COMPOUND_REMOVAL.fullmatch(source)
+    if (match is None or auto._execution_order(source) != ("remove",)
+            or auto._action_matches(replacement)):
+        return None
+    parts = (match["first"], *re.split(r" and ", match["rest"], flags=re.I))
+    endings = _COMPONENT_ENDINGS | {"screen"}
+    if len(parts) > 3 or not all(_plain_label(part) and part.casefold().split()[-1] in endings for part in parts):
+        return None
+    return f"The {match['first']} and the {match['rest']} must be removed."
+
+
 def _restore_required_action(source, replacement):
     modal = auto.advisory_required_action(source, replacement)
     if modal is None:
@@ -207,7 +222,7 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
         if not validation.passed:
             return None
         auto.require_current_publication_checks(source, document, saved_prompt_version=prompt_version)
-        if method == FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD:
+        if method in (FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD, FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD):
             rewritten_paths = validation.report["changed_prose_slots"]
             auto.require_distinct_generated_introduction(source, document, rewritten_paths=rewritten_paths)
             auto.require_preserved_display_quotations(source, document, rewritten_paths=rewritten_paths)
@@ -224,11 +239,12 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
         "output_hash": digest_json(document),
         "corrected_paths": corrected_paths,
         **({"introduction_replaced": introduction_replaced}
-           if method in (FIRST_DRAFT_COOLING_RECOVERY_METHOD, FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD) else {}),
+           if method in (FIRST_DRAFT_COOLING_RECOVERY_METHOD, FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
+                         FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD) else {}),
     })
 
 
-def _recover_placement_draft(source, raw, slots, *, prompt_version, original_error):
+def _recover_action_draft(source, raw, slots, *, prompt_version, original_error, method):
     draft = deepcopy(raw)
     if original_error == "REWRITE_SPEC_SCOPE_MUTATION":
         # A specification may be removed from the generated introduction.
@@ -247,15 +263,19 @@ def _recover_placement_draft(source, raw, slots, *, prompt_version, original_err
     action_paths = {issue["path"] for issue in auto.failed_rewrite_passages(
         source, raw, prompt_version=prompt_version,
     ) if issue["code"] == "REWRITE_ACTION_MUTATION"}
+    recast = (_restore_open_placement if method == FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD
+              else _recast_compound_removal)
     corrected = []
     for slot, row in zip(slots, draft["replacements"], strict=True):
         if row["action"] == "rewrite" and slot["path"] in action_paths:
-            if wording := _restore_open_placement(slot["text"], row["text"]):
+            if wording := recast(slot["text"], row["text"]):
                 row["text"] = wording
                 corrected.append(slot["path"])
+    if method == FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD and not corrected:
+        return None
     return _validate_first_draft(
         source, raw, draft, corrected, prompt_version=prompt_version,
-        method=FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD, original_error=original_error,
+        method=method, original_error=original_error,
     )
 
 
@@ -302,13 +322,17 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
         return None
     if original_error not in FIRST_DRAFT_RECOVERABLE_ERRORS:
         return None
-    if method in (None, FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD) and original_error in (
-        "REWRITE_ACTION_MUTATION", "REWRITE_SPEC_SCOPE_MUTATION",
-    ):
-        placement = _recover_placement_draft(source, raw, slots, prompt_version=prompt_version, original_error=original_error)
-        if placement is not None:
-            return placement
-    if method == FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD or original_error == "REWRITE_SPEC_SCOPE_MUTATION":
+    action_methods = (FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD, FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD)
+    if original_error in ("REWRITE_ACTION_MUTATION", "REWRITE_SPEC_SCOPE_MUTATION"):
+        for action_method in action_methods:
+            if method not in (None, action_method):
+                continue
+            recovered = _recover_action_draft(
+                source, raw, slots, prompt_version=prompt_version, original_error=original_error, method=action_method,
+            )
+            if recovered is not None:
+                return recovered
+    if method in action_methods or original_error == "REWRITE_SPEC_SCOPE_MUTATION":
         return None
     if method in (None, FIRST_DRAFT_RECOVERY_METHOD) and original_error == "REWRITE_UNCHANGED":
         draft = deepcopy(raw)
