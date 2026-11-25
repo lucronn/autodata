@@ -4690,7 +4690,8 @@ function articleIndexHarness(responses, { wait = async () => {}, now = () => per
   };
   const statuses = [], updates = [], opened = [], requests = [], results = [], shown = [], clearedOrders = [];
   const context = {
-    $, element, URL, uuid, openDemo, demoPath: path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path,
+    $, element, URL, uuid, readableArticle, openDemo,
+    demoPath: path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path,
     location: { href: `https://cars.example/workshop?vehicle=B${openDemo ? '&demo=1' : ''}` },
     document,
     navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexLoaded: false, indexComplete: false, indexCatalogEmpty: false, indexHydrating: false, indexFailed: false, access: '', retryAction: null, filterArticles,
@@ -4734,7 +4735,7 @@ function articleIndexHarness(responses, { wait = async () => {}, now = () => per
     appSection('async function loadSavedSearch(', 'const assetID =') +
     appSection('function clearReader()', 'async function checkOrder(') +
     appSection('$("search").addEventListener("input"', '$("retry").addEventListener') +
-    appSection('function returnToArticleIndex()', '$("print").addEventListener') +
+    appSection('function rememberRetainedIndexArticle(', '$("print").addEventListener') +
     '\nconst actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',
     context,
   );
@@ -4915,6 +4916,61 @@ test('in-app Back traverses the original index entry once and focuses its articl
   assert.equal(h.link.scrollOptions?.block, 'center');
   assert.deepEqual(h.restores, []);
   assert.equal(h.requests.length, 1);
+});
+
+test('Back reuses exact readiness from the first readable source or publication', async t => {
+  for (const origin of ['source', 'canonical']) {
+    await t.test(origin, async () => {
+      const h = await openedIndexHistory();
+      assert.equal(h.link.dataset.retained, 'false');
+      const article = { id: 'first', availability: 'available', content_origin: origin,
+        document: { blocks: [{ type: 'paragraph', text: 'Protected article body.' }] },
+        source_revision_id: routeConfiguration,
+        canonical_revision_id: origin === 'canonical' ? routeArticle : null };
+      h.context.currentArticle = article;
+      h.context.searchItems = [{ id: 'first', title: 'Search result title' }];
+      h.context.rememberRetainedIndexArticle(
+        { status: 200, data: { configuration: h.context.vehicle, article } }, h.context.viewGeneration,
+      );
+      h.$('back').events.click();
+      h.returnToIndex();
+      assert.equal(h.link.dataset.retained, 'true');
+      assert.equal(h.context.document.activeElement, h.link);
+      assert.equal(h.context.currentArticle, null);
+      assert.equal(h.requests.length, 1);
+      assert.equal(h.context.articles[0].document, undefined);
+      assert.equal(h.context.searchItems[0].document, undefined);
+      assert.equal(h.context.searchItems[0].source_revision_id, routeConfiguration);
+      assert.equal(h.context.searchItems[0].title, 'Search result title');
+      let reopened;
+      h.context.openArticle = (id, _link, options) => { reopened = { id, preferRetained: options.preferRetained }; };
+      h.link.events.click({ button: 0, preventDefault() {} });
+      assert.deepEqual(reopened, { id: 'first', preferRetained: true });
+    });
+  }
+});
+
+test('Back does not remember a preview, mismatched scope, or obsolete index response', async t => {
+  for (const scenario of ['preview', 'wrong vehicle', 'wrong article', 'wrong account', 'old navigation']) {
+    await t.test(scenario, async () => {
+      const h = await openedIndexHistory();
+      const article = { id: 'first', availability: 'available', content_origin: 'source',
+        source_revision_id: routeConfiguration, source_body_preview: scenario === 'preview', body: 'Protected source.' };
+      h.context.currentArticle = article;
+      const configuration = { ...h.context.vehicle };
+      const generation = scenario === 'old navigation' ? new NavigationGeneration().next() : h.context.viewGeneration;
+      if (scenario === 'wrong vehicle') configuration.region = 'CA';
+      if (scenario === 'wrong article') article.id = 'different';
+      const stamp = h.context.session.state.csrf;
+      if (scenario === 'wrong account') h.context.session.state.csrf = 'replaced';
+      h.context.rememberRetainedIndexArticle({ status: 200, data: { configuration, article } }, generation);
+      h.context.session.state.csrf = stamp;
+      h.$('back').events.click();
+      h.returnToIndex();
+      assert.equal(h.link.dataset.retained, 'false');
+      assert.equal(h.requests.length, 1);
+    });
+  }
 });
 
 test('in-app Back falls back to its index heading when the prior link is gone', async () => {
@@ -6513,7 +6569,7 @@ function articleMediaHarness(overrides = {}) {
     $: id => { assert.ok(nodes.has(id), `known DOM node ${id}`); return nodes.get(id); },
     navigation, searchNavigation, searchItems: null, searchQuery: '', searchPending: false,
     searchComplete: false, searchError: false, searchTimer: null, clearTimeout() {},
-    currentArticle: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
+    currentArticle: null, articleIndexOrigin: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
     articleImageRefresh: null, sourceImageRefresh: null, articles: [],
     libraryCursor: null, libraryPageRequest: null,
     currentOrder: '',
@@ -6530,6 +6586,7 @@ function articleMediaHarness(overrides = {}) {
     appSection('function clearProtected(', 'async function operation('),
     appSection('function vehicleIdentityLabel(', 'function purchaseConfigured('),
     appSection('const assetID =', 'async function loadArticle('),
+    appSection('function rememberRetainedIndexArticle(', 'function returnToArticleIndex('),
     appSection('function validSourceURL(', 'async function library('),
   ].join('\n'), context);
   return { context, g, nodes, navigation, shows, statuses,

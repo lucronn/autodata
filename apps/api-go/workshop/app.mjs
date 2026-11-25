@@ -1131,6 +1131,12 @@ function scheduleArticleSearch({ fromIndex = false, immediate = false, restoreFo
   else searchTimer = setTimeout(startSearch, 150);
 }
 
+function hasRetainedArticleRevision(article) {
+  return article.availability === "available" &&
+    (article.content_origin === "canonical" && uuid(article.canonical_revision_id) ||
+      article.content_origin === "source" && uuid(article.source_revision_id));
+}
+
 function renderArticleLinks(items) {
   const container = $("articles");
   const existingList = container.firstElementChild;
@@ -1156,9 +1162,7 @@ function renderArticleLinks(items) {
     }
     previous.delete(item.id);
     const link = row.firstElementChild;
-    link.dataset.retained = String(item.availability === "available" &&
-      (item.content_origin === "canonical" && uuid(item.canonical_revision_id) ||
-        item.content_origin === "source" && uuid(item.source_revision_id)));
+    link.dataset.retained = String(hasRetainedArticleRevision(item));
     const kind = typeof item.kind === "string"
       ? item.kind.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ")
       : "";
@@ -1938,6 +1942,7 @@ async function loadArticleView(id, g, order, {
     const readable = readableArticle(article);
     if (retained && (!readable || olderThanRetained(response))) return;
     renderArticle(article, g, refreshVisibleArticle && !verifiedDetail);
+    rememberRetainedIndexArticle(response, g);
     refreshVisibleArticle = false;
     if (readerAlignment && readable) {
       const controller = readerAlignment;
@@ -3092,6 +3097,20 @@ $("back-to-article").addEventListener("click", () => {
 $("article-reference").addEventListener("toggle", () => {
   if (!$("article-reference").open) delete $("reader").dataset.readingOriginal;
 });
+function rememberRetainedIndexArticle(response, g) {
+  const origin = articleIndexOrigin;
+  if (origin?.generation !== g || !canReuseArticleIndex(origin) || !g.current()) return;
+  const { article, configuration } = response.data;
+  if (article?.id !== origin.articleID || configuration?.id !== origin.configuration.configuration_id ||
+      configuration?.region !== origin.configuration.region) return;
+  origin.retained = response.status === 200 && !article.source_body_preview &&
+    readableArticle(article) && hasRetainedArticleRevision(article) ? {
+      availability: article.availability,
+      content_origin: article.content_origin,
+      source_revision_id: article.source_revision_id,
+      canonical_revision_id: article.canonical_revision_id,
+    } : null;
+}
 function returnToArticleIndex() {
   const origin = articleIndexOrigin;
   if (origin?.returning) return;
@@ -3116,6 +3135,13 @@ function restoreHistoryEntry() {
   articleIndexOrigin = null;
   const sameIndex = origin && origin.indexURL === location.href && canReuseArticleIndex(origin);
   if (sameIndex && origin.returning) {
+    if (origin.retained && currentArticle?.id === origin.articleID) {
+      // Keep the readiness of the exact article the reader verified.
+      for (const items of [articles, searchItems]) {
+        const item = items?.find((article) => article.id === origin.articleID);
+        if (item) Object.assign(item, origin.retained);
+      }
+    }
     return showReturnedArticleIndex(origin.indexLink);
   }
   return restoreRoute(null, {
@@ -3278,6 +3304,7 @@ async function recheckReader(g) {
     delete reader.dataset.rechecking;
     show("reader");
     renderArticle(article, g);
+    rememberRetainedIndexArticle(checked, g);
     if (!processingArticle(article) && (articleViewRevision(opened) !== articleViewRevision(article) ||
         opened.processing?.state !== article.processing?.state))
       showArticleReadStatus(opened.id, article);
