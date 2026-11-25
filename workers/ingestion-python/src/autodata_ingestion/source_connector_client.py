@@ -338,6 +338,8 @@ class SourceConnectorClient:
             headers["Content-Type"] = "application/json"
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
+            if operation == "resource" and self.provider == "bankone":
+                headers["Prefer"] = 'include="article-link-bindings"'
         request = Request(url, data=data, headers=headers, method=method)
         try:
             with self._opener(request, timeout=min(self.timeout, timeout) if timeout is not None else self.timeout) as response:

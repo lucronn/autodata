@@ -355,12 +355,15 @@ class SourceConnectorClientTests(unittest.TestCase):
         # Distinct authored IDs may point to the same article.
         bindings = [{"source_id_sha256": f"{index:064x}", "target_ref_sha256": target} for index in range(128)]
 
-        for selected in ([], bindings):
-            with self.subTest(count=len(selected)):
-                source = _html_article_envelope(article_link_bindings=selected)
+        for selected in (None, [], bindings):
+            with self.subTest(count=None if selected is None else len(selected)):
+                source = _html_article_envelope(
+                    **({"article_link_bindings": selected} if selected is not None else {}),
+                )
 
                 def opener(request, timeout):
                     self.assertEqual(request.get_header("Authorization"), "Bearer fixture")
+                    self.assertEqual(request.get_header("Prefer"), 'include="article-link-bindings"')
                     return _Response(source, url=request.full_url)
 
                 client = SourceConnectorClient("https://bankone.cars.tk", token="fixture",
@@ -368,7 +371,10 @@ class SourceConnectorClientTests(unittest.TestCase):
                 resource = client.read_resource("fixture-article").to_source_resource()
                 self.assertEqual(resource.payload, source["content"].encode())
                 self.assertEqual(resource.content_sha256, source["sha256"])
-                self.assertEqual(resource.metadata["article_link_bindings"], selected)
+                if selected is None:
+                    self.assertNotIn("article_link_bindings", resource.metadata)
+                else:
+                    self.assertEqual(resource.metadata["article_link_bindings"], selected)
 
         source = _html_article_envelope()
         legacy = SourceConnectorClient(
@@ -377,6 +383,29 @@ class SourceConnectorClientTests(unittest.TestCase):
         ).read_resource("fixture-article").to_source_resource()
         self.assertEqual(legacy.payload, source["content"].encode())
         self.assertNotIn("article_link_bindings", legacy.metadata)
+
+    def test_article_link_preference_leaves_other_requests_unchanged(self):
+        cases = (
+            ("bankone", "fixture", "capabilities", _envelope(capabilities=["resource_read"])),
+            ("bankone", None, "read_resource", _html_article_envelope()),
+            ("banktwo", "fixture", "read_resource", _html_article_envelope(provider="banktwo")),
+            (None, "fixture", "read_resource", _html_article_envelope()),
+        )
+        for provider, token, operation, source in cases:
+            with self.subTest(provider=provider, token=bool(token), operation=operation):
+                def opener(request, timeout):
+                    self.assertIsNone(request.get_header("Prefer"))
+                    self.assertEqual(request.get_header("Accept"), "application/json, application/octet-stream")
+                    self.assertEqual(request.get_header("Authorization"), "Bearer fixture" if token else None)
+                    return _Response(source, url=request.full_url)
+
+                client = SourceConnectorClient(f"https://{provider or 'bankone'}.cars.tk", token=token,
+                                               provider=provider, opener=opener)
+                if operation == "read_resource":
+                    resource = client.read_resource("fixture-article").to_source_resource()
+                    self.assertNotIn("article_link_bindings", resource.metadata)
+                else:
+                    self.assertEqual(client.capabilities().body["capabilities"], ["resource_read"])
 
     def test_article_link_bindings_require_authenticated_bankone_html_article(self):
         bindings = [{"source_id_sha256": "a" * 64, "target_ref_sha256": "b" * 64}]
@@ -437,13 +466,22 @@ class SourceConnectorClientTests(unittest.TestCase):
             "X-Source-Locator": "https://banktwo.cars.tk/source/asset/1",
             "X-Source-Sha256": digest, "X-Source-Media-Type": "image/png",
         }
-        client = SourceConnectorClient(
-            "https://banktwo.cars.tk", provider="banktwo",
-            opener=lambda request, timeout: _Response(payload, url=request.full_url, headers=headers),
-        )
-        resource = client.read_resource("asset:1").to_source_resource()
-        self.assertEqual(resource.payload, payload)
-        self.assertEqual(resource.metadata["provider"], "autoapitwo")
+        for provider, persisted, token in (("bankone", "autoapi", "fixture"), ("banktwo", "autoapitwo", None)):
+            with self.subTest(provider=provider, authenticated=bool(token)):
+                response_headers = {**headers, "X-Provider": provider,
+                                    "X-Source-Locator": f"https://{provider}.cars.tk/source/asset/1"}
+
+                def opener(request, timeout):
+                    self.assertEqual(request.get_header("Accept"), "application/json, application/octet-stream")
+                    return _Response(payload, url=request.full_url, headers=response_headers)
+
+                client = SourceConnectorClient(f"https://{provider}.cars.tk", token=token,
+                                               provider=provider, opener=opener)
+                resource = client.read_resource("asset:1").to_source_resource()
+                self.assertEqual(resource.payload, payload)
+                self.assertEqual(resource.content_sha256, digest)
+                self.assertEqual(resource.metadata["provider"], persisted)
+                self.assertNotIn("article_link_bindings", resource.metadata)
 
     def test_rejects_redirect_oversize_mismatched_provider_and_corrupt_hash(self):
         base = "https://bankone.cars.tk"

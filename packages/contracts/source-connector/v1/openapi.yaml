@@ -87,6 +87,14 @@ paths:
       operationId: readResource
       parameters:
         - { name: opaqueRef, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 2048 } }
+        - name: Prefer
+          in: header
+          required: false
+          description: >-
+            Authenticated Bankone clients can request article_link_bindings in JSON HTML article
+            envelopes with include="article-link-bindings". Binary and other resources are unaffected.
+          schema: { type: string }
+          example: 'include="article-link-bindings"'
       responses:
         '200':
           description: Raw source bytes with provenance headers.
@@ -291,7 +299,8 @@ components:
               maxItems: 128
               uniqueItems: true
               description: >-
-                Optional on authenticated Bankone HTML article responses. Each source_id_sha256
+                Optional on authenticated Bankone HTML article responses with
+                Prefer: include="article-link-bindings". Each source_id_sha256
                 appears once and hashes the exact authored mtr-doc-link ID as UTF-8.
                 Each target_ref_sha256 hashes the existing deterministic catalog article
                 reference for the linked procedure in the same vehicle as UTF-8.
