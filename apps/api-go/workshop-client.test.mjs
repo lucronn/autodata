@@ -932,6 +932,68 @@ test('the added cold capture check keeps the midpoint, retry floor, and access d
   }
 });
 
+test('an opted-in readable preview gets one bounded check before its regular read', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const processing = { job_id: 'capture-job', state: 'fetching_source' };
+  const pending = { status: 202, shortSourceCheck: true, data: { article: { processing } } };
+  const preview = { status: 200, previewSourceCheck: true, data: { article: {
+    content_origin: 'source', source_body_preview: true, source_revision_id: null, body: 'Readable preview', processing,
+  } } };
+  const stored = { status: 200, data: { article: {
+    content_origin: 'source', source_revision_id: 'stored-revision', body: 'Stored source',
+  } } };
+  const busy = Object.assign(new Error('Too many requests'), { status: 429, retryable: true, retryAfterSeconds: 4 });
+  const denied = Object.assign(new Error('Access revoked'), { status: 403 });
+  for (const [label, firstPreview, early, expected] of [
+    ['stored source ready', preview, stored, [0, 150, 400]],
+    ['repeat preview', preview, preview, [0, 150, 400, 1150]],
+    ['transient error', preview, new TypeError('Network failed'), [0, 150, 400, 1150]],
+    ['rate limit', preview, busy, [0, 150, 400, 4400]],
+    ['revoked grant', preview, denied, [0, 150, 400]],
+    ['no negotiation', { ...preview, retryAfterSeconds: 1, previewSourceCheck: false }, null, [0, 150, 1150]],
+    ['explicit hint', { ...preview, retryAfterSeconds: 3 }, null, [0, 150, 3150]],
+  ]) {
+    let now = 0;
+    const starts = [], shown = [];
+    const reading = readArticle(async (options) => {
+      starts.push(now);
+      if (now === 0) return pending;
+      if (now === 150) return firstPreview;
+      if (now === 400) {
+        assert.equal(options.timeout, 750, label);
+        assert.equal(options.readableBodyTimeout, 750, label);
+        if (early instanceof Error) throw early;
+        return early;
+      }
+      return stored;
+    }, {
+      now: () => now,
+      wait: async ms => { now += ms; },
+      onUpdate: response => shown.push(response.data.article.body),
+    });
+    if (early === denied) await assert.rejects(reading, denied);
+    else assert.equal((await reading).data.article.source_revision_id, 'stored-revision', label);
+    assert.equal(shown[1], 'Readable preview', label);
+    assert.deepEqual(starts, expected, label);
+  }
+});
+
+test('the preview source preference is offered on reads only', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  for (const method of ['GET', 'POST']) {
+    const preference = 'workshop-preview-source-check';
+    const response = await requestArticleJSON('/article', {
+      method, preferShortSourceCheck: true, preferPreviewSourceCheck: true,
+      fetcher: async (_, options) => {
+        const expected = method === 'GET' ? `workshop-short-source-check, ${preference}` : 'workshop-short-source-check';
+        assert.equal(options.headers.Prefer, expected);
+        return new Response('{"article":{"id":"a"}}', { headers: { 'Preference-Applied': preference } });
+      },
+    });
+    assert.equal(response.previewSourceCheck, method === 'GET' ? true : undefined);
+  }
+});
+
 test('readable capture previews can show newer source before scheduled reads', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   const processing = { job_id: 'job', state: 'fetching_source', retry_after_seconds: 1 };

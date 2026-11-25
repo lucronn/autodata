@@ -97,12 +97,14 @@ export async function readArticle(
   let publicationProbeJob;
   let scheduledPublicationCheck;
   const publicationStatusProbes = new Map();
+  let checkedPreviewSource = false;
   let sawFastSource = false;
   let attempt = 0;
   while (now() < deadline) {
     signal?.throwIfAborted();
     let retryAfter = 0, fastPendingJob, fastSource = false, sourcePreview = false, readable = false;
     let shortSourceCheck = false, sourceProbeFailed = false;
+    let previewSourceCheck = false;
     let shortPublicationJob;
     const startedAt = now();
     const advancedProbeLimit = advancedSourceProbeUntil > startedAt ? advancedSourceProbeUntil : 0;
@@ -182,6 +184,8 @@ export async function readArticle(
           ["queued", "fetching_source"].includes(article.processing.state);
         const readableSource = latest.status === 200 && readable && article.content_origin === "source";
         sourcePreview = readableSource && article.source_body_preview === true && article.source_revision_id === null;
+        previewSourceCheck = sourcePreview && latest.previewSourceCheck === true && retryAfter === 0 &&
+          article.processing.state === "fetching_source";
         if (latest.shortPublicationCheck === true && retryAfter === 0 &&
             readableSource && publicationStates.includes(article.processing.state)) {
           shortPublicationJob = article.processing.job_id;
@@ -192,6 +196,7 @@ export async function readArticle(
           }
           fastSource = readableSource;
         }
+        if (previewSourceCheck) fastSource = true;
       }
     } catch (error) {
       signal?.throwIfAborted();
@@ -388,6 +393,13 @@ export async function readArticle(
         sourceMidpointAt = now() + backoff;
         backoff /= 2;
       }
+    }
+    if (previewSourceCheck && !checkedPreviewSource && !sourceMidpointAt &&
+        backoff > sourceProbeIntervalMs && remaining > sourceProbeIntervalMs) {
+      // Check once for the stored body and media, without losing the next regular read.
+      checkedPreviewSource = true;
+      sourceMidpointAt = now() + backoff;
+      backoff = sourceProbeIntervalMs;
     }
     await wait(
       Math.min(remaining, Math.max(backoff, retryAfter * 1000)),
