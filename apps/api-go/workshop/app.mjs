@@ -1890,11 +1890,14 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
       const recover = preparing && g.current();
       preparing = false;
       const transport = error.status === 0 && error.code === "NETWORK_UNAVAILABLE";
-      const scheduling = error.status === 503 && error.retryable === true &&
-        error.code === "CATALOG_SCHEDULING_UNAVAILABLE";
-      if (recover && (transport || canCheckRetained && scheduling)) {
+      const catalogUnavailable = error.status === 503 && error.retryable === true &&
+        ["CATALOG_SCHEDULING_UNAVAILABLE", "CATALOG_UNAVAILABLE"].includes(error.code);
+      const gatewayUnavailable = [502, 503, 504].includes(error.status) &&
+        error.code === "HTTP_ERROR" && !error.retryAfterSeconds;
+      const prepareUnavailable = catalogUnavailable || gatewayUnavailable;
+      if (recover && (transport || canCheckRetained && prepareUnavailable)) {
         // Reuse a check already in flight. Prepare may have committed despite the failure.
-        const exact = Boolean(detailRead) || scheduling || savedLink;
+        const exact = Boolean(detailRead) || prepareUnavailable || savedLink;
         const recovered = await recoverDetail(g.signal);
         initialReadStartedAt = detailStartedAt;
         if (!g.current()) return null;
