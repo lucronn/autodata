@@ -491,13 +491,13 @@ def bankone_first_draft_body_binding(cur, job, dispatched_at, *, require_current
     )
 
 
-def load_bankone_structure(object_store, binding, source, observation_id, *, structure_version):
+def load_bankone_structure(read_retained_object, binding, source, observation_id, *, structure_version):
     """Read a bound object outside the database transaction."""
     from .bankone_first_draft_structure import extract_bankone_structure
     from .source_media_replay import _MAX_OBJECT_BYTES
 
     try:
-        body = object_store.get_object(binding.object_key, max_bytes=_MAX_OBJECT_BYTES)
+        body = read_retained_object(binding.object_key, max_bytes=_MAX_OBJECT_BYTES)
     except Exception:
         raise ValueError("FIRST_DRAFT_ARCHIVE_BODY_UNAVAILABLE") from None
     if (not isinstance(body, bytes) or not 0 < len(body) <= _MAX_OBJECT_BYTES
@@ -526,7 +526,9 @@ def read_bankone_archive_structure(repo, canonical_id, prior_id, source_id, *, o
             raise ValueError("SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE")
         binding = bankone_archive_body_binding(cur, source_id, observation_id)
         source = prior["checkpoint"]["normalized_document"]
-    return load_bankone_structure(object_store, binding, source, observation_id, structure_version=structure_version)
+    return load_bankone_structure(
+        getattr(object_store, "get_object", None), binding, source, observation_id, structure_version=structure_version,
+    )
 
 
 def publish_source_bound_first_draft(

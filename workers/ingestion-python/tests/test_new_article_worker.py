@@ -399,6 +399,41 @@ def test_continuous_preview_unit_is_inert_and_throttled():
     assert 'ExecStartPre=' not in unit and '--initialize' not in unit and '--enable' not in unit
 
 
+def test_continuous_parked_model_gets_only_the_retained_reader(continuous_state, monkeypatch):
+    from threading import Event
+
+    from autodata_ingestion import article_lifecycle, rollout_model_lane
+
+    continuous_state.set_enabled(True)
+    stop = Event()
+    repo, lease, model = object(), object(), object()
+    seen = []
+
+    class ObjectStore:
+        def get_object(self, *args, **kwargs):
+            raise AssertionError("The coordinator must pass the reader without opening an object")
+
+    objects = ObjectStore()
+
+    def run(job_repo, job_lease, *, registry, object_store, model_client, read_retained_object):
+        assert (job_repo, job_lease, model_client) == (repo, lease, model)
+        assert registry == {} and object_store is None
+        assert read_retained_object == objects.get_object
+        seen.append(job_lease)
+        stop.set()
+
+    monkeypatch.setattr(worker, "database_now", lambda _: NOW)
+    monkeypatch.setattr(worker, "_subscribe_to_article_jobs", lambda _: None)
+    monkeypatch.setattr(worker, "_reserve_next_article", lambda *args, **kwargs: None)
+    monkeypatch.setattr(rollout_model_lane, "claim_rollout_model_job", lambda *args, **kwargs: lease)
+    monkeypatch.setattr(article_lifecycle, "run_article_job", run)
+    assert worker.run_new_article_worker(
+        repo, continuous_state, registry={"bankone": object()}, object_store=objects,
+        model_client=model, stop=stop,
+    ) == 0
+    assert seen == [lease]
+
+
 def test_continuous_overlaps_providers_and_refills_a_finished_slot(continuous_state, monkeypatch):
     from threading import Event
 

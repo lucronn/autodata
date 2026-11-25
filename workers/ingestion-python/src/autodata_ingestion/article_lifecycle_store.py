@@ -1513,7 +1513,7 @@ def store_source_preserving_candidate(repo,lease):
             (Jsonb({"candidate_revision_id":str(revision),"rewrite_error_code":None}),lease.job_id))
 
 
-def _read_automatic_bankone_structure(repo, lease, result, object_store):
+def _read_automatic_bankone_structure(repo, lease, result, read_retained_object):
     from .bankone_first_draft_structure import LINKED_STRUCTURE_VERSION
     from .source_job_persistence import bankone_first_draft_body_binding, load_bankone_structure
 
@@ -1534,7 +1534,7 @@ def _read_automatic_bankone_structure(repo, lease, result, object_store):
                 cur, job, job["dispatched_at"], require_current=True,
             )
         return load_bankone_structure(
-            object_store, body, result.document, observation_id, structure_version=LINKED_STRUCTURE_VERSION,
+            read_retained_object, body, result.document, observation_id, structure_version=LINKED_STRUCTURE_VERSION,
         )
     except ValueError:
         return None
@@ -1571,13 +1571,13 @@ def _recover_automatic_bankone_draft(cur, job, attempt, result, prompt_version, 
     )
 
 
-def store_rewrite_result(repo,lease,result, *, bankone_object_store=None):
+def store_rewrite_result(repo,lease,result, *, read_retained_bankone_object=None):
     from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERABLE_ERRORS
 
     structure_binding = None
-    if (bankone_object_store is not None and result.profile_version == AUTOMATIC_REWRITE_PROFILE
+    if (read_retained_bankone_object is not None and result.profile_version == AUTOMATIC_REWRITE_PROFILE
         and result.error_code in FIRST_DRAFT_RECOVERABLE_ERRORS and STAGED_MEDIA_REFRESH not in lease.checkpoint):
-        structure_binding = _read_automatic_bankone_structure(repo, lease, result, bankone_object_store)
+        structure_binding = _read_automatic_bankone_structure(repo, lease, result, read_retained_bankone_object)
     try:
         return _store_rewrite_result(repo,lease,result, structure_binding=structure_binding)
     except RewriteStorageError:

@@ -520,12 +520,15 @@ def _wait_for_article_activity(listener, completions, has_active_job, stop):
         next(notifications, None)
 
 
-def _dispatch_parked_model(repo, lease, *, model_client):
+def _dispatch_parked_model(repo, lease, *, model_client, read_retained_object):
     from .article_lifecycle import run_article_job
 
     # The current source is already durable. The claimed rewrite can drain on
     # shutdown and this lane has no supplier access.
-    run_article_job(repo, lease, registry={}, object_store=None, model_client=model_client)
+    run_article_job(
+        repo, lease, registry={}, object_store=None, model_client=model_client,
+        read_retained_object=read_retained_object,
+    )
 
 
 def _run_continuous_articles(repo, state, *, registry, object_store, model_client, stop):
@@ -585,7 +588,10 @@ def _run_continuous_articles(repo, state, *, registry, object_store, model_clien
                 if model_client is not None and model_future is None and not stop.is_set():
                     lease = claim_rollout_model_job(repo, snapshot, worker_id=uuid4())
                     if lease is not None:
-                        model_future = rewrites.submit(_dispatch_parked_model, repo, lease, model_client=model_client)
+                        model_future = rewrites.submit(
+                            _dispatch_parked_model, repo, lease, model_client=model_client,
+                            read_retained_object=getattr(object_store, "get_object", None),
+                        )
                         model_future.add_done_callback(completed)
                 if stop.is_set():
                     break
