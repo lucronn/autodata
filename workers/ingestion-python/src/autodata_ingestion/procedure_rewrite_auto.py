@@ -78,8 +78,10 @@ _NOTE_LABEL_PROMPT_VERSION = "full-prose-auto-prompt-v61"
 _PROCEDURE_FIDELITY_PROMPT_VERSION = "full-prose-auto-prompt-v62"
 _DRAIN_SUBJECT_PROMPT_VERSION = "full-prose-auto-prompt-v63"
 _ROTATION_REMOVAL_PROMPT_VERSION = "full-prose-auto-prompt-v64"
+_OPTIONAL_OBSERVATION_PROMPT_VERSION = "full-prose-auto-prompt-v65"
 _PROCEDURE_FIDELITY_PROMPT_VERSIONS = (
     _PROCEDURE_FIDELITY_PROMPT_VERSION, _DRAIN_SUBJECT_PROMPT_VERSION, _ROTATION_REMOVAL_PROMPT_VERSION,
+    _OPTIONAL_OBSERVATION_PROMPT_VERSION,
 )
 _AUTHORED_NOTE_PREFIX = re.compile(r"^\s*note\s*:\s*", re.IGNORECASE)
 _NUMERIC_SUPERSCRIPT = re.compile(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]|\^\([+−-]?(?:[0-9]*\.[0-9]+|[0-9]+/[0-9]+)\)")
@@ -465,6 +467,11 @@ _DIRECTIVE_RESTRICTION = re.compile(
 
 _TIMING = re.compile(r"\b(before|after|once|ahead of)\b", re.IGNORECASE)
 _SENTENCES = re.compile(r"(?<=[.!?])\s+|\n+")
+_OBSERVATION_WORD = r"[A-Za-z]+(?:-[A-Za-z]+)*"
+_OPTIONAL_OBSERVATION = re.compile(
+    rf"(?<=\s)This can be seen by the (?P<instrument>{_OBSERVATION_WORD} {_OBSERVATION_WORD}) "
+    rf"on the (?P<location>{_OBSERVATION_WORD} {_OBSERVATION_WORD})\.\Z"
+)
 _STATE_CLAUSE = re.compile(r"\b(?:that|whether)\b[^,;.!?]*$", re.IGNORECASE)
 _ACTION_BOUNDARY = re.compile(r"[,;.!?]|\b(?:and|then|but)\b", re.IGNORECASE)
 _INTRO_COMMAND_PREFIX = (
@@ -2039,23 +2046,26 @@ def _keeps_authored_note_labels(prompt_version):
 
 def build_auto_prompt(document, *, context, profile_version=PROFILE):
     if profile_version == PROFILE:
-        return _build_auto_prompt_v64(document, context=context)
+        return _build_auto_prompt_v65(document, context=context)
     if profile_version != SOURCE_BOUND_REWRITE_PROFILE:
         raise ValueError("REWRITE_PROFILE_UNSUPPORTED")
     return _build_source_bound_prompt(
         document, preserve_notes=True, procedure_fidelity=True,
-        allow_drain_subject=True, allow_rotation_removal=True,
+        allow_drain_subject=True, allow_rotation_removal=True, allow_optional_observation=True,
     )
 
 
 def _build_source_bound_prompt(
     document, *, preserve_notes, procedure_fidelity=False, allow_drain_subject=False, allow_rotation_removal=False,
+    allow_optional_observation=False,
 ):
     builder = _auto_prompt_payload_v61 if preserve_notes else _auto_prompt_payload_v60
     if procedure_fidelity:
         builder = _auto_prompt_payload_v63 if allow_drain_subject else _auto_prompt_payload_v62
     if allow_rotation_removal:
         builder = _auto_prompt_payload_v64
+    if allow_optional_observation:
+        builder = _auto_prompt_payload_v65
     payload = builder(document, context={})
     payload.pop("context", None)
     payload["profile_version"] = SOURCE_BOUND_REWRITE_PROFILE
@@ -2181,9 +2191,34 @@ def _build_auto_prompt_v64(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
+def _auto_prompt_payload_v65(document, *, context):
+    payload = _auto_prompt_payload_v64(document, context=context)
+    for slot in payload["slots"]:
+        if recast := recast_optional_observation(slot["text"]):
+            slot.update(required_action="rewrite", required_text=recast)
+            payload["prompt_version"] = _OPTIONAL_OBSERVATION_PROMPT_VERSION
+    if payload["prompt_version"] == _OPTIONAL_OBSERVATION_PROMPT_VERSION:
+        payload["rules"].append(
+            "For slots with required_text, return that exact text as a rewrite. It rewords the final optional "
+            "observation and preserves both preceding sentences verbatim. Do not return the required_text key."
+        )
+    return payload
+
+
+def _build_auto_prompt_v65(document, *, context):
+    payload = _auto_prompt_payload_v65(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
 def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROFILE):
     """Identify the rules bound to the saved model attempt."""
     if profile_version == SOURCE_BOUND_REWRITE_PROFILE:
+        current = _build_source_bound_prompt(
+            document, preserve_notes=True, procedure_fidelity=True, allow_drain_subject=True,
+            allow_rotation_removal=True, allow_optional_observation=True,
+        )
+        if sha256(current.encode()).hexdigest() == prompt_hash:
+            return json.loads(current)["prompt_version"]
         for preserve_notes, procedure_fidelity, allow_drain_subject, allow_rotation_removal in (
             (True, True, True, True), (True, True, True, False), (True, True, False, False),
             (True, False, False, False), (False, False, False, False),
@@ -2198,6 +2233,7 @@ def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROF
     if profile_version != PROFILE:
         return None
     for builder in (
+        _build_auto_prompt_v65,
         _build_auto_prompt_v64,
         _build_auto_prompt_v63,
         _build_auto_prompt_v62,
@@ -2531,6 +2567,19 @@ def _execution_order(text):
 
 def _negative_scope(text):
     return bool(_NEGATIVE_SCOPE.search(text) or _DIRECTIVE_RESTRICTION.search(text))
+
+
+def recast_optional_observation(text):
+    """Reword a terminal observation without changing the preceding instructions."""
+    match = _OPTIONAL_OBSERVATION.search(text)
+    if match is None:
+        return None
+    sentences = _SENTENCES.split(text.strip())
+    if (len(sentences) != 3 or sentences[-1] != match[0] or not _negative_scope(sentences[1])
+        or not all(sentence.endswith((".", "!", "?")) for sentence in sentences[:2])):
+        return None
+    instrument, location = match.group("instrument", "location")
+    return text[:match.start()] + f"You can see this behavior using the {instrument} on the {location}."
 
 
 def _component_words(text):
@@ -3731,12 +3780,15 @@ def _include_cell_blocks(prompt_version):
 
 def _require_changes(
     source, candidate, *, prompt_version, include_cell_blocks=None, slot_errors=None, introduction_only=False,
-    bankone_structure=None, verified_color_notes=False, allow_rotation_removal=False,
+    bankone_structure=None, verified_color_notes=False, allow_rotation_removal=False, allow_optional_observation=False,
 ):
     # The introduced first block is the only offset in source paths.
     restored = {"blocks": candidate["blocks"][1:]}
     if include_cell_blocks is None:
         include_cell_blocks = _include_cell_blocks(prompt_version)
+    if prompt_version == _OPTIONAL_OBSERVATION_PROMPT_VERSION:
+        allow_optional_observation = True
+        prompt_version = _auto_prompt_payload_v64(source, context={})["prompt_version"]
     if prompt_version == _ROTATION_REMOVAL_PROMPT_VERSION:
         allow_rotation_removal = True
         prompt_version = _auto_prompt_payload_v63(source, context={}, allow_rotation_removal=True)["prompt_version"]
@@ -3929,6 +3981,11 @@ def _require_changes(
             prose = check_bankone_passage(original, replacement, entry)
             if prose is None:
                 return
+        if allow_optional_observation and (recast := recast_optional_observation(original)):
+            if replacement != recast:
+                raise ValueError("REWRITE_OPTIONAL_OBSERVATION_MUTATION")
+            # The exact recast preserves the preceding instructions and the observation's scope.
+            replacement = original
         if guard_note_labels:
             original_label = authored_note_prefix(original)
             replacement_label = authored_note_prefix(replacement)
@@ -4148,7 +4205,11 @@ def _require_changes(
 
 def require_current_publication_checks(source, candidate, *, saved_prompt_version, bankone_structure=None):
     """Apply current prose rules to the saved prompt's editable slots."""
-    allow_rotation_removal = saved_prompt_version == _ROTATION_REMOVAL_PROMPT_VERSION
+    allow_optional_observation = saved_prompt_version == _OPTIONAL_OBSERVATION_PROMPT_VERSION
+    allow_rotation_removal = saved_prompt_version == _ROTATION_REMOVAL_PROMPT_VERSION or (
+        allow_optional_observation
+        and _auto_prompt_payload_v64(source, context={})["prompt_version"] == _ROTATION_REMOVAL_PROMPT_VERSION
+    )
     if saved_prompt_version in _PROCEDURE_FIDELITY_PROMPT_VERSIONS:
         _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure)
         saved_prompt_version = _auto_prompt_payload_v61(source, context={})["prompt_version"]
@@ -4186,6 +4247,7 @@ def require_current_publication_checks(source, candidate, *, saved_prompt_versio
         source, candidate, prompt_version=current_version,
         include_cell_blocks=_include_cell_blocks(saved_prompt_version),
         bankone_structure=bankone_structure, allow_rotation_removal=allow_rotation_removal,
+        allow_optional_observation=allow_optional_observation,
     )
 
 
@@ -4354,6 +4416,7 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None, prof
             _PROCEDURE_FIDELITY_PROMPT_VERSION: "full-prose-auto-validator-v60",
             _DRAIN_SUBJECT_PROMPT_VERSION: "full-prose-auto-validator-v61",
             _ROTATION_REMOVAL_PROMPT_VERSION: "full-prose-auto-validator-v62",
+            _OPTIONAL_OBSERVATION_PROMPT_VERSION: "full-prose-auto-validator-v63",
         }.get(prompt_version, "full-prose-auto-validator-v53")
     if verified_color_notes:
         validator_version = "full-prose-color-note-replay-validator-v1"

@@ -390,7 +390,8 @@ def _source_replay_row(cur, source_revision_id):
                s.projection_version, a.provider_slug, a.vehicle_id, a.vehicle_configuration_id,
                a.source_vehicle_ref, a.source_article_ref, a.membership_status, a.takedown_status,
                a.current_canonical_revision_id,
-               o.source_observation_id, o.body_provider_revision, o.resource_provenance,
+               o.source_observation_id, o.source_fetch_job_id, o.request_generation,
+               o.body_provider_revision, o.resource_provenance,
                o.captured_context, o.descriptor_source_snapshot_id, o.resolution_source_snapshot_id
         FROM canonical_article_source_revisions s
         JOIN canonical_articles a USING (canonical_article_id)

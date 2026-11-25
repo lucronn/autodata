@@ -1,4 +1,4 @@
-"""Repair wording in a completed Banktwo publication using its archived reply."""
+"""Repair wording in a completed article publication using its archived reply."""
 
 from collections.abc import Callable
 from copy import deepcopy
@@ -15,19 +15,22 @@ from .article_document import project_ordered_document
 from .article_lifecycle_types import (
     RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE as CONDITIONAL_PROFILE,
     RETAINED_NOTE_LABEL_REPAIR_PROFILE as PROFILE,
+    RETAINED_OPTIONAL_OBSERVATION_REPAIR_PROFILE as OPTIONAL_OBSERVATION_PROFILE,
     RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE as ROTATION_REMOVAL_PROFILE,
     SOURCE_BOUND_CORRECTION_PROFILE, ValidationResult,
     digest_json, transformation_key,
 )
 from .procedure_rewrite_auto import (
-    _ROTATION_REMOVAL_PROMPT_VERSION, authored_note_prefix, recast_authored_rotation_removal,
-    render_auto, require_current_publication_checks, validate_auto,
+    _OPTIONAL_OBSERVATION_PROMPT_VERSION, _ROTATION_REMOVAL_PROMPT_VERSION, authored_note_prefix,
+    recast_authored_rotation_removal, recast_optional_observation, render_auto, require_current_publication_checks,
+    validate_auto,
 )
 from .procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
 from .procedure_rewrite_fidelity import recast_conditional_color_note
 from .procedure_rewrite_full import _get, _set
 from .procedure_rewrite_recovery import RECOVERY_METHOD
 from .procedure_rewrite_sentence_correction import SENTENCE_CORRECTION_METHOD
+from .retained_bankone_order_reply import BANKONE_ORDER_METHOD
 from .retained_procedure_repair import _valid_audit
 from .source_job_persistence import _lease_from_row, source_bound_rewrite_source_allowed
 from .source_media_replay import _check_review_quarantine, _load_snapshots, _source_replay_row
@@ -45,6 +48,9 @@ _CONDITIONAL_INVALID = "RETAINED_CONDITIONAL_NOTE_REPAIR_INVALID"
 ROTATION_REMOVAL_METHOD = "retained-rotation-removal-archived-reply-repair-v1"
 ROTATION_REMOVAL_CHECKPOINT = "retained_rotation_removal_repair"
 _ROTATION_REMOVAL_INVALID = "RETAINED_ROTATION_REMOVAL_REPAIR_INVALID"
+OPTIONAL_OBSERVATION_METHOD = "retained-optional-observation-archived-reply-repair-v1"
+OPTIONAL_OBSERVATION_CHECKPOINT = "retained_optional_observation_repair"
+_OPTIONAL_OBSERVATION_INVALID = "RETAINED_OPTIONAL_OBSERVATION_REPAIR_INVALID"
 _HASH = re.compile(r"[a-f0-9]{64}")
 
 
@@ -131,6 +137,7 @@ class _Repair:
     stale: str
     edit_reply: Callable
     successor_guard: str | None = None
+    provider: str = "banktwo"
 
 
 _LABELS = _Repair(PROFILE, METHOD, CHECKPOINT, RECOVERY_METHOD, _INVALID, _STALE, _restore_reply)
@@ -145,6 +152,12 @@ _ROTATION_REMOVAL = _Repair(
     partial(_recast_reply, recast=recast_authored_rotation_removal, invalid=_ROTATION_REMOVAL_INVALID),
     successor_guard=_ROTATION_REMOVAL_PROMPT_VERSION,
 )
+_OPTIONAL_OBSERVATION = _Repair(
+    OPTIONAL_OBSERVATION_PROFILE, OPTIONAL_OBSERVATION_METHOD, OPTIONAL_OBSERVATION_CHECKPOINT, BANKONE_ORDER_METHOD,
+    _OPTIONAL_OBSERVATION_INVALID, "RETAINED_OPTIONAL_OBSERVATION_REPAIR_STALE",
+    partial(_recast_reply, recast=recast_optional_observation, invalid=_OPTIONAL_OBSERVATION_INVALID),
+    successor_guard=_OPTIONAL_OBSERVATION_PROMPT_VERSION, provider="bankone",
+)
 
 
 def _source_evidence(cur, article, source_id, descriptor_id, *, lock):
@@ -155,7 +168,7 @@ def _source_evidence(cur, article, source_id, descriptor_id, *, lock):
     try:
         resources = {}
         for entry, proof in zip(source["resource_manifest"], source["resource_provenance"], strict=True):
-            if proof["provider"] != "banktwo" or any(proof.get(key) != value for key, value in entry.items()):
+            if proof["provider"] != article["provider_slug"] or any(proof.get(key) != value for key, value in entry.items()):
                 raise ValueError(_UNAVAILABLE)
             if not entry.get("sha256"):
                 if entry != {key: value for key, value in proof.items() if key != "provider"} or not entry.get("failure_code"):
@@ -192,7 +205,7 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
     from .article_lifecycle_store import _require_source_bound_rewrite_rights
     from .published_media_publication import _publication_evidence_for_revision
 
-    if (prior_job is None or article["provider_slug"] != "banktwo" or prior_job["provider_slug"] != "banktwo"
+    if (prior_job is None or article["provider_slug"] != repair.provider or prior_job["provider_slug"] != repair.provider
         or prior_job["canonical_article_id"] != article["canonical_article_id"] or prior_job["source_revision_id"] != source_id
         or prior_job["job_kind"] != "article" or prior_job["rewrite_profile_version"] != SOURCE_BOUND_CORRECTION_PROFILE
         or prior_job["status"] != "completed" or prior_job["phase"] != "completed" or prior_job["retryable"]
@@ -214,6 +227,22 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
     if review is not None or decision != "UNREVIEWED" or attempt is None:
         raise ValueError(repair.invalid)
 
+    if repair is _OPTIONAL_OBSERVATION:
+        if lock and not source_bound_rewrite_source_allowed(
+            cur, article, source_id,
+            predecessor_observation=(bound_source["source_observation_id"], bound_source["source_fetch_job_id"],
+                                     bound_source["request_generation"]),
+            require_current_observation_scope=True,
+        ):
+            raise ValueError(_UNAVAILABLE)
+        # A successor without an exact link-binding copy could lose access to an embedded link.
+        if cur.execute("""SELECT 1 FROM canonical_article_link_bindings
+            WHERE canonical_article_revision_id=%s LIMIT 1""", (prior_revision_id,)).fetchone():
+            raise ValueError(repair.invalid)
+        archive = {"archived_order_evidence_hash": digest_json(prior["model_metadata"])}
+    else:
+        archive = {"archived_correction_evidence_hash": digest_json(prior["model_metadata"]["correction_evidence"])}
+
     source = prior["normalized_source_document"]
     guard = repair.successor_guard or version
     document, validation, reply, paths = repair.edit_reply(
@@ -232,7 +261,7 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
         "prior_job_id": str(prior_job["source_fetch_job_id"]),
         "prior_revision_id": str(prior_revision_id),
         "prior_document_hash": old_hash,
-        "archived_correction_evidence_hash": digest_json(prior["model_metadata"]["correction_evidence"]),
+        **archive,
         "archived_attempt_id": str(attempt["rewrite_attempt_id"]),
         "archived_final_reply_hash": digest_json(archived_reply),
         "guard_version": guard,
@@ -264,6 +293,11 @@ def resolve_retained_rotation_removal_repair(cur, job, article, candidate, *, pu
     return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_ROTATION_REMOVAL)
 
 
+def resolve_retained_optional_observation_repair(cur, job, article, candidate, *, publishing=False):
+    """Rebuild the exact optional observation from the Bankone order publication."""
+    return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_OPTIONAL_OBSERVATION)
+
+
 def _resolve_repair(cur, job, article, candidate, *, publishing, repair):
     audit = job["checkpoint"].get(repair.checkpoint)
     metadata = candidate["model_metadata"]
@@ -272,7 +306,7 @@ def _resolve_repair(cur, job, article, candidate, *, publishing, repair):
         or metadata.get("profile_version") != repair.profile or not _valid_audit(audit["actor"], audit["reason"])
         or not isinstance(audit["evidence"], dict)
         or job["rewrite_profile_version"] != repair.profile or candidate["rewrite_profile_version"] != repair.profile
-        or job["provider_slug"] != "banktwo" or job["source_version"] != repair.method
+        or job["provider_slug"] != repair.provider or job["source_version"] != repair.method
         or job["retry_count"] != 0 or job["max_attempts"] != 1
         or any(candidate[field] != job[field] for field in (
             "canonical_article_id", "source_revision_id", "normalization_version", "transformation_key",
@@ -344,6 +378,19 @@ def repair_retained_rotation_removal(
     )
 
 
+def repair_retained_optional_observation(
+    repo, article_id, *, expected_job_id, expected_source_revision_id, expected_descriptor_snapshot_id,
+    expected_published_revision_id, expected_published_hash, expected_repaired_hash, actor, reason, hooks=None,
+):
+    """Publish the pinned observation rewording and its event in one transaction."""
+    return _repair_retained_note(
+        repo, article_id, expected_job_id=expected_job_id, expected_source_revision_id=expected_source_revision_id,
+        expected_descriptor_snapshot_id=expected_descriptor_snapshot_id,
+        expected_published_revision_id=expected_published_revision_id, expected_published_hash=expected_published_hash,
+        expected_repaired_hash=expected_repaired_hash, actor=actor, reason=reason, hooks=hooks, repair=_OPTIONAL_OBSERVATION,
+    )
+
+
 def _repair_retained_note(
     repo, article_id, *, expected_job_id, expected_source_revision_id, expected_descriptor_snapshot_id,
     expected_published_revision_id, expected_published_hash, expected_repaired_hash, actor, reason, hooks, repair,
@@ -387,6 +434,7 @@ def _publish_archived_reply_repair(cur, article, plan, *, profile, method, check
 
     article_id = article["canonical_article_id"]
     source_id = article["current_source_revision_id"]
+    provider = article["provider_slug"]
     audit = {"actor": actor, "reason": reason, "evidence": plan.evidence}
     generation = article["request_generation"] + 1
     normalization = article["target_normalization_version"]
@@ -396,10 +444,10 @@ def _publish_archived_reply_repair(cur, article, plan, *, profile, method, check
         source_version,connector_name,idempotency_key,status,phase,job_kind,canonical_article_id,
         request_generation,normalization_version,rewrite_profile_version,source_revision_id,transformation_key,
         max_attempts,lease_owner,lease_token,lease_expires_at,heartbeat_at,checkpoint)
-        VALUES (%s,'banktwo',%s,%s,%s,%s,'banktwo',%s,'processing','publishing','article',%s,%s,%s,%s,%s,%s,
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'processing','publishing','article',%s,%s,%s,%s,%s,%s,
         1,%s,1,clock_timestamp()+interval '90 seconds',clock_timestamp(),%s) RETURNING *""",
-        (job_id, article["vehicle_id"], article["source_vehicle_ref"], article["source_article_ref"],
-         method, f"article:{article_id}:{generation}", article_id, generation, normalization,
+        (job_id, provider, article["vehicle_id"], article["source_vehicle_ref"], article["source_article_ref"],
+         method, provider, f"article:{article_id}:{generation}", article_id, generation, normalization,
          profile, source_id, plan.key, worker_id, Jsonb({checkpoint: audit}))).fetchone()
     projection = project_ordered_document(plan.document)
     cur.execute("""INSERT INTO canonical_article_revisions(

@@ -112,8 +112,9 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
     from .retained_bankone_order_reply import BANKONE_ORDER_METHOD
     from .retained_note_label_repair import (
         CONDITIONAL_METHOD, CONDITIONAL_PROFILE, METHOD as NOTE_LABEL_REPAIR_METHOD, PROFILE as NOTE_LABEL_REPAIR_PROFILE,
-        ROTATION_REMOVAL_METHOD, ROTATION_REMOVAL_PROFILE, resolve_retained_conditional_note_repair,
-        resolve_retained_note_label_repair, resolve_retained_rotation_removal_repair,
+        OPTIONAL_OBSERVATION_METHOD, OPTIONAL_OBSERVATION_PROFILE, ROTATION_REMOVAL_METHOD, ROTATION_REMOVAL_PROFILE,
+        resolve_retained_conditional_note_repair, resolve_retained_note_label_repair,
+        resolve_retained_optional_observation_repair, resolve_retained_rotation_removal_repair,
     )
     from .retained_procedure_repair import METHOD as RETAINED_PROCEDURE_REPAIR_METHOD, resolve_retained_procedure_repair
     from .retained_required_action_repair import (
@@ -140,6 +141,7 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
         REQUIRED_ACTION_PROFILE: (REQUIRED_ACTION_METHOD, resolve_retained_required_action_repair),
         CONDITIONAL_PROFILE: (CONDITIONAL_METHOD, resolve_retained_conditional_note_repair),
         ROTATION_REMOVAL_PROFILE: (ROTATION_REMOVAL_METHOD, resolve_retained_rotation_removal_repair),
+        OPTIONAL_OBSERVATION_PROFILE: (OPTIONAL_OBSERVATION_METHOD, resolve_retained_optional_observation_repair),
     }
     if (profile not in (*AUTOMATIC_REWRITE_PROFILES, REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2, *repaired)
         or (profile in repaired and row["model_metadata"].get("transformation_method") != repaired[profile][0])
