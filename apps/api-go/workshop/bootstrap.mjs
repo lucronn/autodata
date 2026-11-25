@@ -1,6 +1,8 @@
 // The fictional layout sample is separate from the real-data test checkout.
 const params = new URLSearchParams(location.search);
 const wantsDemo = params.get('demo') === '1';
+const pickerStartup = globalThis.workshopPickerStartup;
+delete globalThis.workshopPickerStartup;
 const pageReady = document.readyState === 'loading'
   ? new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }))
   : Promise.resolve();
@@ -25,7 +27,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
   await pageReady;
   await import('./demo.mjs');
 } else {
-  if (!wantsDemo) {
+  if (!wantsDemo && !pickerStartup) {
     // Download the regular app and its helpers during the startup reads.
     for (const module of ['app', 'commerce', 'article-read']) {
       const link = document.createElement('link');
@@ -36,9 +38,18 @@ if (params.get('sample') === '1' && !wantsDemo) {
   }
   const modeRequest = readDemoMode();
   const preview = wantsDemo ? null : import('./catalog.mjs')
-    .then(({ requestInitialYears, startSavedSelectorReads }) => {
-      const selectors = startSavedSelectorReads(params);
-      return { selectors, years: selectors ? null : requestInitialYears(params) };
+    .then(({ requestJSON, requestInitialYears, startSavedSelectorReads }) => {
+      const request = (path, options) => {
+        const pending = pickerStartup?.get(path);
+        if (!pending) return requestJSON(path, options);
+        pickerStartup.delete(path);
+        const signal = options?.signal;
+        if (signal?.aborted) pending.controller.abort(signal.reason);
+        else signal?.addEventListener('abort', () => pending.controller.abort(signal.reason), { once: true });
+        return pending.response;
+      };
+      const selectors = startSavedSelectorReads(params, request);
+      return { selectors, years: selectors ? null : requestInitialYears(params, request) };
     })
     .catch(() => null);
   const initialAccount = wantsDemo ? undefined : import('./auth.mjs')

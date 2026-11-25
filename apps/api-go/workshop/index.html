@@ -5,7 +5,53 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f8f9f5" />
     <title>AutoData — The workshop reference</title>
-    <link rel="modulepreload" href="/workshop/catalog.mjs" />
+    <link rel="modulepreload" href="/workshop/catalog.mjs" id="workshop-catalog-module" data-public-selectors="false" />
+    <script>
+      (() => {
+        const params = new URLSearchParams(location.search);
+        if (params.get('sample') === '1' || params.get('demo') === '1') return;
+
+        const catalog = document.getElementById('workshop-catalog-module');
+        const pending = new Map();
+        globalThis.workshopPickerStartup = pending;
+        for (const name of ['app', 'auth', 'commerce', 'article-read']) {
+          const hint = document.createElement('link');
+          hint.rel = 'modulepreload';
+          hint.href = new URL(`./${name}.mjs`, catalog.href).href;
+          document.head.append(hint);
+        }
+
+        // Use the address bar because the entry proxy may omit its query.
+        const region = params.get('region');
+        if (catalog.dataset.publicSelectors !== 'true' ||
+            ['article', 'configuration', 'order'].some(key => params.has(key)) ||
+            params.get('view') === 'library' || (region && region !== 'US')) return;
+
+        function read(path) {
+          const controller = new AbortController();
+          const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]);
+          const response = fetch(path, { signal, credentials: 'same-origin', cache: 'no-store',
+            headers: { Accept: 'application/json' } })
+            .then(reply => reply.ok ? reply.json() : null).catch(() => null);
+          pending.set(path, { controller, response });
+        }
+
+        const years = '/v1/catalog/years';
+        read(years);
+        const year = params.get('year') || '';
+        if (!/^\d{4}$/.test(year) || Number(year) < 1886 || Number(year) > 2100) return;
+        const stored = '?region=US&stored_only=1';
+        const makes = `${years}/${year}/makes`;
+        read(makes + stored);
+        const validSlug = value => value && value.length <= 128 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+        const make = params.get('make');
+        if (!validSlug(make)) return;
+        const models = `${makes}/${make}/models`;
+        read(models + stored);
+        const model = params.get('model');
+        if (validSlug(model)) read(`${models}/${model}/configurations${stored}`);
+      })();
+    </script>
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23234bd8' d='M0 0h32v32H0z'/%3E%3Cpath fill='white' d='m7 25 7-18h4l7 18h-5l-1-4h-6l-1 4zm7-8h4l-2-6z'/%3E%3C/svg%3E"

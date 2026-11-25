@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -67,6 +65,12 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, bool)
 		entryPage = bytes.Replace(entryPage, unversioned, []byte(`"`+versionedPrefix+asset+`"`), 1)
 	}
 	tags[prefix] = fmt.Sprintf(`W/"%x"`, sha256.Sum256(entryPage))
+	const selectorMarker = `data-public-selectors="false"`
+	if bytes.Count(entryPage, []byte(selectorMarker)) != 1 {
+		panic("Workshop entry page must mark selector visibility")
+	}
+	publicEntry := bytes.Replace(entryPage, []byte(selectorMarker), []byte(`data-public-selectors="true"`), 1)
+	publicEntryTag := fmt.Sprintf(`W/"%x"`, sha256.Sum256(publicEntry))
 	files := http.StripPrefix(prefix, http.FileServer(http.FS(assets)))
 	return func(w http.ResponseWriter, r *http.Request, publicSelectors bool) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -117,54 +121,14 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, bool)
 			w.Header().Set("ETag", tag)
 		}
 		if path == prefix {
-			addWorkshopEntryPreloads(w.Header(), r, versionedPrefix, publicSelectors)
-			http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(entryPage))
+			document := entryPage
+			if publicSelectors {
+				document = publicEntry
+				w.Header().Set("ETag", publicEntryTag)
+			}
+			http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(document))
 			return
 		}
 		files.ServeHTTP(w, r)
-	}
-}
-
-func addWorkshopEntryPreloads(header http.Header, r *http.Request, assets string, publicSelectors bool) {
-	if r.Method != http.MethodGet || r.Header.Get("Range") != "" || strings.Contains(r.Header.Get("Sec-Purpose"), "prefetch") {
-		return
-	}
-	params, err := url.ParseQuery(r.URL.RawQuery)
-	if err != nil || params.Get("demo") == "1" || params.Get("sample") == "1" {
-		return
-	}
-	// These versioned modules are needed by the regular app. The HTML and
-	// bootstrap still declare their usual imports for browsers without hints.
-	for _, name := range []string{"auth.mjs", "app.mjs", "commerce.mjs", "article-read.mjs"} {
-		header.Add("Link", "<"+assets+name+">; rel=modulepreload")
-	}
-	// Account, Library, order and direct-article routes have their own reads.
-	if !publicSelectors || params.Has("order") || params.Has("article") || params.Has("configuration") ||
-		params.Get("view") == "library" || (params.Get("region") != "" && params.Get("region") != "US") {
-		return
-	}
-	preload := func(path string) {
-		header.Add("Link", "<"+path+">; rel=preload; as=fetch; crossorigin=anonymous")
-	}
-	preload("/v1/catalog/years")
-	year := params.Get("year")
-	number, err := strconv.Atoi(year)
-	if err != nil || len(year) != 4 || number < 1886 || number > 2100 {
-		return
-	}
-	// Match the saved picker's early URLs. Only its regular reads may queue
-	// missing descendant data, after the parent is confirmed.
-	const stored = "?region=US&stored_only=1"
-	makes := "/v1/catalog/years/" + year + "/makes"
-	preload(makes + stored)
-	makeSlug := params.Get("make")
-	if makeSlug == "" || len(makeSlug) > 128 || catalogSlug(makeSlug) != makeSlug {
-		return
-	}
-	models := makes + "/" + makeSlug + "/models"
-	preload(models + stored)
-	model := params.Get("model")
-	if model != "" && len(model) <= 128 && catalogSlug(model) == model {
-		preload(models + "/" + model + "/configurations" + stored)
 	}
 }
