@@ -34,6 +34,7 @@ BANKONE_HTML_FLOW_LAYOUT = "bankone-html-flow-v1"
 MIXED_HTML_PDF_LAYOUT = "mixed-html-pdf-v1"
 PDF_BLANK_PAGE_LAYOUT = "blank-pdf-pages-v1"
 PDF_COMPACT_FIGURE_LAYOUT = "compact-pdf-figures-v1"
+PDF_FAST_PNG_ENCODING = "png-level-3-v1"
 PDF_LEGACY_FIGURE_LAYOUT = "legacy-pdf-figures-v1"
 PDF_REPEAT_MARGIN_LAYOUT = "repeated-pdf-margins-v1"
 PDF_SINGLE_LINE_FIGURE_LAYOUT = "single-line-pdf-figure-v1"
@@ -190,6 +191,7 @@ class SourceArticleContext:
     legacy_published_bankone_flow_body: str | None = None
     legacy_published_bankone_svg_refs: frozenset[str] = frozenset()
     has_stored_source: bool = False
+    fast_linked_pdf_png_roots: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)

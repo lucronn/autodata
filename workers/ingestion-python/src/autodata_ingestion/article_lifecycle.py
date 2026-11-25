@@ -13,7 +13,7 @@ from .article_lifecycle_types import (
     AUTOMATIC_REWRITE_PROFILES, ArticleKey, BANKONE_HTML_FLOW_LAYOUT, HTML_DOCUMENT_LINK_LAYOUT,
     HTML_FIGURE_CAPTION_LAYOUT, HTML_FLOW_FIGURE_CAPTION_LAYOUT,
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT, HTML_SECTION_TITLE_LAYOUT, HTML_TABLE_CAPTION_LAYOUT,
-    PDF_BLANK_PAGE_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT,
+    PDF_BLANK_PAGE_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT, PDF_FAST_PNG_ENCODING,
     PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT, SourceArticleContext,
     SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, SOURCE_PROJECTION_VERSIONS,
 )
@@ -51,6 +51,13 @@ def _capture_context(repo,lease):
     with repo.connect() as conn,conn.cursor(row_factory=dict_row) as cur:
         job=lock_live_lease(cur,lease)
         row=cur.execute("""SELECT a.*,v.make,v.model,v.model_year,v.region,
+            ARRAY(SELECT DISTINCT entry->>'sha256'
+                FROM canonical_article_source_revisions retained
+                CROSS JOIN LATERAL jsonb_array_elements(retained.resource_manifest) entries(entry)
+                WHERE retained.canonical_article_id=a.canonical_article_id
+                  AND entry->>'role'='document_asset' AND entry->>'media_type'='application/pdf'
+                  AND entry->>'pdf_figure_encoding'=%s AND jsonb_typeof(entry->'sha256')='string'
+            ) AS fast_png_roots,
             prior.projection_version AS prior_projection_version,
             prior.resource_manifest AS prior_published_resources, prior_body.content_sha256 AS prior_published_body,
             EXISTS (SELECT 1 FROM canonical_article_revisions published
@@ -63,7 +70,9 @@ def _capture_context(repo,lease):
             LEFT JOIN canonical_article_source_revisions prior ON prior.source_revision_id=a.current_source_revision_id
               AND a.current_canonical_revision_id IS NOT NULL AND prior.projection_version=ANY(%s)
             LEFT JOIN source_snapshots prior_body ON prior_body.source_snapshot_id=prior.body_source_snapshot_id
-            WHERE a.canonical_article_id=%s""", (list(guarded_pdf_versions), lease.canonical_article_id)).fetchone()
+            WHERE a.canonical_article_id=%s""",
+            (PDF_FAST_PNG_ENCODING, list(guarded_pdf_versions), lease.canonical_article_id),
+        ).fetchone()
         if row is None or row["current_job_id"]!=lease.job_id or row["request_generation"]!=lease.generation:
             raise LeaseLost("source capture generation changed")
         if row["resolution_source_snapshot_id"] is None:raise ValueError("SOURCE_BINDING_REVIEW_REQUIRED")
@@ -172,6 +181,9 @@ def _capture_context(repo,lease):
                 and legacy_bankone_flow_body is not None else frozenset()
             ),
             has_stored_source=row["current_source_revision_id"] is not None,
+            # Preserve the encoding even after an intervening partial refresh
+            # whose manifest contains an attachment failure without a digest.
+            fast_linked_pdf_png_roots=frozenset(row["fast_png_roots"]),
         )
 
 
