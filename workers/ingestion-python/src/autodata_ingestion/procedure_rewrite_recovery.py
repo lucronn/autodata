@@ -257,7 +257,7 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
            if method in (FIRST_DRAFT_COOLING_RECOVERY_METHOD, FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
                          FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD) else {}),
         **({"bankone_structure_hash": digest_json(bankone_structure)} if bankone_structure is not None else {}),
-    })
+    }, bankone_structure=bankone_structure)
 
 
 def _recover_action_draft(source, raw, slots, *, prompt_version, original_error, method):

@@ -458,11 +458,57 @@ def bankone_archive_body_binding(cur, source_id, observation_id, *, lock=False):
     return body
 
 
-def read_bankone_archive_structure(repo, canonical_id, prior_id, source_id, *, object_store, structure_version=1):
-    """Extract exact authored slots from the retained, rights-checked HTML body."""
+def bankone_first_draft_body_binding(cur, job, dispatched_at, *, require_current=False, lock=False):
+    """Bind an automatic draft to the body captured by its own job."""
+    mismatch = "FIRST_DRAFT_RECOVERY_BINDING_INVALID"
+    if job["provider_slug"] != "bankone" or STAGED_MEDIA_REFRESH in job["checkpoint"]:
+        raise ValueError(mismatch)
+    observation = cur.execute("""
+        SELECT source_observation_id,captured_at FROM canonical_article_source_observations
+        WHERE source_fetch_job_id=%s AND canonical_article_id=%s AND source_revision_id=%s AND request_generation=%s
+        """, (job["source_fetch_job_id"], job["canonical_article_id"], job["source_revision_id"],
+              job["request_generation"])).fetchone()
+    if (observation is None or dispatched_at is None
+        or not job["created_at"] <= observation["captured_at"] <= dispatched_at):
+        raise ValueError(mismatch)
+    observation_id = observation["source_observation_id"]
+    model_observation = job["checkpoint"].get("rollout_model_observation_id")
+    if model_observation is not None and model_observation != str(observation_id):
+        raise ValueError(mismatch)
+    if require_current:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (job["canonical_article_id"],)).fetchone()
+        if (article is None or article["current_job_id"] != job["source_fetch_job_id"]
+            or article["request_generation"] != job["request_generation"]
+            or not source_bound_rewrite_source_allowed(
+                cur, article, job["source_revision_id"], require_current_observation_scope=True,
+                predecessor_observation=(observation_id, job["source_fetch_job_id"], job["request_generation"]),
+                allow_unscoped=model_observation is not None,
+            )):
+            raise ValueError(mismatch)
+    return observation_id, bankone_archive_body_binding(
+        cur, job["source_revision_id"], observation_id, lock=lock,
+    )
+
+
+def load_bankone_structure(object_store, binding, source, observation_id, *, structure_version):
+    """Read a bound object outside the database transaction."""
     from .bankone_first_draft_structure import extract_bankone_structure
     from .source_media_replay import _MAX_OBJECT_BYTES
 
+    try:
+        body = object_store.get_object(binding.object_key, max_bytes=_MAX_OBJECT_BYTES)
+    except Exception:
+        raise ValueError("FIRST_DRAFT_ARCHIVE_BODY_UNAVAILABLE") from None
+    if (not isinstance(body, bytes) or not 0 < len(body) <= _MAX_OBJECT_BYTES
+        or sha256(body).hexdigest() != binding.digest):
+        raise ValueError("FIRST_DRAFT_ARCHIVE_STRUCTURE_MISMATCH")
+    return {"observation_id": str(observation_id), "body_sha256": binding.digest,
+            "proof": extract_bankone_structure(source, body, version=structure_version)}
+
+
+def read_bankone_archive_structure(repo, canonical_id, prior_id, source_id, *, object_store, structure_version=1):
+    """Extract exact authored slots from the retained, rights-checked HTML body."""
     canonical_id, prior_id, source_id = (UUID(str(value)) for value in (canonical_id, prior_id, source_id))
     with repo.connect() as conn, _cursor(conn) as cur:
         cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
@@ -480,15 +526,7 @@ def read_bankone_archive_structure(repo, canonical_id, prior_id, source_id, *, o
             raise ValueError("SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE")
         binding = bankone_archive_body_binding(cur, source_id, observation_id)
         source = prior["checkpoint"]["normalized_document"]
-    try:
-        body = object_store.get_object(binding.object_key, max_bytes=_MAX_OBJECT_BYTES)
-    except Exception:
-        raise ValueError("FIRST_DRAFT_ARCHIVE_BODY_UNAVAILABLE") from None
-    if (not isinstance(body, bytes) or not 0 < len(body) <= _MAX_OBJECT_BYTES
-        or sha256(body).hexdigest() != binding.digest):
-        raise ValueError("FIRST_DRAFT_ARCHIVE_STRUCTURE_MISMATCH")
-    return {"observation_id": str(observation_id), "body_sha256": binding.digest,
-            "proof": extract_bankone_structure(source, body, version=structure_version)}
+    return load_bankone_structure(object_store, binding, source, observation_id, structure_version=structure_version)
 
 
 def publish_source_bound_first_draft(

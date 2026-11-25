@@ -301,7 +301,10 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None,m
                         _hook(hooks,"after_model_dispatch")
                         result=rewrite_ordered_document(document,client=model_client,context=source.vehicle,profile_version=profile)
                     if lost.is_set():raise LeaseLost("heartbeat lost during model IO")
-                    store.store_rewrite_result(repo,lease,result)
+                    store.store_rewrite_result(
+                        repo, lease, result,
+                        bankone_object_store=object_store if source.context.key.provider == "bankone" else None,
+                    )
                     _hook(hooks,"after_model_result_commit")
                     if profile == "full-prose-review-v1" and not result.error_code:
                         return

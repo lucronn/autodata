@@ -1,5 +1,6 @@
 """Recover one verbatim automatic draft through the ordinary article worker."""
 
+from copy import deepcopy
 from io import BytesIO
 import json
 
@@ -259,7 +260,39 @@ def test_publish_archived_first_draft_is_atomic_and_reuses_the_figure(runtime, m
     assert effective == reviewed.response and guard == attempt["guard_version"]
 
 
-def test_bankone_archive_requires_verified_body_and_retains_authored_alternatives(runtime):
+def assert_automatic_bankone_recovery(runtime, job_id, model, *, method, proof_kinds):
+    current = runtime.read_current()
+    assert current["content_origin"] == "canonical"
+    assert current["source_revision_id"] == model.original["source_revision_id"]
+    assert [image["content_sha256"] for image in current["images"]] == [
+        image["content_sha256"] for image in model.original["images"]
+    ]
+    binding = store.load_source_revision(runtime.repo, current["source_revision_id"])
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (runtime.article_id,)).fetchone()
+        job = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (job_id,)).fetchone()
+        revision, _, _, attempt, effective, _, _ = _publication_evidence(
+            cur, article, binding, fixture_mode=True, lock=False,
+        )
+        assert job["status"] == "completed"
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
+        metadata = revision["model_metadata"]
+        assert metadata["transformation_method"] == method
+        assert metadata["first_draft_recovery"]["raw_response_hash"] == digest_json(model.raw)
+        saved = metadata["bankone_first_draft_structure"]
+        assert {slot["kind"] for slot in saved["proof"]["slots"].values()} == proof_kinds
+        assert metadata["first_draft_recovery"]["bankone_structure_hash"] == digest_json(saved["proof"])
+        invalid = deepcopy(revision)
+        invalid["model_metadata"]["bankone_first_draft_structure"]["body_sha256"] = "0" * 64
+        with pytest.raises(ValueError, match="FIRST_DRAFT_RECOVERY_BINDING_INVALID"):
+            store.automatic_candidate_validation(cur, job, invalid)
+    assert attempt_rows(runtime, job_id) == [attempt]
+    assert attempt["response"] == model.raw and effective != model.raw
+
+
+@pytest.mark.parametrize("automatic", [False, True])
+def test_bankone_archive_requires_verified_body_and_retains_authored_alternatives(runtime, monkeypatch, automatic):
     scope_fixture_article(runtime)
     authored = (
         'Fixture test adapter (2) » Remove <mtr-doc-link id="fixture-a">ordinary adapter</mtr-doc-link> '
@@ -273,15 +306,29 @@ def test_bankone_archive_requires_verified_body_and_retains_authored_alternative
         _model = "fixture-auto"
 
         def complete_json(self, prompt):
+            self.original = runtime.read_current()
+            assert self.original["availability"] == "available" and self.original["content_origin"] == "source"
             slots = json.loads(prompt)["slots"]
-            return {"introduction": "This article covers the service information that follows.", "replacements": [
+            self.raw = {"introduction": "This article covers the service information that follows.", "replacements": [
                 {"block_id": slot["block_id"], "path": slot["path"], "action": slot["required_action"],
                  "text": f"First, {slot['text']}" if slot["required_action"] == "rewrite" else slot["text"],
                  "reason": "Preserve the authored parameter." if slot["required_action"] == "retain" else ""}
                 for slot in slots
             ]}
+            return self.raw
 
-    assert run_job(runtime, prior_id, CloseCopy(), registry=runtime.registry)
+    model = CloseCopy()
+    with monkeypatch.context() as patch:
+        if not automatic:
+            # Reproduce the historic failure that the operator path repairs.
+            patch.setattr(store, "_read_automatic_bankone_structure", lambda *_: None)
+        assert run_job(runtime, prior_id, model, registry=runtime.registry)
+    if automatic:
+        assert_automatic_bankone_recovery(
+            runtime, prior_id, model, method=BANKONE_STRUCTURAL_RECOVERY_METHOD, proof_kinds={"alternatives"},
+        )
+        assert "follow the applicable removal option" in runtime.read_current()["body"]
+        return
     source = runtime.read_current()
     assert source["content_origin"] == "source" and source["availability"] == "available"
     assert source["processing_error_code"] == "REWRITE_PROSE_TOO_SIMILAR"
@@ -323,7 +370,8 @@ def test_bankone_archive_requires_verified_body_and_retains_authored_alternative
     assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}
 
 
-def test_bankone_linked_archive_publishes_from_the_exact_retained_body(runtime):
+@pytest.mark.parametrize("automatic", [False, True])
+def test_bankone_linked_archive_publishes_from_the_exact_retained_body(runtime, monkeypatch, automatic):
     scope_fixture_article(runtime)
     prior_id = queue_article(runtime, figure=True)
     body = (
@@ -343,13 +391,26 @@ def test_bankone_linked_archive_publishes_from_the_exact_retained_body(runtime):
         _model = "fixture-auto"
 
         def complete_json(self, prompt):
-            return {"introduction": "This article covers the service information that follows.", "replacements": [
+            self.original = runtime.read_current()
+            assert self.original["availability"] == "available" and self.original["content_origin"] == "source"
+            self.raw = {"introduction": "This article covers the service information that follows.", "replacements": [
                 {"block_id": slot["block_id"], "path": slot["path"], "action": slot["required_action"],
                  "text": slot["text"], "reason": "Preserve the authored parameter."}
                 for slot in json.loads(prompt)["slots"]
             ]}
+            return self.raw
 
-    assert run_job(runtime, prior_id, CopyDraft(), registry=runtime.registry)
+    model = CopyDraft()
+    with monkeypatch.context() as patch:
+        if not automatic:
+            patch.setattr(store, "_read_automatic_bankone_structure", lambda *_: None)
+        assert run_job(runtime, prior_id, model, registry=runtime.registry)
+    if automatic:
+        assert_automatic_bankone_recovery(
+            runtime, prior_id, model, method=BANKONE_LINKED_RECOVERY_METHOD,
+            proof_kinds={"procedure_section", "single_link_directive"},
+        )
+        return
     current = runtime.read_current()
     assert current["availability"] == "available" and current["content_origin"] == "source"
     assert current["processing_error_code"] == "REWRITE_UNCHANGED"
