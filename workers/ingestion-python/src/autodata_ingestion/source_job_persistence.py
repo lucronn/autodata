@@ -215,7 +215,9 @@ def refresh_article_job(
         return result
 
 
-def source_bound_rewrite_source_allowed(cur, article, source_revision_id, *, predecessor_observation=None):
+def source_bound_rewrite_source_allowed(
+    cur, article, source_revision_id, *, predecessor_observation=None, require_current_observation_scope=False,
+):
     """Check exact-scope source visibility while the caller owns the article lock."""
     if (article["current_source_revision_id"] != source_revision_id
         or article["provider_slug"] not in ("bankone", "banktwo")
@@ -265,7 +267,7 @@ def source_bound_rewrite_source_allowed(cur, article, source_revision_id, *, pre
           )
         """, (article["descriptor_source_snapshot_id"], article["canonical_article_id"], source_revision_id)).fetchone() is not None
     if not allowed or predecessor_observation is None:
-        return allowed
+        return allowed and not require_current_observation_scope
     observation_id, job_id, generation = predecessor_observation
     return cur.execute("""
         SELECT 1 FROM canonical_article_source_observations o
@@ -274,11 +276,26 @@ def source_bound_rewrite_source_allowed(cur, article, source_revision_id, *, pre
         WHERE o.source_observation_id=%s AND o.source_fetch_job_id=%s AND o.request_generation=%s
           AND o.canonical_article_id=%s AND o.source_revision_id=%s
           AND descriptor.takedown_status='active' AND resolution.takedown_status='active'
+          AND (NOT %s OR EXISTS (
+              SELECT 1 FROM canonical_articles a
+              JOIN vehicle_configurations c ON c.vehicle_configuration_id=a.vehicle_configuration_id
+                                           AND c.vehicle_id=a.vehicle_id
+              JOIN vehicle_identity_bases b ON b.vehicle_identity_base_id=c.vehicle_identity_base_id
+                                            AND b.vehicle_id=a.vehicle_id
+              JOIN catalog_article_provider_scopes p ON p.scope_key=a.scope_key
+                                                    AND p.provider_slug=a.provider_slug
+                                                    AND p.source_vehicle_ref=a.source_vehicle_ref
+              WHERE a.canonical_article_id=o.canonical_article_id
+                AND a.descriptor_source_snapshot_id=o.descriptor_source_snapshot_id
+                AND p.resolution_source_snapshot_id=o.resolution_source_snapshot_id
+                AND b.region=o.captured_context->'vehicle'->>'region'
+          ))
           AND NOT EXISTS (
               SELECT 1 FROM source_review_items q WHERE q.item_kind='quarantine' AND q.status<>'approved'
               AND q.source_snapshot_ids ?| ARRAY[descriptor.source_snapshot_id::text,resolution.source_snapshot_id::text]
           )
-        """, (observation_id, job_id, generation, article["canonical_article_id"], source_revision_id)).fetchone() is not None
+        """, (observation_id, job_id, generation, article["canonical_article_id"], source_revision_id,
+              require_current_observation_scope)).fetchone() is not None
 
 
 def schedule_source_bound_rewrite(
@@ -293,7 +310,7 @@ def schedule_source_bound_rewrite(
 
 
 def source_bound_correction_prior_attempt(cur, prior_job, *, first_draft=False):
-    """Load the exact failed draft that can supply source-bound correction."""
+    """Rebuild immutable draft evidence independently of today's catalog pointers."""
     rejected = "SOURCE_BOUND_CORRECTION_PRIOR_DRAFT_INVALID"
     profile = AUTOMATIC_REWRITE_PROFILE if first_draft else SOURCE_BOUND_REWRITE_PROFILE
     if (prior_job is None or prior_job["job_kind"] != "article"
@@ -319,18 +336,8 @@ def source_bound_correction_prior_attempt(cur, prior_job, *, first_draft=False):
         observed = cur.execute("""
             SELECT o.source_observation_id,o.captured_context->'vehicle' AS vehicle,o.captured_at
             FROM canonical_article_source_observations o
-            JOIN canonical_articles a USING(canonical_article_id)
-            JOIN vehicle_configurations c ON c.vehicle_configuration_id=a.vehicle_configuration_id
-                                         AND c.vehicle_id=a.vehicle_id
-            JOIN vehicle_identity_bases b ON b.vehicle_identity_base_id=c.vehicle_identity_base_id
-                                          AND b.vehicle_id=a.vehicle_id
-            JOIN catalog_article_provider_scopes p ON p.scope_key=a.scope_key
-                                                  AND p.provider_slug=a.provider_slug
-                                                  AND p.source_vehicle_ref=a.source_vehicle_ref
             WHERE o.source_fetch_job_id=%s AND o.canonical_article_id=%s AND o.source_revision_id=%s
-              AND o.request_generation=%s AND o.descriptor_source_snapshot_id=a.descriptor_source_snapshot_id
-              AND o.resolution_source_snapshot_id=p.resolution_source_snapshot_id
-              AND o.captured_context->'vehicle'->>'region'=b.region
+              AND o.request_generation=%s
             """, (prior_job["source_fetch_job_id"], prior_job["canonical_article_id"], prior_job["source_revision_id"],
                   prior_job["request_generation"])).fetchone()
         if (observed is None or not isinstance(observed["vehicle"], dict)
@@ -494,15 +501,19 @@ def _schedule_source_bound_job(
             )
             if first_draft:
                 observation_id = attempt["observation_id"]
-                if not source_bound_rewrite_source_allowed(
-                    cur, article, expected_source_revision_id,
-                    predecessor_observation=(observation_id, expected_job_id, prior["request_generation"]),
-                ):
-                    raise ValueError("SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE")
+                predecessor_observation = (observation_id, expected_job_id, prior["request_generation"])
                 binding["first_draft_observation_id"] = str(observation_id)
         key = transformation_key(*key_inputs, next_profile, projection_version=projection)
         generation = article["request_generation"]
-        if article["target_rewrite_profile_version"] == next_profile:
+        rejoining = article["target_rewrite_profile_version"] == next_profile
+        # Rejoining a saved job still requires access to its source. Only a
+        # new admission requires the observed catalog scope to be current.
+        if first_draft and not source_bound_rewrite_source_allowed(
+            cur, article, expected_source_revision_id, predecessor_observation=predecessor_observation,
+            require_current_observation_scope=not rejoining,
+        ):
+            raise ValueError("SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE")
+        if rejoining:
             # No lock on the current rewrite job while holding the article row.
             current = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",
                                   (article["current_job_id"],)).fetchone()

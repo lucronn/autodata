@@ -641,6 +641,7 @@ def _require_source_bound_rewrite_rights(cur, job, article):
     profile = job["rewrite_profile_version"]
     marker_version = {SOURCE_BOUND_REWRITE_PROFILE: 1, SOURCE_BOUND_CORRECTION_PROFILE: 2}.get(profile)
     predecessor_observation = None
+    require_current_observation_scope = False
     if "source_bound_rewrite" in job["checkpoint"] or profile == SOURCE_BOUND_CORRECTION_PROFILE:
         marker = job["checkpoint"].get("source_bound_rewrite")
         if (marker_version is None or not isinstance(marker, dict)
@@ -666,6 +667,7 @@ def _require_source_bound_rewrite_rights(cur, job, article):
             except (AttributeError, KeyError, TypeError, ValueError):
                 raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID") from None
             if "first_draft_observation_id" in marker:
+                require_current_observation_scope = True
                 generation = marker.get("prior_generation")
                 if type(generation) is not int or generation + 1 != job["request_generation"]:
                     raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID")
@@ -687,6 +689,7 @@ def _require_source_bound_rewrite_rights(cur, job, article):
         from .source_job_persistence import source_bound_rewrite_source_allowed
         if not source_bound_rewrite_source_allowed(
             cur, article, job["source_revision_id"], predecessor_observation=predecessor_observation,
+            require_current_observation_scope=require_current_observation_scope,
         ):
             raise ValueError("SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE")
 

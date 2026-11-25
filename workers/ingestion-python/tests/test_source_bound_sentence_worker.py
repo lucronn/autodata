@@ -13,7 +13,7 @@ from autodata_ingestion.article_lifecycle_types import (
 from autodata_ingestion.published_media_publication import _publication_evidence
 from autodata_ingestion.procedure_rewrite_auto import build_auto_prompt
 from autodata_ingestion.source_job_persistence import schedule_source_bound_correction
-from lifecycle_support import fresh_database, runtime
+from lifecycle_support import fresh_database, runtime, seed_snapshot
 from test_source_bound_correction_worker import CopiedSource, InvalidIntroduction, attempt_rows, retained_media
 from test_source_bound_rewrite_worker import failed_first_draft, retained_job, run_job
 
@@ -175,12 +175,16 @@ def test_sentence_correction_replays_saved_rounds_without_refetch(runtime, reque
     ]
     assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 0}
     source_binding = store.load_source_revision(runtime.repo, source_id)
+    if first_draft:
+        updated_descriptor = seed_snapshot(runtime.repo, b"new catalog descriptor")
+        updated_resolution = seed_snapshot(runtime.repo, b"new catalog resolution")
     with runtime.repo.connect() as conn, conn.cursor() as cur:
         article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
                               (runtime.article_id,)).fetchone()
-        revision, _, _, attempt, _, _, _ = _publication_evidence(
+        evidence = _publication_evidence(
             cur, article, source_binding, fixture_mode=True, lock=False,
         )
+        revision, _, _, attempt, _, _, _ = evidence
         events = cur.execute("SELECT canonical_article_revision_id FROM publication_events").fetchall()
         if first_draft:
             profiles = cur.execute("""SELECT rewrite_profile_version FROM source_fetch_jobs
@@ -188,9 +192,22 @@ def test_sentence_correction_replays_saved_rounds_without_refetch(runtime, reque
             assert [row["rewrite_profile_version"] for row in profiles] == [
                 AUTOMATIC_REWRITE_PROFILE, SOURCE_BOUND_CORRECTION_PROFILE,
             ]
+            assert cur.execute("""UPDATE catalog_article_provider_scopes SET resolution_source_snapshot_id=%s
+                WHERE scope_key=%s AND provider_slug=%s AND resolution_source_snapshot_id<>%s""",
+                (updated_resolution, article["scope_key"], article["provider_slug"], updated_resolution)).rowcount == 1
+            refreshed = cur.execute("""UPDATE canonical_articles SET descriptor_source_snapshot_id=%s
+                WHERE canonical_article_id=%s AND descriptor_source_snapshot_id<>%s RETURNING *""",
+                (updated_descriptor, runtime.article_id, updated_descriptor)).fetchone()
+            assert refreshed is not None
+            assert _publication_evidence(
+                cur, refreshed, source_binding, fixture_mode=True, lock=False,
+            ) == evidence
     assert revision["model_metadata"]["transformation_method"] == SENTENCE_METHOD
     assert revision["validation_report"]["passed"] and attempt == archived[-1]
     assert events == [{"canonical_article_revision_id": current["canonical_revision_id"]}]
+    if first_draft:
+        retried = schedule(runtime, prior_id, source_id, budget=expected_calls, first_draft=True)
+        assert not retried.created and retried.job_id == job.job_id
 
 
 def test_sentence_candidate_without_model_calls_can_resume_after_commit(runtime, retained_job):
@@ -284,19 +301,36 @@ def test_first_draft_correction_rejects_mismatched_saved_evidence(runtime, faile
                 WHERE canonical_article_id=%s""", (prior_id, runtime.article_id))
 
     runtime.reset_counters()
-    with pytest.raises(ValueError, match="SOURCE_BOUND_CORRECTION_PRIOR_DRAFT_INVALID"):
+    error = ("SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE" if damage == "descriptor"
+             else "SOURCE_BOUND_CORRECTION_PRIOR_DRAFT_INVALID")
+    with pytest.raises(ValueError, match=error):
         schedule(runtime, prior_id, source_id, budget=1, first_draft=True)
     assert runtime.read_current()["job_id"] == prior_id
     assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 0}
 
 
-def test_first_draft_correction_rechecks_bound_resolution_before_dispatch(runtime, failed_first_draft):
+@pytest.mark.parametrize("withdrawn", (False, True), ids=("refreshed-resolution", "withdrawn-resolution"))
+def test_first_draft_correction_rechecks_bound_resolution_before_dispatch(runtime, failed_first_draft, withdrawn):
     prior_id, source_id = failed_first_draft
     job = schedule(runtime, prior_id, source_id, budget=1, first_draft=True)
+    if not withdrawn:
+        updated_resolution = seed_snapshot(runtime.repo, b"new resolution before dispatch")
     with runtime.repo.connect() as conn:
-        conn.execute("""UPDATE source_snapshots SET takedown_status='takedown'
-            WHERE source_snapshot_id=(SELECT resolution_source_snapshot_id
-                FROM canonical_article_source_observations WHERE source_fetch_job_id=%s)""", (prior_id,))
+        if withdrawn:
+            assert conn.execute("""UPDATE source_snapshots SET takedown_status='takedown'
+                WHERE source_snapshot_id=(SELECT resolution_source_snapshot_id
+                    FROM canonical_article_source_observations WHERE source_fetch_job_id=%s)""", (prior_id,)).rowcount == 1
+        else:
+            assert conn.execute("""UPDATE catalog_article_provider_scopes p SET resolution_source_snapshot_id=%s
+                FROM canonical_articles a WHERE a.canonical_article_id=%s
+                  AND p.scope_key=a.scope_key AND p.provider_slug=a.provider_slug""",
+                (updated_resolution, runtime.article_id)).rowcount == 1
+    if withdrawn:
+        with pytest.raises(ValueError, match="SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE"):
+            schedule(runtime, prior_id, source_id, budget=1, first_draft=True)
+    else:
+        retried = schedule(runtime, prior_id, source_id, budget=1, first_draft=True)
+        assert not retried.created and retried.job_id == job.job_id
     runtime.reset_counters()
     model = SentenceReplies()
     run_job(runtime, job.job_id, model, registry=runtime.registry)
