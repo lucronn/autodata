@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
-import { NavigationGeneration, awaitingArticleRewrite, processingArticle, readableArticle } from './workshop/article-read.mjs';
+import { NavigationGeneration, awaitingArticleRewrite, processingArticle, readableArticle, readyReprojectedSource } from './workshop/article-read.mjs';
 import { pollOrder, purchaseConfiguration, quoteConfigurationLabel, readOrder, resumableCheckoutURL, sameScope, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
 import { articlePresentation, articleSearchParams, CatalogRequestError, configurationLabel, delay, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, trimArticleSearch, vehicleSelectorPath } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
@@ -6503,7 +6503,7 @@ function articleMediaHarness(overrides = {}) {
   const shows = [], statuses = [];
   const context = {
     URL, AbortController, AbortSignal, uuid, articlePresentation, configurationLabel, localImageURL, sourceReferenceURL,
-    awaitingArticleRewrite, processingArticle, readableArticle,
+    awaitingArticleRewrite, processingArticle, readableArticle, readyReprojectedSource,
     session: { state: { mode: null } }, sessionRequest: null,
     document: { body, title: '', createElement: tag => new ArticleMediaNode(tag),
       createDocumentFragment: () => new ArticleMediaNode('#fragment') },
@@ -10014,6 +10014,83 @@ test('a fast paid prepare cancels the optional check without adding a GET', asyn
   assert.equal(h.probeSignal.aborted, true);
   assert.equal(h.calls.length, 1);
   assert.equal(h.nodes.get('article-content').textContent, 'Ready Ford procedure.');
+});
+
+test('a retained paid index entry opens through one fresh scoped GET', async () => {
+  const detail = deferredAuthOperation();
+  const article = mediaArticle([{ type: 'paragraph', text: 'Checked Ford procedure.' }], [], {
+    content_origin: 'canonical',
+  });
+  const h = retainedReaderHarness(() => detail.promise);
+  h.context.access = 'owned';
+  const opening = h.context.loadArticle('a', h.g, { preferRetained: true });
+  assert.equal(h.nodes.get('article-content').textContent, '');
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].method, undefined);
+  assert.equal(h.calls[0].path, `/v1/catalog/vehicles/${h.configuration.id}/articles/a?region=US`);
+  detail.resolve({ status: 200, data: { article, configuration: h.configuration } });
+  assert.equal(await opening, true);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.nodes.get('article-content').textContent, 'Checked Ford procedure.');
+});
+
+test('a stale retained index entry can start preparation once', async t => {
+  const ready = mediaArticle([{ type: 'paragraph', text: 'Newly available Ford source.' }]);
+  for (const failure of [null, { status: 503, code: 'CATALOG_SOURCE_UNAVAILABLE', retryable: true }]) {
+    await t.test(failure?.code || 'readable body is absent', async () => {
+      const h = retainedReaderHarness((_path, options) => {
+        if (options.method === 'POST') return { status: 200, data: { article: ready, configuration: h.configuration } };
+        if (failure) throw Object.assign(new Error('Stored article is unavailable.'), failure);
+        return { status: 200, data: { article: { id: 'a' }, configuration: h.configuration } };
+      });
+      h.context.access = 'owned';
+      assert.equal(await h.context.loadArticle('a', h.g, { preferRetained: true }), true);
+      assert.deepEqual(h.calls.map(call => call.method || 'GET'), ['GET', 'POST']);
+      assert.equal(h.calls[1].headers['X-CSRF-Token'], 'csrf');
+      assert.equal(h.nodes.get('article-content').textContent, 'Newly available Ford source.');
+    });
+  }
+});
+
+test('a retained index read respects revocation, response identity, and navigation', async t => {
+  const article = mediaArticle([{ type: 'paragraph', text: 'Protected Ford source.' }]);
+  for (const scenario of ['revoked', 'different configuration', 'different article', 'navigated away']) {
+    await t.test(scenario, async () => {
+      const h = retainedReaderHarness(() => {
+        if (scenario === 'revoked') throw Object.assign(new Error('Access was revoked.'), { status: 403, code: 'ENTITLEMENT_REVOKED' });
+        if (scenario === 'navigated away') h.navigation.clear();
+        return { status: 200, data: {
+          article: scenario === 'different article' ? { ...article, id: routeArticle } : article,
+          configuration: scenario === 'different configuration' ? { ...h.configuration, region: 'CA' } : h.configuration,
+        } };
+      });
+      h.context.access = 'owned';
+      const opening = h.context.loadArticle('a', h.g, { preferRetained: true });
+      if (scenario === 'navigated away') await opening;
+      else await assert.rejects(opening, scenario === 'revoked' ? /revoked/ : /does not match/);
+      assert.deepEqual(h.calls.map(call => call.method || 'GET'), ['GET']);
+      assert.equal(h.nodes.get('article-content').textContent, '');
+    });
+  }
+});
+
+test('stored diagrams and tables are ready while actual source errors still show review', () => {
+  for (const code of ['CATALOG_SOURCE_REPROJECTED', 'CATALOG_SOURCE_UNAVAILABLE']) {
+    const h = articleMediaHarness();
+    const article = mediaArticle([{ type: 'image', asset_id: 'figure' }], [{ id: 'figure', url: mediaURL('exact') }], {
+      review_status: 'UNREVIEWED', processing: { state: 'needs_review', error_code: code, retryable: false },
+    });
+    const reprojected = code === 'CATALOG_SOURCE_REPROJECTED';
+    h.context.session.state.mode = 'firebase';
+    h.context.renderArticle(article, h.g);
+    h.context.showArticleReadStatus('a', article);
+    assert.equal(h.nodes.get('article-note').hidden, reprojected);
+    assert.equal(h.nodes.get('print').disabled, false);
+    assert.equal(h.statuses.at(-1).options.complete, true);
+    assert.equal(h.statuses.at(-1).message, reprojected ? 'Stored source ready.' :
+      'Stored source is readable. Article preparation needs review.');
+    assert.equal(Boolean(h.statuses.at(-1).options.retry), !reprojected);
+  }
 });
 
 test('a saved cold article reuses a started GET after its prepare returns 202', async () => {

@@ -38,6 +38,21 @@ class CatalogLifecycleContract(unittest.TestCase):
         article['article']['steps'][0]['images'][0]['storage_key'] = 'sources/private'
         self.assertTrue(list(validator.iter_errors(article)))
 
+    def test_source_reprojection_has_a_distinct_public_error_code(self):
+        schema = json.loads((CATALOG / 'article-lifecycle.schema.json').read_text())
+        validator = jsonschema.Draft202012Validator(schema)
+        article = json.loads((CATALOG / 'fixtures/source-needs-review.json').read_text())
+        processing = article['article']['processing']
+        processing['error_code'] = 'CATALOG_SOURCE_REPROJECTED'
+        self.assertEqual(list(validator.iter_errors(article)), [])
+        processing['error_code'] = 'SOURCE_ONLY_REPROJECTION'
+        self.assertTrue(list(validator.iter_errors(article)))
+
+        spec = json.loads((ROOT / 'apps/api-go/openapi.json').read_text())
+        properties = spec['components']['schemas']['CatalogArticle']['properties']
+        self.assertIn('CATALOG_SOURCE_REPROJECTED',
+                      properties['processing']['properties']['error_code']['enum'])
+
     def test_authored_list_ordinals_and_nested_content(self):
         schema = json.loads((CATALOG / 'article-lifecycle.schema.json').read_text())
         validator = jsonschema.Draft202012Validator(schema)

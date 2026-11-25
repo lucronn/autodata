@@ -9,6 +9,23 @@ import (
 	"testing"
 )
 
+func TestPublicProcessingErrorDistinguishesSourceReprojection(t *testing.T) {
+	for _, tc := range []struct{ internal, public string }{
+		{"SOURCE_ONLY_REPROJECTION", "CATALOG_SOURCE_REPROJECTED"},
+		{"SOURCE_ONLY_REPROJECTION_FAILED", "CATALOG_SOURCE_UNAVAILABLE"},
+		{"CATALOG_SOURCE_UNAVAILABLE", "CATALOG_SOURCE_UNAVAILABLE"},
+		{"CANONICAL_REVIEW_REJECTED", "CATALOG_REVIEW_REQUIRED"},
+		{"CATALOG_REWRITE_REJECTED", "CATALOG_REWRITE_REJECTED"},
+	} {
+		t.Run(tc.internal, func(t *testing.T) {
+			got := publicProcessingError(&tc.internal)
+			if got == nil || *got != tc.public {
+				t.Fatalf("expected public error code %q, got %v", tc.public, got)
+			}
+		})
+	}
+}
+
 func TestCatalogDetailLifecycle(t *testing.T) {
 	for _, tc := range []struct {
 		name, state string
