@@ -1380,7 +1380,10 @@ def store_rewrite_result(repo,lease,result):
 def _store_rewrite_result(repo,lease,result):
     from .article_lifecycle_types import digest_json
     from .article_document import project_ordered_document
-    from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERABLE_ERRORS
+    from .procedure_rewrite_recovery import (
+        FIRST_DRAFT_RECOVERABLE_ERRORS, FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
+        REQUIRED_ACTION_WEAKENED, recover_first_draft,
+    )
     from hashlib import sha256
     import json
     projection = None
@@ -1412,7 +1415,6 @@ def _store_rewrite_result(repo,lease,result):
         prompt_version = None
         if result.profile_version == AUTOMATIC_REWRITE_PROFILE and result.error_code in FIRST_DRAFT_RECOVERABLE_ERRORS:
             from .procedure_rewrite_auto import _auto_prompt_version
-            from .procedure_rewrite_recovery import recover_first_draft
 
             source = job["checkpoint"]["normalized_document"]
             if (result.document != source or result.input_hash != digest_json(source)
@@ -1430,7 +1432,9 @@ def _store_rewrite_result(repo,lease,result):
                     profile_version=AUTOMATIC_REWRITE_PROFILE,
                 )
             if prompt_version is not None:
-                recovered = recover_first_draft(source, result.raw_response, prompt_version=prompt_version)
+                method = (FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD
+                          if result.error_code == REQUIRED_ACTION_WEAKENED else None)
+                recovered = recover_first_draft(source, result.raw_response, prompt_version=prompt_version, method=method)
             if recovered is not None and (recovered.document is None or recovered.error_code is not None
                     or recovered.evidence.get("original_error_code") != result.error_code):
                 raise ValueError("FIRST_DRAFT_RECOVERY_BINDING_INVALID")

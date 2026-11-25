@@ -13,6 +13,7 @@ from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
     FIRST_DRAFT_RECOVERY_METHOD,
+    FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
 )
 from autodata_ingestion.published_media_publication import _publication_evidence
 from autodata_ingestion.source_job_persistence import ensure_article_job
@@ -191,6 +192,13 @@ def test_echoed_draft_does_not_relax_other_rewrite_guards(runtime, variant, erro
         "The article includes an 18 N·m torque specification.",
         "Position the gauge on the open section of the service tray.",
         FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
+    ),
+    (
+        "Install the protective cap over the port.",
+        "The protective cap should be installed over the port.",
+        "This article describes service information.",
+        "The protective cap must be installed over the port.",
+        FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
     ),
 ])
 def test_worker_replays_recovery_with_its_original_response_and_media(
