@@ -2467,6 +2467,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
   const configuration = { id: routeConfiguration, region: 'US' };
   const context = {
     URLSearchParams, AbortSignal, uuid, validScope, configurationLabel, selectedIndexSessionPreference, validQuote,
+    history: { state: null },
     Option: function(text, value) { return { text, value }; },
     location: { pathname: '/workshop/', search }, signingIn: false, sessionRequest: null, viewGeneration: navigation.next(),
     vehicle: { id: previousConfiguration, region: 'US' }, quote: null,
@@ -2820,6 +2821,14 @@ for (const query of ['', '&q=brake+pads']) {
     assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: routeArticle }]);
   });
 }
+
+test('restoring a previously readable history entry passes its readiness to the exact reader', async () => {
+  const h = loginRouteHarness(`?configuration=${routeConfiguration}&region=US&article=${routeArticle}`);
+  h.context.history.state = { workshopArticleReadable: true };
+  await h.context.restoreRoute();
+  assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: routeArticle }]);
+  assert.equal(h.calls.selectionOptions[0].preferRetained, true);
+});
 
 for (const query of ['?view=library', `?order=${routeOrder}`]) {
   test(`non-selector route ${query} drops prior vehicle context and query`, async () => {
@@ -6585,6 +6594,7 @@ function articleMediaHarness(overrides = {}) {
     appSection('const element =', 'const session ='),
     appSection('function clearProtected(', 'async function operation('),
     appSection('function vehicleIdentityLabel(', 'function purchaseConfigured('),
+    appSection('function hasRetainedArticleRevision(', 'function renderArticleLinks('),
     appSection('const assetID =', 'async function loadArticle('),
     appSection('function rememberRetainedIndexArticle(', 'function returnToArticleIndex('),
     appSection('function validSourceURL(', 'async function library('),
@@ -10089,6 +10099,44 @@ test('a retained paid index entry opens through one fresh scoped GET', async () 
   assert.equal(await opening, true);
   assert.equal(h.calls.length, 1);
   assert.equal(h.nodes.get('article-content').textContent, 'Checked Ford procedure.');
+});
+
+test('a readable history entry stores only readiness and has to open again with current access', async t => {
+  const stored = mediaArticle([{ type: 'paragraph', text: 'Stored source procedure.' }], [], {
+    id: routeArticle, availability: 'available',
+  });
+  for (const outcome of ['readable', 'revoked', 'stale', 'missing']) {
+    await t.test(outcome, async () => {
+      const h = retainedReaderHarness((_path, options) => {
+        if (options.method === 'POST') {
+          return { status: 200, data: { article: stored, configuration: h.configuration } };
+        }
+        if (outcome === 'revoked') throw new CatalogRequestError('Access revoked.', { status: 403, code: 'ENTITLEMENT_REVOKED' });
+        if (outcome === 'missing') throw new CatalogRequestError('Article missing.', { status: 404, code: 'CATALOG_NOT_FOUND' });
+        if (outcome === 'stale') {
+          throw new CatalogRequestError('Source pending.', { status: 503, code: 'CATALOG_SOURCE_UNAVAILABLE', retryable: true });
+        }
+        return { status: 200, data: { article: stored, configuration: h.configuration } };
+      });
+      h.context.location.search = `?configuration=${h.configuration.id}&region=US&article=${routeArticle}`;
+      h.context.history = { state: null, replaceState(state) { this.state = state; } };
+      assert.equal(await h.context.loadArticle(routeArticle, h.g, { savedLink: true }), true);
+      assert.deepEqual({ ...h.context.history.state }, { workshopArticleReadable: true });
+      const g = h.navigation.next();
+      h.context.resetReaderContent();
+      h.context.access = 'unknown';
+      const loading = h.context.loadArticle(routeArticle, g, {
+        savedLink: true, preferRetained: h.context.history.state.workshopArticleReadable,
+      });
+      assert.equal(h.nodes.get('article-content').textContent, '');
+      if (outcome === 'revoked') await assert.rejects(loading, { code: 'ENTITLEMENT_REVOKED' });
+      else assert.equal(await loading, outcome !== 'missing');
+      assert.deepEqual(h.calls.map(call => call.method || 'GET'),
+        outcome === 'stale' ? ['POST', 'GET', 'POST'] : ['POST', 'GET']);
+      assert.equal(h.nodes.get('article-content').textContent,
+        ['readable', 'stale'].includes(outcome) ? 'Stored source procedure.' : '');
+    });
+  }
 });
 
 test('a stale retained index entry can start preparation once', async t => {
