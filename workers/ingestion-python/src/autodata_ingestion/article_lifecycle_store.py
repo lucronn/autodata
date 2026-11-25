@@ -1307,14 +1307,18 @@ def _require_full_approval(cur, job, article, candidate):
     return latest
 
 
-def resolve_first_draft_recovery(candidate, attempt, *, prompt_version):
+def resolve_first_draft_recovery(cur, job, candidate, attempt, *, prompt_version, lock=False):
     """Replay a recovered v1 candidate from its original, unchanged provider reply."""
-    from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHODS, recover_first_draft
+    from .procedure_rewrite_recovery import (
+        ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_ARCHIVE_STRUCTURE_VERSIONS,
+        recover_first_draft, recover_structured_bankone_first_draft,
+    )
+    from .source_job_persistence import bankone_first_draft_body_binding
 
     source = candidate["normalized_source_document"]
     metadata = candidate["model_metadata"]
     method = metadata.get("transformation_method")
-    if (method not in FIRST_DRAFT_RECOVERY_METHODS
+    if (method not in ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS
         or candidate["rewrite_profile_version"] != AUTOMATIC_REWRITE_PROFILE
         or prompt_version is None or attempt is None
         or attempt["profile_version"] != AUTOMATIC_REWRITE_PROFILE
@@ -1329,9 +1333,24 @@ def resolve_first_draft_recovery(candidate, attempt, *, prompt_version):
         or attempt["input_hash"] != candidate["normalized_source_hash"]
         or attempt["prompt_hash"] != metadata.get("prompt_hash")):
         raise ValueError("FIRST_DRAFT_RECOVERY_BINDING_INVALID")
-    recovered = recover_first_draft(source, attempt["response"], prompt_version=prompt_version, method=method)
+    evidence = metadata.get("first_draft_recovery")
+    if method in BANKONE_ARCHIVE_STRUCTURE_VERSIONS:
+        binding = metadata.get("bankone_first_draft_structure")
+        observation_id, body = bankone_first_draft_body_binding(
+            cur, job, attempt["dispatched_at"], require_current=lock, lock=lock,
+        )
+        if (not isinstance(binding, dict) or set(binding) != {"observation_id", "body_sha256", "proof"}
+            or binding["observation_id"] != str(observation_id) or binding["body_sha256"] != body.digest
+            or not isinstance(evidence, dict)):
+            raise ValueError("FIRST_DRAFT_RECOVERY_BINDING_INVALID")
+        recovered = recover_structured_bankone_first_draft(
+            source, {"guard_version": prompt_version, "response": attempt["response"],
+                     "error_code": evidence.get("original_error_code")}, binding["proof"], method=method,
+        )
+    else:
+        recovered = recover_first_draft(source, attempt["response"], prompt_version=prompt_version, method=method)
     if (recovered is None or recovered.error_code is not None
-        or recovered.evidence != metadata.get("first_draft_recovery")
+        or recovered.evidence != evidence
         or recovered.document != candidate["canonical_document"]
         or digest_json(recovered.document) != candidate["rewrite_result_hash"]):
         raise ValueError("FIRST_DRAFT_RECOVERY_BINDING_INVALID")
@@ -1415,20 +1434,25 @@ def automatic_candidate_validation(cur, job, candidate, *, require_current=False
     )
     if prompt_version is None:
         raise ValueError("automatic saved prompt binding mismatch")
-    from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHODS
+    from .procedure_rewrite_recovery import ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS
 
     response = attempt["response"]
-    if candidate["model_metadata"].get("transformation_method") in FIRST_DRAFT_RECOVERY_METHODS:
-        response = resolve_first_draft_recovery(candidate, attempt, prompt_version=prompt_version).response
+    bankone_structure = None
+    if candidate["model_metadata"].get("transformation_method") in ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS:
+        recovery = resolve_first_draft_recovery(
+            cur, job, candidate, attempt, prompt_version=prompt_version, lock=require_current,
+        )
+        response, bankone_structure = recovery.response, recovery.bankone_structure
     validation = validate_auto(
         source, candidate["canonical_document"], response=response, prompt_version=prompt_version,
-        profile_version=profile,
+        profile_version=profile, bankone_structure=bankone_structure,
     )
     if not validation.passed:
         raise ValueError("automatic rewrite operation binding mismatch")
     if require_current:
         require_current_publication_checks(
             source, candidate["canonical_document"], saved_prompt_version=prompt_version,
+            bankone_structure=bankone_structure,
         )
     return validation
 
@@ -1489,9 +1513,73 @@ def store_source_preserving_candidate(repo,lease):
             (Jsonb({"candidate_revision_id":str(revision),"rewrite_error_code":None}),lease.job_id))
 
 
-def store_rewrite_result(repo,lease,result):
+def _read_automatic_bankone_structure(repo, lease, result, read_retained_object):
+    from .bankone_first_draft_structure import LINKED_STRUCTURE_VERSION
+    from .source_job_persistence import bankone_first_draft_body_binding, load_bankone_structure
+
     try:
-        return _store_rewrite_result(repo,lease,result)
+        with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            job = cur.execute("""
+                SELECT j.*, a.dispatched_at FROM source_fetch_jobs j
+                JOIN canonical_article_rewrite_attempts a ON a.source_fetch_job_id=j.source_fetch_job_id
+                    AND a.lease_token=j.lease_token AND a.attempt_number=j.retry_count
+                WHERE j.source_fetch_job_id=%s AND j.lease_token=%s AND j.lease_owner=%s
+                    AND j.status='processing' AND j.lease_expires_at>clock_timestamp()
+                    AND a.status='dispatched' AND a.response IS NULL AND a.input_hash=%s AND a.prompt_hash=%s
+                """, (lease.job_id, lease.token, lease.worker_id, result.input_hash, result.prompt_hash)).fetchone()
+            if job is None or job["checkpoint"].get("normalized_document") != result.document:
+                return None
+            observation_id, body = bankone_first_draft_body_binding(
+                cur, job, job["dispatched_at"], require_current=True,
+            )
+        return load_bankone_structure(
+            read_retained_object, body, result.document, observation_id, structure_version=LINKED_STRUCTURE_VERSION,
+        )
+    except ValueError:
+        return None
+
+
+def _recover_automatic_bankone_draft(cur, job, attempt, result, prompt_version, binding):
+    from .bankone_first_draft_structure import LINKED_STRUCTURE_KINDS
+    from .procedure_rewrite_recovery import (
+        BANKONE_LINKED_RECOVERY_METHOD, BANKONE_STRUCTURAL_RECOVERY_METHOD, recover_structured_bankone_first_draft,
+    )
+    from .source_job_persistence import bankone_first_draft_body_binding
+
+    try:
+        observation_id, body = bankone_first_draft_body_binding(
+            cur, job, attempt["dispatched_at"], require_current=True, lock=True,
+        )
+    except ValueError:
+        return None
+    if binding["observation_id"] != str(observation_id) or binding["body_sha256"] != body.digest:
+        return None
+    linked = binding["proof"]
+    original = {"guard_version": prompt_version, "response": result.raw_response, "error_code": result.error_code}
+    if any(slot["kind"] in LINKED_STRUCTURE_KINDS for slot in linked["slots"].values()):
+        recovered = recover_structured_bankone_first_draft(
+            result.document, original, linked, method=BANKONE_LINKED_RECOVERY_METHOD,
+        )
+        if recovered is not None:
+            return recovered
+    common = {"source_hash": linked["source_hash"], "slots": {
+        path: slot for path, slot in linked["slots"].items() if slot["kind"] not in LINKED_STRUCTURE_KINDS
+    }}
+    return recover_structured_bankone_first_draft(
+        result.document, original, common, method=BANKONE_STRUCTURAL_RECOVERY_METHOD,
+    )
+
+
+def store_rewrite_result(repo,lease,result, *, read_retained_bankone_object=None):
+    from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERABLE_ERRORS
+
+    structure_binding = None
+    if (read_retained_bankone_object is not None and result.profile_version == AUTOMATIC_REWRITE_PROFILE
+        and result.error_code in FIRST_DRAFT_RECOVERABLE_ERRORS and STAGED_MEDIA_REFRESH not in lease.checkpoint):
+        structure_binding = _read_automatic_bankone_structure(repo, lease, result, read_retained_bankone_object)
+    try:
+        return _store_rewrite_result(repo,lease,result, structure_binding=structure_binding)
     except RewriteStorageError:
         raise
     except ValueError:
@@ -1499,7 +1587,7 @@ def store_rewrite_result(repo,lease,result):
     raise RewriteStorageError("storage_binding") from None
 
 
-def _store_rewrite_result(repo,lease,result):
+def _store_rewrite_result(repo,lease,result, *, structure_binding=None):
     from .article_lifecycle_types import digest_json
     from .article_document import project_ordered_document
     from .procedure_rewrite_recovery import (
@@ -1562,6 +1650,10 @@ def _store_rewrite_result(repo,lease,result):
                 method = (FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD
                           if result.error_code == REQUIRED_ACTION_WEAKENED else None)
                 recovered = recover_first_draft(source, result.raw_response, prompt_version=prompt_version, method=method)
+                if recovered is None and structure_binding is not None:
+                    recovered = _recover_automatic_bankone_draft(
+                        cur, job, attempt, result, prompt_version, structure_binding,
+                    )
             if recovered is not None and (recovered.document is None or recovered.error_code is not None
                     or recovered.evidence.get("original_error_code") != result.error_code):
                 raise ValueError("FIRST_DRAFT_RECOVERY_BINDING_INVALID")
@@ -1580,18 +1672,26 @@ def _store_rewrite_result(repo,lease,result):
             guard_version = prompt_version if recovered is not None else None
             if _keeps_authored_note_labels(result.model_metadata.get("prompt_version")):
                 guard_version = result.model_metadata["prompt_version"]
-            rendered = render_auto(source, response, prompt_version=guard_version, profile_version=result.profile_version)
+            bankone_structure = recovered.bankone_structure if recovered is not None else None
+            rendered = render_auto(
+                source, response, prompt_version=guard_version, profile_version=result.profile_version,
+                bankone_structure=bankone_structure,
+            )
             validation = validate_auto(
                 source, document, response=response, prompt_version=guard_version, profile_version=result.profile_version,
+                bankone_structure=bankone_structure,
             )
             if digest_json(rendered) != output_hash or not validation.passed:
                 raise ValueError("automatic rewrite operation binding mismatch")
             if recovered is not None:
+                metadata = {**result.model_metadata, "transformation_method": recovered.evidence["method"],
+                            "first_draft_recovery": recovered.evidence}
+                if bankone_structure is not None:
+                    metadata["bankone_first_draft_structure"] = {**structure_binding, "proof": bankone_structure}
                 result = replace(
                     result, document=document, output_hash=output_hash, error_code=None,
                     changed_slots=tuple(validation.report["changed_slots"]),
-                    model_metadata={**result.model_metadata, "transformation_method": recovered.evidence["method"],
-                                    "first_draft_recovery": recovered.evidence},
+                    model_metadata=metadata,
                 )
                 projection = project_ordered_document(document)
         if result.profile_version == "technical-prose-v2" and not result.error_code:

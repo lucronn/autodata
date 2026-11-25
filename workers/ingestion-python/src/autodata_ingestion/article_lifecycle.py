@@ -191,7 +191,7 @@ def _hook(hooks,point):
     if hooks is not None: hooks(point)
 
 
-def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None,model_slot=None):
+def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None,model_slot=None,read_retained_object=None):
     """Resume one fenced job; hooks are injected local test barriers, never env code."""
     if lease.kind!="article":raise ValueError("article job required")
     with _heartbeat(repo,lease) as lost:
@@ -301,7 +301,10 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None,m
                         _hook(hooks,"after_model_dispatch")
                         result=rewrite_ordered_document(document,client=model_client,context=source.vehicle,profile_version=profile)
                     if lost.is_set():raise LeaseLost("heartbeat lost during model IO")
-                    store.store_rewrite_result(repo,lease,result)
+                    bankone_reader = None
+                    if source.context.key.provider == "bankone":
+                        bankone_reader = read_retained_object or getattr(object_store, "get_object", None)
+                    store.store_rewrite_result(repo, lease, result, read_retained_bankone_object=bankone_reader)
                     _hook(hooks,"after_model_result_commit")
                     if profile == "full-prose-review-v1" and not result.error_code:
                         return

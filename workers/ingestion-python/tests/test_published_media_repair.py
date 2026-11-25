@@ -7,12 +7,18 @@ from autodata_ingestion.article_lifecycle_types import (
     AUTOMATIC_REWRITE_PROFILE, RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE,
     SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, digest_json,
 )
+from autodata_ingestion.bankone_first_draft_structure import extract_bankone_structure
 from autodata_ingestion.procedure_rewrite import editable_slots, rewrite_ordered_document
 from autodata_ingestion.procedure_rewrite_auto import render_auto
 from autodata_ingestion.procedure_rewrite_fidelity import recast_conditional_color_note
 from autodata_ingestion.procedure_rewrite_full import prose_slots, render_full
+from autodata_ingestion.procedure_rewrite_recovery import (
+    BANKONE_LINKED_RECOVERY_METHOD, recover_structured_bankone_first_draft,
+)
 from autodata_ingestion.procedure_rewrite_v2 import plan_v2, render_v2
 from autodata_ingestion.published_media_repair import repair_published_media
+
+from test_bankone_first_draft_recovery import linked_fixture
 
 _CURRENT_PROMPT = "full-prose-auto-prompt-v6"
 _HISTORICAL_PROMPT = "full-prose-auto-prompt-v2"
@@ -558,6 +564,76 @@ def test_repair_rejects_conditional_note_warning_drift(drift, code):
         repair_published_media(
             old, published, repaired, response=response, profile=RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE,
             prompt_version=version,
+        )
+
+
+def _bankone_media_fixture(prompt_version, *, placement):
+    source, raw, html = linked_fixture()
+    illustration = _document([_image()])["blocks"][0]
+    illustration["source_order"] = len(source["blocks"]) + 1
+    source["blocks"].append(illustration)
+    proof = extract_bankone_structure(source, html, version=2)
+    with pytest.raises(ValueError) as rejected:
+        render_auto(source, raw, prompt_version=prompt_version)
+    recovered = recover_structured_bankone_first_draft(
+        source, {"guard_version": prompt_version, "response": raw, "error_code": str(rejected.value)},
+        proof, method=BANKONE_LINKED_RECOVERY_METHOD,
+    )
+    assert recovered is not None
+    repaired = deepcopy(source)
+    media = repaired["blocks"].pop()
+    if placement == "inline":
+        media["source_order"] = 1
+        item = repaired["blocks"][1]["items"]
+        item[0] = {"text": item[0], "blocks": [media]}
+    else:
+        repaired["blocks"].insert(0, media)
+    for index, block in enumerate(repaired["blocks"], start=1):
+        block.update(source_order=index, block_id=f"repaired-{index}")
+    return source, recovered.document, repaired, recovered.response, proof
+
+
+@pytest.mark.parametrize("prompt_version", ("full-prose-auto-prompt-v55", "full-prose-auto-prompt-v62"))
+@pytest.mark.parametrize("placement", ("inline", "block"))
+def test_bankone_media_repair_rebinds_exact_structural_slots(prompt_version, placement):
+    old, published, repaired, response, proof = _bankone_media_fixture(prompt_version, placement=placement)
+    before = deepcopy((old, published, repaired, response, proof))
+    result = repair_published_media(
+        old, published, repaired, response=response, prompt_version=prompt_version, bankone_structure=proof,
+    )
+
+    linked_path = "/blocks/1/items/0/text" if placement == "inline" else "/blocks/2/items/0"
+    assert result.remapped_response["replacements"][1]["path"] == linked_path
+    assert result.remapped_response["replacements"][1]["text"] == response["replacements"][1]["text"]
+    assert result.validation.passed
+    assert result.provenance["original_bankone_structure_hash"] == digest_json(proof)
+    assert result.provenance["original_prompt_version"] == prompt_version
+    assert result.provenance["model_dispatch_count"] == 0
+    path_pairs = zip(response["replacements"], prose_slots(repaired, include_cell_blocks=True), strict=True)
+    remapped = {
+        **proof,
+        "source_hash": digest_json(repaired),
+        "slots": {
+            new["path"]: {**proof["slots"][old["path"]], "block_id": new["block_id"]}
+            for old, new in path_pairs
+            if old["path"] in proof["slots"]
+        },
+    }
+    assert result.provenance["remapped_bankone_structure_hash"] == digest_json(remapped)
+    assert result.projection["images"][0]["content_sha256"] == old["blocks"][-1]["content_sha256"]
+    assert (old, published, repaired, response, proof) == before
+
+
+def test_bankone_media_repair_rejects_a_retargeted_published_link():
+    version = "full-prose-auto-prompt-v62"
+    old, published, repaired, response, proof = _bankone_media_fixture(version, placement="block")
+    wording = response["replacements"][1]["text"].replace("Fixture Filter Replacement", "Other Filter Replacement")
+    response["replacements"][1]["text"] = published["blocks"][2]["items"][0] = wording
+    assert render_auto(old, response, prompt_version=version) == published
+
+    with pytest.raises(ValueError, match="^PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH$"):
+        repair_published_media(
+            old, published, repaired, response=response, prompt_version=version, bankone_structure=proof,
         )
 
 
