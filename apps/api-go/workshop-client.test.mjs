@@ -3026,13 +3026,27 @@ test('early saved selectors skip independent or session-dependent routes', () =>
 test('early reads stop at the first unresolved selector and keep incomplete year rows', async () => {
   const calls = [];
   const partial = { items: [{ year: 2023 }], complete: false, hydrating: true };
-  const initial = startSavedSelectorReads(new URLSearchParams('?year=2024&model=envision-awd'), async path => {
+  const initial = startSavedSelectorReads(new URLSearchParams('?year=2024&model=envision-awd'), async (path, { cache }) => {
+    assert.equal(cache, 'default');
     calls.push(path);
     return partial;
   });
   assert.deepEqual(calls, savedPickerPaths.slice(0, 2));
   assert.equal(await initial.reads.year, partial);
   initial.abort();
+});
+
+test('the initial year read uses the entry preload and authenticated reads default to no-store', async () => {
+  const initial = await requestInitialYears(new URLSearchParams(), async (path, { cache }) => {
+    assert.equal(path, '/v1/catalog/years');
+    assert.equal(cache, 'default');
+    return { items: [{ year: 2024 }] };
+  });
+  assert.equal(initial.items[0].year, 2024);
+  await requestJSON('/v1/workshop/library', { fetcher: async (_, { cache }) => {
+    assert.equal(cache, 'no-store');
+    return new Response('{"items":[]}', { status: 200 });
+  } });
 });
 
 test('the first incomplete year read can restore the saved choice without a second request', async () => {

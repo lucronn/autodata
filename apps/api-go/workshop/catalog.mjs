@@ -378,6 +378,7 @@ export const selectedIndexSessionPreference = 'workshop-confirm-session';
 
 export async function requestArticleJSON(path, {
   signal, timeout = 10000, readableBodyTimeout = 0, fetcher = fetch, method = 'GET', body, headers = {},
+  cache = 'no-store',
   preferShortSourceCheck = false, preferPreviewSourceCheck = false, preferEarlySourceCheck = false,
   preferShortPublicationCheck = false,
   finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck,
@@ -411,7 +412,7 @@ export async function requestArticleJSON(path, {
   let retryAfterSeconds = 0;
   try {
     const response = await fetcher(path, {
-      method, signal: combined, credentials: 'same-origin', cache: 'no-store',
+      method, signal: combined, credentials: 'same-origin', cache,
       ...(onSelectedIndexSession ? { redirect: 'error' } : {}),
       headers: {
         Accept: 'application/json',
@@ -512,7 +513,9 @@ export function startSavedSelectorReads(params, request = requestJSON) {
   const reads = {};
   for (const name of ['year', 'make', 'model', 'configuration']) {
     const path = vehicleSelectorPath(name, selection);
-    const options = { signal: controller.signal };
+    // The public response requires revalidation. Let this first read reuse
+    // its entry-page preload in browsers that bypass it with no-store.
+    const options = { signal: controller.signal, cache: 'default' };
     // Years have no parent to verify. One read can return stored years and
     // start hydration. Descendants wait for their parents before scheduling.
     reads[name] = (name === 'year' ? request(path, options) : requestStoredSelector(path, options, request))
@@ -525,5 +528,5 @@ export function startSavedSelectorReads(params, request = requestJSON) {
 
 export function requestInitialYears(params, request = requestJSON) {
   if (params.has('configuration') || params.has('order') || params.get('view') === 'library') return null;
-  return request('/v1/catalog/years').catch(() => null);
+  return request('/v1/catalog/years', { cache: 'default' }).catch(() => null);
 }

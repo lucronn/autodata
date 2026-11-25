@@ -17,7 +17,7 @@ const workshopEntryPath = "/workshop"
 
 var workshopAssetsHandler = buildWorkshopAssetsHandler()
 
-func buildWorkshopAssetsHandler() http.Handler {
+func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, bool) {
 	assets, err := fs.Sub(dashboardFiles, "workshop")
 	if err != nil {
 		panic("embedded Workshop assets unavailable: " + err.Error())
@@ -68,7 +68,7 @@ func buildWorkshopAssetsHandler() http.Handler {
 	}
 	tags[prefix] = fmt.Sprintf(`W/"%x"`, sha256.Sum256(entryPage))
 	files := http.StripPrefix(prefix, http.FileServer(http.FS(assets)))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request, publicSelectors bool) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -117,15 +117,15 @@ func buildWorkshopAssetsHandler() http.Handler {
 			w.Header().Set("ETag", tag)
 		}
 		if path == prefix {
-			addWorkshopEntryPreloads(w.Header(), r, versionedPrefix)
+			addWorkshopEntryPreloads(w.Header(), r, versionedPrefix, publicSelectors)
 			http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(entryPage))
 			return
 		}
 		files.ServeHTTP(w, r)
-	})
+	}
 }
 
-func addWorkshopEntryPreloads(header http.Header, r *http.Request, assets string) {
+func addWorkshopEntryPreloads(header http.Header, r *http.Request, assets string, publicSelectors bool) {
 	if r.Method != http.MethodGet || r.Header.Get("Range") != "" || strings.Contains(r.Header.Get("Sec-Purpose"), "prefetch") {
 		return
 	}
@@ -139,7 +139,7 @@ func addWorkshopEntryPreloads(header http.Header, r *http.Request, assets string
 		header.Add("Link", "<"+assets+name+">; rel=modulepreload")
 	}
 	// Account, Library, order and direct-article routes have their own reads.
-	if params.Has("order") || params.Has("article") || params.Has("configuration") ||
+	if !publicSelectors || params.Has("order") || params.Has("article") || params.Has("configuration") ||
 		params.Get("view") == "library" || (params.Get("region") != "" && params.Get("region") != "US") {
 		return
 	}

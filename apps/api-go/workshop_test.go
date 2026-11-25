@@ -66,7 +66,7 @@ func TestWorkshopEntryStartsOnlyMatchingPublicSelectorReads(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, "/workshop"+tc.search, nil)
 			request.Header.Set("Sec-Purpose", tc.purpose)
 			recorder := httptest.NewRecorder()
-			workshopAssetsHandler.ServeHTTP(recorder, request)
+			workshopAssetsHandler(recorder, request, true)
 			if recorder.Code != http.StatusOK {
 				t.Fatalf("entry status = %d", recorder.Code)
 			}
@@ -96,6 +96,13 @@ func TestWorkshopEntryStartsOnlyMatchingPublicSelectorReads(t *testing.T) {
 				t.Fatalf("preloads = %d modules and %v reads, want %d and %v", modules, reads, tc.modules, tc.reads)
 			}
 		})
+	}
+	legacy := httptest.NewRecorder()
+	workshopAssetsHandler(legacy, httptest.NewRequest(http.MethodGet, "/workshop", nil), false)
+	for _, link := range legacy.Header().Values("Link") {
+		if strings.Contains(link, "/v1/catalog/") {
+			t.Fatalf("legacy entry hinted a protected selector: %q", link)
+		}
 	}
 }
 

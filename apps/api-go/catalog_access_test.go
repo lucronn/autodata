@@ -266,6 +266,9 @@ func TestPaidCatalogPublicSelectorsAndDeniedBeforeWork(t *testing.T) {
 		if w.Code != 200 {
 			t.Fatal(path, w.Code, w.Body.String())
 		}
+		if got := w.Header().Get("Cache-Control"); got != "public, max-age=0, must-revalidate" {
+			t.Fatalf("%s did not require revalidation, Cache-Control = %q", path, got)
+		}
 	}
 	if g.calls != 0 || c.protected != 0 {
 		t.Fatal("selectors reached protected work")
