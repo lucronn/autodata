@@ -481,8 +481,8 @@ _INTRO_FLUID_DIRECTIVE = re.compile(
     r"(?:^|[.!?,;]\s+|:\s*)" + _INTRO_COMMAND_PREFIX
     + r"(?:(?:drain|empty(?:\s+out)?|fill)\s+the\b"
     r"|(?:let|allow)\s+the\s+[^,;.!?\n]+?\s+(?:drain|fill)\b"
-    r"|the\s+[^,;.!?\n]+?\s+(?:must|shall|should|needs?\s+to)\s+be\s+"
-    r"(?:drained|emptied|filled)(?=\s*(?:[.!?;]|$)))",
+    r"|the\s+(?:(?!(?:that|which|who|where)\b)[\w/-]+\s+){1,12}"
+    r"(?:must|shall|should|needs?\s+to)\s+be\s+(?:drained|emptied|filled)\b)",
     re.IGNORECASE,
 )
 

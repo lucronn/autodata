@@ -142,6 +142,10 @@ def test_current_guard_preserves_distinct_equivalent_prose(layout, profile, orig
     "This article covers reservoir service. Then drain the fixture reservoir.",
     "This article covers reservoir service: let the other reservoir drain.",
     "The fixture reservoir must be drained.",
+    "The fixture reservoir must be filled slowly.",
+    "The fixture reservoir must be filled, then proceed with service.",
+    "The fixture reservoir must be drained before inspection.",
+    "The fixture reservoir needs to be drained into a separate container.",
 ))
 def test_drain_subject_prompt_rejects_fluid_instructions_in_introduction(introduction):
     source = document(_DRAIN)
@@ -169,9 +173,12 @@ def test_drain_subject_prompt_keeps_existing_contact_guard_in_the_same_article()
         auto.render_auto(source, raw, prompt_version=version)
 
 
-def test_drain_subject_prompt_allows_a_descriptive_introduction():
+@pytest.mark.parametrize("introduction", (
+    "This article describes service on reservoirs that need to be drained.",
+    "The reservoirs that need to be drained are covered in this procedure.",
+))
+def test_drain_subject_prompt_allows_a_descriptive_introduction(introduction):
     source = document(_DRAIN)
-    introduction = "This article describes service on reservoirs that need to be drained."
     candidate = auto.render_auto(source, response(_LET_DRAIN, introduction=introduction),
                                  prompt_version="full-prose-auto-prompt-v63")
     assert candidate["blocks"][0]["text"] == introduction
