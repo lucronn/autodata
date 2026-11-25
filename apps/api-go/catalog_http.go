@@ -422,6 +422,7 @@ func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.R
 
 const (
 	shortSourceCheckPreference      = "workshop-short-source-check"
+	previewSourceCheckPreference    = "workshop-preview-source-check"
 	shortPublicationCheckPreference = "workshop-short-publication-check"
 	finishPublishedBodyPreference   = "workshop-finish-published-body"
 )
@@ -502,6 +503,13 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 		preference := current.shortReadPreference
 		applicable := preference == shortSourceCheckPreference && status == http.StatusAccepted ||
 			preference == shortPublicationCheckPreference && status == http.StatusOK
+		// A paid preview can opt into an earlier check for the persisted source.
+		if preference == shortSourceCheckPreference && status == http.StatusOK &&
+			paid && !scope.openDemo && request.Method == http.MethodGet && article.SourceBodyPreview &&
+			article.SourceRevisionID == nil && article.CanonicalRevisionID == nil &&
+			current.JobID != "" && current.State == "fetching_source" {
+			preference, applicable = previewSourceCheckPreference, true
+		}
 		if applicable && catalogReadPreferenceRequested(request, preference) {
 			// Only replace the default read cadence when the client opts in.
 			processing := *current

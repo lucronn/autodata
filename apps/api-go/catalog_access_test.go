@@ -429,16 +429,19 @@ func TestPaidArticleDisplaysSourceBodyWhileFullCaptureRuns(t *testing.T) {
 		}},
 	}
 	path := "/v1/catalog/vehicles/" + paidTestConfiguration + "/articles/" + id
-	read := func(path string, demo bool) *httptest.ResponseRecorder {
+	read := func(path string, demo bool, prefer string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, path, nil)
+		if prefer != "" {
+			r.Header.Set("Prefer", prefer)
+		}
 		if demo {
 			r.Host = "localhost:3013"
 		}
 		s.Handler().ServeHTTP(w, r)
 		return w
 	}
-	w := read(path, false)
+	w := read(path, false, "")
 	var result CatalogArticleResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
@@ -453,17 +456,44 @@ func TestPaidArticleDisplaysSourceBodyWhileFullCaptureRuns(t *testing.T) {
 		body.Document.Blocks[0].Text != sourceText || body.Document.Blocks[0].Href != "" {
 		t.Fatalf("incorrect source body response: %d %s", w.Code, w.Body)
 	}
+	explicitDelay := 1
+	for _, tc := range []struct {
+		name, prefer, retryAfter, applied string
+		delay                             *int
+	}{
+		{"ordinary reader", "", "1", "", nil},
+		{"cached reader", shortSourceCheckPreference, "1", "", nil},
+		{"preview reader", previewSourceCheckPreference, "", previewSourceCheckPreference, nil},
+		{"explicit delay", previewSourceCheckPreference, "1", "", &explicitDelay},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store.view.Article.Processing = &CatalogProcessing{JobID: "fixture-job", State: "fetching_source", RetryAfterSeconds: tc.delay}
+			store.view.Article = lifecycleArticle(store.view.Article)
+			w := read(path, false, tc.prefer)
+			var result CatalogArticleResponse
+			if w.Code != http.StatusOK || w.Header().Get("Retry-After") != tc.retryAfter ||
+				w.Header().Get("Preference-Applied") != tc.applied ||
+				json.Unmarshal(w.Body.Bytes(), &result) != nil || !result.Article.SourceBodyPreview ||
+				result.Article.Processing == nil ||
+				(result.Article.Processing.RetryAfterSeconds == nil) != (tc.retryAfter == "") {
+				t.Fatalf("unexpected preview response: %d %v %s", w.Code, w.Header(), w.Body)
+			}
+		})
+	}
 	store.view.Article.Processing.State = "failed"
-	if w = read(path, false); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), sourceText) {
+	if w = read(path, false, previewSourceCheckPreference); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), sourceText) ||
+		w.Header().Get("Preference-Applied") != "" {
 		t.Fatalf("a later capture failure hid the source body: %d %s", w.Code, w.Body)
 	}
 	store.view.Article.Processing.State = "fetching_source"
 	s.workshopOpenDemoHost = workshopOpenDemoHost("1", "test", "http://localhost:3013")
-	if w = read(path+"?demo=1", true); w.Code != http.StatusAccepted || strings.Contains(w.Body.String(), sourceText) {
+	if w = read(path+"?demo=1", true, previewSourceCheckPreference); w.Code != http.StatusAccepted ||
+		strings.Contains(w.Body.String(), sourceText) || w.Header().Get("Preference-Applied") != "" {
 		t.Fatalf("preview leaked into demo: %d %s", w.Code, w.Body)
 	}
 	grant.err = ErrVehicleGrantRevoked
-	if w = read(path, false); w.Code != http.StatusForbidden || strings.Contains(w.Body.String(), sourceText) {
+	if w = read(path, false, previewSourceCheckPreference); w.Code != http.StatusForbidden ||
+		strings.Contains(w.Body.String(), sourceText) || w.Header().Get("Preference-Applied") != "" {
 		t.Fatalf("preview leaked after revocation: %d %s", w.Code, w.Body)
 	}
 }

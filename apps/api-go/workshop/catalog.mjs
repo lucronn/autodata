@@ -369,6 +369,7 @@ function safeRequestMessage(status) {
   return 'AutoData is temporarily unavailable. Try again.';
 }
 const shortSourceCheckPreference = 'workshop-short-source-check';
+const previewSourceCheckPreference = 'workshop-preview-source-check';
 const earlySourceCheckPreference = 'workshop-early-source-check';
 const shortPublicationCheckPreference = 'workshop-short-publication-check';
 const finishPublishedBodyPreference = 'workshop-finish-published-body';
@@ -377,12 +378,14 @@ export const selectedIndexSessionPreference = 'workshop-confirm-session';
 
 export async function requestArticleJSON(path, {
   signal, timeout = 10000, readableBodyTimeout = 0, fetcher = fetch, method = 'GET', body, headers = {},
-  preferShortSourceCheck = false, preferEarlySourceCheck = false, preferShortPublicationCheck = false,
+  preferShortSourceCheck = false, preferPreviewSourceCheck = false, preferEarlySourceCheck = false,
+  preferShortPublicationCheck = false,
   finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck,
   onResponseStatus, onResponseDate, onSelectedIndexSession,
 } = {}) {
   const preferences = [];
   if (preferShortSourceCheck) preferences.push(shortSourceCheckPreference);
+  if (preferPreviewSourceCheck && method === 'GET') preferences.push(previewSourceCheckPreference);
   if (preferEarlySourceCheck && method === 'GET') preferences.push(earlySourceCheckPreference);
   if (preferShortPublicationCheck) preferences.push(shortPublicationCheckPreference);
   if (finishPublishedBody) preferences.push(finishPublishedBodyPreference);
@@ -459,11 +462,13 @@ export async function requestArticleJSON(path, {
       });
     }
     const shortSourceCheck = preferShortSourceCheck && applied === shortSourceCheckPreference;
+    const previewSourceCheck = preferPreviewSourceCheck && method === 'GET' && applied === previewSourceCheckPreference;
     const shortPublicationCheck = preferShortPublicationCheck && applied === shortPublicationCheckPreference;
     const publicationStatus = Boolean(publicationCheck && applied === publicationStatusPreference);
     const publicationCheckSupported = response.headers.get('Workshop-Publication-Check') === 'supported';
     onResponseDate?.(response.headers.get('Date'));
     return { status: response.status, data, retryAfterSeconds, shortSourceCheck, shortPublicationCheck,
+      ...(previewSourceCheck ? { previewSourceCheck } : {}),
       ...(publicationStatus ? { publicationStatus } : {}),
       ...(publicationCheckSupported ? { publicationCheckSupported } : {}),
     };

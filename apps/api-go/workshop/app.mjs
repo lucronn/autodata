@@ -1793,7 +1793,8 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
     configuration?.id === selected.id && configuration?.region === selected.region;
   const order = articleDetailOrder(g, id);
   const detailPath = articleRequestPath(id);
-  const readOptions = { signal: g.signal, preferShortPublicationCheck: true };
+  const preferPreviewSourceCheck = !openDemo && session.state.mode === "firebase";
+  const readOptions = { signal: g.signal, preferShortPublicationCheck: true, preferPreviewSourceCheck };
   const deniesArticle = (status) => [401, 403, 404, 410].includes(status);
   const showSavedConfiguration = (configuration) => {
     vehicle = configuration;
@@ -1968,7 +1969,7 @@ async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {
             readableBodyTimeout: options.readableBodyTimeout && Math.max(1, options.readableBodyTimeout - elapsed) };
         }
       }
-      return requestArticleDetail(order, detailPath, options);
+      return requestArticleDetail(order, detailPath, { ...options, preferPreviewSourceCheck });
     },
     {
       signal: keepEarlyRead ? earlySignal : g.signal,
