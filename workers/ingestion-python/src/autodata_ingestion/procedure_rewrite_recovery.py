@@ -316,7 +316,11 @@ def _recover_cooling_sequence(source, raw, slots, invalid, *, prompt_version, or
             continue
         wording = _equivalent_directive(slot["text"]) if error == "REWRITE_ACTION_MUTATION" else None
         if wording is None:
-            wording = recast_cooling_passage(slot["text"], error)
+            recast_error = error
+            if (prompt_version == auto._PROCEDURE_FIDELITY_PROMPT_VERSION
+                    and error == "REWRITE_QUALIFIER_MUTATION"):
+                recast_error = "REWRITE_ACTION_MUTATION"
+            wording = recast_cooling_passage(slot["text"], recast_error)
             sequence_recast |= wording is not None
         if wording is not None:
             row["text"] = wording

@@ -1654,6 +1654,12 @@ def test_automatic_lubrication_assignment(runtime, provider, draft, error_code):
         "REWRITE_ACTION_MUTATION", id="pump-drain",
     ),
     pytest.param(
+        "Drain the fixture reservoir.",
+        "The fixture reservoir must be drained.",
+        "Fill the fixture reservoir.",
+        "REWRITE_ACTION_MUTATION", id="fixture-reservoir-fidelity",
+    ),
+    pytest.param(
         "Remove the damaged line and clean the fittings before installation.",
         "Take the damaged line off. Before installation, clean the fittings.",
         "Take the damaged line off before installation.",

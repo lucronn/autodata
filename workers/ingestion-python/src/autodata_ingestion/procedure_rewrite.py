@@ -400,11 +400,12 @@ def rewrite_ordered_document(document, *, client, context, profile_version=_PROF
         from .procedure_rewrite_full import render_full, validate_full, _source_valid
         render_options = {"profile_version": profile_version}
         if profile_version in AUTOMATIC_REWRITE_PROFILES:
-            from .procedure_rewrite_auto import _NOTE_LABEL_PROMPT_VERSION
+            from .procedure_rewrite_auto import _keeps_authored_note_labels
             from .procedure_rewrite_auto import render_auto as render_full, validate_auto as validate_full
-            if json.loads(prompt)["prompt_version"] == _NOTE_LABEL_PROMPT_VERSION:
-                render_options["prompt_version"] = _NOTE_LABEL_PROMPT_VERSION
-                metadata["prompt_version"] = _NOTE_LABEL_PROMPT_VERSION
+            guard_version = json.loads(prompt)["prompt_version"]
+            if _keeps_authored_note_labels(guard_version):
+                render_options["prompt_version"] = guard_version
+                metadata["prompt_version"] = guard_version
         if not _source_valid(source):
             return result(source, error="REWRITE_DOCUMENT_INVALID")
         if client is None:

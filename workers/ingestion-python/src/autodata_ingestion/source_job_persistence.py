@@ -385,14 +385,14 @@ def source_bound_correction_prior_attempt(cur, prior_job, *, first_draft=False):
     if guard_version is None:
         raise ValueError(rejected)
     if first_draft:
-        from .procedure_rewrite_auto import _NOTE_LABEL_PROMPT_VERSION
+        from .procedure_rewrite_auto import _keeps_authored_note_labels
         from .procedure_rewrite_correction import _initial_draft
 
         if (not isinstance(response["introduction"], str) or not response["introduction"].strip()
             or not observed["captured_at"] <= attempt["dispatched_at"] <= attempt["completed_at"]):
             raise ValueError(rejected)
         try:
-            _initial_draft(source, response, preserve_notes=guard_version == _NOTE_LABEL_PROMPT_VERSION)
+            _initial_draft(source, response, preserve_notes=_keeps_authored_note_labels(guard_version))
         except ValueError:
             raise ValueError(rejected) from None
         return {**attempt, "guard_version": guard_version, "observation_id": observed["source_observation_id"]}
