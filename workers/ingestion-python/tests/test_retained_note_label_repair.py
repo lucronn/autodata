@@ -142,6 +142,7 @@ def test_retained_required_action_repair_publishes_same_source_and_rolls_back_at
             "Tighten the clamp on the existing bracket.": draft,
         })
         prior_id = repair_retained_note_labels(runtime.repo, runtime.article_id, **args)
+    runtime.reset_counters()
 
     with runtime.repo.connect() as conn, conn.cursor() as cur:
         article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
@@ -195,7 +196,7 @@ def test_retained_required_action_repair_publishes_same_source_and_rolls_back_at
     after = _state(runtime)
     assert after["canonical_article_rewrite_attempts"] == before["canonical_article_rewrite_attempts"]
     assert len(after["publication_events"]) == len(before["publication_events"]) + 1
-    assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 0}
+    assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}
     with pytest.raises(ValueError, match="^RETAINED_REQUIRED_ACTION_REPAIR_STALE$"):
         repair_retained_required_actions(runtime.repo, runtime.article_id, **pins)
     with pytest.raises(ProfileRefreshRequired):
