@@ -17,6 +17,38 @@ def run(source, payload):
 
 
 @pytest.mark.parametrize("profile", [PROFILE, SOURCE_BOUND_REWRITE_PROFILE])
+def test_automatic_prompt_lists_each_required_technical_token_and_replays_previous_attempts(profile):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source = document("Remove the 2 clips from the lower cover and set the 2 clips aside.",
+                      "A completely ordinary paragraph about an engine cover.")
+    historical = (
+        auto._build_auto_prompt_v65(source, context={}) if profile == PROFILE
+        else auto._build_source_bound_prompt(
+            source, preserve_notes=True, procedure_fidelity=True, allow_drain_subject=True,
+            allow_rotation_removal=True, allow_optional_observation=True,
+        )
+    )
+    current = auto.build_auto_prompt(source, context={}, profile_version=profile)
+    payload = json.loads(current)
+    assert payload["slots"][0]["required_technical_tokens"] == ["2 clips", "2 clips"]
+    assert "required_technical_tokens" not in payload["slots"][1]
+    assert "copy every entry" in payload["rules"][0]
+    assert "required_technical_tokens" not in json.loads(historical)["slots"][0]
+    assert current != historical
+    for raw in [current, historical]:
+        assert auto._auto_prompt_version(
+            source, context={}, prompt_hash=sha256(raw.encode()).hexdigest(), profile_version=profile,
+        ) == payload["prompt_version"]
+
+    omitted = response("Take the 2 clips off the lower cover and put them aside.",
+                       "The engine cover is the subject of this paragraph.")
+    result = rewrite.rewrite_ordered_document(source, client=Draft(omitted), context={}, profile_version=profile)
+    assert result.error_code == "REWRITE_TECHNICAL_MUTATION"
+    assert result.document == source
+
+
+@pytest.mark.parametrize("profile", [PROFILE, SOURCE_BOUND_REWRITE_PROFILE])
 def test_automatic_rewrite_reapplies_authored_note_labels_without_replacing_prose(profile):
     from autodata_ingestion import procedure_rewrite_auto as auto
 
