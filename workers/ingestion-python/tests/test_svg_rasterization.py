@@ -60,6 +60,28 @@ def test_invalid_and_unbounded_input_rejected(payload):
         rasterize_svg(payload)
 
 
+@pytest.mark.parametrize("attribute", ["href", "xlink:href"])
+def test_navigation_links_keep_their_transformed_drawing(attribute):
+    href = f' {attribute}="/fixture/related-article?region=US"'.encode()
+    svg = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"'
+        b' viewBox="-0.5 -0.5 40 20"><a transform="translate(7,2)"' + href
+        + b'><rect width="20" height="14" style="fill:#155ca0"/></a></svg>'
+    )
+    png = rasterize_svg(svg)
+    assert png == rasterize_svg(svg.replace(href, b""))
+    with Image.open(BytesIO(png)) as image:
+        assert image.size == (40, 20)
+        assert image.convert("RGB").getpixel((12, 8)) == (21, 92, 160)
+
+
+def test_navigation_wrapper_keeps_visual_source_references_checked():
+    svg = (b'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">'
+           b'<a href="/fixture/related"><image href="/fixture/required-graphic"/></a></svg>')
+    with pytest.raises(SVGUnavailable, match="^SVG_EXTERNAL_REFERENCE$"):
+        rasterize_svg(svg)
+
+
 def test_internal_fragment_paint_and_use_are_supported():
     svg = b'''<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><defs><rect id="r" width="10" height="10"/><linearGradient id="g"><stop stop-color="blue"/></linearGradient></defs><use href="#r" fill="url(#g)"/></svg>'''
     assert rasterize_svg(svg).startswith(b'\x89PNG\r\n\x1a\n')

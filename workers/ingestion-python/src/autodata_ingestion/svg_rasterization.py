@@ -97,6 +97,11 @@ def _prepare_svg(payload):
                 if local.startswith("on") or name == "{http://www.w3.org/XML/1998/namespace}base":
                     raise SVGUnavailable("UNSUPPORTED_SVG_CONTENT")
                 if local in {"href", "src"} and not value.startswith("#"):
+                    if tag == "a" and name in {"href", "{http://www.w3.org/1999/xlink}href"}:
+                        # A raster has no navigation. Keep the wrapper and its drawing
+                        # attributes while removing the link from the renderer's input.
+                        del node.attrib[name]
+                        continue
                     if tag != "image" or not value.startswith("data:"):
                         _deny_fetch()
                     value, data, pixels = _embedded_raster(value)

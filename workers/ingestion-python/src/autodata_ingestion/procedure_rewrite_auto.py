@@ -14,6 +14,7 @@ import re
 
 from . import procedure_rewrite_full as full
 from .article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, ValidationResult
+from .procedure_rewrite_fidelity import procedure_facts
 
 PROFILE = AUTOMATIC_REWRITE_PROFILE
 _PROSE_PROMPT_V4 = "full-prose-auto-prompt-v4"
@@ -74,6 +75,7 @@ _FLUID_OUNCE_RATE_PROMPT_VERSION = "full-prose-auto-prompt-v58"
 _SPATIAL_SCOPE_PROMPT_VERSION = "full-prose-auto-prompt-v59"
 _ASSEMBLY_LABEL_PROMPT_VERSION = "full-prose-auto-prompt-v60"
 _NOTE_LABEL_PROMPT_VERSION = "full-prose-auto-prompt-v61"
+_PROCEDURE_FIDELITY_PROMPT_VERSION = "full-prose-auto-prompt-v62"
 _AUTHORED_NOTE_PREFIX = re.compile(r"^\s*note\s*:\s*", re.IGNORECASE)
 _NUMERIC_SUPERSCRIPT = re.compile(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]|\^\([+−-]?(?:[0-9]*\.[0-9]+|[0-9]+/[0-9]+)\)")
 _WORDS = re.compile(r"\w+")
@@ -1999,16 +2001,22 @@ def authored_note_prefix(text: str) -> str | None:
     return match[0] if match else None
 
 
+def _keeps_authored_note_labels(prompt_version):
+    return prompt_version in (_NOTE_LABEL_PROMPT_VERSION, _PROCEDURE_FIDELITY_PROMPT_VERSION)
+
+
 def build_auto_prompt(document, *, context, profile_version=PROFILE):
     if profile_version == PROFILE:
-        return _build_auto_prompt_v61(document, context=context)
+        return _build_auto_prompt_v62(document, context=context)
     if profile_version != SOURCE_BOUND_REWRITE_PROFILE:
         raise ValueError("REWRITE_PROFILE_UNSUPPORTED")
-    return _build_source_bound_prompt(document, preserve_notes=True)
+    return _build_source_bound_prompt(document, preserve_notes=True, procedure_fidelity=True)
 
 
-def _build_source_bound_prompt(document, *, preserve_notes):
+def _build_source_bound_prompt(document, *, preserve_notes, procedure_fidelity=False):
     builder = _auto_prompt_payload_v61 if preserve_notes else _auto_prompt_payload_v60
+    if procedure_fidelity:
+        builder = _auto_prompt_payload_v62
     payload = builder(document, context={})
     payload.pop("context", None)
     payload["profile_version"] = SOURCE_BOUND_REWRITE_PROFILE
@@ -2059,17 +2067,44 @@ def _build_auto_prompt_v61(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
+def _passage_procedure_facts(text):
+    label = authored_note_prefix(text)
+    return procedure_facts(text[len(label):] if label else text)
+
+
+def _auto_prompt_payload_v62(document, *, context):
+    payload = _auto_prompt_payload_v61(document, context=context)
+    if any(slot["required_action"] == "rewrite" and _passage_procedure_facts(slot["text"])
+           for slot in payload["slots"]):
+        payload["prompt_version"] = _PROCEDURE_FIDELITY_PROMPT_VERSION
+        payload["rules"].append(
+            "Reword fluid instructions while keeping the action and exact component. Preserve explicit contact "
+            "as the installation endpoint. Bind a repeat count and its purpose to the same step range. If two "
+            "states must both be reached before idling ends, keep both and preserve the exact indicator and "
+            "minimum recurrence that verify the named state."
+        )
+    return payload
+
+
+def _build_auto_prompt_v62(document, *, context):
+    payload = _auto_prompt_payload_v62(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
 def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROFILE):
     """Identify the rules bound to the saved model attempt."""
     if profile_version == SOURCE_BOUND_REWRITE_PROFILE:
-        for preserve_notes in (True, False):
-            payload = _build_source_bound_prompt(document, preserve_notes=preserve_notes)
+        for preserve_notes, procedure_fidelity in ((True, True), (True, False), (False, False)):
+            payload = _build_source_bound_prompt(
+                document, preserve_notes=preserve_notes, procedure_fidelity=procedure_fidelity,
+            )
             if sha256(payload.encode()).hexdigest() == prompt_hash:
                 return json.loads(payload)["prompt_version"]
         return None
     if profile_version != PROFILE:
         return None
     for builder in (
+        _build_auto_prompt_v62,
         _build_auto_prompt_v61,
         _build_auto_prompt_v60, _build_auto_prompt_v59, _build_auto_prompt_v58, _build_auto_prompt_v57, _build_auto_prompt_v56,
         _build_auto_prompt_v55, _build_auto_prompt_v54,
@@ -3552,7 +3587,8 @@ def _combined_replacement_preparation_targets(text, *, recognize_then_comma=Fals
 
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
-        None, _NOTE_LABEL_PROMPT_VERSION, _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
+        None, _PROCEDURE_FIDELITY_PROMPT_VERSION, _NOTE_LABEL_PROMPT_VERSION,
+        _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
         _SPATIAL_SCOPE_PROMPT_VERSION, _ASSEMBLY_LABEL_PROMPT_VERSION,
         _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
         _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
@@ -3565,7 +3601,8 @@ def _uses_prose_guards(prompt_version, slot_count):
 
 def _include_cell_blocks(prompt_version):
     return prompt_version in (
-        None, _NOTE_LABEL_PROMPT_VERSION, _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
+        None, _PROCEDURE_FIDELITY_PROMPT_VERSION, _NOTE_LABEL_PROMPT_VERSION,
+        _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
         _SPATIAL_SCOPE_PROMPT_VERSION, _ASSEMBLY_LABEL_PROMPT_VERSION,
         _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
         _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
@@ -3582,6 +3619,9 @@ def _require_changes(
     restored = {"blocks": candidate["blocks"][1:]}
     if include_cell_blocks is None:
         include_cell_blocks = _include_cell_blocks(prompt_version)
+    guard_procedure_fidelity = prompt_version == _PROCEDURE_FIDELITY_PROMPT_VERSION
+    if guard_procedure_fidelity:
+        prompt_version = _auto_prompt_payload_v61(source, context={})["prompt_version"]
     guard_note_labels = prompt_version == _NOTE_LABEL_PROMPT_VERSION
     if guard_note_labels:
         prompt_version = _auto_prompt_payload_v60(source, context={})["prompt_version"]
@@ -3945,6 +3985,11 @@ def _require_changes(
             raise ValueError("REWRITE_QUALIFIER_MUTATION")
         if guard_qualitative_rotation:
             _check_qualitative_rotation(original, replacement, source_rotations)
+        if guard_procedure_fidelity and (facts := _passage_procedure_facts(original)):
+            if facts != _passage_procedure_facts(replacement):
+                raise ValueError(
+                    "REWRITE_ACTION_MUTATION" if facts[0] in {"fluid", "repeat"} else "REWRITE_QUALIFIER_MUTATION"
+                )
 
     for slot in slots:
         if slot_errors is None:
@@ -3969,6 +4014,9 @@ def _require_changes(
 
 def require_current_publication_checks(source, candidate, *, saved_prompt_version, bankone_structure=None):
     """Apply current prose rules to the saved prompt's editable slots."""
+    if saved_prompt_version == _PROCEDURE_FIDELITY_PROMPT_VERSION:
+        _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure)
+        saved_prompt_version = _auto_prompt_payload_v61(source, context={})["prompt_version"]
     if saved_prompt_version == _NOTE_LABEL_PROMPT_VERSION:
         saved_prompt_version = _auto_prompt_payload_v60(source, context={})["prompt_version"]
     if saved_prompt_version == _ASSEMBLY_LABEL_PROMPT_VERSION:
@@ -4020,7 +4068,7 @@ def failed_rewrite_passages(source, response, *, prompt_version=None, bankone_st
     """
     if not isinstance(response, dict) or set(response) != {"introduction", "replacements"}:
         return []
-    if prompt_version == _NOTE_LABEL_PROMPT_VERSION:
+    if _keeps_authored_note_labels(prompt_version):
         response = _restore_authored_note_labels(source, response)
     rows = response["replacements"]
     slots = full.prose_slots(source, include_cell_blocks=_include_cell_blocks(None))
@@ -4075,7 +4123,7 @@ def _restore_authored_note_labels(source, response):
 
 
 def render_auto(source, response, *, prompt_version=None, profile_version=PROFILE, bankone_structure=None):
-    if prompt_version == _NOTE_LABEL_PROMPT_VERSION:
+    if _keeps_authored_note_labels(prompt_version):
         response = _restore_authored_note_labels(source, response)
     candidate = full.render_full(
         source, response, profile_version=profile_version, include_cell_blocks=_include_cell_blocks(prompt_version),
@@ -4086,7 +4134,7 @@ def render_auto(source, response, *, prompt_version=None, profile_version=PROFIL
 
 def validate_auto(source, candidate, *, response=None, prompt_version=None, profile_version=PROFILE,
                   bankone_structure=None):
-    if prompt_version == _NOTE_LABEL_PROMPT_VERSION:
+    if _keeps_authored_note_labels(prompt_version):
         response = _restore_authored_note_labels(source, response)
     validation = full.validate_full(
         source, candidate, response=response, profile_version=profile_version,
@@ -4161,6 +4209,7 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None, prof
             _SPATIAL_SCOPE_PROMPT_VERSION: "full-prose-auto-validator-v57",
             _ASSEMBLY_LABEL_PROMPT_VERSION: "full-prose-auto-validator-v58",
             _NOTE_LABEL_PROMPT_VERSION: "full-prose-auto-validator-v59",
+            _PROCEDURE_FIDELITY_PROMPT_VERSION: "full-prose-auto-validator-v60",
         }.get(prompt_version, "full-prose-auto-validator-v53")
     report.update(validator_version=validator_version, profile_version=profile_version,
         publication_mode="automatic", content_acceptance_required=False,

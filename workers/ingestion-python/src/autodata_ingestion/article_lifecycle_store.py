@@ -769,7 +769,7 @@ _CORRECTION_SERVER = "server-source-bound-correction"
 
 
 def _bound_correction_draft(cur, job, document, *, lock_bankone_archive=False):
-    from .procedure_rewrite_auto import _NOTE_LABEL_PROMPT_VERSION
+    from .procedure_rewrite_auto import _keeps_authored_note_labels
     from .procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
     from .source_job_persistence import source_bound_correction_prior_attempt
 
@@ -853,7 +853,7 @@ def _bound_correction_draft(cur, job, document, *, lock_bankone_archive=False):
             or bankone_archive["body_sha256"] != original.digest):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
         validate_bankone_structure(document, bankone_archive["proof"])
-    return {**binding, "preserve_notes": attempt["guard_version"] == _NOTE_LABEL_PROMPT_VERSION}, attempt
+    return {**binding, "preserve_notes": _keeps_authored_note_labels(attempt["guard_version"])}, attempt
 
 
 def _validate_correction_rounds(rounds, *, limit, model, token, input_hash, revision):
@@ -879,7 +879,7 @@ def _correction_round_bindings(rounds):
     ]
 
 
-def resolve_source_bound_correction(cur, job, candidate):
+def resolve_source_bound_correction(cur, job, candidate, *, require_current=False):
     """Rebuild a correction and bind every provider round to its publication."""
     from .article_document import project_ordered_document
     from .procedure_rewrite_correction import (
@@ -953,6 +953,14 @@ def resolve_source_bound_correction(cur, job, candidate):
             "images": candidate["canonical_images"],
         }):
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+    if require_current:
+        from .procedure_rewrite_auto import _PROCEDURE_FIDELITY_PROMPT_VERSION, require_current_publication_checks
+
+        if prior_attempt["guard_version"] == _PROCEDURE_FIDELITY_PROMPT_VERSION:
+            require_current_publication_checks(
+                source, result.document, saved_prompt_version=prior_attempt["guard_version"],
+                bankone_structure=result.bankone_structure,
+            )
     return result
 
 
@@ -1345,7 +1353,7 @@ def automatic_candidate_validation(cur, job, candidate, *, require_current=False
     if profile == SOURCE_BOUND_CORRECTION_PROFILE:
         if normalized != source:
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
-        correction = resolve_source_bound_correction(cur, job, candidate)
+        correction = resolve_source_bound_correction(cur, job, candidate, require_current=require_current)
         validation = validate_auto(
             source, correction.document, response=correction.response,
             prompt_version=correction.evidence["guard_version"], profile_version=profile,
@@ -1515,7 +1523,12 @@ def _store_rewrite_result(repo,lease,result):
             raise ValueError("rewrite input/output binding mismatch")
         recovered = None
         prompt_version = None
-        if result.profile_version == AUTOMATIC_REWRITE_PROFILE and result.error_code in FIRST_DRAFT_RECOVERABLE_ERRORS:
+        # Exact staged media recovery binds this failure to both immutable replies.
+        staged_media_technical_failure = (
+            STAGED_MEDIA_REFRESH in job["checkpoint"] and result.error_code == "REWRITE_TECHNICAL_MUTATION"
+        )
+        if (result.profile_version == AUTOMATIC_REWRITE_PROFILE and result.error_code in FIRST_DRAFT_RECOVERABLE_ERRORS
+                and not staged_media_technical_failure):
             from .procedure_rewrite_auto import _auto_prompt_version
 
             source = job["checkpoint"]["normalized_document"]
@@ -1547,14 +1560,14 @@ def _store_rewrite_result(repo,lease,result):
             if digest_json(render_full(source,result.raw_response)) != digest_json(result.document) or not full_validation.passed:
                 raise ValueError("rewrite operation binding mismatch")
         if result.profile_version in AUTOMATIC_REWRITE_PROFILES and (recovered is not None or not result.error_code):
-            from .procedure_rewrite_auto import _NOTE_LABEL_PROMPT_VERSION, render_auto, validate_auto
+            from .procedure_rewrite_auto import _keeps_authored_note_labels, render_auto, validate_auto
             source = job["checkpoint"]["normalized_document"]
             response = recovered.response if recovered is not None else result.raw_response
             document = recovered.document if recovered is not None else result.document
             output_hash = digest_json(document) if recovered is not None else result.output_hash
             guard_version = prompt_version if recovered is not None else None
-            if result.model_metadata.get("prompt_version") == _NOTE_LABEL_PROMPT_VERSION:
-                guard_version = _NOTE_LABEL_PROMPT_VERSION
+            if _keeps_authored_note_labels(result.model_metadata.get("prompt_version")):
+                guard_version = result.model_metadata["prompt_version"]
             rendered = render_auto(source, response, prompt_version=guard_version, profile_version=result.profile_version)
             validation = validate_auto(
                 source, document, response=response, prompt_version=guard_version, profile_version=result.profile_version,

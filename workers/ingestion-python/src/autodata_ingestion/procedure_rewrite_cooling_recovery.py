@@ -3,12 +3,9 @@
 import re
 
 from . import procedure_rewrite_auto as auto, procedure_rewrite_full as full
-
-
-_WORD = r"[a-z]+(?:-[a-z]+)*"
-_PHRASE = rf"{_WORD}(?: {_WORD}){{0,11}}"
-_COUNT = r"[1-9][0-9]{0,3}"
-_FLAGS = re.IGNORECASE | re.ASCII
+from .procedure_rewrite_fidelity import (
+    _FLAGS, _PHRASE, _contact_instruction, _idle_instruction, _object_name, _repeat_instruction,
+)
 
 _RATIO_BOUND = re.compile(
     rf"(?P<bound>Maximum|Minimum) (?P<subject>{_PHRASE}) is "
@@ -16,63 +13,28 @@ _RATIO_BOUND = re.compile(
     _FLAGS,
 )
 _CLOSE = re.compile(rf"Close the (?P<part>{_PHRASE})\.", _FLAGS)
-_INSTALL_TO_STOP = re.compile(
-    rf"Install the (?P<part>{_PHRASE}) until "
-    rf"(?P<endpoint>it (?:contacts|touches) the (?:{_WORD} ){{0,5}}stop)\.",
-    _FLAGS,
-)
-_START_AND_IDLE = re.compile(
-    rf"Start the (?P<part>{_PHRASE}) and let it idle until the "
-    rf"(?P<primary>{_PHRASE}) reaches (?P<threshold>{_PHRASE}) and the "
-    rf"(?P<secondary>{_PHRASE}) is fully open\. "
-    rf"A (?P<state>fully open (?P<verified>{_PHRASE})) is verified by the "
-    rf"(?P<indicator>{_PHRASE}) cycling on at least once\.",
-    _FLAGS,
-)
-_REPEAT_TO_REMOVE = re.compile(
-    rf"Repeat (?P<counted>Steps (?P<first>{_COUNT}) through (?P<last>{_COUNT}) "
-    rf"a total of {_COUNT} times) to remove (?P<contents>{_PHRASE})\.",
-    _FLAGS,
-)
 _SECTION_LABEL = re.compile(
     rf"Filling and Bleeding (?P<scope>(?:with|without|using) (?:a|an|the) {_PHRASE})",
     _FLAGS,
 )
-# Object names in the active-to-passive and split-command forms must not
-# contain an extra direction, exception, or prerequisite clause.
-_CLAUSE_WORDS = frozenset(
-    ("after and before because except if instead never not only or otherwise "
-     "unless until using when while with without").split()
-)
-
-
-def _object_name(text: str) -> bool:
-    return _CLAUSE_WORDS.isdisjoint(text.casefold().split())
 
 
 def _recast_directive(source: str) -> str | None:
     if (closure := _CLOSE.fullmatch(source)) and _object_name(closure["part"]):
         return f"The {closure['part']} must be closed."
 
-    if (installation := _INSTALL_TO_STOP.fullmatch(source)) and _object_name(installation["part"]):
+    if installation := _contact_instruction(source):
         return f"Install the {installation['part']}. Continue until {installation['endpoint']}."
 
-    if start := _START_AND_IDLE.fullmatch(source):
-        # The observation must verify the same open state used to end idling.
-        if start["secondary"].casefold() != start["verified"].casefold() or not all(
-            _object_name(start[key]) for key in ("part", "primary", "threshold", "secondary", "indicator")
-        ):
-            return None
+    if start := _idle_instruction(source):
         return (
             f"Start the {start['part']}. Keep it idling until both conditions are met: "
             f"the {start['primary']} has reached {start['threshold']}, and the {start['secondary']} "
             f"is fully open. The {start['indicator']} cycling on at least once verifies a {start['state']}."
         )
 
-    if repeated := _REPEAT_TO_REMOVE.fullmatch(source):
-        # The range, count and their protected adjacent words move together.
-        if int(repeated["first"]) <= int(repeated["last"]) and _object_name(repeated["contents"]):
-            return f"Remove {repeated['contents']} by repeating {repeated['counted']}."
+    if repeated := _repeat_instruction(source):
+        return f"Remove {repeated['contents']} by repeating {repeated['counted']}."
     return None
 
 
