@@ -16,7 +16,7 @@ from select import select
 import signal
 from socket import socketpair
 import stat
-from threading import Event, Lock
+from threading import Event
 from uuid import UUID, uuid4
 
 from psycopg import DatabaseError, sql
@@ -26,6 +26,7 @@ MAX_STATE_BYTES = 16384
 CONTINUOUS_MAX_STATE_BYTES = 2 * 1024 * 1024
 CONTINUOUS_MAX_RESERVATIONS = 10000
 WINDOW = timedelta(hours=24)
+PAID_SOURCE_INTERVAL = timedelta(seconds=30)
 
 
 class WorkerBlocked(RuntimeError):
@@ -311,7 +312,40 @@ def database_now(repo):
         return conn.execute('SELECT clock_timestamp() AS now').fetchone()['now']
 
 
-def _reserve_next_article(repo, state, *, providers=None, stop=None):
+# Current scope and full order/entitlement ownership are required for an
+# on-demand capture that does not spend a legacy rollout reservation.
+_PAID_SOURCE_SCOPE = """
+    EXISTS (
+        SELECT 1 FROM vehicle_configurations c
+        JOIN vehicle_identity_bases b ON b.vehicle_identity_base_id=c.vehicle_identity_base_id
+                                     AND b.vehicle_id=c.vehicle_id
+        JOIN entitlements e ON e.configuration_id=c.vehicle_configuration_id AND e.region=b.region
+        JOIN workshop_orders o ON o.order_id=e.commerce_order_id AND o.entitlement_id=e.entitlement_id
+                               AND o.configuration_id=e.configuration_id AND o.region=e.region
+                               AND o.customer_account_id=e.customer_account_id AND o.organization_id=e.organization_id
+        JOIN customer_accounts acct ON acct.customer_account_id=e.customer_account_id
+                                    AND acct.personal_organization_id=e.organization_id
+        WHERE c.vehicle_configuration_id=a.vehicle_configuration_id AND c.vehicle_id=a.vehicle_id
+          AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'
+          AND (c.engine_variant IS NULL OR c.engine_variant_market_verified)
+          AND e.status='active' AND o.status='paid' AND acct.status='active'
+    )
+"""
+_SOURCE_COOLDOWN = """
+    NOT EXISTS (
+        SELECT 1 FROM source_fetch_jobs previous
+        WHERE previous.provider_slug=j.provider_slug AND previous.job_kind='article'
+          AND (previous.checkpoint->>'source_cooldown_until')::timestamptz>%(now)s
+    )
+"""
+_PAID_SOURCE_READY = _PAID_SOURCE_SCOPE + " AND " + _SOURCE_COOLDOWN + """ AND NOT EXISTS (
+    SELECT 1 FROM source_fetch_jobs previous
+    WHERE previous.provider_slug=j.provider_slug AND previous.job_kind='article'
+      AND (previous.checkpoint->>'paid_source_reserved_at')::timestamptz>%(available_since)s
+)"""
+
+
+def _reserve_next_article(repo, state, *, providers=None, stop=None, paid_overflow=False):
     """Persist quota first, then commit cap1; any exception prevents dispatch."""
     from psycopg.types.json import Jsonb
     snapshot = state.read()
@@ -322,12 +356,20 @@ def _reserve_next_article(repo, state, *, providers=None, stop=None):
         return None
     with repo.connect() as conn:
         now = conn.execute('SELECT clock_timestamp() AS now').fetchone()['now']
-        if not state.active(snapshot, now):
-            return None
+        if paid_overflow:
+            if snapshot['schema'] != 2 or not state.running(snapshot, now):
+                return None
+            eligibility = _PAID_SOURCE_READY
+        else:
+            if not state.active(snapshot, now):
+                return None
+            eligibility = _SOURCE_COOLDOWN
         params = {'providers': allowed, 'cutoff': _timestamp(snapshot['cutoff']),
-                  'reserved': [UUID(r['job_id']) for r in snapshot['reservations']]}
+                  'reserved': [UUID(r['job_id']) for r in snapshot['reservations']],
+                  'now': now, 'available_since': now - PAID_SOURCE_INTERVAL}
+        predicate = admission_predicate(snapshot) + ' AND ' + eligibility
         row = conn.execute('''SELECT j.source_fetch_job_id,j.provider_slug FROM source_fetch_jobs j
-            JOIN canonical_articles a ON a.canonical_article_id=j.canonical_article_id WHERE ''' + admission_predicate(snapshot) + '''
+            JOIN canonical_articles a ON a.canonical_article_id=j.canonical_article_id WHERE ''' + predicate + '''
             AND j.checkpoint='{}'::jsonb AND NOT (j.source_fetch_job_id=ANY(%(reserved)s::uuid[]))
             ORDER BY j.created_at,j.source_fetch_job_id LIMIT 1 FOR UPDATE OF j,a SKIP LOCKED''', params).fetchone()
         if row is None:
@@ -338,17 +380,24 @@ def _reserve_next_article(repo, state, *, providers=None, stop=None):
         # an owning row while PostgreSQL was acquiring the joined locks.
         params.update(job_id=job_id, providers=[provider])
         eligible = conn.execute('''SELECT 1 FROM source_fetch_jobs j JOIN canonical_articles a
-            ON a.canonical_article_id=j.canonical_article_id WHERE ''' + admission_predicate(snapshot) + '''
+            ON a.canonical_article_id=j.canonical_article_id WHERE ''' + predicate + '''
             AND j.checkpoint='{}'::jsonb AND j.source_fetch_job_id=%(job_id)s''', params).fetchone()
         if eligible is None:
             return None
         now = conn.execute('SELECT clock_timestamp() AS now').fetchone()['now']
         if stop is not None and stop.is_set():
             return None
-        if not state.reserve(job_id, now, stop=stop):
+        if paid_overflow:
+            if not state.running(state.read(), now):
+                return None
+        elif not state.reserve(job_id, now, stop=stop):
             return None
         marker = {'new_article_rollout': {'rollout_id': snapshot['rollout_id'],
             'source_sha': snapshot['source_sha'], 'cutoff': snapshot['cutoff'], 'max_model_attempts': 1}}
+        if paid_overflow:
+            # Persist the reservation under the existing row locks. The legacy
+            # ledger is unchanged and a rollback skips this non-pristine row.
+            marker['paid_source_reserved_at'] = now.isoformat()
         conn.execute('''UPDATE source_fetch_jobs SET max_attempts=1,checkpoint=%s,
             updated_at=clock_timestamp() WHERE source_fetch_job_id=%s''', (Jsonb(marker), job_id))
     # Connection context has committed before this UUID escapes to dispatch.
@@ -372,8 +421,33 @@ def dispatch_next(repo, state, *, worker_id, registry, object_store, model_clien
         object_store=object_store, model_client=model_client, hooks=hooks, stop=stop)
 
 
+class _CooldownConnector:
+    """Remember a provider's 429 even when only an optional resource failed."""
+
+    def __init__(self, connector, repo, job_id):
+        self._connector = connector
+        self.provider = connector.provider
+        self._repo = repo
+        self._job_id = job_id
+
+    def read_resource(self, resource_ref, *, timeout):
+        from .source_connector_client import SourceConnectorError
+        try:
+            return self._connector.read_resource(resource_ref, timeout=timeout)
+        except SourceConnectorError as error:
+            if error.code == "RATE_LIMITED":
+                delay = min(900, max(1, error.retry_after_seconds or 60))
+                with self._repo.connect() as conn:
+                    conn.execute("""UPDATE source_fetch_jobs
+                        SET checkpoint=checkpoint||jsonb_build_object('source_cooldown_until',
+                            GREATEST((checkpoint->>'source_cooldown_until')::timestamptz,
+                                     clock_timestamp()+make_interval(secs=>%s)))
+                        WHERE source_fetch_job_id=%s""", (delay, self._job_id))
+            raise
+
+
 def _dispatch_reserved_job(repo, state, job_id, *, worker_id, registry, object_store, model_client,
-                           provider=None, hooks=None, stop=None, model_slot=None):
+                           provider=None, hooks=None, stop=None, model_slot=None, paid_overflow=False):
     # Rollout disable prevents new reservations. An admitted job can drain.
     snapshot = state.read()
     if stop is not None and stop.is_set():
@@ -383,21 +457,27 @@ def _dispatch_reserved_job(repo, state, job_id, *, worker_id, registry, object_s
     from psycopg.types.json import Jsonb
     params['marker'] = Jsonb({'new_article_rollout': {'rollout_id': snapshot['rollout_id'],
         'source_sha': snapshot['source_sha'], 'cutoff': snapshot['cutoff'], 'max_model_attempts': 1}})
+    predicate = "j.checkpoint=%(marker)s"
+    if paid_overflow:
+        predicate = ("j.checkpoint - 'paid_source_reserved_at'::text=%(marker)s"
+                     " AND j.checkpoint ? 'paid_source_reserved_at' AND " + _PAID_SOURCE_SCOPE)
     with repo.connect() as conn:
         permitted = conn.execute('''SELECT 1 FROM source_fetch_jobs j JOIN canonical_articles a
             ON a.canonical_article_id=j.canonical_article_id WHERE ''' + admission_predicate(snapshot) + '''
-            AND j.source_fetch_job_id=%(job_id)s AND j.max_attempts=1 AND j.checkpoint=%(marker)s''', params).fetchone()
+            AND j.source_fetch_job_id=%(job_id)s AND j.max_attempts=1 AND ''' + predicate, params).fetchone()
     if permitted is None:
         return False
     from .article_lifecycle import run_article_worker_once
     if stop is not None and stop.is_set():
         return False
+    if snapshot['schema'] == 2 and provider in registry:
+        registry = {provider: _CooldownConnector(registry[provider], repo, job_id)}
     return run_article_worker_once(repo, worker_id=worker_id, registry=registry,
         object_store=object_store, model_client=model_client, hooks=hooks, job_id=job_id, model_slot=model_slot)
 
 
 def configured_model():
-    """Validate before any admission; Mercury transport performs no retries."""
+    """Validate reviewed rewrite settings; Mercury transport performs no retries."""
     if (not os.getenv('INCEPTION_API_KEY', '').strip()
             or os.getenv('INCEPTION_MODEL') != 'mercury-3'
             or os.getenv('INCEPTION_MAX_TOKENS') != '32768'
@@ -422,8 +502,8 @@ def _subscribe_to_article_jobs(repo):
         return None
 
 
-def _wait_for_article_activity(listener, completions, in_flight, stop):
-    if in_flight:
+def _wait_for_article_activity(listener, completions, has_active_job, stop):
+    if has_active_job:
         watched = [completions] if listener is None else [completions, listener]
         ready, _, _ = select(watched, [], [], 2)
         if completions in ready:
@@ -440,19 +520,24 @@ def _wait_for_article_activity(listener, completions, in_flight, stop):
         next(notifications, None)
 
 
+def _dispatch_parked_model(repo, lease, *, model_client):
+    from .article_lifecycle import run_article_job
+
+    # The current source is already durable. The claimed rewrite can drain on
+    # shutdown and this lane has no supplier access.
+    run_article_job(repo, lease, registry={}, object_store=None, model_client=model_client)
+
+
 def _run_continuous_articles(repo, state, *, registry, object_store, model_client, stop):
-    """Reserve in one thread while independent suppliers capture in parallel."""
+    """Capture per supplier and resume admitted model work on a separate lane."""
+    from .rollout_model_lane import claim_rollout_model_job
+
     in_flight = {}
+    model_future = None
     listener = None
-    model_lock = Lock()
-
-    @contextmanager
-    def model_slot():
-        with model_lock:
-            yield not stop.is_set()
-
     completions, wake = socketpair()
-    with completions, wake, ThreadPoolExecutor(max_workers=2) as pool:
+    with (completions, wake, ThreadPoolExecutor(max_workers=2) as captures,
+          ThreadPoolExecutor(max_workers=1) as rewrites):
         wake.setblocking(False)
 
         def completed(_):
@@ -467,46 +552,56 @@ def _run_continuous_articles(repo, state, *, registry, object_store, model_clien
                     if future.done():
                         future.result()
                         del in_flight[provider]
+                if model_future is not None and model_future.done():
+                    model_future.result()
+                    model_future = None
                 snapshot = state.read()
                 now = database_now(repo)
                 if len(snapshot['reservations']) == CONTINUOUS_MAX_RESERVATIONS:
-                    # The final admitted reservation is still allowed to finish.
+                    # The final admitted capture is still allowed to finish.
                     for future in in_flight.values():
                         future.result()
                 if not state.running(snapshot, now) or stop.is_set():
                     break
                 available = [item for item in snapshot['providers'] if item not in in_flight]
-                can_reserve = bool(available) and state.active(snapshot, now)
+                paid_overflow = not state.active(snapshot, now)
                 # Subscribe before checking the durable queue to cover a racing enqueue.
-                if can_reserve and listener is None:
+                if available and listener is None:
                     listener = _subscribe_to_article_jobs(repo)
-                elif not can_reserve and listener is not None:
+                elif not available and listener is not None:
                     listener.close()
                     listener = None
-                if can_reserve:
-                    if model_client is None:
-                        raise WorkerBlocked('MODEL_NOT_CONFIGURED')
-                    reserved = _reserve_next_article(repo, state, providers=available, stop=stop)
+                if available:
+                    reserved = _reserve_next_article(repo, state, providers=available, stop=stop,
+                                                     paid_overflow=paid_overflow)
                     if reserved is not None:
                         job_id, provider = reserved
-                        future = pool.submit(_dispatch_reserved_job, repo, state, job_id, worker_id=uuid4(),
-                            provider=provider, registry=registry, object_store=object_store, model_client=model_client,
-                            stop=stop, model_slot=model_slot)
+                        future = captures.submit(_dispatch_reserved_job, repo, state, job_id, worker_id=uuid4(),
+                            provider=provider, registry=registry, object_store=object_store, model_client=None,
+                            stop=stop, paid_overflow=paid_overflow)
                         in_flight[provider] = future
                         future.add_done_callback(completed)
                         continue
+                if model_client is not None and model_future is None and not stop.is_set():
+                    lease = claim_rollout_model_job(repo, snapshot, worker_id=uuid4())
+                    if lease is not None:
+                        model_future = rewrites.submit(_dispatch_parked_model, repo, lease, model_client=model_client)
+                        model_future.add_done_callback(completed)
                 if stop.is_set():
                     break
+                has_active_job = bool(in_flight) or model_future is not None
                 try:
-                    _wait_for_article_activity(listener, completions, in_flight, stop)
+                    _wait_for_article_activity(listener, completions, has_active_job, stop)
                 except (DatabaseError, OSError):
                     if listener is not None:
                         listener.close()
                         listener = None
-                    _wait_for_article_activity(None, completions, in_flight, stop)
+                    _wait_for_article_activity(None, completions, has_active_job, stop)
             # Keep the lifetime lock until every admitted job has unwound.
             for future in in_flight.values():
                 future.result()
+            if model_future is not None:
+                model_future.result()
         except BaseException:
             stop.set()
             raise
@@ -557,7 +652,13 @@ def main(argv=None):
             if args.enable or args.disable:
                 state.set_enabled(args.enable)
                 return 0
-            model = configured_model()
+            try:
+                model = configured_model()
+            except (WorkerBlocked, ValueError):
+                if not args.continuous:
+                    raise
+                model = None
+                print('NEW_ARTICLE_MODEL_PAUSED', flush=True)
             from urllib.parse import urlsplit
             from .source_connector_client import source_connector_registry
             parsed = urlsplit(os.environ['AUTODATA_S3_ENDPOINT'])

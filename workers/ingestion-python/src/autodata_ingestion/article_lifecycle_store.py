@@ -634,6 +634,15 @@ def _require_staged_media_refresh_rights(cur, job, article):
 
 
 def _require_source_bound_rewrite_rights(cur, job, article):
+    observation_id = job["checkpoint"].get("rollout_model_observation_id")
+    if observation_id is not None:
+        from .source_job_persistence import source_bound_rewrite_source_allowed
+        if not source_bound_rewrite_source_allowed(
+            cur, article, job["source_revision_id"],
+            predecessor_observation=(observation_id, job["source_fetch_job_id"], job["request_generation"]),
+            require_current_observation_scope=True, allow_unscoped=True,
+        ):
+            raise ValueError("SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE")
     if STAGED_MEDIA_REFRESH in job["checkpoint"]:
         _require_staged_media_refresh_rights(cur, job, article)
         if "source_bound_rewrite" not in job["checkpoint"] and job["rewrite_profile_version"] != SOURCE_BOUND_CORRECTION_PROFILE:

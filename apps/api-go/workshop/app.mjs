@@ -3,6 +3,7 @@ import { createSession } from "./auth.mjs";
 import * as commerce from "./commerce.mjs";
 import {
   NavigationGeneration,
+  awaitingArticleRewrite,
   readArticle,
   readableArticle,
   processingArticle,
@@ -1740,6 +1741,10 @@ function showArticleReadStatus(id, article, timedOut = false) {
   const readable = readableArticle(article);
   const checkUpdate = readable && !openDemo && session.state.mode === "firebase" &&
     (timedOut || article.content_origin === "source");
+  if (awaitingArticleRewrite(article)) {
+    status("Stored source is ready. The Workshop rewrite is pending.");
+    return;
+  }
   status(
     timedOut
       ? readable ? "Article is readable. You can check for an update again." : "Preparation is taking longer. You can check again."

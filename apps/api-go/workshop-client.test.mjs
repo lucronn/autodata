@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
-import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
+import { NavigationGeneration, awaitingArticleRewrite, processingArticle, readableArticle } from './workshop/article-read.mjs';
 import { pollOrder, purchaseConfiguration, quoteConfigurationLabel, readOrder, resumableCheckoutURL, sameScope, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
 import { articlePresentation, articleSearchParams, CatalogRequestError, configurationLabel, delay, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, trimArticleSearch, vehicleSelectorPath } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
@@ -663,6 +663,27 @@ test('reader is sequential, retains source during transient failure and stops at
   const versions = [{ status: 200, data: { article: { body: 'source', processing: { job_id: 'job', state: 'fetching' } } } }, new TypeError('network'), { status: 200, data: { article: { document: { blocks: [{ type: 'paragraph', text: 'canonical' }] }, processing: { job_id: 'job', state: 'completed' } } } }];
   const result = await readArticle(async () => { calls++; const value=versions.shift();if(value instanceof Error)throw value;return value; }, { now: () => now, wait: async ms => { waits.push(ms);now += ms; }, onUpdate: r => updates.push(r.data.article) });
   assert.equal(calls,3);assert.equal(updates.length,2);assert.deepEqual(waits,[1000,2000]);assert.equal(result.timedOut,false);
+});
+test('reader shows pinned stored source while the rewrite is waiting for its model', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const article = {
+    body: 'Stored fixture source.',
+    content_origin: 'source',
+    source_revision_id: 'fixture-source',
+    processing: { job_id: 'fixture-job', state: 'failed', retryable: true, error_code: 'MODEL_NOT_CONFIGURED' },
+  };
+  let reads = 0;
+  const result = await readArticle(async () => {
+    reads++;
+    return { status: 200, data: { article } };
+  }, { wait: async () => assert.fail('readable source must stop polling while its model is unavailable') });
+  assert.equal(reads, 1);
+  assert.equal(result.data.article, article);
+  assert.equal(result.timedOut, false);
+  assert.equal(processingArticle({ ...article, source_revision_id: null }), true);
+  assert.equal(processingArticle({
+    ...article, processing: { ...article.processing, error_code: 'CAPTURE_DEADLINE' },
+  }), true);
 });
 test('reader offers one early cold confirmation and keeps the regular second check', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
@@ -6411,7 +6432,7 @@ function articleMediaHarness(overrides = {}) {
   const shows = [], statuses = [];
   const context = {
     URL, AbortController, AbortSignal, uuid, articlePresentation, configurationLabel, localImageURL, sourceReferenceURL,
-    processingArticle, readableArticle,
+    awaitingArticleRewrite, processingArticle, readableArticle,
     session: { state: { mode: null } }, sessionRequest: null,
     document: { body, title: '', createElement: tag => new ArticleMediaNode(tag),
       createDocumentFragment: () => new ArticleMediaNode('#fragment') },

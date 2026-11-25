@@ -7,6 +7,7 @@ import sys
 import time
 
 import pytest
+from psycopg.types.json import Jsonb
 from uuid import uuid4
 from lifecycle_support import fresh_database, runtime
 from test_source_article_capture import capture_fixture
@@ -368,7 +369,10 @@ def test_automatic_invalid_prose_keeps_source_without_manual_review(fresh_databa
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
-def test_automatic_missing_model_parks_without_attempt_and_resumes_exact_job(fresh_database, capture_fixture, provider):
+@pytest.mark.parametrize("admitted", [False, True])
+def test_automatic_missing_model_parks_without_attempt_and_resumes_exact_job(
+    fresh_database, capture_fixture, provider, admitted,
+):
     from autodata_ingestion.article_lifecycle import run_article_job, run_article_worker_once
     from autodata_ingestion.source_job_persistence import claim_source_job
     repo = fresh_database(); lease, source = prepare_automatic(repo, capture_fixture, provider)
@@ -381,6 +385,16 @@ def test_automatic_missing_model_parks_without_attempt_and_resumes_exact_job(fre
         assert conn.execute("SELECT count(*) AS n FROM canonical_article_rewrite_attempts").fetchone()["n"] == 0
     for _ in range(3):
         assert not run_article_worker_once(repo, worker_id=uuid4(), registry={}, object_store=None, model_client=None, job_id=lease.job_id)
+    if admitted:
+        with repo.connect() as conn:
+            conn.execute("""
+                UPDATE source_fetch_jobs SET checkpoint=checkpoint||%s, max_attempts=1
+                WHERE source_fetch_job_id=%s
+            """, (Jsonb({"new_article_rollout": {"rollout_id": str(uuid4()), "source_sha": "a"*40,
+                "cutoff": "2026-01-01T00:00:00Z", "max_model_attempts": 1}}), lease.job_id))
+        assert claim_source_job(repo, worker_id=uuid4(), model_ready=True) is None
+        assert claim_source_job(repo, worker_id=uuid4(), model_ready=True, job_id=lease.job_id) is None
+        return
     assert claim_source_job(repo, worker_id=uuid4(), model_ready=True, job_id=uuid4()) is None
     model = AutomaticModel()
     assert run_article_worker_once(repo, worker_id=uuid4(), registry={}, object_store=None, model_client=model, job_id=lease.job_id)
