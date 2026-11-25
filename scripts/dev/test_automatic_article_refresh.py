@@ -99,6 +99,45 @@ def test_correction_cli_requires_explicit_budget_and_exact_job(
     assert json.loads(capsys.readouterr().out)["items"][0]["job_id"] == str(current)
 
 
+def test_publish_first_draft_cli_requires_a_method_and_recovered_document_hash(tmp_path, monkeypatch, capsys):
+    article, source, prior, current, revision = (uuid4() for _ in range(5))
+    path = tmp_path / "selection.json"
+    target = {"canonical_article_id": str(article), "expected_source_revision_id": str(source)}
+    path.write_text(json.dumps([target]))
+    refresh = module()
+    repo = object()
+    calls = []
+
+    def publish(repository, article_id, **kwargs):
+        calls.append((repository, article_id, kwargs))
+        return SimpleNamespace(job_id=current, published_revision_id=revision, created=len(calls) == 1)
+
+    monkeypatch.setattr(refresh, "publish_source_bound_first_draft", publish)
+    base = ["--selection", str(path), "--actor", "operator", "--reason", "Publish the saved draft"]
+    apply_args = ["--recover-first-draft-from", str(prior), "--apply"]
+    method = refresh.FIRST_DRAFT_RECOVERY_METHODS[0]
+    method_args = ["--first-draft-recovery-method", method]
+    output_hash = "1" * 64
+    hash_args = ["--expected-first-draft-recovery-hash", output_hash]
+    for incomplete in (apply_args + method_args, apply_args + hash_args, method_args + hash_args,
+                       apply_args[:-1] + method_args + hash_args):
+        with pytest.raises(SystemExit):
+            refresh.main([*base, *incomplete], repo=repo)
+    assert calls == []
+
+    args = [*base, *apply_args, *method_args, *hash_args]
+    for action in ("published", "joined_existing"):
+        assert refresh.main(args, repo=repo) == 0
+        assert json.loads(capsys.readouterr().out)["items"] == [{
+            **target, "prior_job_id": str(prior), "job_id": str(current), "revision_id": str(revision), "action": action,
+        }]
+    assert calls == [(repo, article, {
+        "expected_job_id": prior, "expected_source_revision_id": source,
+        "recovery_method": method, "expected_recovery_hash": output_hash,
+        "actor": "operator", "reason": "Publish the saved draft",
+    })] * 2
+
+
 def historical_source(repo, fixture):
     from test_article_transform import prepare_transform
     lease, source = prepare_transform(repo, fixture)

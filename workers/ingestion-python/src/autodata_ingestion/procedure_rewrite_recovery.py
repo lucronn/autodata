@@ -5,8 +5,9 @@ import re
 
 from . import procedure_rewrite_auto as auto
 from . import procedure_rewrite_full as full
-from .article_lifecycle_types import digest_json
+from .article_lifecycle_types import SOURCE_BOUND_CORRECTION_PROFILE, digest_json
 from .procedure_rewrite_correction import (
+    ARCHIVED_FIRST_DRAFT_METHOD,
     CorrectionResult,
     _apply_variants,
     _initial_draft,
@@ -290,6 +291,24 @@ def _recover_required_action_draft(source, raw, slots, *, prompt_version):
         source, raw, draft, corrected, prompt_version=prompt_version,
         method=FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD, original_error=REQUIRED_ACTION_WEAKENED,
     )
+
+
+def recover_archived_first_draft(source, attempt, *, method, expected_hash):
+    """Check the recovered v1 digest and render the same reply under its new v3 owner."""
+    guard = attempt["guard_version"]
+    recovered = recover_first_draft(source, attempt["response"], prompt_version=guard, method=method)
+    if (recovered is None or recovered.error_code is not None
+        or recovered.evidence["original_error_code"] != attempt["error_code"]
+        or recovered.evidence["output_hash"] != expected_hash):
+        raise ValueError("FIRST_DRAFT_ARCHIVE_RECOVERY_MISMATCH")
+    document = auto.render_auto(
+        source, recovered.response, prompt_version=guard, profile_version=SOURCE_BOUND_CORRECTION_PROFILE,
+    )
+    return CorrectionResult(recovered.response, document, None, {
+        "method": ARCHIVED_FIRST_DRAFT_METHOD, "guard_version": guard, "exchanges": [],
+        "first_draft_recovery": recovered.evidence,
+        "prior_attempt_id": str(attempt["rewrite_attempt_id"]), "prior_prompt_hash": attempt["prompt_hash"],
+    }, archived_attempt={key: value for key, value in attempt.items() if key not in {"guard_version", "observation_id"}})
 
 
 def recover_first_draft(source, raw, *, prompt_version, method=None):

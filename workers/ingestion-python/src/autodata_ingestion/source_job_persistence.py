@@ -413,9 +413,29 @@ def schedule_source_bound_correction(
     )
 
 
+def publish_source_bound_first_draft(
+    repo, canonical_article_id, *, expected_job_id, expected_source_revision_id, recovery_method,
+    expected_recovery_hash, actor, reason, hooks=None,
+):
+    """Publish a checked first-draft recovery from its saved response in one transaction."""
+    from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHODS
+
+    if (recovery_method not in FIRST_DRAFT_RECOVERY_METHODS
+        or not isinstance(expected_recovery_hash, str)
+        or not re.fullmatch(r"[a-f0-9]{64}", expected_recovery_hash)):
+        raise ValueError("FIRST_DRAFT_ARCHIVE_RECOVERY_MISMATCH")
+    return _schedule_source_bound_job(
+        repo, canonical_article_id, expected_job_id=expected_job_id,
+        expected_source_revision_id=expected_source_revision_id, actor=actor, reason=reason,
+        prior_profile=AUTOMATIC_REWRITE_PROFILE, next_profile=SOURCE_BOUND_CORRECTION_PROFILE,
+        model_call_budget=0, archived_recovery={"method": recovery_method, "output_hash": expected_recovery_hash},
+        hooks=hooks,
+    )
+
+
 def _schedule_source_bound_job(
     repo, canonical_article_id, *, expected_job_id, expected_source_revision_id, actor, reason,
-    prior_profile, next_profile, model_call_budget=None, by_sentence=False,
+    prior_profile, next_profile, model_call_budget=None, by_sentence=False, archived_recovery=None, hooks=None,
 ):
     canonical_article_id, expected_job_id, expected_source_revision_id = (
         UUID(str(value)) for value in (canonical_article_id, expected_job_id, expected_source_revision_id)
@@ -494,6 +514,11 @@ def _schedule_source_bound_job(
                 from .procedure_rewrite_sentence_correction import SENTENCE_CORRECTION_METHOD
                 _require_source_bound_rewrite_rights(cur, prior, article)
                 binding["correction_method"] = SENTENCE_CORRECTION_METHOD
+            if archived_recovery is not None:
+                from .procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
+
+                binding["correction_method"] = ARCHIVED_FIRST_DRAFT_METHOD
+                binding["archived_recovery"] = archived_recovery
             attempt = source_bound_correction_prior_attempt(cur, prior, first_draft=first_draft)
             binding.update(
                 version=2, prior_attempt_id=str(attempt["rewrite_attempt_id"]),
@@ -523,6 +548,9 @@ def _schedule_source_bound_job(
                 and current["rewrite_profile_version"] == next_profile
                 and current["source_revision_id"] == expected_source_revision_id
                 and current["request_generation"] == generation
+                and (archived_recovery is None or (
+                    current["status"] == "completed" and article["current_canonical_revision_id"] is not None
+                ))
                 and current["checkpoint"].get("source_bound_rewrite") == {**binding, "prior_generation": generation - 1}):
                 return _result(cur, article, current)
             raise ValueError("SOURCE_BOUND_REWRITE_ALREADY_SCHEDULED")
@@ -558,6 +586,13 @@ def _schedule_source_bound_job(
                 target_rewrite_profile_version=%s,updated_at=clock_timestamp()
             WHERE canonical_article_id=%s
             """, (job["source_fetch_job_id"], generation, next_profile, canonical_article_id))
+        if archived_recovery is not None:
+            from .article_lifecycle_store import _publish_source_bound_first_draft
+
+            completed = _publish_source_bound_first_draft(
+                cur, job, prior["checkpoint"]["normalized_document"], hooks=hooks,
+            )
+            return _result(cur, article, completed, True)
         cur.execute("SELECT pg_notify(%s, '')", (ARTICLE_JOB_CHANNEL,))
         return _result(cur, article, job, True)
 

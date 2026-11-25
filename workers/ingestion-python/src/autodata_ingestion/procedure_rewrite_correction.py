@@ -1,7 +1,7 @@
 """Bounded corrective drafting of one exact retained source and its saved v2 response."""
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 import json
 import re
@@ -14,6 +14,7 @@ from .article_lifecycle_types import (
 
 
 _CORRECTION_METHOD = "source-bound-passage-correction-v1"
+ARCHIVED_FIRST_DRAFT_METHOD = "source-bound-first-draft-archive-v1"
 _MAX_PROMPT_BYTES = 200 * 1024
 _MAX_REPLY_BYTES = 1024 * 1024
 _MARKER = re.compile(r"\[TOKEN[0-9]+\]")
@@ -25,6 +26,7 @@ class CorrectionResult:
     document: dict | None
     error_code: str | None
     evidence: dict
+    archived_attempt: dict | None = field(default=None, repr=False)
 
 
 def _introduction(source, previous):

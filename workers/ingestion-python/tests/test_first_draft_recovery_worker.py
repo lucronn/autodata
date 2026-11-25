@@ -7,7 +7,12 @@ from PIL import Image
 import pytest
 
 from autodata_ingestion import article_lifecycle_store as store
-from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE, NORMALIZATION_VERSION, digest_json
+from autodata_ingestion import procedure_rewrite_recovery as recovery
+from autodata_ingestion.article_lifecycle_types import (
+    AUTOMATIC_REWRITE_PROFILE, NORMALIZATION_VERSION, SOURCE_BOUND_CORRECTION_PROFILE, digest_json,
+)
+from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
+from autodata_ingestion.procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
 from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
@@ -17,8 +22,10 @@ from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
 )
 from autodata_ingestion.published_media_publication import _publication_evidence
-from autodata_ingestion.source_job_persistence import ensure_article_job
-from lifecycle_support import fresh_database, runtime
+from autodata_ingestion.source_job_persistence import (
+    ensure_article_job, publish_source_bound_first_draft, source_bound_correction_prior_attempt,
+)
+from lifecycle_support import fresh_database, runtime, seed_configuration
 from test_source_bound_correction_worker import attempt_rows
 from test_source_bound_rewrite_worker import run_job
 
@@ -140,6 +147,109 @@ def test_echoed_draft_reuses_one_delivery_and_preserves_retained_media(runtime):
     assert evidence["guard_version"] == version
     assert effective["replacements"][0]["text"] == "The upper cover must be removed."
     assert effective["replacements"][1] == raw["replacements"][1]
+
+
+def test_publish_archived_first_draft_is_atomic_and_reuses_the_figure(runtime, monkeypatch):
+    configuration = seed_configuration(runtime.repo, runtime.vehicle)
+    with runtime.repo.connect() as conn:
+        conn.execute("UPDATE vehicle_configurations SET trim='Touring' WHERE vehicle_configuration_id=%s",
+                     (configuration,))
+    for job in ensure_article_catalog_jobs(
+        runtime.repo, vehicle_id=runtime.vehicle, vehicle_configuration_id=configuration,
+    ):
+        assert run_job(runtime, job.job_id, None, registry=runtime.registry)
+    with runtime.repo.connect() as conn:
+        runtime.article_id = conn.execute("""
+            SELECT canonical_article_id FROM canonical_articles
+            WHERE vehicle_configuration_id=%s AND provider_slug='bankone'
+            """, (configuration,)).fetchone()["canonical_article_id"]
+
+    prior_id = queue_article(runtime, figure=True)
+    model = EchoedDraft()
+    # Reproduce an older worker that stored the error and the model reply.
+    with monkeypatch.context() as old_worker:
+        old_worker.setattr(recovery, "recover_first_draft", lambda *_args, **_kwargs: None)
+        assert run_job(runtime, prior_id, model, registry=runtime.registry)
+    source = runtime.read_current()
+    assert source["content_origin"] == "source" and source["availability"] == "available"
+    assert source["processing_error_code"] == "REWRITE_UNCHANGED"
+    assert source["job_id"] == prior_id and source["canonical_revision_id"] is None
+    [archived] = attempt_rows(runtime, prior_id)
+    assert archived["status"] == "failed" and archived["response"] == model.responses[0]
+    assert len(source["images"]) == 1 and source["images"][0]["status"] == "available"
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        prior = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (prior_id,)).fetchone()
+        [old_revision] = cur.execute("SELECT * FROM canonical_article_revisions").fetchall()
+        attempt = source_bound_correction_prior_attempt(cur, prior, first_draft=True)
+    assert prior["status"] == "dead_letter" and old_revision["status"] == "building"
+    reviewed = recovery.recover_first_draft(
+        prior["checkpoint"]["normalized_document"], archived["response"],
+        prompt_version=attempt["guard_version"], method=FIRST_DRAFT_RECOVERY_METHOD,
+    )
+    assert reviewed.document is not None and reviewed.error_code is None
+    output_hash = reviewed.evidence["output_hash"]
+    assert output_hash == digest_json(reviewed.document)
+    arguments = {
+        "expected_job_id": prior_id, "expected_source_revision_id": source["source_revision_id"],
+        "recovery_method": FIRST_DRAFT_RECOVERY_METHOD, "expected_recovery_hash": output_hash,
+        "actor": "fixture-editor", "reason": "Publish a checked recovery of the archived draft.",
+    }
+
+    class PublicationInterrupted(Exception):
+        pass
+
+    def interrupt(phase):
+        assert phase == "inside_publication"
+        raise PublicationInterrupted
+
+    runtime.reset_counters()
+    with pytest.raises(ValueError, match="FIRST_DRAFT_ARCHIVE_RECOVERY_MISMATCH"):
+        publish_source_bound_first_draft(runtime.repo, runtime.article_id, **{**arguments, "expected_recovery_hash": "0" * 64})
+    with pytest.raises(PublicationInterrupted):
+        publish_source_bound_first_draft(runtime.repo, runtime.article_id, **arguments, hooks=interrupt)
+
+    assert runtime.read_current() == source
+    assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 0}
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT * FROM canonical_article_revisions").fetchall() == [old_revision]
+        assert conn.execute("SELECT 1 FROM publication_events").fetchone() is None
+
+    published = publish_source_bound_first_draft(runtime.repo, runtime.article_id, **arguments)
+    joined = publish_source_bound_first_draft(runtime.repo, runtime.article_id, **arguments)
+    assert published.created and not joined.created
+    assert published.job_id != prior_id and published.job_id == joined.job_id
+    assert published.state == joined.state == "completed"
+    current = runtime.read_current()
+    assert current["canonical_revision_id"] == published.published_revision_id == joined.published_revision_id
+    assert current["source_revision_id"] == source["source_revision_id"]
+    assert current["content_origin"] == "canonical"
+    assert "The upper cover must be removed." in current["body"] and TORQUE in current["body"]
+    assert [block["start"] for block in current["document"]["blocks"] if block["type"] == "ordered_list"] == [3]
+    assert current["images"] == [{**image, "source_order": image["source_order"] + 1} for image in source["images"]]
+    assert attempt_rows(runtime, published.job_id) == [] and attempt_rows(runtime, prior_id) == [archived]
+    assert len(model.responses) == 1
+    assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}
+
+    binding = store.load_source_revision(runtime.repo, source["source_revision_id"])
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (runtime.article_id,)).fetchone()
+        revision, _, _, provenance, effective, guard, _ = _publication_evidence(
+            cur, article, binding, fixture_mode=True, lock=False,
+        )
+        assert cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (prior_id,)).fetchone() == prior
+        assert cur.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s",
+                           (old_revision["canonical_article_revision_id"],)).fetchone() == old_revision
+        assert cur.execute("SELECT canonical_article_revision_id FROM publication_events").fetchall() == [
+            {"canonical_article_revision_id": published.published_revision_id},
+        ]
+        assert cur.execute("SELECT count(*) AS n FROM canonical_article_source_observations").fetchone()["n"] == 1
+    assert revision["rewrite_profile_version"] == SOURCE_BOUND_CORRECTION_PROFILE
+    assert revision["model_metadata"]["transformation_method"] == ARCHIVED_FIRST_DRAFT_METHOD
+    assert revision["rewrite_result_hash"] != output_hash
+    assert provenance["rewrite_attempt_id"] == archived["rewrite_attempt_id"]
+    assert provenance["response_hash"] == archived["response_hash"]
+    assert effective == reviewed.response and guard == attempt["guard_version"]
 
 
 @pytest.mark.parametrize(("variant", "error_code"), (

@@ -195,6 +195,8 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
         attempt = _saved_attempt(cur, revision_id, job["source_fetch_job_id"])
         if profile == SOURCE_BOUND_CORRECTION_PROFILE:
             corrected = resolve_source_bound_correction(cur, job, row)
+            if corrected.archived_attempt is not None:
+                attempt = corrected.archived_attempt
             response = corrected.response
             prompt_version = corrected.evidence["guard_version"]
         elif row["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD:
