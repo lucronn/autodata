@@ -12,7 +12,7 @@ from .article_lifecycle_types import (
 from .new_article_worker import WINDOW, _PAID_SOURCE_SCOPE, _timestamp
 from .procedure_rewrite_sentence_correction import MAX_SENTENCE_CORRECTION_CALLS
 from .source_job_persistence import (
-    _SOURCE_BOUND_CURRENT_OWNER_SQL, _lease_from_row, claim_source_job,
+    _SOURCE_BOUND_CURRENT_OWNER_SQL, _claim_automatic_resume, _lease_from_row, claim_source_job,
     schedule_source_bound_correction, source_bound_rewrite_source_allowed,
 )
 
@@ -22,7 +22,7 @@ _CORRECTION_ACTOR = "workshop-automatic-sentence-correction"
 _CORRECTION_ERRORS = ["REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR", "REWRITE_TECHNICAL_MUTATION"]
 
 
-def _claim_automatic_correction(repo, args, *, worker_id):
+def _claim_automatic_correction(repo, args, *, worker_id, model_budget_available):
     # Select only first drafts spent by this rollout. Scheduling and claiming
     # use the existing exact-source transaction and lease checks.
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
@@ -43,6 +43,9 @@ def _claim_automatic_correction(repo, args, *, worker_id):
               AND failed.checkpoint->'new_article_rollout'->>'source_sha' ~ '^[a-f0-9]{{40}}$'
               AND a.membership_status='active' AND a.takedown_status='active'
               AND a.current_canonical_revision_id IS NULL AND {_PAID_SOURCE_SCOPE}
+              AND (%(model_budget_available)s OR (j.rewrite_profile_version=%(correction_profile)s
+                   AND j.phase IN ('validating','publishing')
+                   AND j.checkpoint->>'candidate_revision_id' IS NOT NULL))
               AND (j.source_fetch_job_id=failed.source_fetch_job_id OR (
                    j.rewrite_profile_version=%(correction_profile)s
                    AND j.checkpoint->'source_bound_rewrite'->>'actor'=%(correction_actor)s
@@ -51,9 +54,17 @@ def _claim_automatic_correction(repo, args, *, worker_id):
                         OR (j.status='processing' AND j.lease_expires_at<clock_timestamp())
                         OR (j.status='failed' AND j.error_code='MODEL_NOT_CONFIGURED'))))
             ORDER BY failed.created_at,failed.source_fetch_job_id
-            """, args).fetchall()
+            """, {**args, "model_budget_available": model_budget_available}).fetchall()
     for row in rows:
         job_id = row["current_id"]
+        if not model_budget_available:
+            # A committed candidate can publish after a restart without
+            # using another dispatch or claiming a job that still needs one.
+            with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+                lease = _claim_automatic_resume(cur, worker_id, job_id)
+            if lease is not None:
+                return lease
+            continue
         if job_id == row["prior_id"]:
             try:
                 scheduled = schedule_source_bound_correction(
@@ -101,7 +112,7 @@ def claim_rollout_model_job(repo, snapshot, *, worker_id):
               AND COALESCE(prior.checkpoint,j.checkpoint)->'new_article_rollout'->>'cutoff'=%(cutoff)s
             """, args).fetchone()["used"]
         if used >= MAX_MODEL_DISPATCHES_PER_WINDOW:
-            return None
+            return _claim_automatic_correction(repo, args, worker_id=worker_id, model_budget_available=False)
         # Source pins can change during a release. Keep the rollout identity
         # and spent job UUID bound to the parked source across a release.
         candidates = cur.execute(f"""SELECT a.*,j.source_fetch_job_id,
@@ -168,6 +179,7 @@ def claim_rollout_model_job(repo, snapshot, *, worker_id):
                 (worker_id, Jsonb({"rollout_model_observation_id": str(row["source_observation_id"])}),
                  row["source_fetch_job_id"])).fetchone()
             return _lease_from_row(lease, worker_id)
-    if used + MAX_SENTENCE_CORRECTION_CALLS <= MAX_MODEL_DISPATCHES_PER_WINDOW:
-        return _claim_automatic_correction(repo, args, worker_id=worker_id)
-    return None
+    return _claim_automatic_correction(
+        repo, args, worker_id=worker_id,
+        model_budget_available=used + MAX_SENTENCE_CORRECTION_CALLS <= MAX_MODEL_DISPATCHES_PER_WINDOW,
+    )
