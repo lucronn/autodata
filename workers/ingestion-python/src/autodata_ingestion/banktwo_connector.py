@@ -11,7 +11,7 @@ import re
 import os
 from typing import Any, Mapping
 
-from .article_document import ConnectorBankoneGraphic, ConnectorDocumentEmbed, list_number
+from .article_document import ConnectorArticleLink, ConnectorBankoneGraphic, ConnectorDocumentEmbed, list_number
 from .source_connector_client import (
     SourceConnectorClient,
     SourceConnectorError,
@@ -187,7 +187,7 @@ class ArticleParser(HTMLParser):
     _CSS_COMMENT = re.compile(r"/\*.*?(?:\*/|$)", re.S)
 
     def __init__(
-        self, *, asset_bindings=(), preserve_legacy_list_starts=True, keep_html_headings=False,
+        self, *, asset_bindings=(), article_link_bindings=(), preserve_legacy_list_starts=True, keep_html_headings=False,
         keep_bound_pdf_iframes=False, keep_html_table_image_order=False, keep_html_figure_captions=False,
         keep_html_table_captions=False, keep_html_flow_figure_captions=False,
         keep_html_multiline_figure_captions=False,
@@ -199,6 +199,9 @@ class ArticleParser(HTMLParser):
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
+        self._article_link_bindings = {
+            item["source_id_sha256"]: item["target_ref_sha256"] for item in article_link_bindings
+        }
         self._keep_bound_html_images = keep_bound_html_images and bool(self._asset_bindings)
         self._skip_noscript_images = skip_noscript_images
         self._lazy_image_alts = lazy_image_alts or {}
@@ -226,6 +229,7 @@ class ArticleParser(HTMLParser):
         self.html_document_links = False
         # Bounds are indexes into _text. A new list item awaits both bounds.
         self._document_link_bounds: tuple[int | None, int | None] | None = None
+        self._document_link_target: str | None = None
         self._document_link_scope: str | None = None
         self._document_link_depth = 0
         self._keep_bound_pdf_iframes = keep_bound_pdf_iframes
@@ -343,7 +347,7 @@ class ArticleParser(HTMLParser):
         else:
             item.blocks.append(block)
 
-    def _start_document_link_tag(self, tag, attrs):
+    def _start_document_link_tag(self, tag, raw_attrs, attrs):
         if self._document_link_scope is not None:
             if tag == self._document_link_scope:
                 self._document_link_depth += 1
@@ -356,6 +360,10 @@ class ArticleParser(HTMLParser):
                     and self._DOCUMENT_LINK_OPENING_TAG.fullmatch(self.get_starttag_text())
                     and not any(part.strip() for part in self._text)):
                 self._document_link_bounds = (len(self._text), None)
+                source_ids = [value for key, value in raw_attrs if key == "id"] if self._article_link_bindings else []
+                if len(source_ids) == 1 and source_ids[0]:
+                    source_digest = sha256(source_ids[0].encode()).hexdigest()
+                    self._document_link_target = self._article_link_bindings.get(source_digest)
                 return
         self._document_link_bounds = None
 
@@ -375,7 +383,10 @@ class ArticleParser(HTMLParser):
             item = self._current_list_item()
             label = " ".join("".join(self._text[start:end]).split())
             if label and item is not None and not item.lead and not item.blocks:
-                item.blocks.append({"kind": "link", "text": label})
+                target = self._document_link_target
+                item.blocks.append(
+                    ConnectorArticleLink(label, target) if target else {"kind": "link", "text": label}
+                )
                 self._text = []
                 self.html_document_links = True
 
@@ -709,7 +720,7 @@ class ArticleParser(HTMLParser):
         if self._pdf_anchor is not None and (tag not in self._PDF_ANCHOR_INLINE or self._hidden_link(attrs)):
             self._pdf_anchor = None
         if self._keep_html_document_links:
-            self._start_document_link_tag(tag, attrs)
+            self._start_document_link_tag(tag, raw_attrs, attrs)
         if self._hidden_embed_tags:
             if tag in {"iframe", "object"}:
                 self._hidden_embed_tags.append(tag)
@@ -859,6 +870,7 @@ class ArticleParser(HTMLParser):
             if (self._keep_html_document_links and self._document_link_scope is None
                     and self._DOCUMENT_LINK_OPENING_TAG.fullmatch(self.get_starttag_text())):
                 self._document_link_bounds = (None, None)
+                self._document_link_target = None
             return
         if tag in {"br", "p", "div", "li", "tr", "h1", "h2", "h3"} or (
             tag in {"figure", "figcaption"} and self._current_list_item() is not None

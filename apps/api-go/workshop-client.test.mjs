@@ -6467,6 +6467,78 @@ function articleMediaHarness(overrides = {}) {
   };
 }
 
+test('authored article links use the protected reader even when the target is off the index page', () => {
+  const target = '11111111-1111-4111-8111-111111111111';
+  const selected = { id: routeConfiguration, region: 'US' };
+  const calls = [];
+  const hrefs = [];
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, mode: 'firebase', csrf: 'fixture' } },
+    vehicle: selected,
+    location: { origin: 'https://cars.example', href: 'https://cars.example/workshop?article=origin' },
+    scope: () => ({ configuration_id: h.context.vehicle.id, region: h.context.vehicle.region }),
+    updateURL({ article }) {
+      hrefs.push(article);
+      h.context.location.href = 'https://cars.example/workshop?article=' + article;
+    },
+    operation(work) { return work(h.navigation.next()); },
+    loadArticle(id, generation) { calls.push([id, generation.current()]); },
+  });
+  runInNewContext(appSection('function openArticle(', 'function validSourceURL('), h.context);
+  h.context.articles = [{ id: 'origin' }];
+  const source = h.content(mediaArticle([
+    { type: 'link', text: 'Supplier reference', href: 'https://provider.invalid/private' },
+    { type: 'link', text: 'Pump cover', target_article_id: target },
+    { type: 'table', rows: [[{ blocks: [
+      { type: 'link', text: 'Nested reference', target_article_id: target, href: 'javascript:alert(1)' },
+      { type: 'link', text: 'Malformed', target_article_id: '../other' },
+    ] }]] },
+  ]));
+  const links = mediaDescendants(source, 'a');
+  assert.deepEqual(links.map(link => link.textContent), ['Pump cover', 'Nested reference']);
+  for (const link of links) {
+    const url = new URL(link.href, h.context.location.origin);
+    assert.equal(url.pathname, '/workshop');
+    assert.deepEqual([...url.searchParams], [
+      ['configuration', selected.id], ['region', selected.region], ['article', target],
+    ]);
+  }
+  assert.match(source.textContent, /Supplier reference/);
+  assert.match(source.textContent, /Malformed/);
+
+  let prevented = 0;
+  const click = { button: 0, preventDefault() { prevented++; } };
+  links[1].dispatch('click', { ...click, ctrlKey: true });
+  assert.equal(prevented, 0);
+  assert.deepEqual(calls, []);
+  links[1].dispatch('click', click);
+  assert.deepEqual(calls, [[target, true]]);
+  assert.deepEqual(hrefs, [target]);
+  assert.equal(h.context.articleIndexOrigin, null);
+  assert.equal(h.g.current(), false);
+  links[0].dispatch('click', click);
+  assert.deepEqual(calls, [[target, true]], 'stale DOM cannot open another reader');
+});
+
+test('an authored link is inert after its vehicle or session changes', () => {
+  for (const change of ['region', 'sign-out', 'account']) {
+    const h = articleMediaHarness({
+      session: { state: { authenticated: true, mode: 'firebase', csrf: 'first' } },
+      vehicle: { id: routeConfiguration, region: 'US' },
+      scope: () => ({ configuration_id: h.context.vehicle.id, region: h.context.vehicle.region }),
+      openArticle() { assert.fail('stale link opened an article'); },
+    });
+    const source = h.content(mediaArticle([
+      { type: 'link', text: 'Related procedure', target_article_id: '11111111-1111-4111-8111-111111111111' },
+    ]));
+    const [link] = mediaDescendants(source, 'a');
+    if (change === 'region') h.context.vehicle.region = 'CA';
+    else if (change === 'sign-out') h.context.session.state.authenticated = false;
+    else h.context.session.state.csrf = 'second';
+    link.dispatch('click', { button: 0, preventDefault() {} });
+  }
+});
+
 function warmFigureHarness({ count = 7, origin = 'canonical', repeated = false } = {}) {
   const timeout = deferredAuthOperation(), printed = [];
   const window = Object.assign(new EventTarget(), { print() { printed.push(true); } });

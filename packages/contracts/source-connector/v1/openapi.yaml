@@ -87,6 +87,14 @@ paths:
       operationId: readResource
       parameters:
         - { name: opaqueRef, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 2048 } }
+        - name: Prefer
+          in: header
+          required: false
+          description: >-
+            Authenticated Bankone clients can request article_link_bindings in JSON HTML article
+            envelopes with include="article-link-bindings". Binary and other resources are unaffected.
+          schema: { type: string }
+          example: 'include="article-link-bindings"'
       responses:
         '200':
           description: Raw source bytes with provenance headers.
@@ -251,6 +259,13 @@ components:
         - type: object
           required: [kind, media_type, content, sha256]
           additionalProperties: false
+          if:
+            required: [article_link_bindings]
+          then:
+            properties:
+              provider: { const: bankone }
+              kind: { const: article }
+              media_type: { const: text/html }
           properties:
             request_id: {}
             provider: {}
@@ -279,6 +294,24 @@ components:
                 properties:
                   source_url: { $ref: '#/components/schemas/AssetBindingValue' }
                   resource_ref: { $ref: '#/components/schemas/AssetBindingValue' }
+            article_link_bindings:
+              type: array
+              maxItems: 128
+              uniqueItems: true
+              description: >-
+                Optional on authenticated Bankone HTML article responses with
+                Prefer: include="article-link-bindings". Each source_id_sha256
+                appears once and hashes the exact authored mtr-doc-link ID as UTF-8.
+                Each target_ref_sha256 hashes the existing deterministic catalog article
+                reference for the linked procedure in the same vehicle as UTF-8.
+                Only the hashes are included.
+              items:
+                type: object
+                additionalProperties: false
+                required: [source_id_sha256, target_ref_sha256]
+                properties:
+                  source_id_sha256: { type: string, minLength: 64, maxLength: 64, pattern: '^[a-f0-9]{64}$' }
+                  target_ref_sha256: { type: string, minLength: 64, maxLength: 64, pattern: '^[a-f0-9]{64}$' }
     AssetBindingValue:
       type: string
       minLength: 1

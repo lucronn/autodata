@@ -9,7 +9,7 @@ from psycopg.types.json import Jsonb
 from .article_lifecycle_store import load_source_revision, _remap_snapshot_references
 from .article_lifecycle_types import article_id, digest_json
 from .source_article_capture import capture_source_article
-from .source_connector_client import SourceEnvelopeV1
+from .source_connector_client import SourceEnvelopeV1, _valid_article_link_bindings
 
 MAX_BODY_BYTES = 1024 * 1024
 SUPPORTED_VERSIONS = {"source-projection-v1", "source-projection-v2"}
@@ -42,6 +42,13 @@ def _body_binding(stored, binding):
         raise ValueError("SOURCE_REPLAY_BODY_ONLY_REQUIRED")
     body, owner = manifest[0], provenance[0]
     fields = {"role", "opaque_ref", "sha256", "media_type"}
+    if "article_link_bindings" in body:
+        fields.add("article_link_bindings")
+        if (stored.context.key.provider != "bankone" or body.get("media_type") != "text/html"
+            or not _valid_article_link_bindings(body["article_link_bindings"])):
+            raise ValueError("SOURCE_REPLAY_BINDING_MISMATCH")
+    elif "article_link_bindings" in owner:
+        raise ValueError("SOURCE_REPLAY_BINDING_MISMATCH")
     ref = descriptor.get("resource_ref") or descriptor.get("body_resource_ref")
     if (set(body) != fields or body.get("role") != "body" or body.get("opaque_ref") != ref
         or any(owner.get(k) != body[k] for k in fields)
@@ -96,9 +103,11 @@ def _reproject_stored_source(repo, source_revision_id, *, object_store, deadline
         pool.shutdown(wait=False, cancel_futures=True)
     if len(payload) > MAX_BODY_BYTES or sha256(payload).hexdigest() != body["sha256"]:
         raise ValueError("SOURCE_REPLAY_BODY_MISMATCH")
+    resource = {"kind": "article", "media_type": body["media_type"], "sha256": body["sha256"]}
+    if "article_link_bindings" in body:
+        resource["article_link_bindings"] = body["article_link_bindings"]
     envelope = SourceEnvelopeV1(owner["request_id"], owner["provider"], owner["source_revision"],
-        owner["fetched_at"], owner["locator"], {"kind": "article", "media_type": body["media_type"],
-        "sha256": body["sha256"]}, raw_resource=payload)
+        owner["fetched_at"], owner["locator"], resource, raw_resource=payload)
     class OfflineClient:
         provider = stored.context.key.provider
         def read_resource(self, ref, *, timeout):

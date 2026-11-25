@@ -87,6 +87,8 @@ def upload_resource(envelope, opaque_ref, role, object_store):
         "locator": envelope.source_locator or envelope.resource_uri,
         **({"asset_bindings": deepcopy(resource.metadata["asset_bindings"])}
            if "asset_bindings" in resource.metadata else {}),
+        **({"article_link_bindings": deepcopy(resource.metadata["article_link_bindings"])}
+           if resource.metadata.get("article_link_bindings") else {}),
     }
 
 
@@ -1059,6 +1061,8 @@ def capture_source_article(
     manifest = [
         {k: resources[0][k] for k in ("role", "opaque_ref", "sha256", "media_type")}
     ]
+    if "article_link_bindings" in resources[0]:
+        manifest[0]["article_link_bindings"] = deepcopy(resources[0]["article_link_bindings"])
     if article.get("retained_pdf_figures_with_margins") is True:
         resources[0]["pdf_figure_layout"] = manifest[0]["pdf_figure_layout"] = PDF_REPEAT_MARGIN_LAYOUT
     if article.get("positioned_compact_pdf_figures") is True:

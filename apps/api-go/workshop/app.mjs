@@ -1429,6 +1429,30 @@ function articleHeadingOutline(blocks, base) {
   }
   return { base, offset: base - lowest };
 }
+function articleLinkText(value, tag, g) {
+  const text = value.text ?? "";
+  const target = value.target_article_id;
+  if (value.type !== "link" || !uuid(target) || !session.state.authenticated)
+    return element(tag, text);
+  const selected = scope();
+  if (!validScope(selected)) return element(tag, text);
+  const csrf = session.state.csrf;
+  const url = new URL("/workshop", location.origin);
+  url.searchParams.set("configuration", selected.configuration_id);
+  url.searchParams.set("region", selected.region);
+  url.searchParams.set("article", target);
+  const link = element("a", text);
+  link.href = url.pathname + url.search;
+  link.addEventListener("click", (event) => {
+    if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (g.current() && session.state.authenticated && session.state.csrf === csrf && sameScope(selected, scope()))
+      openArticle(target);
+  });
+  const wrapper = element(tag);
+  wrapper.append(link);
+  return wrapper;
+}
 function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = null, figures = null,
   outline = articleHeadingOutline(blocks, 3)) {
   const isListNumber = value =>
@@ -1446,7 +1470,7 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = nul
       target.textContent = String(value ?? "");
       return;
     }
-    if (value.text != null) target.append(element(textTag, value.text));
+    if (value.text != null) target.append(articleLinkText(value, textTag, g));
     if (value.asset_id || value.image_id || value.status === "unavailable")
       addReference(target, value);
     for (const ref of value.images || []) addReference(target, ref);
@@ -1469,7 +1493,7 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = nul
           heading.setAttribute("aria-level", String(level));
         }
         parent.append(heading);
-      } else parent.append(element("p", block.text ?? ""));
+      } else parent.append(articleLinkText(block, "p", g));
       for (const ref of block.images || [])
         addReference(parent, ref, false);
     } else if (type === "callout") {

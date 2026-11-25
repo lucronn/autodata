@@ -34,6 +34,7 @@ from .source_connector_client import (
     SourceConnectorError,
     SourceEnvelopeV1,
     _safe_locator,
+    _valid_article_link_bindings,
     _valid_asset_bindings,
 )
 from .svg_rasterization import RASTERIZER_VERSION
@@ -176,6 +177,13 @@ def _resource_binding(row, context, manifest, provenance, *, ordinals, table_spa
                 supported = supported and mime == "text/html" and "asset_bindings" not in owner
             if "asset_bindings" in owner:
                 expected_fields = expected_fields | {"asset_bindings"}
+            if "article_link_bindings" in entry:
+                entry_fields = entry_fields | {"article_link_bindings"}
+                expected_fields = expected_fields | {"article_link_bindings"}
+                supported = (
+                    supported and mime == "text/html" and context.key.provider == "bankone"
+                    and _valid_article_link_bindings(entry["article_link_bindings"])
+                )
         elif original is not None:
             supported = (
                 role == "asset" and mime == "image/png" and entry.get("derivation_version") == RASTERIZER_VERSION
@@ -545,6 +553,8 @@ class _OfflineConnector:
                 body["asset_resource_refs"] = direct_refs
                 if "asset_bindings" in resource:
                     body["asset_bindings"] = resource["asset_bindings"]
+                if "article_link_bindings" in resource:
+                    body["article_link_bindings"] = resource["article_link_bindings"]
             self._envelopes[resource["opaque_ref"]] = SourceEnvelopeV1(
                 resource["request_id"], self.provider, resource["source_revision"],
                 resource["fetched_at"], resource["locator"], body,

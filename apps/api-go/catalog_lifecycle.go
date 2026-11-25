@@ -42,10 +42,14 @@ type CatalogScheduleResult struct {
 }
 
 func lifecycleArticle(article CatalogArticle) CatalogArticle {
+	article.Document = publicCatalogDocument(article.Document)
+	return catalogArticleLifecycle(article)
+}
+
+func catalogArticleLifecycle(article CatalogArticle) CatalogArticle {
 	if article.Images == nil {
 		article.Images = []CatalogImage{}
 	}
-	article.Document = publicCatalogDocument(article.Document)
 	readable := article.Document != nil && len(article.Document.Blocks) > 0
 	if article.CanonicalArticleID == nil {
 		article.Complete = false
@@ -265,43 +269,49 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 		return CatalogArticleView{}, err
 	}
 	var row struct {
-		CanonicalArticleID  string           `json:"canonical_article_id"`
-		VehicleID           string           `json:"vehicle_id"`
-		ConfigurationID     *string          `json:"vehicle_configuration_id"`
-		Title               string           `json:"title"`
-		Kind                string           `json:"kind"`
-		Component           string           `json:"component"`
-		SourceRevisionID    *string          `json:"source_revision_id"`
-		CanonicalRevisionID *string          `json:"canonical_revision_id"`
-		ContentOrigin       *string          `json:"content_origin"`
-		Availability        string           `json:"availability"`
-		Document            *CatalogDocument `json:"document"`
-		Images              []CatalogImage   `json:"images"`
-		Body                string           `json:"body"`
-		Steps               []CatalogStep    `json:"steps"`
-		JobID               *string          `json:"job_id"`
-		State               *string          `json:"processing_state"`
-		Retryable           bool             `json:"retryable"`
-		Retry               *int             `json:"retry_after_seconds"`
-		Error               *string          `json:"processing_error_code"`
-		Review              *string          `json:"review_status"`
-		Updated             string           `json:"updated_at"`
-		Takedown            string           `json:"takedown_status"`
-		Snapshot            *string          `json:"source_snapshot_id"`
-		Hash                *string          `json:"source_content_sha256"`
-		Version             *string          `json:"source_version"`
+		CanonicalArticleID  string          `json:"canonical_article_id"`
+		VehicleID           string          `json:"vehicle_id"`
+		ConfigurationID     *string         `json:"vehicle_configuration_id"`
+		Title               string          `json:"title"`
+		Kind                string          `json:"kind"`
+		Component           string          `json:"component"`
+		SourceRevisionID    *string         `json:"source_revision_id"`
+		CanonicalRevisionID *string         `json:"canonical_revision_id"`
+		ContentOrigin       *string         `json:"content_origin"`
+		Availability        string          `json:"availability"`
+		Document            json.RawMessage `json:"document"`
+		Images              []CatalogImage  `json:"images"`
+		Body                string          `json:"body"`
+		Steps               []CatalogStep   `json:"steps"`
+		JobID               *string         `json:"job_id"`
+		State               *string         `json:"processing_state"`
+		Retryable           bool            `json:"retryable"`
+		Retry               *int            `json:"retry_after_seconds"`
+		Error               *string         `json:"processing_error_code"`
+		Review              *string         `json:"review_status"`
+		Updated             string          `json:"updated_at"`
+		Takedown            string          `json:"takedown_status"`
+		Snapshot            *string         `json:"source_snapshot_id"`
+		Hash                *string         `json:"source_content_sha256"`
+		Version             *string         `json:"source_version"`
 	}
 	if err = json.Unmarshal(raw, &row); err != nil {
 		return CatalogArticleView{}, err
 	}
-	article := CatalogArticle{ID: row.CanonicalArticleID, VehicleID: v, CanonicalArticleID: &row.CanonicalArticleID, Title: row.Title, Kind: row.Kind, Component: row.Component, SourceRevisionID: row.SourceRevisionID, CanonicalRevisionID: row.CanonicalRevisionID, ContentOrigin: row.ContentOrigin, Availability: row.Availability, Document: row.Document, Images: row.Images, Body: row.Body, Steps: row.Steps, ReviewStatus: row.Review, ContentStatus: "list_only"}
+	var document *CatalogDocument
+	if len(row.Document) != 0 {
+		if err := json.Unmarshal(row.Document, &document); err != nil {
+			return CatalogArticleView{}, err
+		}
+	}
+	article := CatalogArticle{ID: row.CanonicalArticleID, VehicleID: v, CanonicalArticleID: &row.CanonicalArticleID, Title: row.Title, Kind: row.Kind, Component: row.Component, SourceRevisionID: row.SourceRevisionID, CanonicalRevisionID: row.CanonicalRevisionID, ContentOrigin: row.ContentOrigin, Availability: row.Availability, Images: row.Images, Body: row.Body, Steps: row.Steps, ReviewStatus: row.Review, ContentStatus: "list_only"}
 	if row.JobID != nil && row.State != nil {
 		article.Processing = &CatalogProcessing{JobID: *row.JobID, State: *row.State, Retryable: row.Retryable, RetryAfterSeconds: row.Retry, ErrorCode: publicProcessingError(row.Error), UpdatedAt: row.Updated}
 	}
-	article.Complete = row.CanonicalRevisionID != nil && row.ContentOrigin != nil && *row.ContentOrigin == "canonical" && row.Document != nil && len(row.Document.Blocks) > 0
+	article.Complete = row.CanonicalRevisionID != nil && row.ContentOrigin != nil && *row.ContentOrigin == "canonical" && document != nil && len(document.Blocks) > 0
 	if article.Complete {
 		article.ContentStatus = "content_complete"
-	} else if row.Document != nil && len(row.Document.Blocks) > 0 {
+	} else if document != nil && len(document.Blocks) > 0 {
 		article.ContentStatus = "content_partial"
 	}
 	if row.SourceRevisionID != nil {
@@ -319,7 +329,14 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 	}
 	article.canonicalVehicleID = row.VehicleID
 	article.canonicalConfigurationID = row.ConfigurationID
-	article = lifecycleArticle(article)
+	var resolve catalogArticleLinkResolver
+	if paid && !scope.openDemo && row.Takedown == "active" && scope.identity != nil &&
+		scope.configuration.ID == v && row.ConfigurationID != nil && *row.ConfigurationID == v &&
+		row.CanonicalArticleID == scope.identity.CanonicalArticleID {
+		resolve = s.authoredArticleLinkResolver(ctx, *scope.identity)
+	}
+	article.Document = projectStoredCatalogDocument(document, row.Document, resolve)
+	article = catalogArticleLifecycle(article)
 	view := CatalogArticleView{Article: article, Withdrawn: row.Takedown != "active", CanSchedule: row.JobID == nil && row.Takedown == "active"}
 	if originalRevision != nil && !view.Withdrawn {
 		view.originalSourceReview = &CatalogSourceReview{
@@ -606,10 +623,10 @@ func (s *postgresCatalogStore) ArticleSourceRevision(ctx context.Context, p Prin
 		return CatalogSourceContent{}, err
 	}
 	result.SourceRevisionID = &sourceID
-	return decodeCatalogSourceProjection(result, doc, images, body, steps)
+	return decodeCatalogSourceProjection(result, doc, images, body, steps, nil)
 }
 
-func decodeCatalogSourceProjection(result CatalogSourceContent, doc, images []byte, body string, steps []byte) (CatalogSourceContent, error) {
+func decodeCatalogSourceProjection(result CatalogSourceContent, doc, images []byte, body string, steps []byte, resolve catalogArticleLinkResolver) (CatalogSourceContent, error) {
 	var document CatalogDocument
 	if err := json.Unmarshal(doc, &document); err != nil {
 		return CatalogSourceContent{}, err
@@ -617,9 +634,9 @@ func decodeCatalogSourceProjection(result CatalogSourceContent, doc, images []by
 	if err := json.Unmarshal(images, &result.Images); err != nil {
 		return CatalogSourceContent{}, err
 	}
-	article := CatalogArticle{SourceRevisionID: result.SourceRevisionID, ContentOrigin: stringPointer("source"), Document: &document, Images: result.Images, Body: body}
+	article := CatalogArticle{SourceRevisionID: result.SourceRevisionID, ContentOrigin: stringPointer("source"), Document: projectStoredCatalogDocument(&document, doc, resolve), Images: result.Images, Body: body}
 	_ = json.Unmarshal(steps, &article.Steps)
-	article = lifecycleArticle(article)
+	article = catalogArticleLifecycle(article)
 	result.Document = article.Document
 	result.ViewRevision = article.ViewRevision
 	return result, nil
@@ -645,9 +662,17 @@ func publicCatalogDocument(document *CatalogDocument) *CatalogDocument {
 	if err != nil {
 		return nil
 	}
+	return projectCatalogDocument(raw, nil)
+}
+
+func projectCatalogDocument(raw []byte, resolve catalogArticleLinkResolver) *CatalogDocument {
 	var value any
 	if json.Unmarshal(raw, &value) != nil {
 		return nil
+	}
+	var slots map[string][]map[string]any
+	if resolve != nil {
+		slots = make(map[string][]map[string]any)
 	}
 	var project func(any) any
 	project = func(value any) any {
@@ -683,6 +708,11 @@ func publicCatalogDocument(document *CatalogDocument) *CatalogDocument {
 							out[key] = text
 						}
 					}
+				case "target_ref_sha256":
+					if hash, ok := child.(string); ok && slots != nil && len(slots) <= maxCatalogArticleLinkTargets &&
+						node["type"] == "link" && catalogArticleReferenceDigest.MatchString(hash) {
+						slots[hash] = append(slots[hash], out)
+					}
 				}
 			}
 			if id, ok := out["image_id"].(string); ok && id != "" {
@@ -693,7 +723,11 @@ func publicCatalogDocument(document *CatalogDocument) *CatalogDocument {
 			return value
 		}
 	}
-	raw, err = json.Marshal(project(value))
+	projectedValue := project(value)
+	if len(slots) != 0 && len(slots) <= maxCatalogArticleLinkTargets {
+		addResolvedCatalogArticleLinks(slots, resolve)
+	}
+	raw, err := json.Marshal(projectedValue)
 	if err != nil {
 		return nil
 	}

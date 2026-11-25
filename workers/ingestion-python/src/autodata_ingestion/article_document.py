@@ -53,6 +53,14 @@ class ConnectorBankoneGraphic(dict):
         self.graphic_locator = locator
 
 
+class ConnectorArticleLink(dict):
+    """Authored link position with connector-proven catalog identity."""
+
+    def __init__(self, text: str, target_ref_sha256: str):
+        super().__init__(kind="link", text=text)
+        self.target_ref_sha256 = target_ref_sha256
+
+
 _PLAIN_MULTIWORD_SECTION_HEADERS = (
     "Technical Background",
     "Production Solution",
@@ -344,6 +352,8 @@ def build_ordered_document(
                 or raw.get("link")
                 or raw.get("target")
             )
+            if isinstance(raw, ConnectorArticleLink):
+                extra_fields["target_ref_sha256"] = raw.target_ref_sha256
             if text:
                 output.append(
                     _base_block(
@@ -694,6 +704,12 @@ def _validate_recursive_blocks(blocks, seen=None):
             errors.append("missing block evidence")
         if kind in {"heading", "paragraph", "step", "callout", "link"} and (not isinstance(block.get("text"), str) or not block["text"].strip()):
             errors.append("missing readable text")
+        if "target_ref_sha256" in block and (
+            kind != "link" or not isinstance(block["target_ref_sha256"], str)
+            or not re.fullmatch(r"[a-f0-9]{64}", block["target_ref_sha256"])
+            or block.get("href")
+        ):
+            errors.append("invalid article link identity")
         if kind == "image":
             if block.get("status") == "unavailable":
                 if not block.get("unavailable_reason"): errors.append("missing image failure reason")

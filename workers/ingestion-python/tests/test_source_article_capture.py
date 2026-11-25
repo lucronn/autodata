@@ -90,6 +90,62 @@ def test_banktwo_plain_html_uses_resolved_descriptor_context(capture_fixture):
     assert capture_fixture.calls("bankone") == []
 
 
+def test_bankone_capture_preserves_only_connector_bound_authored_link_identity(capture_fixture):
+    from autodata_ingestion.article_document import build_ordered_document, validate_ordered_document
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    target = "c" * 64
+    bindings = [{
+        "source_id_sha256": sha256(b"1234567:12345678").hexdigest(),
+        "target_ref_sha256": target,
+    }]
+    html = (
+        '<ol start="4"><li>Remove the cover.<ul>'
+        '<li><mtr-doc-link id="1234567&#58;12345678">Seal replacement</mtr-doc-link></li>'
+        '<li><mtr-doc-link id="unbound">Seal replacement</mtr-doc-link></li>'
+        '<li><mtr-doc-link id="unbound" id="1234567:12345678">Uncertain reference</mtr-doc-link></li>'
+        '</ul></li></ol>'
+    ).encode()
+    capture_fixture.body("bankone", html)
+    connector = capture_fixture.registry["bankone"]
+
+    class BoundConnector:
+        provider = "bankone"
+
+        def read_resource(self, ref, *, timeout):
+            envelope = connector.read_resource(ref, timeout=timeout)
+            return replace(envelope, body={**envelope.body, "article_link_bindings": bindings})
+
+    context = capture_fixture.context("bankone")
+    previews = []
+    captured = capture_source_article(
+        context, registry={"bankone": BoundConnector()}, object_store=capture_fixture.objects,
+        keep_html_document_links=True, on_body_preview=lambda resource, document: previews.append(document),
+    )
+    [block] = captured.source_document["blocks"]
+    assert block["start"] == 4
+    [operation] = block["items"]
+    assert operation["text"] == "Remove the cover."
+    references = [item["blocks"][0] for item in operation["blocks"][0]["items"]]
+    assert [link["text"] for link in references] == ["Seal replacement", "Seal replacement", "Uncertain reference"]
+    assert [link.get("target_ref_sha256") for link in references] == [target, None, None]
+    assert all(link["type"] == "link" and not link.get("href") for link in references)
+    assert not validate_ordered_document(captured.source_document, strict=True)
+    assert captured.resource_manifest[0]["article_link_bindings"] == bindings
+    assert captured.resource_provenance[0]["article_link_bindings"] == bindings
+    assert captured.resource_manifest[0]["sha256"] == sha256(html).hexdigest()
+    assert capture_fixture.resource_calls("bankone", "body") == 1
+    assert len(previews) == 1
+    preview_reference = previews[0]["blocks"][0]["items"][0]["blocks"][0]["items"][0]["blocks"][0]
+    assert preview_reference["target_ref_sha256"] == target
+    assert b"1234567" not in str(captured.source_document).encode()
+
+    untrusted = build_ordered_document(
+        {"evidence_ids": ["fixture"]}, [{"kind": "link", "text": "Seal replacement", "target_ref_sha256": target}],
+    )
+    assert "target_ref_sha256" not in untrusted["blocks"][0]
+
+
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 def test_captured_rotation_retains_the_component_and_direction_when_rewritten(capture_fixture, provider):
     import json

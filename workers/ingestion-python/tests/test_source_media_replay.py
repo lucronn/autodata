@@ -245,6 +245,27 @@ def test_retained_replay_keeps_verified_media_and_provenance(provider, variant):
     assert objects.writes == writes_before
 
 
+def test_offline_media_replay_preserves_bankone_article_link_binding_evidence():
+    client = _html_fixture("bankone", "connector", embedded=False)
+    body = client.resources["body"]
+    bindings = [{"source_id_sha256": "1" * 64, "target_ref_sha256": "2" * 64}]
+    client.resources["body"] = replace(body, body={**body.body, "article_link_bindings": bindings})
+    cursor, objects = _retained_fixture(client, move_image=True)
+    writes_before = objects.writes
+
+    _, replayed = replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects)
+    assert replayed.source_fingerprint == cursor.row["source_fingerprint"]
+    assert replayed.resource_manifest[0]["article_link_bindings"] == bindings
+    assert replayed.resource_provenance[0]["article_link_bindings"] == bindings
+    assert objects.writes == writes_before
+
+    cursor.row["resource_provenance"][0]["article_link_bindings"] = [
+        {**bindings[0], "target_ref_sha256": "3" * 64},
+    ]
+    with pytest.raises(ValueError, match="SOURCE_MEDIA_REPLAY_BINDING_MISMATCH"):
+        replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects)
+
+
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 @pytest.mark.parametrize("svg", [False, True])
 def test_replay_and_published_repair_move_detached_figure_into_existing_item(provider, svg):

@@ -115,6 +115,7 @@ class SourceEnvelopeV1:
                 "kind": kind,
                 "source_sha256": digest,
                 **({"asset_bindings": self.body["asset_bindings"]} if "asset_bindings" in self.body else {}),
+                **({"article_link_bindings": self.body["article_link_bindings"]} if "article_link_bindings" in self.body else {}),
             },
         )
 
@@ -337,6 +338,8 @@ class SourceConnectorClient:
             headers["Content-Type"] = "application/json"
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
+            if operation == "resource" and self.provider == "bankone":
+                headers["Prefer"] = 'include="article-link-bindings"'
         request = Request(url, data=data, headers=headers, method=method)
         try:
             with self._opener(request, timeout=min(self.timeout, timeout) if timeout is not None else self.timeout) as response:
@@ -425,7 +428,10 @@ class SourceConnectorClient:
                     body = json.loads(raw)
                 except (UnicodeError, ValueError) as error:
                     raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE") from error
-                return replace(_validated_envelope(body, operation, self.provider, scope, url), raw_envelope=raw)
+                return replace(
+                    _validated_envelope(body, operation, self.provider, scope, url, authenticated=self._token is not None),
+                    raw_envelope=raw,
+                )
         except HTTPError as error:
             raise _status_error(error.code, _header(error.headers, "retry-after")) from None
         except (URLError, socket.timeout, TimeoutError, ConnectionError) as error:
@@ -528,7 +534,7 @@ def _selector_field(name: str, value: Any) -> str | int:
 
 
 def _validated_envelope(
-    body: Any, operation: str, expected_provider: str | None, scope: str | None, url: str
+    body: Any, operation: str, expected_provider: str | None, scope: str | None, url: str, *, authenticated: bool = False
 ) -> SourceEnvelopeV1:
     if not isinstance(body, dict):
         raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
@@ -568,7 +574,7 @@ def _validated_envelope(
         kind = body.get("kind")
         valid = isinstance(kind, str) and kind in {"article", "labor", "text", "asset", "binary"}
         allowed = common | {"kind", "media_type", "sha256"}
-        allowed |= {"content", "asset_resource_refs", "asset_bindings"} if kind in {"article", "labor", "text"} else {"content_base64"}
+        allowed |= {"content", "asset_resource_refs", "asset_bindings"} if valid and kind in {"article", "labor", "text"} else {"content_base64"}
         valid = valid and isinstance(body.get("media_type"), str) and 0 < len(body["media_type"]) <= 128
         valid = valid and isinstance(body.get("sha256"), str) and bool(_SHA256.fullmatch(body["sha256"]))
         valid = valid and ("content" in body) != ("content_base64" in body)
@@ -580,6 +586,12 @@ def _validated_envelope(
             valid = _valid_ref_list(body["asset_resource_refs"], 128)
         if valid and "asset_bindings" in body:
             valid = _valid_asset_bindings(body["asset_bindings"], body.get("asset_resource_refs", []))
+        if valid and "article_link_bindings" in body:
+            allowed.add("article_link_bindings")
+            valid = (
+                authenticated and expected_provider == "bankone" and kind == "article"
+                and body["media_type"] == "text/html" and _valid_article_link_bindings(body["article_link_bindings"])
+            )
     else:
         raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
     if set(body) - allowed or not valid:
@@ -696,6 +708,21 @@ def _valid_asset_bindings(value: Any, declared_refs: list[str]) -> bool:
         if any(127 <= ord(char) <= 159 for value in (url, ref) for char in value):
             return False
         seen.add(url)
+    return True
+
+
+def _valid_article_link_bindings(value: Any) -> bool:
+    if not isinstance(value, list) or len(value) > 128:
+        return False
+    sources = set()
+    for binding in value:
+        if (not isinstance(binding, dict) or set(binding) != {"source_id_sha256", "target_ref_sha256"}
+                or not all(isinstance(digest, str) and _SHA256.fullmatch(digest) for digest in binding.values())):
+            return False
+        source = binding["source_id_sha256"]
+        if source in sources:
+            return False
+        sources.add(source)
     return True
 
 

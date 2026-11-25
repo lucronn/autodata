@@ -76,5 +76,28 @@ class CatalogLifecycleContract(unittest.TestCase):
                       'content_origin','availability','view_revision','review_status','processing'):
             self.assertIn(field, article['properties'])
 
+    def test_catalog_article_link_exposes_only_resolved_canonical_identity(self):
+        schema = json.loads((CATALOG / 'article-lifecycle.schema.json').read_text())
+        validator = jsonschema.Draft202012Validator(schema)
+        article = json.loads((CATALOG / 'fixtures/canonical-completed.json').read_text())
+        block = {'type': 'link', 'text': 'Read the related procedure'}
+        article['article']['document']['blocks'] = [
+            {'type': 'unordered_list', 'items': [{'text': '', 'blocks': [block]}]},
+        ]
+        self.assertEqual(list(validator.iter_errors(article)), [])
+        block['target_article_id'] = '21391c07-417f-4c86-b9a7-d0b2670bb8a4'
+        self.assertEqual(list(validator.iter_errors(article)), [])
+        for invalid in (
+            {'target_article_id': 'https://example.invalid/private'},
+            {'target_ref_sha256': 'a' * 64},
+            {'type': 'paragraph'},
+        ):
+            original = block.copy()
+            with self.subTest(invalid=invalid):
+                block.update(invalid)
+                self.assertTrue(list(validator.iter_errors(article)))
+            block.clear()
+            block.update(original)
+
 if __name__ == '__main__':
     unittest.main()

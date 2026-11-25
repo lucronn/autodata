@@ -140,6 +140,7 @@ type CatalogDocumentBlock struct {
 	Text              string         `json:"text,omitempty"`
 	Label             string         `json:"label,omitempty"`
 	Href              string         `json:"href,omitempty"`
+	TargetArticleID   string         `json:"target_article_id,omitempty"`
 	Columns           []any          `json:"columns,omitempty"`
 	Rows              [][]any        `json:"rows,omitempty"`
 	Items             []any          `json:"items,omitempty"`
@@ -158,14 +159,18 @@ func (block *CatalogDocumentBlock) UnmarshalJSON(data []byte) error {
 	type plain CatalogDocumentBlock
 	var decoded struct {
 		plain
-		Rows  []json.RawMessage `json:"rows"`
-		Start any               `json:"start"`
+		Rows            []json.RawMessage `json:"rows"`
+		Start           any               `json:"start"`
+		TargetArticleID any               `json:"target_article_id"`
 	}
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
 	if number, ok := catalogJSONListNumber(decoded.Start); ok && decoded.plain.Type == "ordered_list" {
 		decoded.plain.Start = &number
+	}
+	if target, ok := decoded.TargetArticleID.(string); ok && decoded.plain.Type == "link" && commerceUUID(target) {
+		decoded.plain.TargetArticleID = target
 	}
 	if decoded.Rows != nil {
 		decoded.plain.Rows = make([][]any, 0, len(decoded.Rows))
