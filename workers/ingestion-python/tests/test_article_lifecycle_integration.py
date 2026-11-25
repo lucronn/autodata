@@ -2353,6 +2353,94 @@ def test_new_article_worker_disable_drains_a_committed_admission(runtime, tmp_pa
     assert _reserve_next_article(runtime.repo, state) is None
 
 
+def test_continuous_capture_passes_same_supplier_while_first_rewrite_waits(runtime, tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from lifecycle_support import seed_configuration
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
+    from autodata_ingestion.new_article_worker import configured_model, run_new_article_worker
+    from autodata_ingestion.source_job_persistence import ensure_article_job
+
+    provider = "bankone"
+    automatic_runtime(runtime, provider)
+    config = seed_configuration(runtime.repo, runtime.vehicle)
+    with runtime.repo.connect() as conn:
+        conn.execute("UPDATE vehicle_configurations SET trim='Touring' WHERE vehicle_configuration_id=%s", (config,))
+    runtime.servers[provider].pages = [{"complete": True, "articles": [
+        {"opaque_ref": reference, "title": title, "resource_ref": "body", "asset_resource_refs": []}
+        for reference, title in (("first/pump", "Pump A"), ("second/pump", "Pump B"))
+    ]}]
+    for job in ensure_article_catalog_jobs(runtime.repo, vehicle_id=runtime.vehicle, vehicle_configuration_id=config):
+        assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+                                       object_store=runtime.objects, model_client=None, job_id=job.job_id)
+    with runtime.repo.connect() as conn:
+        rows = conn.execute("""
+            SELECT canonical_article_id FROM canonical_articles
+            WHERE vehicle_configuration_id=%s AND provider_slug=%s ORDER BY title
+        """, (config, provider)).fetchall()
+    first_article, second_article = [row["canonical_article_id"] for row in rows]
+    runtime.reset_counters()
+    state = new_article_rollout(runtime.repo, tmp_path, continuous=True)
+    runtime.stack.callback(state.__exit__, None, None, None)
+    for name, value in {**runtime.env, "INCEPTION_MODEL": "mercury-3", "INCEPTION_MAX_TOKENS": "32768",
+                        "INCEPTION_API_TIMEOUT_SECONDS": "60"}.items():
+        monkeypatch.setenv(name, value)
+    delegate = configured_model()
+    model_entered, release_model, stop = Event(), Event(), Event()
+
+    class HeldModel:
+        _model = "mercury-3"
+        calls = 0
+
+        def complete_json(self, prompt):
+            self.calls += 1
+            if self.calls == 1:
+                model_entered.set()
+                assert release_model.wait(20)
+            return delegate.complete_json(prompt)
+
+    def queue(article):
+        return ensure_article_job(runtime.repo, article, normalization_version="ordered-article-v1",
+                                  rewrite_profile_version="full-prose-auto-v1").job_id
+
+    def read_job(job_id):
+        with runtime.repo.connect() as conn:
+            return conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (job_id,)).fetchone()
+
+    def second_source_parked():
+        row = read_job(second_job)
+        return row if row["source_revision_id"] and row["error_code"] == "MODEL_NOT_CONFIGURED" else None
+
+    first_job = queue(first_article)
+    model = HeldModel()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        pump = executor.submit(run_new_article_worker, runtime.repo, state, registry=runtime.registry,
+                               object_store=runtime.objects, model_client=model, stop=stop)
+        try:
+            assert model_entered.wait(10), runtime.diagnostics()
+            second_job = queue(second_article)
+            parked = runtime.wait_for(second_source_parked)
+            runtime.article_id = second_article
+            view = runtime.read_current()
+            assert view["availability"] == "available" and view["content_origin"] == "source"
+            assert view["source_revision_id"] == parked["source_revision_id"] and "Remove the pump" in view["body"]
+            assert runtime.counters()["source"] == 2 and model.calls == 1
+            with runtime.repo.connect() as conn:
+                assert conn.execute("SELECT count(*) AS n FROM canonical_article_rewrite_attempts").fetchone()["n"] == 1
+            release_model.set()
+            runtime.wait_for(lambda: all(read_job(job)["status"] == "completed" for job in (first_job, second_job)))
+        finally:
+            stop.set()
+            release_model.set()
+        assert pump.result(timeout=4) == 0
+    assert runtime.counters()["source"] == model.calls == 2
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_rewrite_attempts").fetchone()["n"] == 2
+    assert len(state.read()["reservations"]) == 2
+
+
 def new_article_uncertain_delivery_child(repo, directory, env, arrived):
     """Hold a real HTTP response after delivery, before saving it, until SIGKILL."""
     import os

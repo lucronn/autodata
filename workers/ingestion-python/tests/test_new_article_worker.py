@@ -126,6 +126,47 @@ def test_missing_model_cannot_reserve_or_touch_database(state):
     assert state.read()['reservations']==[]
 
 
+@pytest.mark.parametrize("continuous", [False, True])
+def test_only_continuous_start_can_capture_without_configured_model(monkeypatch, capsys, continuous):
+    from autodata_ingestion import source_connector_client
+    from autodata_ingestion import worker as worker_dependencies
+
+    class State:
+        def __init__(self, *, source_sha, continuous):
+            assert source_sha == SHA
+            self.schema = 2 if continuous else 1
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    repo, fixture_store = object(), object()
+
+    def run(actual_repo, state, *, registry, object_store, model_client, stop):
+        assert continuous and state.schema == 2
+        assert actual_repo is repo and registry == {"bankone": "fixture"}
+        assert object_store is fixture_store and model_client is None and not stop.is_set()
+        return 0
+
+    monkeypatch.setenv("AUTODATA_NEW_ARTICLE_SOURCE_SHA", SHA)
+    monkeypatch.delenv("INCEPTION_API_KEY", raising=False)
+    for name, value in {"AUTODATA_S3_ENDPOINT": "http://minio:9000", "AUTODATA_S3_ACCESS_KEY": "fixture",
+                        "AUTODATA_S3_SECRET_KEY": "fixture", "AUTODATA_SOURCE_BUCKET": "fixture"}.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(worker, "RolloutState", State)
+    monkeypatch.setattr(worker_dependencies, "ArticleRepository", lambda: repo)
+    monkeypatch.setattr(worker_dependencies, "ArticleObjectStore", lambda **kwargs: fixture_store)
+    monkeypatch.setattr(source_connector_client, "source_connector_registry",
+                        lambda *, include_defaults: {"bankone": "fixture"})
+    monkeypatch.setattr(worker, "run_new_article_worker", run)
+
+    assert worker.main(["--continuous"] if continuous else []) == (0 if continuous else 1)
+    expected = "NEW_ARTICLE_MODEL_PAUSED" if continuous else "NEW_ARTICLE_WORKER_BLOCKED"
+    assert capsys.readouterr().out.strip() == expected
+
+
 def test_stop_during_database_clock_read_cannot_dispatch(state,monkeypatch):
     from threading import Event
     state.initialize(NOW);state.set_enabled(True)
@@ -282,7 +323,7 @@ def test_continuous_quota_waits_and_resumes(continuous_state,monkeypatch):
     monkeypatch.setattr(worker,'database_now',lambda repo:clock[0])
     monkeypatch.setattr(worker,'_subscribe_to_article_jobs',lambda repo: subscriptions.append(clock[0]))
     monkeypatch.setattr(worker,'_reserve_next_article',lambda *a,**k:observed.append(state.reserve(uuid4(),clock[0])))
-    worker.run_new_article_worker(None,state,registry={},object_store=None,model_client=object(),stop=Stop())
+    worker.run_new_article_worker(None,state,registry={},object_store=None,model_client=None,stop=Stop())
     assert observed==[True] and len(state.read()['reservations'])==11
     assert subscriptions == [NOW + timedelta(hours=24)]
 
@@ -339,7 +380,7 @@ def test_continuous_waits_for_notifications_and_falls_back_if_listener_fails(
     monkeypatch.setattr(worker, "database_now", lambda repo: NOW)
     monkeypatch.setattr(worker, "_reserve_next_article", dispatch)
     assert worker.run_new_article_worker(
-        Repo(), state, registry={}, object_store=None, model_client=object(), stop=stop,
+        Repo(), state, registry={}, object_store=None, model_client=None, stop=stop,
     ) == 0
     assert calls == [
         "subscribe", "queue", ("notify", 2, 1),
@@ -375,18 +416,15 @@ def test_continuous_overlaps_providers_and_refills_a_finished_slot(continuous_st
                 return queued.pop(index)
         return None
 
-    def dispatch(repo, state, job, *, model_slot, **kwargs):
+    def dispatch(repo, state, job, *, model_client, **kwargs):
+        assert model_client is None
         if job == first:
-            with model_slot() as allowed:
-                assert allowed
-                assert banktwo_started.wait(3)
-                assert waiting_for_completion.wait(3)
-                assert not next_bankone_started.is_set()
+            assert banktwo_started.wait(3)
+            assert waiting_for_completion.wait(3)
+            assert not next_bankone_started.is_set()
         elif job == first_two:
             banktwo_started.set()
             assert next_bankone_started.wait(3)
-            with model_slot() as allowed:
-                assert not allowed  # Shutdown drains the captured job before model dispatch.
         else:
             assert job == next_one
             stop.set()
@@ -411,7 +449,7 @@ def test_continuous_overlaps_providers_and_refills_a_finished_slot(continuous_st
     monkeypatch.setattr(worker, "_dispatch_reserved_job", dispatch)
 
     worker.run_new_article_worker(
-        None, continuous_state, registry={}, object_store=None, model_client=object(), stop=stop,
+        None, continuous_state, registry={}, object_store=None, model_client=None, stop=stop,
     )
 
     assert reserved == [first, first_two, next_one]

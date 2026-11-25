@@ -38,10 +38,16 @@ export function readableArticle(article) {
         article.body?.trim()),
   );
 }
+export function awaitingArticleRewrite(article) {
+  return article?.content_origin === "source" && Boolean(article.source_revision_id) &&
+    article.processing?.state === "failed" && article.processing.error_code === "MODEL_NOT_CONFIGURED" &&
+    readableArticle(article);
+}
 export function processingArticle(article) {
   const processing = article?.processing;
   return Boolean(
     processing?.job_id &&
+      !awaitingArticleRewrite(article) &&
       !["completed", "needs_review", "withdrawn"].includes(processing.state) &&
       (processing.state !== "failed" || processing.retryable === true),
   );

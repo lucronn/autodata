@@ -218,11 +218,12 @@ def refresh_article_job(
 
 def source_bound_rewrite_source_allowed(
     cur, article, source_revision_id, *, predecessor_observation=None, require_current_observation_scope=False,
+    allow_unscoped=False,
 ):
     """Check exact-scope source visibility while the caller owns the article lock."""
     if (article["current_source_revision_id"] != source_revision_id
         or article["provider_slug"] not in ("bankone", "banktwo")
-        or article["vehicle_configuration_id"] is None
+        or (article["vehicle_configuration_id"] is None and not allow_unscoped)
         or article["membership_status"] != "active" or article["takedown_status"] != "active"):
         return False
     allowed = cur.execute("""
@@ -237,12 +238,13 @@ def source_bound_rewrite_source_allowed(
         ) authored ON true
         JOIN source_snapshots retained_descriptor ON retained_descriptor.source_snapshot_id=authored.descriptor_source_snapshot_id
         JOIN source_snapshots retained_resolution ON retained_resolution.source_snapshot_id=authored.resolution_source_snapshot_id
-        JOIN vehicle_configurations c ON c.vehicle_configuration_id=v.vehicle_configuration_id
-        JOIN vehicle_identity_bases b ON b.vehicle_identity_base_id=c.vehicle_identity_base_id
+        LEFT JOIN vehicle_configurations c ON c.vehicle_configuration_id=v.vehicle_configuration_id
+        LEFT JOIN vehicle_identity_bases b ON b.vehicle_identity_base_id=c.vehicle_identity_base_id
         WHERE v.canonical_article_id=%s AND s.source_revision_id=%s
           AND descriptor.takedown_status='active' AND v.takedown_status='active'
           AND retained_descriptor.takedown_status='active' AND retained_resolution.takedown_status='active'
-          AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'
+          AND ((v.vehicle_configuration_id IS NULL AND %s)
+               OR (c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'))
           AND v.availability='available'
           AND CASE WHEN jsonb_typeof(s.source_document->'blocks')='array'
                    THEN jsonb_array_length(s.source_document->'blocks')>0 ELSE false END
@@ -266,7 +268,8 @@ def source_bound_rewrite_source_allowed(
                        WHERE q.source_snapshot_ids ? asset.source_snapshot_id::text
                    ))
           )
-        """, (article["descriptor_source_snapshot_id"], article["canonical_article_id"], source_revision_id)).fetchone() is not None
+        """, (article["descriptor_source_snapshot_id"], article["canonical_article_id"], source_revision_id,
+              allow_unscoped)).fetchone() is not None
     if not allowed or predecessor_observation is None:
         return allowed and not require_current_observation_scope
     observation_id, job_id, generation = predecessor_observation
@@ -279,17 +282,19 @@ def source_bound_rewrite_source_allowed(
           AND descriptor.takedown_status='active' AND resolution.takedown_status='active'
           AND (NOT %s OR EXISTS (
               SELECT 1 FROM canonical_articles a
-              JOIN vehicle_configurations c ON c.vehicle_configuration_id=a.vehicle_configuration_id
-                                           AND c.vehicle_id=a.vehicle_id
-              JOIN vehicle_identity_bases b ON b.vehicle_identity_base_id=c.vehicle_identity_base_id
-                                            AND b.vehicle_id=a.vehicle_id
+              JOIN vehicles v ON v.vehicle_id=a.vehicle_id
+              LEFT JOIN vehicle_configurations c ON c.vehicle_configuration_id=a.vehicle_configuration_id
+                                                AND c.vehicle_id=a.vehicle_id
+              LEFT JOIN vehicle_identity_bases b ON b.vehicle_identity_base_id=c.vehicle_identity_base_id
+                                                 AND b.vehicle_id=a.vehicle_id
               JOIN catalog_article_provider_scopes p ON p.scope_key=a.scope_key
                                                     AND p.provider_slug=a.provider_slug
                                                     AND p.source_vehicle_ref=a.source_vehicle_ref
               WHERE a.canonical_article_id=o.canonical_article_id
                 AND a.descriptor_source_snapshot_id=o.descriptor_source_snapshot_id
                 AND p.resolution_source_snapshot_id=o.resolution_source_snapshot_id
-                AND b.region=o.captured_context->'vehicle'->>'region'
+                AND (CASE WHEN a.vehicle_configuration_id IS NULL THEN v.region ELSE b.region END)
+                    =o.captured_context->'vehicle'->>'region'
           ))
           AND NOT EXISTS (
               SELECT 1 FROM source_review_items q WHERE q.item_kind='quarantine' AND q.status<>'approved'
@@ -872,6 +877,7 @@ def _claim_model_configuration_resume(cur, worker_id, job_id):
         ON a.canonical_article_id=j.canonical_article_id
         WHERE j.job_kind='article' AND NOT (j.checkpoint ? 'bankone_exact_recovery') AND j.rewrite_profile_version=ANY(%s)
           AND (%s::uuid IS NULL OR j.source_fetch_job_id=%s)
+          AND NOT (j.checkpoint ? 'new_article_rollout')
           AND {_EXPLICIT_CORRECTION_SQL}
           AND j.status IN ('failed','dead_letter') AND j.error_code='MODEL_NOT_CONFIGURED'
           AND j.source_revision_id IS NOT NULL AND j.checkpoint ? 'normalized_document' AND j.checkpoint ? 'normalized_hash'
@@ -1093,11 +1099,12 @@ def claim_source_job(repo, *, worker_id, model_ready=True, job_id=None):
         WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint ? 'bankone_exact_recovery')
         AND (%s::uuid IS NULL OR source_fetch_job_id=%s)
         AND NOT (rewrite_profile_version=ANY(%s) AND COALESCE(error_code,'')='MODEL_NOT_CONFIGURED')
+        AND (%s::uuid IS NOT NULL OR NOT (j.checkpoint ? 'new_article_rollout'))
         AND {_EXPLICIT_CORRECTION_SQL}
         AND NOT (checkpoint @> '{{"source_only_reprojection":true}}'::jsonb)
         AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND retry_count<max_attempts AND
         ((status IN ('pending','failed') AND COALESCE(next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp()) OR (status='processing' AND lease_expires_at<clock_timestamp()))
-        ORDER BY created_at,source_fetch_job_id FOR UPDATE SKIP LOCKED LIMIT 1""", (*claim_scope, job_id is not None)
+        ORDER BY created_at,source_fetch_job_id FOR UPDATE SKIP LOCKED LIMIT 1""", (*claim_scope, job_id, job_id is not None)
         ).fetchone()
         if job is None:
             return None
