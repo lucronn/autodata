@@ -704,7 +704,36 @@ func TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse(t *testing.T) {
 	canonicalSearch := f.contentSearch(0, "Take off the pump")
 	f.check("canonical_content_search_current_projection", paidSearchHas(canonicalSearch, f.article, "canonical"))
 	if !f.supersededTermAbsent("Remove the pump") {
-		t.Fatal("superseded source phrase still matched the canonical projection")
+		t.Fatal("source phrase matched without the paid search context")
+	}
+	// Keep the guarded HTTP receipt unchanged while testing the source fallback
+	// against the same real PostgreSQL rows and the authorization context.
+	searcher := f.applications[0].catalog.(paidArticleSearchStore)
+	for _, test := range []struct {
+		scopeID  string
+		openDemo bool
+		want     bool
+	}{
+		{f.configuration, false, true},
+		{f.configuration, true, false},
+		{f.adjacent, false, false},
+	} {
+		scope := paidCatalogContext{configuration: CatalogConfiguration{ID: test.scopeID}, openDemo: test.openDemo}
+		ctx := context.WithValue(context.Background(), paidCatalogContextKey{}, scope)
+		matches, err := searcher.PaidArticleSearchDescriptors(ctx, Principal{}, f.configuration, "Remove the pump")
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := paidSearchHas(CatalogArticlesResponse{Items: matches}, f.article, "canonical")
+		if found != test.want {
+			t.Fatalf("Original matched=%t, want=%t for exact scope=%t openDemo=%t",
+				found, test.want, test.scopeID == f.configuration, test.openDemo)
+		}
+		for _, item := range matches {
+			if item.Body != "" || item.Document != nil || len(item.Steps) != 0 || len(item.Images) != 0 {
+				t.Fatal("an Original search returned article content")
+			}
+		}
 	}
 	before := f.snapshot("published")
 	second := f.detail(1)

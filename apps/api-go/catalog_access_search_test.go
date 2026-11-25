@@ -11,11 +11,12 @@ type paidSearchProjectionRow struct {
 	steps        []byte
 	images       []byte
 	sourceImages []byte
+	original     []byte
 }
 
 func (row paidSearchProjectionRow) Scan(dest ...any) error {
-	if len(dest) != 15 {
-		return fmt.Errorf("paid search projection scanned %d columns, want 15", len(dest))
+	if len(dest) != 16 {
+		return fmt.Errorf("paid search projection scanned %d columns, want 16", len(dest))
 	}
 	*dest[0].(*string) = "00000000-0000-0000-0000-000000000111"
 	*dest[1].(*string) = "Torque guide"
@@ -24,7 +25,33 @@ func (row paidSearchProjectionRow) Scan(dest ...any) error {
 	*dest[11].(*[]byte) = row.steps
 	*dest[12].(*[]byte) = row.images
 	*dest[13].(*[]byte) = row.sourceImages
+	*dest[15].(*[]byte) = row.original
 	return nil
+}
+
+func TestPaidSearchCurrentOriginalMatchesWithoutReturningItsContent(t *testing.T) {
+	row := paidSearchProjectionRow{
+		document: []byte(`{"schema_version":1,"blocks":[{"type":"paragraph","text":"Take off the cover"}]}`),
+		original: []byte(`{"schema_version":1,"blocks":[{"type":"paragraph","text":"Remove the cover"}]}`),
+	}
+	const configurationID = "00000000-0000-0000-0000-000000000222"
+	for _, test := range []struct {
+		words []string
+		want  bool
+	}{
+		{[]string{"remove", "cover"}, true},
+		{[]string{"take", "cover"}, true},
+		{[]string{"take", "remove"}, false},
+	} {
+		article, matched, err := scanPaidArticleSearchRow(row, configurationID, test.words)
+		if err != nil || matched != test.want || article.Document != nil || article.Body != "" || len(article.Images) != 0 {
+			t.Fatalf("query %v matched=%t err=%v", test.words, matched, err)
+		}
+	}
+	row.original = []byte(`{`)
+	if _, matched, err := scanPaidArticleSearchRow(row, configurationID, []string{"remove"}); err != nil || matched {
+		t.Fatalf("unreadable Original matched=%t err=%v", matched, err)
+	}
 }
 
 func TestPaidSearchProjectionResolvesVisibleTableImageWithoutReturningContent(t *testing.T) {

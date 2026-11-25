@@ -198,7 +198,10 @@ func catalogBlockSearchText(block CatalogDocumentBlock, images catalogSearchImag
 	case "callout":
 		parts = append(parts, block.Label, block.Text)
 	case "image":
-		ref := CatalogImage{AssetID: block.AssetID, ImageID: block.ImageID, Status: block.Status, Alt: block.Alt, Caption: block.Caption}
+		ref := CatalogImage{
+			AssetID: block.AssetID, ImageID: block.ImageID, Status: block.Status,
+			Alt: block.Alt, Caption: block.Caption, UnavailableReason: block.UnavailableReason,
+		}
 		return catalogImageSearchText(ref, images.resolve(ref), placed)
 	case "step":
 		parts = append(parts, block.Text)
@@ -222,9 +225,11 @@ func catalogBlockSearchText(block CatalogDocumentBlock, images catalogSearchImag
 			}
 		}
 		for _, ref := range block.Images {
-			if image := images.resolve(ref); image != nil && !cellImageIDs[catalogSearchImageDisplayID(*image)] {
-				parts = append(parts, catalogImageSearchText(ref, image, placed))
+			image := images.resolve(ref)
+			if image != nil && cellImageIDs[catalogSearchImageDisplayID(*image)] {
+				continue
 			}
+			parts = append(parts, catalogImageSearchText(ref, image, placed))
 		}
 		if placed != nil {
 			for id := range cellImageIDs {
@@ -314,6 +319,11 @@ func catalogSearchImageDisplayID(image CatalogImage) string {
 
 func catalogImageSearchText(ref CatalogImage, image *CatalogImage, placed map[string]bool) string {
 	if image == nil {
+		// The reader keeps the authored caption beside missing or pending figures.
+		missing := ref.Status == "unavailable" && ref.UnavailableReason == "SOURCE_NOT_FOUND"
+		if missing || ref.UnavailableReason == "SOURCE_MEDIA_PENDING" {
+			return ref.Caption
+		}
 		return ""
 	}
 	if placed != nil {
@@ -345,6 +355,7 @@ func catalogInlineImageSearchText(fields map[string]any, images catalogSearchIma
 	ref.ImageID, _ = fields["image_id"].(string)
 	ref.ID, _ = fields["id"].(string)
 	ref.Status, _ = fields["status"].(string)
+	ref.UnavailableReason, _ = fields["unavailable_reason"].(string)
 	ref.Caption, _ = fields["caption"].(string)
 	ref.Alt, _ = fields["alt"].(string)
 	image := images.resolve(ref)
@@ -369,7 +380,8 @@ func catalogInlineSearchText(cell any, images catalogSearchImages, placed map[st
 		}
 		assetID, _ := value["asset_id"].(string)
 		imageID, _ := value["image_id"].(string)
-		if assetID != "" || imageID != "" {
+		status, _ := value["status"].(string)
+		if assetID != "" || imageID != "" || status == "unavailable" {
 			parts = append(parts, catalogInlineImageSearchText(value, images, placed))
 		}
 		if cellImages, ok := value["images"].([]any); ok {

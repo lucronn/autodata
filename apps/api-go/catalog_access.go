@@ -185,13 +185,15 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 		return nil, err
 	}
 	scope, scoped := ctx.Value(paidCatalogContextKey{}).(paidCatalogContext)
-	includePreview := scoped && !scope.openDemo && scope.configuration.ID == configurationID
-	// Search the authorized supplier body as soon as it arrives. A retained
-	// projection takes precedence and the response still contains descriptors.
+	includeSource := scoped && !scope.openDemo && scope.configuration.ID == configurationID
+	// Search the displayed article first, including an early source preview
+	// when available. The current Original shares the effective view's source
+	// pin, takedown checks and lifecycle eligibility.
 	rows, err := tx.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),
 		c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,`+paidArticleAvailabilitySQL+`,
 		COALESCE(c.review_status,'UNREVIEWED'),
-		COALESCE(c.document,early.document),COALESCE(c.body,''),c.steps,c.images,source.source_images,early.linked_document
+		COALESCE(c.document,early.document),COALESCE(c.body,''),c.steps,c.images,sr.source_images,early.linked_document,
+		CASE WHEN $2::boolean AND c.canonical_revision_id IS NOT NULL THEN sr.source_document END
 		FROM canonical_articles a
 		LEFT JOIN LATERAL (
 			SELECT * FROM catalog_article_current
@@ -200,11 +202,12 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 		LEFT JOIN source_fetch_jobs j ON j.source_fetch_job_id=a.current_job_id AND a.current_source_revision_id IS NULL
 		LEFT JOIN LATERAL (`+catalogSourceBodyPreviewSQL+`) early ON $2::boolean
 		JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
-		LEFT JOIN canonical_article_source_revisions source ON source.source_revision_id=c.source_revision_id
+		LEFT JOIN canonical_article_source_revisions sr ON sr.source_revision_id=c.source_revision_id
+			AND sr.canonical_article_id=a.canonical_article_id
 		WHERE `+paidArticleScopeSQL+` AND `+lifecycleEligibleSQL+`
 		  AND a.takedown_status='active' AND descriptor.takedown_status='active'
 		  AND (a.current_source_revision_id IS NULL OR (c.availability='available' AND c.takedown_status='active'))
-		ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID, includePreview)
+		ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID, includeSource)
 	if err != nil {
 		return nil, err
 	}
@@ -230,13 +233,20 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 func scanPaidArticleSearchRow(row interface{ Scan(...any) error }, configurationID string, words []string) (CatalogArticle, bool, error) {
 	var article CatalogArticle
 	var projection paidSearchProjection
-	if err := row.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &projection.document, &projection.body, &projection.steps, &projection.images, &projection.sourceImages, &projection.linkedPreview); err != nil {
+	var original []byte
+	if err := row.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &projection.document, &projection.body, &projection.steps, &projection.images, &projection.sourceImages, &projection.linkedPreview, &original); err != nil {
 		return CatalogArticle{}, false, err
 	}
 	if !catalogSearchWordsMatch(strings.Join([]string{article.Title, article.Component, article.Kind}, " "), words) {
 		matched, err := projection.matchesContent(article, words)
-		if err != nil || !matched {
+		if err != nil {
 			return CatalogArticle{}, false, err
+		}
+		if !matched && len(original) > 0 {
+			matched = projection.matchesOriginal(article, original, words)
+		}
+		if !matched {
+			return CatalogArticle{}, false, nil
 		}
 	}
 	article.CanonicalArticleID = stringPointer(article.ID)
@@ -304,6 +314,17 @@ func (projection paidSearchProjection) matchesContent(searchable CatalogArticle,
 	return catalogSearchWordsMatch(catalogArticleSearchText(searchable, true), words), nil
 }
 
+func (projection paidSearchProjection) matchesOriginal(searchable CatalogArticle, original []byte, words []string) bool {
+	if err := json.Unmarshal(original, &searchable.Document); err != nil || searchable.Document == nil {
+		return false
+	}
+	if len(projection.sourceImages) > 0 && json.Unmarshal(projection.sourceImages, &searchable.Images) != nil {
+		return false
+	}
+	scopePaidSearchImages(&searchable, searchable.Images)
+	return catalogSearchWordsMatch(catalogArticleSearchText(searchable, true), words)
+}
+
 func (projection paidSearchProjection) scopeImages(article *CatalogArticle) error {
 	var sourceImages []CatalogImage
 	if len(projection.sourceImages) > 0 {
@@ -311,6 +332,11 @@ func (projection paidSearchProjection) scopeImages(article *CatalogArticle) erro
 			return err
 		}
 	}
+	scopePaidSearchImages(article, sourceImages)
+	return nil
+}
+
+func scopePaidSearchImages(article *CatalogArticle, sourceImages []CatalogImage) {
 	assets := paidCatalogAssetURLs(sourceImages)
 	// A paid detail only mints media URLs for assets still present in the
 	// selected source. Preserve that boundary while comparing text privately.
@@ -334,7 +360,6 @@ func (projection paidSearchProjection) scopeImages(article *CatalogArticle) erro
 			clearUnproven(*step.Images)
 		}
 	}
-	return nil
 }
 
 func (s *postgresCatalogStore) PaidArticleIdentity(ctx context.Context, configurationID, articleID string) (PaidArticleIdentity, error) {
