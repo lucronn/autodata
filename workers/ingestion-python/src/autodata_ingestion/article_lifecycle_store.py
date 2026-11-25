@@ -659,8 +659,11 @@ def _require_source_bound_rewrite_rights(cur, job, article):
             except (AttributeError, KeyError, TypeError, ValueError):
                 raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID") from None
         if marker_version == 2 and ("correction_method" in marker or "first_draft_observation_id" in marker):
+            from .procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
             from .procedure_rewrite_sentence_correction import SENTENCE_CORRECTION_METHOD
-            if marker.get("correction_method") != SENTENCE_CORRECTION_METHOD:
+            method = marker.get("correction_method")
+            if (method not in (SENTENCE_CORRECTION_METHOD, ARCHIVED_FIRST_DRAFT_METHOD)
+                or (method == ARCHIVED_FIRST_DRAFT_METHOD and "first_draft_observation_id" not in marker)):
                 raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID")
             try:
                 prior_id = UUID(marker["prior_job_id"])
@@ -758,6 +761,7 @@ _CORRECTION_SERVER = "server-source-bound-correction"
 
 def _bound_correction_draft(cur, job, document):
     from .procedure_rewrite_auto import _NOTE_LABEL_PROMPT_VERSION
+    from .procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
     from .source_job_persistence import source_bound_correction_prior_attempt
 
     checkpoint = job["checkpoint"]
@@ -769,15 +773,24 @@ def _bound_correction_draft(cur, job, document):
         or type(binding.get("prior_generation")) is not int
         or binding["prior_generation"] + 1 != job["request_generation"]
         or type(binding.get("model_call_budget")) is not int
-        or not 1 <= binding["model_call_budget"] <= MAX_CORRECTION_CALLS
         or checkpoint.get("normalized_document") != document
         or checkpoint.get("normalized_hash") != digest_json(document)):
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
     first_draft = "first_draft_observation_id" in binding
-    if "correction_method" in binding or first_draft:
+    method = binding.get("correction_method")
+    budget = binding["model_call_budget"]
+    if method == ARCHIVED_FIRST_DRAFT_METHOD:
+        from .procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHODS
+
+        replay = binding.get("archived_recovery")
+        if (budget != 0 or not first_draft or not isinstance(replay, dict)
+            or set(replay) != {"method", "output_hash"} or replay["method"] not in FIRST_DRAFT_RECOVERY_METHODS):
+            raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+    elif not 1 <= budget <= MAX_CORRECTION_CALLS or "archived_recovery" in binding:
+        raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+    elif "correction_method" in binding or first_draft:
         from .procedure_rewrite_sentence_correction import MAX_SENTENCE_CORRECTION_CALLS, SENTENCE_CORRECTION_METHOD
-        if (binding.get("correction_method") != SENTENCE_CORRECTION_METHOD
-            or binding["model_call_budget"] > MAX_SENTENCE_CORRECTION_CALLS):
+        if method != SENTENCE_CORRECTION_METHOD or budget > MAX_SENTENCE_CORRECTION_CALLS:
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
     try:
         prior_id = UUID(binding["prior_job_id"])
@@ -811,7 +824,7 @@ def _bound_correction_draft(cur, job, document):
         or binding.get("prior_response_hash") != attempt["response_hash"]
         or (first_draft and binding["first_draft_observation_id"] != str(attempt["observation_id"]))):
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
-    return {**binding, "preserve_notes": attempt["guard_version"] == _NOTE_LABEL_PROMPT_VERSION}, attempt["response"]
+    return {**binding, "preserve_notes": attempt["guard_version"] == _NOTE_LABEL_PROMPT_VERSION}, attempt
 
 
 def _validate_correction_rounds(rounds, *, limit, model, token, input_hash, revision):
@@ -841,11 +854,12 @@ def resolve_source_bound_correction(cur, job, candidate):
     """Rebuild a correction and bind every provider round to its publication."""
     from .article_document import project_ordered_document
     from .procedure_rewrite_correction import (
-        _CORRECTION_METHOD, correction_recovery_for_method, replay_retained_correction,
+        ARCHIVED_FIRST_DRAFT_METHOD, _CORRECTION_METHOD, correction_recovery_for_method, replay_retained_correction,
     )
 
     source = candidate["normalized_source_document"]
-    binding, previous = _bound_correction_draft(cur, job, source)
+    binding, prior_attempt = _bound_correction_draft(cur, job, source)
+    previous = prior_attempt["response"]
     metadata = candidate["model_metadata"]
     evidence = metadata.get("correction_evidence")
     method = metadata.get("transformation_method")
@@ -871,7 +885,17 @@ def resolve_source_bound_correction(cur, job, candidate):
         )
     elif metadata.get("provider") != "server" or metadata.get("model") != _CORRECTION_SERVER:
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
-    if method == scheduled_method:
+    if scheduled_method == ARCHIVED_FIRST_DRAFT_METHOD:
+        from .procedure_rewrite_recovery import recover_archived_first_draft
+
+        if (method != scheduled_method or token != 1 or "correction_recovery" in metadata
+            or "correction_recovery" in job["checkpoint"]):
+            raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+        archive = binding["archived_recovery"]
+        result = recover_archived_first_draft(
+            source, prior_attempt, method=archive["method"], expected_hash=archive["output_hash"],
+        )
+    elif method == scheduled_method:
         result = replay_retained_correction(
             source, previous, model_call_budget=binding["model_call_budget"], evidence=evidence, attempts=rounds,
             method=scheduled_method, preserve_notes=binding["preserve_notes"],
@@ -941,6 +965,36 @@ def _stage_correction_candidate(cur, job, document, result, *, model, token, att
     return revision, validation_hash
 
 
+def _publish_source_bound_first_draft(cur, job, document, *, hooks=None):
+    from .procedure_rewrite_recovery import recover_archived_first_draft
+    from .source_job_persistence import _lease_from_row
+
+    worker_id = uuid4()
+    job_id = job["source_fetch_job_id"]
+    job = cur.execute("""UPDATE source_fetch_jobs SET status='processing',phase='publishing',
+        retry_count=1,lease_token=1,lease_owner=%s,lease_expires_at=clock_timestamp()+interval '90 seconds',
+        heartbeat_at=clock_timestamp(),checkpoint=checkpoint||%s,updated_at=clock_timestamp()
+        WHERE source_fetch_job_id=%s AND status='pending' AND phase='normalizing'
+          AND retry_count=0 AND lease_token=0 RETURNING *""",
+        (worker_id, Jsonb({"normalized_document": document, "normalized_hash": digest_json(document)}),
+         job_id)).fetchone()
+    if job is None:
+        raise LeaseLost("archived first draft claim rejected")
+    binding, prior_attempt = _bound_correction_draft(cur, job, document)
+    archive = binding["archived_recovery"]
+    result = recover_archived_first_draft(
+        document, prior_attempt, method=archive["method"], expected_hash=archive["output_hash"],
+    )
+    revision, validation_hash = _stage_correction_candidate(
+        cur, job, document, result, model=_CORRECTION_SERVER, token=job["lease_token"], attempts=[],
+    )
+    job = cur.execute("""UPDATE source_fetch_jobs SET checkpoint=checkpoint||%s
+        WHERE source_fetch_job_id=%s RETURNING *""",
+        (Jsonb({"candidate_revision_id": str(revision), "validation_hash": validation_hash}), job_id)).fetchone()
+    _publish_article_revision(cur, _lease_from_row(job, worker_id), revision, hooks=hooks)
+    return cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (job_id,)).fetchone()
+
+
 def recover_source_bound_correction(repo, article_id, *, expected_job_id, expected_source_revision_id, actor, reason):
     """Stage a validated correction from the exact current terminal job's archived replies."""
     from .procedure_rewrite_correction import _CORRECTION_METHOD, correction_recovery_for_method
@@ -979,7 +1033,7 @@ def recover_source_bound_correction(repo, article_id, *, expected_job_id, expect
             raise ValueError("SOURCE_BOUND_CORRECTION_RECOVERY_STALE")
         _require_source_bound_rewrite_rights(cur, job, article)
         document = job["checkpoint"].get("normalized_document")
-        binding, previous = _bound_correction_draft(cur, job, document)
+        binding, prior_attempt = _bound_correction_draft(cur, job, document)
         recover = correction_recovery_for_method(binding.get("correction_method", _CORRECTION_METHOD))
         if cur.execute("SELECT 1 FROM canonical_article_revisions WHERE transformation_key=%s",
                        (job["transformation_key"],)).fetchone():
@@ -995,7 +1049,7 @@ def recover_source_bound_correction(repo, article_id, *, expected_job_id, expect
             input_hash=job["checkpoint"]["normalized_hash"], revision=None,
         )
         result = recover(
-            document, previous, model_call_budget=binding["model_call_budget"], attempts=rounds,
+            document, prior_attempt["response"], model_call_budget=binding["model_call_budget"], attempts=rounds,
             preserve_notes=binding["preserve_notes"],
         )
         if result.evidence.get("original_error_code") != job["error_code"]:
@@ -1028,14 +1082,17 @@ def run_source_bound_correction(repo, lease, document, *, model_client, hooks=No
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
         job, article = _lock_transform(cur, lease)
         _require_source_bound_rewrite_rights(cur, job, article)
-        binding, previous = _bound_correction_draft(cur, job, document)
+        binding, prior_attempt = _bound_correction_draft(cur, job, document)
+        if binding["model_call_budget"] == 0:
+            raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+        previous = prior_attempt["response"]
     attempts = []
 
     def fence(cur):
         job, article = _lock_transform(cur, lease)
         _require_source_bound_rewrite_rights(cur, job, article)
         if (job["phase"] != "rewriting" or job["checkpoint"].get("candidate_revision_id") is not None
-            or _bound_correction_draft(cur, job, document) != (binding, previous)):
+            or _bound_correction_draft(cur, job, document) != (binding, prior_attempt)):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
         rows = cur.execute("""SELECT rewrite_attempt_id,prompt_hash,response_hash,status
             FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s ORDER BY attempt_number,lease_token""",

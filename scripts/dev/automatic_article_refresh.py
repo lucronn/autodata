@@ -11,6 +11,8 @@ Use --correct-from with a failed v2 job and a model-call budget for passage corr
 Add --by-sentence to try a sentence pass on the remaining rejected prose.
 Use --correct-first-draft-from with a failed v1 job to correct its saved reply
 by sentence, without fetching the source again or requesting a full v2 draft.
+Use --recover-first-draft-from with a failed v1 job, a registered recovery
+method and the exact recovered document hash to publish from a saved reply.
 Use --recover-from with a terminal v3 job to stage a correction from its saved replies.
 Use --recover-staged-media-from with a failed positioned media refresh and its
 expected published revision to replay the exact archived replies and publish.
@@ -29,11 +31,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "workers/ingestion-
 from autodata_ingestion.article_lifecycle_store import recover_source_bound_correction
 from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILES, MAX_CORRECTION_CALLS
 from autodata_ingestion.procedure_rewrite_auto import PROFILE
+from autodata_ingestion.procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHODS
 from autodata_ingestion.procedure_rewrite_sentence_correction import MAX_SENTENCE_CORRECTION_CALLS
 from autodata_ingestion.retained_note_label_repair import repair_retained_note_labels
 from autodata_ingestion.retained_procedure_repair import repair_retained_procedure
 from autodata_ingestion.source_job_persistence import (
-    refresh_article_job, schedule_source_bound_correction, schedule_source_bound_rewrite,
+    publish_source_bound_first_draft, refresh_article_job, schedule_source_bound_correction,
+    schedule_source_bound_rewrite,
 )
 from autodata_ingestion.staged_media_reply_recovery import recover_staged_media_reply
 
@@ -96,6 +100,8 @@ def main(argv=None, *, repo=None):
                           help="correct a failed draft against the same retained source")
     drafting.add_argument("--correct-first-draft-from", type=UUID, metavar="FAILED_V1_JOB_ID",
                           help="correct the original failed draft by sentence using the exact stored source")
+    drafting.add_argument("--recover-first-draft-from", type=UUID, metavar="FAILED_V1_JOB_ID",
+                          help="publish a checked recovery of this job's saved reply")
     drafting.add_argument("--recover-from", type=UUID, metavar="FAILED_V3_JOB_ID",
                           help="stage a correction using this job's archived model replies")
     drafting.add_argument("--recover-staged-media-from", type=UUID, metavar="FAILED_REFRESH_JOB_ID",
@@ -110,6 +116,9 @@ def main(argv=None, *, repo=None):
     parser.add_argument("--expected-repaired-hash", metavar="SHA256")
     parser.add_argument("--expected-descriptor-snapshot-id", type=UUID,
                         help="bind a Note label repair to the exact active descriptor")
+    parser.add_argument("--first-draft-recovery-method", choices=FIRST_DRAFT_RECOVERY_METHODS)
+    parser.add_argument("--expected-first-draft-recovery-hash", metavar="SHA256",
+                        help="bind the recovery to the checked v1 document")
     parser.add_argument("--model-call-budget", type=int, metavar=f"1-{MAX_CORRECTION_CALLS}")
     parser.add_argument("--by-sentence", action="store_true", help="use sentence correction for the selected failed draft")
     args = parser.parse_args(argv)
@@ -118,8 +127,8 @@ def main(argv=None, *, repo=None):
     targets = selection(json.loads(args.selection.read_text()))
     repair = args.repair_retained_procedure_from or args.repair_retained_note_labels_from
     correction_job = args.correct_from or args.correct_first_draft_from
-    retained_job = (args.source_bound_from or correction_job or args.recover_from or args.recover_staged_media_from
-                    or repair)
+    retained_job = (args.source_bound_from or correction_job or args.recover_first_draft_from or args.recover_from
+                    or args.recover_staged_media_from or repair)
     if retained_job is not None and (len(targets) != 1 or not args.apply):
         parser.error("retained-source drafting requires one selected article and --apply")
     if args.correct_from is not None and (
@@ -134,6 +143,11 @@ def main(argv=None, *, repo=None):
         parser.error("--model-call-budget requires a correction job")
     if args.by_sentence and (args.correct_from is None or args.model_call_budget > MAX_SENTENCE_CORRECTION_CALLS):
         parser.error(f"--by-sentence requires --correct-from and a budget of 1 through {MAX_SENTENCE_CORRECTION_CALLS}")
+    if args.recover_first_draft_from is not None:
+        if not (args.first_draft_recovery_method and args.expected_first_draft_recovery_hash):
+            parser.error("first-draft publication requires --first-draft-recovery-method and --expected-first-draft-recovery-hash")
+    elif args.first_draft_recovery_method or args.expected_first_draft_recovery_hash:
+        parser.error("first-draft recovery options require --recover-first-draft-from")
     if bool(args.recover_staged_media_from or repair) != bool(args.expected_published_revision_id):
         parser.error("archived-reply publication requires --expected-published-revision-id")
     if repair and not (args.expected_published_hash and args.expected_repaired_hash):
@@ -171,6 +185,16 @@ def main(argv=None, *, repo=None):
                 repo, article_id, expected_published_revision_id=args.expected_published_revision_id, **arguments,
             )
             results = [{**target, "job_id": str(retained_job), "revision_id": str(revision), "action": "published"}]
+        elif args.recover_first_draft_from is not None:
+            job = publish_source_bound_first_draft(
+                repo, article_id, recovery_method=args.first_draft_recovery_method,
+                expected_recovery_hash=args.expected_first_draft_recovery_hash, **arguments,
+            )
+            results = [{
+                **target, "prior_job_id": str(retained_job), "job_id": str(job.job_id),
+                "revision_id": str(job.published_revision_id),
+                "action": "published" if job.created else "joined_existing",
+            }]
         elif args.recover_from is not None:
             revision = recover_source_bound_correction(repo, article_id, **arguments)
             results = [{**target, "job_id": str(retained_job), "revision_id": str(revision), "action": "recovered"}]
