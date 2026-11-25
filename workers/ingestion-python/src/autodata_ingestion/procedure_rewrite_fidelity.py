@@ -61,6 +61,7 @@ _DRAIN_FLUID = re.compile(
     rf"(?P<target>{_PHRASE})\.",
     _FLAGS,
 )
+_LET_COMPONENT_DRAIN = re.compile(rf"Let the (?P<target>{_PHRASE}) drain\.", _FLAGS)
 _FLUID_TARGET_BOUNDARIES = frozenset("by completely from fully gradually into out to".split())
 _FLUID_ACTIONS = {
     "drain": "drain", "drained": "drain", "empty": "drain", "empty out": "drain", "emptied": "drain",
@@ -88,8 +89,10 @@ def _repeat_instruction(text, pattern=_REPEAT_TO_REMOVE):
     return None
 
 
-def _fluid_facts(text):
+def _fluid_facts(text, *, allow_drain_subject):
     explicit_drain = _DRAIN_FLUID.fullmatch(text)
+    if explicit_drain is None and allow_drain_subject:
+        explicit_drain = _LET_COMPONENT_DRAIN.fullmatch(text)
     match = explicit_drain or _FLUID_ACTION.fullmatch(text) or _FLUID_PASSIVE.fullmatch(text)
     if match:
         target = match["target"]
@@ -120,12 +123,12 @@ def _idle_facts(text):
     return None
 
 
-def procedure_facts(text: str) -> tuple[str, ...] | None:
+def procedure_facts(text: str, *, allow_drain_subject: bool = True) -> tuple[str, ...] | None:
     """Return comparable facts for a complete recognized instruction."""
     text = " ".join(text.casefold().split())
     if text and text[-1].isalpha():
         text += "."
-    if facts := _fluid_facts(text):
+    if facts := _fluid_facts(text, allow_drain_subject=allow_drain_subject):
         return facts
     if contact := _REFIT_TO_STOP.fullmatch(text):
         if _object_name(contact["part"]) and _object_name(contact["stop"]):

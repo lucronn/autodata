@@ -15,7 +15,7 @@ from .article_lifecycle_types import (
 )
 from .procedure_rewrite import _set_path, editable_slots, validate_article_rewrite
 from .procedure_rewrite_auto import (
-    PROFILE, _NOTE_LABEL_PROMPT_VERSION, _PROCEDURE_FIDELITY_PROMPT_VERSION,
+    PROFILE, _DRAIN_SUBJECT_PROMPT_VERSION, _NOTE_LABEL_PROMPT_VERSION, _PROCEDURE_FIDELITY_PROMPT_VERSIONS,
     _include_cell_blocks, render_auto, validate_auto,
 )
 from .procedure_rewrite_full import PROFILE as REVIEW_PROFILE
@@ -24,8 +24,10 @@ from .procedure_rewrite_v2 import PROFILE as TECHNICAL_V2
 from .procedure_rewrite_v2 import _selection, plan_v2, render_v2
 
 TECHNICAL_V1 = "technical-prose-v1"
-_SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 61))
-_BOUND_AUTOMATIC_PROMPTS = _SUPPORTED_PROMPTS | {_NOTE_LABEL_PROMPT_VERSION, _PROCEDURE_FIDELITY_PROMPT_VERSION}
+_SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 61)) | {
+    _DRAIN_SUBJECT_PROMPT_VERSION,
+}
+_BOUND_AUTOMATIC_PROMPTS = _SUPPORTED_PROMPTS | {_NOTE_LABEL_PROMPT_VERSION, *_PROCEDURE_FIDELITY_PROMPT_VERSIONS}
 _POSITION_KEYS = frozenset({"block_id", "source_order"})
 _IMAGE_KEYS = _POSITION_KEYS | {"type"}
 MEDIA_METHOD = "published-media-placement-v1"

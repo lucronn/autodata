@@ -966,9 +966,9 @@ def resolve_source_bound_correction(cur, job, candidate, *, require_current=Fals
         }):
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
     if require_current:
-        from .procedure_rewrite_auto import _PROCEDURE_FIDELITY_PROMPT_VERSION, require_current_publication_checks
+        from .procedure_rewrite_auto import _PROCEDURE_FIDELITY_PROMPT_VERSIONS, require_current_publication_checks
 
-        if prior_attempt["guard_version"] == _PROCEDURE_FIDELITY_PROMPT_VERSION:
+        if prior_attempt["guard_version"] in _PROCEDURE_FIDELITY_PROMPT_VERSIONS:
             require_current_publication_checks(
                 source, result.document, saved_prompt_version=prior_attempt["guard_version"],
                 bankone_structure=result.bankone_structure,

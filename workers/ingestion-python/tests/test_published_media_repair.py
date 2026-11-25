@@ -103,6 +103,29 @@ def test_placement_repair_keeps_exact_published_prose_and_protected_fields(profi
     assert (old, published, repaired, response) == before
 
 
+@pytest.mark.parametrize("profile", (AUTOMATIC_REWRITE_PROFILE, SOURCE_BOUND_REWRITE_PROFILE))
+def test_ordinary_media_repair_preserves_drain_subject_and_figure(profile):
+    step = {"kind": "step", "number": 1, "text": "Let the fixture reservoir drain."}
+    warning = {"kind": "warning", "text": "Do not reuse the seal."}
+    image = _image()
+    old = _document([step, warning, image])
+    repaired = _document([step, image, warning])
+    body = "Drain the fixture reservoir."
+    reply = _response(old, [body], introduction="This procedure covers service of the fixture reservoir.")
+    version = "full-prose-auto-prompt-v63"
+    published = render_auto(old, reply, prompt_version=version, profile_version=profile)
+    result = repair_published_media(old, published, repaired, response=reply, prompt_version=version, profile=profile)
+    _, instruction, figure, saved_warning = result.document["blocks"]
+    assert instruction["text"] == body
+    assert figure["content_sha256"] == image["content_sha256"]
+    assert saved_warning["text"] == warning["text"]
+    assert result.validation.report["validator_version"] == "full-prose-auto-validator-v61"
+    changed = deepcopy(repaired)
+    changed["blocks"][0]["text"] = "Let the other reservoir drain."
+    with pytest.raises(ValueError, match="^PUBLISHED_MEDIA_REPAIR_SOURCE_TEXT_DRIFT$"):
+        repair_published_media(old, published, changed, response=reply, prompt_version=version, profile=profile)
+
+
 def test_moves_figure_into_structured_item_and_keeps_distinct_repeated_slot_prose():
     items = ["Inspect the seal.", "Inspect the seal."]
     image = _image()
@@ -516,7 +539,7 @@ def _conditional_note_repair_fixture(prompt_version, *, ordinals=False):
 
 
 @pytest.mark.parametrize("prompt_version", (
-    "full-prose-auto-prompt-v55", "full-prose-auto-prompt-v61", "full-prose-auto-prompt-v62",
+    "full-prose-auto-prompt-v55", "full-prose-auto-prompt-v61", "full-prose-auto-prompt-v62", "full-prose-auto-prompt-v63",
 ))
 @pytest.mark.parametrize("ordinals", [False, True], ids=["media", "ordinals"])
 def test_repair_replays_verified_conditional_note_with_saved_prompt(prompt_version, ordinals):
@@ -593,7 +616,9 @@ def _bankone_media_fixture(prompt_version, *, placement):
     return source, recovered.document, repaired, recovered.response, proof
 
 
-@pytest.mark.parametrize("prompt_version", ("full-prose-auto-prompt-v55", "full-prose-auto-prompt-v62"))
+@pytest.mark.parametrize("prompt_version", (
+    "full-prose-auto-prompt-v55", "full-prose-auto-prompt-v62", "full-prose-auto-prompt-v63",
+))
 @pytest.mark.parametrize("placement", ("inline", "block"))
 def test_bankone_media_repair_rebinds_exact_structural_slots(prompt_version, placement):
     old, published, repaired, response, proof = _bankone_media_fixture(prompt_version, placement=placement)
