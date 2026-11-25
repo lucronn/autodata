@@ -3,9 +3,13 @@ from copy import deepcopy
 import pytest
 
 from autodata_ingestion.article_document import build_ordered_document
-from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, digest_json
+from autodata_ingestion.article_lifecycle_types import (
+    AUTOMATIC_REWRITE_PROFILE, RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE,
+    SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, digest_json,
+)
 from autodata_ingestion.procedure_rewrite import editable_slots, rewrite_ordered_document
 from autodata_ingestion.procedure_rewrite_auto import render_auto
+from autodata_ingestion.procedure_rewrite_fidelity import recast_conditional_color_note
 from autodata_ingestion.procedure_rewrite_full import prose_slots, render_full
 from autodata_ingestion.procedure_rewrite_v2 import plan_v2, render_v2
 from autodata_ingestion.published_media_repair import repair_published_media
@@ -482,7 +486,85 @@ def test_repair_replays_retained_compound_specification(prompt_version, validato
     assert result.provenance["model_dispatch_count"] == 0
 
 
-@pytest.mark.parametrize("prompt_version", [None, "full-prose-auto-prompt-v0", "full-prose-auto-prompt-v99"])
+def _conditional_note_repair_fixture(prompt_version, *, ordinals=False):
+    note = (
+        "Note: During normal vehicle operation, OrchidVale™ Yellow ReadyMix Antifreeze/Coolant "
+        "may change color from Yellow to Violet or light Blue. "
+        "As long as the coolant is clear and clean, this observation alone does not require service."
+    )
+    opening = "Remove the pump."
+    image = _image()
+    old = _document([{"kind": "ordered_list", "items": [opening, note]}, image])
+    if ordinals:
+        repaired = _document([{"kind": "ordered_list", "start": 4, "items": [
+            opening, {"text": note, "number": 9},
+        ]}, image])
+    else:
+        repaired = _document([{"kind": "ordered_list", "items": [opening, {"text": note, "blocks": [image]}]}])
+    response = _response(old, ["Take the pump off.", recast_conditional_color_note(note)])
+    published = render_auto(
+        old, response, prompt_version=prompt_version, profile_version=SOURCE_BOUND_CORRECTION_PROFILE,
+        verified_color_notes=True,
+    )
+    return old, published, repaired, response
+
+
+@pytest.mark.parametrize("prompt_version", (
+    "full-prose-auto-prompt-v55", "full-prose-auto-prompt-v61", "full-prose-auto-prompt-v62",
+))
+@pytest.mark.parametrize("ordinals", [False, True], ids=["media", "ordinals"])
+def test_repair_replays_verified_conditional_note_with_saved_prompt(prompt_version, ordinals):
+    old, published, repaired, response = _conditional_note_repair_fixture(prompt_version, ordinals=ordinals)
+    before = deepcopy((old, published, repaired, response))
+
+    result = repair_published_media(
+        old, published, repaired, response=response, profile=RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE,
+        prompt_version=prompt_version, ordinals=ordinals,
+    )
+
+    steps = result.document["blocks"][1]
+    assert steps["items"][0] == published["blocks"][1]["items"][0]
+    note = steps["items"][1]
+    assert note["text"] == published["blocks"][1]["items"][1]
+    if ordinals:
+        assert (steps["start"], note["number"]) == (4, 9)
+    else:
+        assert note["blocks"][0]["content_sha256"] == old["blocks"][-1]["content_sha256"]
+    assert result.remapped_response["replacements"][1]["text"] == response["replacements"][1]["text"]
+    assert result.validation.passed
+    assert result.validation.report["profile_version"] == SOURCE_BOUND_CORRECTION_PROFILE
+    assert result.validation.report["validator_version"] == "full-prose-color-note-replay-validator-v1"
+    assert result.provenance["profile_version"] == RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE
+    assert result.provenance["original_prompt_version"] == prompt_version
+    assert result.provenance["model_dispatch_count"] == 0
+    assert (old, published, repaired, response) == before
+
+
+@pytest.mark.parametrize(("drift", "code"), (
+    ("repaired_source", "PUBLISHED_MEDIA_REPAIR_SOURCE_TEXT_DRIFT"),
+    ("published_and_reply", "PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH"),
+))
+def test_repair_rejects_conditional_note_warning_drift(drift, code):
+    version = "full-prose-auto-prompt-v61"
+    old, published, repaired, response = _conditional_note_repair_fixture(version)
+    if drift == "repaired_source":
+        note = repaired["blocks"][0]["items"][1]
+        note["text"] = note["text"].replace("clear and clean", "clear or clean")
+    else:
+        changed = response["replacements"][1]["text"].replace("clear and clean", "clear or clean")
+        response["replacements"][1]["text"] = published["blocks"][1]["items"][1] = changed
+
+    with pytest.raises(ValueError, match=f"^{code}$"):
+        repair_published_media(
+            old, published, repaired, response=response, profile=RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE,
+            prompt_version=version,
+        )
+
+
+@pytest.mark.parametrize("prompt_version", [
+    None, "full-prose-auto-prompt-v0", "full-prose-auto-prompt-v61", "full-prose-auto-prompt-v62",
+    "full-prose-auto-prompt-v99",
+])
 def test_repair_rejects_unrecognized_original_prompt_version(prompt_version):
     old, published, repaired, response = _fixture()
     with pytest.raises(ValueError, match="^PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED$"):

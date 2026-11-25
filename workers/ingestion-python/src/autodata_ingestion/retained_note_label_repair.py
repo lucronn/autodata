@@ -1,5 +1,6 @@
-"""Restore leading Note labels in one exact, completed Banktwo v3 publication."""
+"""Repair notes in one exact, completed Banktwo v3 publication."""
 
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
 import re
@@ -11,10 +12,13 @@ from psycopg.types.json import Jsonb
 
 from .article_document import project_ordered_document
 from .article_lifecycle_types import (
+    RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE as CONDITIONAL_PROFILE,
     RETAINED_NOTE_LABEL_REPAIR_PROFILE as PROFILE, SOURCE_BOUND_CORRECTION_PROFILE, ValidationResult,
     digest_json, transformation_key,
 )
 from .procedure_rewrite_auto import authored_note_prefix, render_auto, require_current_publication_checks, validate_auto
+from .procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
+from .procedure_rewrite_fidelity import recast_conditional_color_note
 from .procedure_rewrite_full import _get, _set
 from .procedure_rewrite_recovery import RECOVERY_METHOD
 from .retained_procedure_repair import _valid_audit
@@ -28,6 +32,9 @@ CHECKPOINT = "retained_note_label_repair"
 _INVALID = "RETAINED_NOTE_LABEL_REPAIR_INVALID"
 _STALE = "RETAINED_NOTE_LABEL_REPAIR_STALE"
 _UNAVAILABLE = "RETAINED_NOTE_LABEL_REPAIR_SOURCE_UNAVAILABLE"
+CONDITIONAL_METHOD = "retained-conditional-note-archived-reply-repair-v1"
+CONDITIONAL_CHECKPOINT = "retained_conditional_note_repair"
+_CONDITIONAL_INVALID = "RETAINED_CONDITIONAL_NOTE_REPAIR_INVALID"
 _HASH = re.compile(r"[a-f0-9]{64}")
 
 
@@ -68,6 +75,56 @@ def _restore_reply(source, retained, old_document, old_reply, *, prompt_version)
     if not validation.passed or reverted != old_document:
         raise ValueError(_INVALID)
     return document, validation, reply, sorted(changed)
+
+
+def _recast_reply(source, retained, old_document, old_reply, *, prompt_version):
+    reply = deepcopy(old_reply)
+    old_leaves = {"blocks": old_document["blocks"][1:]}
+    changed = {}
+    for row in reply["replacements"]:
+        if row["action"] != "retain":
+            continue
+        path = row["path"]
+        original = _get(source, path)
+        wording = recast_conditional_color_note(original)
+        if wording is None:
+            continue
+        if original != row["text"] or original != _get(retained, path) or original != _get(old_leaves, path):
+            raise ValueError(_CONDITIONAL_INVALID)
+        row.update(action="rewrite", text=wording, reason="")
+        changed[path] = original
+    if not changed:
+        raise ValueError(_CONDITIONAL_INVALID)
+
+    options = dict(
+        prompt_version=prompt_version, profile_version=SOURCE_BOUND_CORRECTION_PROFILE, verified_color_notes=True,
+    )
+    document = render_auto(source, reply, **options)
+    validation = validate_auto(source, document, response=reply, **options)
+    reverted = deepcopy(document)
+    for path, text in changed.items():
+        _set({"blocks": reverted["blocks"][1:]}, path, text)
+    if not validation.passed or reverted != old_document:
+        raise ValueError(_CONDITIONAL_INVALID)
+    return document, validation, reply, sorted(changed)
+
+
+@dataclass(frozen=True)
+class _Repair:
+    profile: str
+    method: str
+    checkpoint: str
+    prior_method: str
+    invalid: str
+    stale: str
+    edit_reply: Callable
+
+
+_LABELS = _Repair(PROFILE, METHOD, CHECKPOINT, RECOVERY_METHOD, _INVALID, _STALE, _restore_reply)
+_CONDITIONAL = _Repair(
+    CONDITIONAL_PROFILE, CONDITIONAL_METHOD, CONDITIONAL_CHECKPOINT, ARCHIVED_FIRST_DRAFT_METHOD,
+    _CONDITIONAL_INVALID, "RETAINED_CONDITIONAL_NOTE_REPAIR_STALE", _recast_reply,
+)
 
 
 def _source_evidence(cur, article, source_id, descriptor_id, *, lock):
@@ -111,7 +168,7 @@ def _source_evidence(cur, article, source_id, descriptor_id, *, lock):
     return source
 
 
-def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_id, old_hash, *, lock):
+def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_id, old_hash, *, lock, repair=_LABELS):
     from .published_media_publication import _publication_evidence_for_revision
 
     if (prior_job is None or article["provider_slug"] != "banktwo" or prior_job["provider_slug"] != "banktwo"
@@ -119,27 +176,28 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
         or prior_job["job_kind"] != "article" or prior_job["rewrite_profile_version"] != SOURCE_BOUND_CORRECTION_PROFILE
         or prior_job["status"] != "completed" or prior_job["phase"] != "completed" or prior_job["retryable"]
         or prior_job["lease_owner"] is not None or prior_job["lease_expires_at"] is not None):
-        raise ValueError(_STALE)
+        raise ValueError(repair.stale)
     prior = cur.execute("""SELECT transformation_key,rewrite_result_hash,model_metadata->>'transformation_method' AS method
         FROM canonical_article_revisions WHERE canonical_article_revision_id=%s AND canonical_article_id=%s
           AND source_revision_id=%s AND status='published'""", (prior_revision_id, article["canonical_article_id"], source_id)).fetchone()
-    if (prior is None or prior["method"] != RECOVERY_METHOD or prior["transformation_key"] != prior_job["transformation_key"]
+    if (prior is None or prior["method"] != repair.prior_method or prior["transformation_key"] != prior_job["transformation_key"]
         or prior["rewrite_result_hash"] != old_hash):
-        raise ValueError(_STALE)
+        raise ValueError(repair.stale)
     bound_source = _source_evidence(cur, article, source_id, descriptor_id, lock=lock)
     prior, review, decision, attempt, archived_reply, version, _ = _publication_evidence_for_revision(
         cur, article, SimpleNamespace(source_revision_id=source_id), prior_revision_id,
         fixture_mode=False, lock=lock, expected_profile=SOURCE_BOUND_CORRECTION_PROFILE,
     )
     if review is not None or decision != "UNREVIEWED" or attempt is None:
-        raise ValueError(_INVALID)
+        raise ValueError(repair.invalid)
 
     source = prior["normalized_source_document"]
-    document, validation, reply, paths = _restore_reply(
+    document, validation, reply, paths = repair.edit_reply(
         source, bound_source["source_document"], prior["canonical_document"], archived_reply, prompt_version=version,
     )
     if lock:
-        require_current_publication_checks(source, document, saved_prompt_version=version)
+        checked = prior["canonical_document"] if repair is _CONDITIONAL else document
+        require_current_publication_checks(source, checked, saved_prompt_version=version)
     facts = {
         "source_revision_id": str(source_id),
         "source_observation_id": str(bound_source["source_observation_id"]),
@@ -160,21 +218,30 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
     }
     key = transformation_key(
         article["canonical_article_id"], bound_source["source_fingerprint"], prior["normalization_version"],
-        PROFILE, projection_version=bound_source["projection_version"],
+        repair.profile, projection_version=bound_source["projection_version"],
     )
     return _Plan(source, document, validation, facts, key, attempt, reply)
 
 
 def resolve_retained_note_label_repair(cur, job, article, candidate, *, publishing=False):
     """Verify the immutable prior replay and the exact prefix-only successor."""
-    audit = job["checkpoint"].get(CHECKPOINT)
+    return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_LABELS)
+
+
+def resolve_retained_conditional_note_repair(cur, job, article, candidate, *, publishing=False):
+    """Rebuild the exact successor from the retained source and archived reply."""
+    return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_CONDITIONAL)
+
+
+def _resolve_repair(cur, job, article, candidate, *, publishing, repair):
+    audit = job["checkpoint"].get(repair.checkpoint)
     metadata = candidate["model_metadata"]
     if (not isinstance(audit, dict) or set(audit) != {"actor", "reason", "evidence"}
-        or metadata.get(CHECKPOINT) != audit or metadata.get("transformation_method") != METHOD
-        or metadata.get("profile_version") != PROFILE or not _valid_audit(audit["actor"], audit["reason"])
+        or metadata.get(repair.checkpoint) != audit or metadata.get("transformation_method") != repair.method
+        or metadata.get("profile_version") != repair.profile or not _valid_audit(audit["actor"], audit["reason"])
         or not isinstance(audit["evidence"], dict)
-        or job["rewrite_profile_version"] != PROFILE or candidate["rewrite_profile_version"] != PROFILE
-        or job["provider_slug"] != "banktwo" or job["source_version"] != METHOD
+        or job["rewrite_profile_version"] != repair.profile or candidate["rewrite_profile_version"] != repair.profile
+        or job["provider_slug"] != "banktwo" or job["source_version"] != repair.method
         or job["retry_count"] != 0 or job["max_attempts"] != 1
         or any(candidate[field] != job[field] for field in (
             "canonical_article_id", "source_revision_id", "normalization_version", "transformation_key",
@@ -182,28 +249,28 @@ def resolve_retained_note_label_repair(cur, job, article, candidate, *, publishi
         or cur.execute("""SELECT 1 FROM canonical_article_rewrite_attempts
             WHERE source_fetch_job_id=%s OR canonical_article_revision_id=%s LIMIT 1""",
             (job["source_fetch_job_id"], candidate["canonical_article_revision_id"])).fetchone()):
-        raise ValueError(_INVALID)
+        raise ValueError(repair.invalid)
     evidence = audit["evidence"]
     try:
         prior_job_id, prior_revision_id, descriptor_id = (UUID(evidence[key]) for key in (
             "prior_job_id", "prior_revision_id", "descriptor_snapshot_id",
         ))
     except (AttributeError, KeyError, TypeError, ValueError):
-        raise ValueError(_INVALID) from None
+        raise ValueError(repair.invalid) from None
     if publishing and (
         article["current_canonical_revision_id"] != prior_revision_id
         or article["current_source_revision_id"] != job["source_revision_id"]
         or article["descriptor_source_snapshot_id"] != descriptor_id
     ):
-        raise ValueError(_STALE)
+        raise ValueError(repair.stale)
     prior_job = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",
                             (prior_job_id,)).fetchone()
     plan = _rebuild(cur, article, prior_job, job["source_revision_id"], descriptor_id, prior_revision_id,
-                    evidence.get("prior_document_hash"), lock=publishing)
+                    evidence.get("prior_document_hash"), lock=publishing, repair=repair)
     if (plan.evidence != evidence or job["request_generation"] != prior_job["request_generation"] + 1
         or plan.key != job["transformation_key"] or plan.attempt["model"] != metadata.get("model")
         or candidate["normalized_source_document"] != plan.source or candidate["canonical_document"] != plan.document):
-        raise ValueError(_INVALID)
+        raise ValueError(repair.invalid)
     return plan
 
 
@@ -212,10 +279,35 @@ def repair_retained_note_labels(
     expected_published_revision_id, expected_published_hash, expected_repaired_hash, actor, reason, hooks=None,
 ):
     """Publish a pinned prefix repair and its outbox event in one transaction."""
+    return _repair_retained_note(
+        repo, article_id, expected_job_id=expected_job_id, expected_source_revision_id=expected_source_revision_id,
+        expected_descriptor_snapshot_id=expected_descriptor_snapshot_id,
+        expected_published_revision_id=expected_published_revision_id, expected_published_hash=expected_published_hash,
+        expected_repaired_hash=expected_repaired_hash, actor=actor, reason=reason, hooks=hooks, repair=_LABELS,
+    )
+
+
+def repair_retained_conditional_note(
+    repo, article_id, *, expected_job_id, expected_source_revision_id, expected_descriptor_snapshot_id,
+    expected_published_revision_id, expected_published_hash, expected_repaired_hash, actor, reason, hooks=None,
+):
+    """Publish one source-verified wording repair and its outbox event."""
+    return _repair_retained_note(
+        repo, article_id, expected_job_id=expected_job_id, expected_source_revision_id=expected_source_revision_id,
+        expected_descriptor_snapshot_id=expected_descriptor_snapshot_id,
+        expected_published_revision_id=expected_published_revision_id, expected_published_hash=expected_published_hash,
+        expected_repaired_hash=expected_repaired_hash, actor=actor, reason=reason, hooks=hooks, repair=_CONDITIONAL,
+    )
+
+
+def _repair_retained_note(
+    repo, article_id, *, expected_job_id, expected_source_revision_id, expected_descriptor_snapshot_id,
+    expected_published_revision_id, expected_published_hash, expected_repaired_hash, actor, reason, hooks, repair,
+):
     if (not _valid_audit(actor, reason) or not all(
         isinstance(value, str) and _HASH.fullmatch(value) for value in (expected_published_hash, expected_repaired_hash)
     )):
-        raise ValueError(_INVALID)
+        raise ValueError(repair.invalid)
     article_id, prior_job_id, source_id, descriptor_id, prior_revision_id = map(UUID, map(str, (
         article_id, expected_job_id, expected_source_revision_id, expected_descriptor_snapshot_id,
         expected_published_revision_id,
@@ -231,14 +323,17 @@ def repair_retained_note_labels(
             or article["request_generation"] != prior_job["request_generation"]
             or article["target_rewrite_profile_version"] != SOURCE_BOUND_CORRECTION_PROFILE
             or article["target_normalization_version"] != prior_job["normalization_version"]):
-            raise ValueError(_STALE)
+            raise ValueError(repair.stale)
         _require_no_active_normal_job(cur, article_id)
-        plan = _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_id, expected_published_hash, lock=True)
+        plan = _rebuild(
+            cur, article, prior_job, source_id, descriptor_id, prior_revision_id, expected_published_hash,
+            lock=True, repair=repair,
+        )
         if plan.evidence["repaired_document_hash"] != expected_repaired_hash:
-            raise ValueError(_STALE)
+            raise ValueError(repair.stale)
 
         return _publish_archived_reply_repair(
-            cur, article, plan, profile=PROFILE, method=METHOD, checkpoint=CHECKPOINT,
+            cur, article, plan, profile=repair.profile, method=repair.method, checkpoint=repair.checkpoint,
             actor=actor, reason=reason, hooks=hooks,
         )
 

@@ -14,7 +14,7 @@ import re
 
 from . import procedure_rewrite_full as full
 from .article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, ValidationResult
-from .procedure_rewrite_fidelity import procedure_facts
+from .procedure_rewrite_fidelity import procedure_facts, recast_conditional_color_note
 
 PROFILE = AUTOMATIC_REWRITE_PROFILE
 _PROSE_PROMPT_V4 = "full-prose-auto-prompt-v4"
@@ -3613,7 +3613,7 @@ def _include_cell_blocks(prompt_version):
 
 def _require_changes(
     source, candidate, *, prompt_version, include_cell_blocks=None, slot_errors=None, introduction_only=False,
-    bankone_structure=None,
+    bankone_structure=None, verified_color_notes=False,
 ):
     # The introduced first block is the only offset in source paths.
     restored = {"blocks": candidate["blocks"][1:]}
@@ -3792,6 +3792,14 @@ def _require_changes(
     def check_slot(slot):
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
+        if verified_color_notes and replacement != original:
+            recast = recast_conditional_color_note(original)
+            if recast is not None:
+                if recast != replacement:
+                    raise ValueError("REWRITE_QUALIFIER_MUTATION")
+                # The source-only recast binds the entire changed opening sentence.
+                # The remaining text is still subject to the saved retention guards.
+                replacement = original
         prose = (original, replacement)
         if entry := structural_slots.get(slot["path"]):
             prose = check_bankone_passage(original, replacement, entry)
@@ -4122,18 +4130,22 @@ def _restore_authored_note_labels(source, response):
     return {**response, "replacements": restored}
 
 
-def render_auto(source, response, *, prompt_version=None, profile_version=PROFILE, bankone_structure=None):
+def render_auto(source, response, *, prompt_version=None, profile_version=PROFILE, bankone_structure=None,
+                verified_color_notes=False):
     if _keeps_authored_note_labels(prompt_version):
         response = _restore_authored_note_labels(source, response)
     candidate = full.render_full(
         source, response, profile_version=profile_version, include_cell_blocks=_include_cell_blocks(prompt_version),
     )
-    _require_changes(source, candidate, prompt_version=prompt_version, bankone_structure=bankone_structure)
+    _require_changes(
+        source, candidate, prompt_version=prompt_version, bankone_structure=bankone_structure,
+        verified_color_notes=verified_color_notes,
+    )
     return candidate
 
 
 def validate_auto(source, candidate, *, response=None, prompt_version=None, profile_version=PROFILE,
-                  bankone_structure=None):
+                  bankone_structure=None, verified_color_notes=False):
     if _keeps_authored_note_labels(prompt_version):
         response = _restore_authored_note_labels(source, response)
     validation = full.validate_full(
@@ -4143,7 +4155,10 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None, prof
     errors = list(validation.error_codes)
     if validation.passed:
         try:
-            _require_changes(source, candidate, prompt_version=prompt_version, bankone_structure=bankone_structure)
+            _require_changes(
+                source, candidate, prompt_version=prompt_version, bankone_structure=bankone_structure,
+                verified_color_notes=verified_color_notes,
+            )
         except ValueError as error:
             errors.append(str(error))
     report = dict(validation.report)
@@ -4211,6 +4226,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None, prof
             _NOTE_LABEL_PROMPT_VERSION: "full-prose-auto-validator-v59",
             _PROCEDURE_FIDELITY_PROMPT_VERSION: "full-prose-auto-validator-v60",
         }.get(prompt_version, "full-prose-auto-validator-v53")
+    if verified_color_notes:
+        validator_version = "full-prose-color-note-replay-validator-v1"
     report.update(validator_version=validator_version, profile_version=profile_version,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
