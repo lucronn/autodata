@@ -407,8 +407,12 @@ function pickerOption({ value, label, disabled }) {
 function selectorPath(name, selection = { year: $("year").value, make: $("make").value, model: $("model").value }) {
   return vehicleSelectorPath(name, selection);
 }
+function canCachePublicSelectors() {
+  // The server marks this shell using the policy that mounts the selector routes.
+  return $("workshop-catalog-module")?.dataset?.publicSelectors === "true" && session.state.mode !== "local";
+}
 function cachedSelector(path, desired = "") {
-  if (session.state.mode !== "firebase") return null;
+  if (!canCachePublicSelectors()) return null;
   const entry = selectorCache.get(path);
   if (entry?.expires > performance.now()) {
     const response = entry.response;
@@ -420,9 +424,7 @@ function cachedSelector(path, desired = "") {
   return null;
 }
 function rememberSelector(path, name, response) {
-  // Local mode protects the same paths with a dataset role. Reuse anonymous
-  // Firebase selector responses only.
-  if (session.state.mode !== "firebase" || !response.items.length || response.refreshFailed || response.timedOut) return;
+  if (!canCachePublicSelectors() || !response.items.length || response.refreshFailed || response.timedOut) return;
   const complete = !response.hydrating &&
     (response.complete === true || (name === "year" && response.complete === undefined));
   // Makes and models can be chosen while their provider coverage is incomplete.

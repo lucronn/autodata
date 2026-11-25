@@ -8603,6 +8603,7 @@ function selectorOptionsHarness(response) {
    });
    return nodes.get(id);
  };
+ $('workshop-catalog-module').dataset.publicSelectors = 'true';
  class PickerOption {
    constructor(text, value) { Object.assign(this, {text, value}); }
  }
@@ -8632,7 +8633,7 @@ function selectorOptionsHarness(response) {
   recordStatus:(text,options={})=>statuses.push({text,...options}), restoreRoute(){},
  };
  runInNewContext(appSection('function status(', 'function stage(')+appSection('async function operation(', 'function updateURL(')+
-  appSection('function pickerChoice(', 'function selectorPath(')+appSection('function cachedSelector(', 'function renderPurchase(')+
+  appSection('function pickerChoice(', 'function selectorPath(')+appSection('function canCachePublicSelectors(', 'function renderPurchase(')+
   'const actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',context);
  return {context,$,statuses,displayed,requests,waits,load:(desired='',current,initial=null,name='configuration')=>context.operation(g=>context.loadOptions(name,current?{...g,current}:g,desired,initial),()=>context.restoreRoute())};
 }
@@ -9092,15 +9093,43 @@ test('complete picker rows are reused only in their own scope and within their f
   assert.deepEqual(h.requests, ['/first', '/second', '/first']);
 });
 
-test('local or unconfirmed authorization never reuses a cached Firebase picker scope', async () => {
+test('explicitly public picker rows are reusable while sign-in settings are pending', async () => {
+  for (const [name, item] of [
+    ['year', { year: 2024 }],
+    ['make', { id: 'buick-truck' }],
+    ['model', { id: 'envision-awd' }],
+    ['configuration', { id: 'engine', engine: '2.0', complete: true }],
+  ]) {
+    const h = selectorOptionsHarness({ items: [item], complete: true });
+    h.context.session.state.mode = null;
+    await h.load('', null, null, name);
+    await h.load('', null, null, name);
+    assert.deepEqual(h.requests, ['/choices'], name);
+    assert.deepEqual(h.displayed, [[item], [item]]);
+    assert.equal(h.$(name).options[0].value, String(item.id ?? item.year));
+  }
+});
+
+test('local mode and a private picker shell never use cached selector rows', async () => {
   const h = selectorOptionsHarness({ items: [{ id: 'engine' }], complete: true });
   await h.load();
   h.context.session.state.mode = 'local';
   await h.load();
   await h.load();
+  h.$('workshop-catalog-module').dataset.publicSelectors = 'false';
   h.context.session.state.mode = null;
   await h.load();
-  assert.deepEqual(h.requests, ['/choices', '/choices', '/choices', '/choices']);
+  h.context.session.state.mode = 'firebase';
+  await h.load();
+  assert.deepEqual(h.requests, ['/choices', '/choices', '/choices', '/choices', '/choices']);
+});
+
+test('a picker shell without a public marker keeps selector reads uncached', async () => {
+  const h = selectorOptionsHarness({ items: [{ id: 'engine' }], complete: true });
+  delete h.$('workshop-catalog-module').dataset.publicSelectors;
+  await h.load();
+  await h.load();
+  assert.deepEqual(h.requests, ['/choices', '/choices']);
 });
 
 test('a prefetched selector miss is checked again after the parent was validated', async () => {
