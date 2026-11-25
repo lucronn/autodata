@@ -9,9 +9,15 @@ import re
 from .article_document import (
     has_only_list_ordinal_additions, has_only_table_span_additions, project_ordered_document,
 )
-from .article_lifecycle_types import AUTOMATIC_REWRITE_PROFILES, ValidationResult, digest_json
+from .article_lifecycle_types import (
+    AUTOMATIC_REWRITE_PROFILES, RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE, SOURCE_BOUND_CORRECTION_PROFILE,
+    ValidationResult, digest_json,
+)
 from .procedure_rewrite import _set_path, editable_slots, validate_article_rewrite
-from .procedure_rewrite_auto import PROFILE, _include_cell_blocks, render_auto, validate_auto
+from .procedure_rewrite_auto import (
+    PROFILE, _NOTE_LABEL_PROMPT_VERSION, _PROCEDURE_FIDELITY_PROMPT_VERSION,
+    _include_cell_blocks, render_auto, validate_auto,
+)
 from .procedure_rewrite_full import PROFILE as REVIEW_PROFILE
 from .procedure_rewrite_full import _source_valid, prose_slots, render_full, validate_full
 from .procedure_rewrite_v2 import PROFILE as TECHNICAL_V2
@@ -19,6 +25,7 @@ from .procedure_rewrite_v2 import _selection, plan_v2, render_v2
 
 TECHNICAL_V1 = "technical-prose-v1"
 _SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 61))
+_CONDITIONAL_NOTE_PROMPTS = _SUPPORTED_PROMPTS | {_NOTE_LABEL_PROMPT_VERSION, _PROCEDURE_FIDELITY_PROMPT_VERSION}
 _POSITION_KEYS = frozenset({"block_id", "source_order"})
 _IMAGE_KEYS = _POSITION_KEYS | {"type"}
 MEDIA_METHOD = "published-media-placement-v1"
@@ -192,11 +199,19 @@ def repair_published_media(
     """
     if sum((ordinals, table_spans, svg_recovery)) > 1:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_MODE_INVALID")
-    if profile in AUTOMATIC_REWRITE_PROFILES:
-        if not isinstance(prompt_version, str) or prompt_version not in _SUPPORTED_PROMPTS:
+    conditional_note = profile == RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE
+    uses_automatic_reply = profile in AUTOMATIC_REWRITE_PROFILES or conditional_note
+    if uses_automatic_reply:
+        supported_prompts = _CONDITIONAL_NOTE_PROMPTS if conditional_note else _SUPPORTED_PROMPTS
+        if not isinstance(prompt_version, str) or prompt_version not in supported_prompts:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED")
-        render = partial(render_auto, prompt_version=prompt_version, profile_version=profile)
-        validate = partial(validate_auto, prompt_version=prompt_version, profile_version=profile)
+        replay_options = {
+            "prompt_version": prompt_version,
+            "profile_version": SOURCE_BOUND_CORRECTION_PROFILE if conditional_note else profile,
+            "verified_color_notes": conditional_note,
+        }
+        render = partial(render_auto, **replay_options)
+        validate = partial(validate_auto, **replay_options)
         slots = partial(prose_slots, include_cell_blocks=_include_cell_blocks(prompt_version))
     elif profile in (REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2):
         if prompt_version is not None:
@@ -261,7 +276,7 @@ def repair_published_media(
         raise ValueError("PUBLISHED_MEDIA_REPAIR_REWRITE_INVALID")
     published_prose = _without_media(published)
     if structure_only is not None:
-        if profile in (*AUTOMATIC_REWRITE_PROFILES, REVIEW_PROFILE):
+        if uses_automatic_reply or profile == REVIEW_PROFILE:
             # The validated introduction's ID binds the entire source hash.
             # Compare its prose and evidence while allowing that ID to rebind.
             before_intro, *before_blocks = published["blocks"]

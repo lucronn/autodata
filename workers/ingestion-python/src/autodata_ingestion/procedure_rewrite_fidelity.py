@@ -133,3 +133,39 @@ def procedure_facts(text: str) -> tuple[str, ...] | None:
     if repeat := _repeat_instruction(text) or _repeat_instruction(text, _REMOVE_BY_REPEAT):
         return ("repeat", *(repeat[key] for key in ("first", "last", "count", "contents")))
     return _idle_facts(text)
+
+
+_COOLANT_PRODUCT_WORD = r"[a-z][a-z0-9®™/-]{0,31}"
+_COOLANT_PRODUCT = rf"{_COOLANT_PRODUCT_WORD}(?: (?:{_COOLANT_PRODUCT_WORD}|[®™])){{0,7}}(?: |/)coolant"
+_HUE = (
+    r"(?:(?:bright|dark|deep|light|pale) )?"
+    r"(?:amber|black|blue|brown|clear|gray|green|grey|orange|pink|purple|red|violet|white|yellow)"
+)
+_CONDITIONAL_COLOR_NOTE = re.compile(
+    rf"(?P<label>[ \t]*Note[ \t]*:[ \t]*)During normal vehicle operation, "
+    rf"(?P<product>{_COOLANT_PRODUCT}) may change color from (?P<start>{_HUE}) "
+    rf"to (?P<first_end>{_HUE}) or (?P<second_end>{_HUE})\."
+    rf"(?P<suffix>[ \t\r\n]+As long as [^,.!?\r\n]+ and [^,.!?\r\n]+, [^.!?\r\n]+\.[ \t]*)",
+    _FLAGS,
+)
+_COLOR_NOTE_PRODUCT_OPERATORS = _CLAUSE_WORDS | {
+    "all", "any", "both", "can", "could", "either", "may", "must", "no", "shall", "should", "some", "will", "would",
+}
+
+
+def recast_conditional_color_note(text: str) -> str | None:
+    """Reword a bound coolant color observation while preserving its conditional sentence."""
+    match = _CONDITIONAL_COLOR_NOTE.fullmatch(text)
+    if match is None:
+        return None
+
+    product_words = re.split(r"[ /-]+", match["product"].casefold())
+    hues = {match[key].casefold() for key in ("start", "first_end", "second_end")}
+    if not _COLOR_NOTE_PRODUCT_OPERATORS.isdisjoint(product_words) or len(hues) != 3:
+        return None
+
+    return (
+        f"{match['label']}During normal vehicle operation, it is possible for {match['product']} "
+        f"to change color from {match['start']} to either {match['first_end']} or {match['second_end']}."
+        f"{match['suffix']}"
+    )

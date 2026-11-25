@@ -1669,7 +1669,10 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
     from .article_lifecycle_types import digest_json
     from .article_document import project_ordered_document
     from .procedure_rewrite import validate_article_rewrite
-    from .retained_note_label_repair import METHOD as NOTE_LABEL_REPAIR_METHOD, resolve_retained_note_label_repair
+    from .retained_note_label_repair import (
+        CONDITIONAL_METHOD, METHOD as NOTE_LABEL_REPAIR_METHOD, resolve_retained_conditional_note_repair,
+        resolve_retained_note_label_repair,
+    )
     from .retained_procedure_repair import METHOD as RETAINED_PROCEDURE_REPAIR_METHOD, resolve_retained_procedure_repair
     from .retained_required_action_repair import METHOD as REQUIRED_ACTION_METHOD, resolve_retained_required_action_repair
     from .staged_media_reply_recovery import METHOD, verify_staged_media_reply_recovery
@@ -1691,7 +1694,7 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
     profile = job["rewrite_profile_version"]
     method = row["model_metadata"].get("transformation_method")
     archived_reply_recovery = method in (
-        METHOD, RETAINED_PROCEDURE_REPAIR_METHOD, NOTE_LABEL_REPAIR_METHOD, REQUIRED_ACTION_METHOD,
+        METHOD, RETAINED_PROCEDURE_REPAIR_METHOD, NOTE_LABEL_REPAIR_METHOD, REQUIRED_ACTION_METHOD, CONDITIONAL_METHOD,
     )
     if method == METHOD:
         validation = verify_staged_media_reply_recovery(cur, job, article, row)
@@ -1699,6 +1702,8 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
         validation = resolve_retained_procedure_repair(cur, job, article, row, publishing=True).validation
     elif method == NOTE_LABEL_REPAIR_METHOD:
         validation = resolve_retained_note_label_repair(cur, job, article, row, publishing=True).validation
+    elif method == CONDITIONAL_METHOD:
+        validation = resolve_retained_conditional_note_repair(cur, job, article, row, publishing=True).validation
     elif method == REQUIRED_ACTION_METHOD:
         validation = resolve_retained_required_action_repair(cur, job, article, row, publishing=True).validation
     elif profile in AUTOMATIC_REWRITE_PROFILES:
@@ -1745,7 +1750,9 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
         _bind_v2_operations(row["normalized_source_document"], row["canonical_document"], attempt["response"])
     if job["rewrite_profile_version"] == "full-prose-review-v1":
         _require_full_approval(cur,job,article,row)
-    if profile in AUTOMATIC_REWRITE_PROFILES or method in (NOTE_LABEL_REPAIR_METHOD, REQUIRED_ACTION_METHOD):
+    if profile in AUTOMATIC_REWRITE_PROFILES or method in (
+        NOTE_LABEL_REPAIR_METHOD, REQUIRED_ACTION_METHOD, CONDITIONAL_METHOD,
+    ):
         source, document = row["normalized_source_document"], row["canonical_document"]
         rewritten_paths = validation.report["changed_prose_slots"]
         require_distinct_generated_introduction(source, document, rewritten_paths=rewritten_paths)

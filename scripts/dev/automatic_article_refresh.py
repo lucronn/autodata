@@ -35,7 +35,7 @@ from autodata_ingestion.procedure_rewrite_recovery import (
     ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_ARCHIVE_STRUCTURE_VERSIONS,
 )
 from autodata_ingestion.procedure_rewrite_sentence_correction import MAX_SENTENCE_CORRECTION_CALLS
-from autodata_ingestion.retained_note_label_repair import repair_retained_note_labels
+from autodata_ingestion.retained_note_label_repair import repair_retained_conditional_note, repair_retained_note_labels
 from autodata_ingestion.retained_procedure_repair import repair_retained_procedure
 from autodata_ingestion.source_job_persistence import (
     publish_source_bound_first_draft, refresh_article_job, schedule_source_bound_correction,
@@ -112,12 +112,14 @@ def main(argv=None, *, repo=None, object_store=None):
                           help="publish a checked procedure correction using its exact archived reply")
     drafting.add_argument("--repair-retained-note-labels-from", type=UUID, metavar="PUBLISHED_V3_JOB_ID",
                           help="restore leading authored Note labels using the exact archived reply")
+    drafting.add_argument("--repair-retained-conditional-note-from", type=UUID, metavar="PUBLISHED_V3_JOB_ID",
+                          help="reword a supported retained observation and preserve its exact warning")
     parser.add_argument("--expected-published-revision-id", type=UUID,
                         help="bind archived-reply replay to the exact served canonical revision")
     parser.add_argument("--expected-published-hash", metavar="SHA256")
     parser.add_argument("--expected-repaired-hash", metavar="SHA256")
     parser.add_argument("--expected-descriptor-snapshot-id", type=UUID,
-                        help="bind a Note label repair to the exact active descriptor")
+                        help="bind a retained Note repair to the exact active descriptor")
     parser.add_argument("--first-draft-recovery-method", choices=ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS)
     parser.add_argument("--expected-first-draft-recovery-hash", metavar="SHA256",
                         help="bind the recovery to the checked v1 document")
@@ -127,7 +129,8 @@ def main(argv=None, *, repo=None, object_store=None):
     if args.selection.stat().st_size > 64 * 1024:
         raise ValueError("AUTOMATIC_SELECTION_LIMIT")
     targets = selection(json.loads(args.selection.read_text()))
-    repair = args.repair_retained_procedure_from or args.repair_retained_note_labels_from
+    note_repair = args.repair_retained_note_labels_from or args.repair_retained_conditional_note_from
+    repair = args.repair_retained_procedure_from or note_repair
     correction_job = args.correct_from or args.correct_first_draft_from
     retained_job = (args.source_bound_from or correction_job or args.recover_first_draft_from or args.recover_from
                     or args.recover_staged_media_from or repair)
@@ -156,8 +159,8 @@ def main(argv=None, *, repo=None, object_store=None):
         parser.error("retained publication repairs require both document hashes")
     if not repair and (args.expected_published_hash or args.expected_repaired_hash):
         parser.error("document hashes require a retained publication repair")
-    if bool(args.repair_retained_note_labels_from) != bool(args.expected_descriptor_snapshot_id):
-        parser.error("Note label repair requires --expected-descriptor-snapshot-id")
+    if bool(note_repair) != bool(args.expected_descriptor_snapshot_id):
+        parser.error("Note repair requires --expected-descriptor-snapshot-id")
     if repo is None:
         from autodata_ingestion.worker import ArticleRepository
         repo = ArticleRepository()
@@ -168,8 +171,10 @@ def main(argv=None, *, repo=None, object_store=None):
             actor=args.actor, reason=args.reason,
         )
         article_id = UUID(target["canonical_article_id"])
-        if args.repair_retained_note_labels_from is not None:
-            revision = repair_retained_note_labels(
+        if note_repair is not None:
+            operator = (repair_retained_note_labels if args.repair_retained_note_labels_from is not None
+                        else repair_retained_conditional_note)
+            revision = operator(
                 repo, article_id, expected_published_revision_id=args.expected_published_revision_id,
                 expected_published_hash=args.expected_published_hash, expected_repaired_hash=args.expected_repaired_hash,
                 expected_descriptor_snapshot_id=args.expected_descriptor_snapshot_id, **arguments,
