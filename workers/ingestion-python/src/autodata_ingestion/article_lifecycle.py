@@ -1,5 +1,5 @@
 """Durable article worker. SQL phases, leases and saved results are authority."""
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from threading import Event, Thread
 from uuid import uuid4
@@ -191,7 +191,7 @@ def _hook(hooks,point):
     if hooks is not None: hooks(point)
 
 
-def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
+def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None,model_slot=None):
     """Resume one fenced job; hooks are injected local test barriers, never env code."""
     if lease.kind!="article":raise ValueError("article job required")
     with _heartbeat(repo,lease) as lost:
@@ -291,10 +291,15 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                     if not automatic and profile != "full-prose-review-v1" and not editable_slots(document, profile_version=profile):raise ValueError("REWRITE_NOT_APPLICABLE")
                     prompt=build_rewrite_prompt(document,context=source.vehicle,profile_version=profile)
                     if len(prompt.encode())>200*1024:raise ValueError("REWRITE_INPUT_LIMIT")
-                    attempt=store.prepare_rewrite_attempt(repo,lease,document,context=source.vehicle,model=getattr(model_client,"_model","mercury-2"))
-                    store.mark_rewrite_dispatched(repo,lease,attempt)
-                    _hook(hooks,"after_model_dispatch")
-                    result=rewrite_ordered_document(document,client=model_client,context=source.vehicle,profile_version=profile)
+                    with (model_slot() if model_slot is not None else nullcontext(True)) as can_dispatch:
+                        if lost.is_set():raise LeaseLost("heartbeat lost before model dispatch")
+                        if not can_dispatch:
+                            fail_source_job(repo,lease,code="REWRITE_WORKER_STOPPED",retryable=False)
+                            return
+                        attempt=store.prepare_rewrite_attempt(repo,lease,document,context=source.vehicle,model=getattr(model_client,"_model","mercury-2"))
+                        store.mark_rewrite_dispatched(repo,lease,attempt)
+                        _hook(hooks,"after_model_dispatch")
+                        result=rewrite_ordered_document(document,client=model_client,context=source.vehicle,profile_version=profile)
                     if lost.is_set():raise LeaseLost("heartbeat lost during model IO")
                     store.store_rewrite_result(repo,lease,result)
                     _hook(hooks,"after_model_result_commit")
@@ -343,7 +348,7 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
             fail_source_job(repo,lease,code=code,retryable=False)
 
 
-def run_article_worker_once(repo,*,worker_id,registry,object_store,model_client,hooks=None,job_id=None):
+def run_article_worker_once(repo,*,worker_id,registry,object_store,model_client,hooks=None,job_id=None,model_slot=None):
     lease=claim_source_job(repo,worker_id=worker_id,model_ready=model_client is not None,job_id=job_id)
     if lease is None:return False
     try:
@@ -352,7 +357,8 @@ def run_article_worker_once(repo,*,worker_id,registry,object_store,model_client,
             with _heartbeat(repo,lease):
                 run_catalog_index_job(repo,lease,registry=registry,object_store=object_store)
         else:
-            run_article_job(repo,lease,registry=registry,object_store=object_store,model_client=model_client,hooks=hooks)
+            run_article_job(repo,lease,registry=registry,object_store=object_store,model_client=model_client,
+                            hooks=hooks,model_slot=model_slot)
     except LeaseLost:
         # The lease can expire while an error handler or heartbeat is recording
         # a failure. A stale claim must not stop this process from polling.

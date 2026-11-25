@@ -4,16 +4,19 @@ Reservations are deliberately never replayed: a crash may spend quota without
 work, but cannot authorize another HTTP/model delivery for the same job.
 """
 import argparse
-from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing, contextmanager
 from datetime import datetime, timedelta, timezone
 import fcntl
 import json
 import os
 from pathlib import Path
 import re
+from select import select
 import signal
+from socket import socketpair
 import stat
-from threading import Event
+from threading import Event, Lock
 from uuid import UUID, uuid4
 
 from psycopg import DatabaseError, sql
@@ -308,28 +311,32 @@ def database_now(repo):
         return conn.execute('SELECT clock_timestamp() AS now').fetchone()['now']
 
 
-def reserve_next_job(repo, state, *, stop=None):
+def _reserve_next_article(repo, state, *, providers=None, stop=None):
     """Persist quota first, then commit cap1; any exception prevents dispatch."""
     from psycopg.types.json import Jsonb
     snapshot = state.read()
     if stop is not None and stop.is_set():
         return None
+    allowed = [item for item in snapshot['providers'] if providers is None or item in providers]
+    if not allowed:
+        return None
     with repo.connect() as conn:
         now = conn.execute('SELECT clock_timestamp() AS now').fetchone()['now']
         if not state.active(snapshot, now):
             return None
-        params = {'providers': snapshot['providers'], 'cutoff': _timestamp(snapshot['cutoff']),
+        params = {'providers': allowed, 'cutoff': _timestamp(snapshot['cutoff']),
                   'reserved': [UUID(r['job_id']) for r in snapshot['reservations']]}
-        row = conn.execute('''SELECT j.source_fetch_job_id FROM source_fetch_jobs j
+        row = conn.execute('''SELECT j.source_fetch_job_id,j.provider_slug FROM source_fetch_jobs j
             JOIN canonical_articles a ON a.canonical_article_id=j.canonical_article_id WHERE ''' + admission_predicate(snapshot) + '''
             AND j.checkpoint='{}'::jsonb AND NOT (j.source_fetch_job_id=ANY(%(reserved)s::uuid[]))
             ORDER BY j.created_at,j.source_fetch_job_id LIMIT 1 FOR UPDATE OF j,a SKIP LOCKED''', params).fetchone()
         if row is None:
             return None
         job_id = row['source_fetch_job_id']
+        provider = row['provider_slug']
         # Re-evaluate after both locks: a concurrent scheduler may have changed
         # an owning row while PostgreSQL was acquiring the joined locks.
-        params['job_id'] = job_id
+        params.update(job_id=job_id, providers=[provider])
         eligible = conn.execute('''SELECT 1 FROM source_fetch_jobs j JOIN canonical_articles a
             ON a.canonical_article_id=j.canonical_article_id WHERE ''' + admission_predicate(snapshot) + '''
             AND j.checkpoint='{}'::jsonb AND j.source_fetch_job_id=%(job_id)s''', params).fetchone()
@@ -345,7 +352,12 @@ def reserve_next_job(repo, state, *, stop=None):
         conn.execute('''UPDATE source_fetch_jobs SET max_attempts=1,checkpoint=%s,
             updated_at=clock_timestamp() WHERE source_fetch_job_id=%s''', (Jsonb(marker), job_id))
     # Connection context has committed before this UUID escapes to dispatch.
-    return job_id
+    return job_id, provider
+
+
+def reserve_next_job(repo, state, *, stop=None):
+    reserved = _reserve_next_article(repo, state, stop=stop)
+    return reserved[0] if reserved is not None else None
 
 
 def dispatch_next(repo, state, *, worker_id, registry, object_store, model_client, hooks=None, stop=None):
@@ -356,8 +368,17 @@ def dispatch_next(repo, state, *, worker_id, registry, object_store, model_clien
     job_id = reserve_next_job(repo, state, stop=stop)
     if job_id is None:
         return False
+    return _dispatch_reserved_job(repo, state, job_id, worker_id=worker_id, registry=registry,
+        object_store=object_store, model_client=model_client, hooks=hooks, stop=stop)
+
+
+def _dispatch_reserved_job(repo, state, job_id, *, worker_id, registry, object_store, model_client,
+                           provider=None, hooks=None, stop=None, model_slot=None):
     snapshot = state.read()
-    params = {'providers': snapshot['providers'], 'cutoff': _timestamp(snapshot['cutoff']), 'job_id': job_id}
+    if not snapshot['enabled'] or (stop is not None and stop.is_set()):
+        return False
+    providers = [item for item in snapshot['providers'] if provider is None or item == provider]
+    params = {'providers': providers, 'cutoff': _timestamp(snapshot['cutoff']), 'job_id': job_id}
     from psycopg.types.json import Jsonb
     params['marker'] = Jsonb({'new_article_rollout': {'rollout_id': snapshot['rollout_id'],
         'source_sha': snapshot['source_sha'], 'cutoff': snapshot['cutoff'], 'max_model_attempts': 1}})
@@ -371,7 +392,7 @@ def dispatch_next(repo, state, *, worker_id, registry, object_store, model_clien
     if stop is not None and stop.is_set():
         return False
     return run_article_worker_once(repo, worker_id=worker_id, registry=registry,
-        object_store=object_store, model_client=model_client, hooks=hooks, job_id=job_id)
+        object_store=object_store, model_client=model_client, hooks=hooks, job_id=job_id, model_slot=model_slot)
 
 
 def configured_model():
@@ -400,43 +421,115 @@ def _subscribe_to_article_jobs(repo):
         return None
 
 
-def run_new_article_worker(repo, state, *, registry, object_store, model_client, stop=None):
-    stop = stop or Event()
-    worker_id = uuid4()
+def _wait_for_article_activity(listener, completions, in_flight, stop):
+    if in_flight:
+        watched = [completions] if listener is None else [completions, listener]
+        ready, _, _ = select(watched, [], [], 2)
+        if completions in ready:
+            completions.recv(4096)
+        if listener not in ready:
+            return
+        timeout = 0
+    elif listener is not None:
+        timeout = 2
+    else:
+        stop.wait(2)
+        return
+    with closing(listener.notifies(timeout=timeout, stop_after=1)) as notifications:
+        next(notifications, None)
+
+
+def _run_continuous_articles(repo, state, *, registry, object_store, model_client, stop):
+    """Reserve in one thread while independent suppliers capture in parallel."""
+    in_flight = {}
     listener = None
-    with state.worker_lock():
+    model_lock = Lock()
+
+    @contextmanager
+    def model_slot():
+        with model_lock:
+            yield not stop.is_set()
+
+    completions, wake = socketpair()
+    with completions, wake, ThreadPoolExecutor(max_workers=2) as pool:
+        wake.setblocking(False)
+
+        def completed(_):
+            try:
+                wake.send(b'\0')
+            except BlockingIOError:
+                pass  # An unread wake already tells the coordinator to recheck.
+
         try:
             while not stop.is_set():
+                for provider, future in tuple(in_flight.items()):
+                    if future.done():
+                        future.result()
+                        del in_flight[provider]
                 snapshot = state.read()
                 now = database_now(repo)
+                if len(snapshot['reservations']) == CONTINUOUS_MAX_RESERVATIONS:
+                    # The final admitted reservation is still allowed to finish.
+                    for future in in_flight.values():
+                        future.result()
                 if not state.running(snapshot, now) or stop.is_set():
                     break
-                # Subscribe before reading the durable queue so a commit during
-                # the check or just before the wait will still wake this worker.
-                can_wait_for_jobs = snapshot['schema'] == 2 and state.active(snapshot, now)
-                if can_wait_for_jobs and listener is None:
+                available = [item for item in snapshot['providers'] if item not in in_flight]
+                can_reserve = bool(available) and state.active(snapshot, now)
+                # Subscribe before checking the durable queue to cover a racing enqueue.
+                if can_reserve and listener is None:
                     listener = _subscribe_to_article_jobs(repo)
-                elif not can_wait_for_jobs and listener is not None:
+                elif not can_reserve and listener is not None:
                     listener.close()
                     listener = None
-                dispatched = dispatch_next(repo, state, worker_id=worker_id, registry=registry,
-                                           object_store=object_store, model_client=model_client, stop=stop)
-                if dispatched and can_wait_for_jobs:
-                    continue
-                if listener is not None and not dispatched and not stop.is_set():
-                    try:
-                        for _ in listener.notifies(timeout=2, stop_after=1):
-                            pass
-                    except (DatabaseError, OSError):
+                if can_reserve:
+                    if model_client is None:
+                        raise WorkerBlocked('MODEL_NOT_CONFIGURED')
+                    reserved = _reserve_next_article(repo, state, providers=available, stop=stop)
+                    if reserved is not None:
+                        job_id, provider = reserved
+                        future = pool.submit(_dispatch_reserved_job, repo, state, job_id, worker_id=uuid4(),
+                            provider=provider, registry=registry, object_store=object_store, model_client=model_client,
+                            stop=stop, model_slot=model_slot)
+                        in_flight[provider] = future
+                        future.add_done_callback(completed)
+                        continue
+                if stop.is_set():
+                    break
+                try:
+                    _wait_for_article_activity(listener, completions, in_flight, stop)
+                except (DatabaseError, OSError):
+                    if listener is not None:
                         listener.close()
                         listener = None
-                    else:
-                        continue
-                # Poll on listener failure, at quota, and in finite mode.
-                stop.wait(2)
+                    _wait_for_article_activity(None, completions, in_flight, stop)
+            # Keep the lifetime lock until every admitted job has unwound.
+            for future in in_flight.values():
+                future.result()
+        except BaseException:
+            stop.set()
+            raise
         finally:
             if listener is not None:
                 listener.close()
+
+
+def run_new_article_worker(repo, state, *, registry, object_store, model_client, stop=None):
+    stop = stop or Event()
+    with state.worker_lock():
+        if state.schema == 2:
+            _run_continuous_articles(repo, state, registry=registry, object_store=object_store,
+                                     model_client=model_client, stop=stop)
+            return 0
+        worker_id = uuid4()
+        while not stop.is_set():
+            snapshot = state.read()
+            now = database_now(repo)
+            if not state.running(snapshot, now) or stop.is_set():
+                break
+            dispatch_next(repo, state, worker_id=worker_id, registry=registry,
+                          object_store=object_store, model_client=model_client, stop=stop)
+            stop.wait(2)
     return 0
 
 

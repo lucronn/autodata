@@ -2201,6 +2201,28 @@ def test_new_article_worker_pristine_only_and_historical_rows_unchanged(fresh_da
             assert all(row['max_attempts']==1 and row['retry_count']==0 for row in conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=ANY(%s)',(admitted,)).fetchall())
 
 
+def test_continuous_reservation_filters_busy_providers_and_preserves_last_quota_slot(fresh_database, tmp_path):
+    from autodata_ingestion.new_article_worker import _reserve_next_article, database_now
+    from lifecycle_support import seed_vehicle
+
+    repo = fresh_database()
+    vehicle = seed_vehicle(repo)
+    with new_article_rollout(repo, tmp_path, continuous=True) as state:
+        first, second, other = [new_pristine_article(repo, vehicle, provider=provider)[1]
+                                for provider in ("bankone", "bankone", "banktwo")]
+        now = database_now(repo)
+        for _ in range(8):
+            assert state.reserve(uuid4(), now)
+        assert _reserve_next_article(repo, state, providers=["unapproved"]) is None
+        assert _reserve_next_article(repo, state, providers=["banktwo"]) == (other, "banktwo")
+        assert _reserve_next_article(repo, state, providers=["bankone", "banktwo"]) == (first, "bankone")
+        assert _reserve_next_article(repo, state, providers=["bankone"]) is None
+        assert len(state.read()["reservations"]) == 10
+        with repo.connect() as conn:
+            queued = conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (second,)).fetchone()
+        assert queued["status"] == "pending" and queued["checkpoint"] == {} and queued["retry_count"] == 0
+
+
 def prepare_new_article_runtime(runtime, tmp_path, monkeypatch, *, continuous=False):
     from autodata_ingestion.new_article_worker import configured_model
     automatic_runtime(runtime,'bankone')
@@ -2386,6 +2408,35 @@ def test_new_article_worker_stop_after_reservation_prevents_exact_dispatch(runti
     with runtime.repo.connect() as conn:
         row=conn.execute('SELECT status,retry_count,max_attempts FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
     assert row=={'status':'pending','retry_count':0,'max_attempts':1}
+
+
+def test_new_article_worker_shutdown_before_model_keeps_source_without_attempt(runtime, tmp_path, monkeypatch):
+    from contextlib import contextmanager
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion.new_article_worker import reserve_next_job
+
+    state, job, model = prepare_new_article_runtime(runtime, tmp_path, monkeypatch, continuous=True)
+    assert reserve_next_job(runtime.repo, state) == job
+
+    @contextmanager
+    def stopping():
+        yield False
+
+    assert run_article_worker_once(
+        runtime.repo, worker_id=uuid4(), registry=runtime.registry, object_store=runtime.objects,
+        model_client=model, job_id=job, model_slot=stopping,
+    )
+    current = runtime.read_current()
+    assert current["availability"] == "available" and current["content_origin"] == "source"
+    assert current["processing_error_code"] == "REWRITE_WORKER_STOPPED"
+    assert runtime.model.calls == 0
+    with runtime.repo.connect() as conn:
+        count = conn.execute(
+            "SELECT count(*) AS n FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s", (job,),
+        ).fetchone()["n"]
+        saved = conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (job,)).fetchone()
+    assert count == 0 and saved["status"] == "dead_letter" and saved["retry_count"] == saved["max_attempts"] == 1
+    assert reserve_next_job(runtime.repo, state) is None
 
 
 class NoModelCalls:

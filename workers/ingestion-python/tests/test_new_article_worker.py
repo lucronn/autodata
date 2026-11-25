@@ -281,9 +281,9 @@ def test_continuous_quota_waits_and_resumes(continuous_state,monkeypatch):
             else:stop.set()
     monkeypatch.setattr(worker,'database_now',lambda repo:clock[0])
     monkeypatch.setattr(worker,'_subscribe_to_article_jobs',lambda repo: subscriptions.append(clock[0]))
-    monkeypatch.setattr(worker,'dispatch_next',lambda *a,**k:observed.append(state.reserve(uuid4(),clock[0])))
+    monkeypatch.setattr(worker,'_reserve_next_article',lambda *a,**k:observed.append(state.reserve(uuid4(),clock[0])))
     worker.run_new_article_worker(None,state,registry={},object_store=None,model_client=object(),stop=Stop())
-    assert observed==[False,True] and len(state.read()['reservations'])==11
+    assert observed==[True] and len(state.read()['reservations'])==11
     assert subscriptions == [NOW + timedelta(hours=24)]
 
 
@@ -334,10 +334,10 @@ def test_continuous_waits_for_notifications_and_falls_back_if_listener_fails(
         calls.append("queue")
         dispatches += 1
         stop.stopped = dispatches == 2
-        return False
+        return None
 
     monkeypatch.setattr(worker, "database_now", lambda repo: NOW)
-    monkeypatch.setattr(worker, "dispatch_next", dispatch)
+    monkeypatch.setattr(worker, "_reserve_next_article", dispatch)
     assert worker.run_new_article_worker(
         Repo(), state, registry={}, object_store=None, model_client=object(), stop=stop,
     ) == 0
@@ -355,42 +355,57 @@ def test_continuous_preview_unit_is_inert_and_throttled():
     assert 'ExecStartPre=' not in unit and '--initialize' not in unit and '--enable' not in unit
 
 
-def test_continuous_rechecks_ready_jobs_without_sleeping_after_a_dispatch(continuous_state, monkeypatch):
+def test_continuous_overlaps_providers_and_refills_a_finished_slot(continuous_state, monkeypatch):
+    from threading import Event
+
     continuous_state.set_enabled(True)
-    events = []
+    stop = Event()
+    banktwo_started = Event()
+    next_bankone_started = Event()
+    first, next_one, first_two, next_two = [uuid4() for _ in range(4)]
+    queued = [(first, "bankone"), (next_one, "bankone"), (first_two, "banktwo"), (next_two, "banktwo")]
+    reserved = []
 
-    class Stop:
-        stopped = False
+    def reserve(repo, state, *, providers, stop):
+        for index, (job, provider) in enumerate(queued):
+            if provider in providers:
+                assert state.reserve(job, NOW)
+                reserved.append(job)
+                return queued.pop(index)
+        return None
 
-        def is_set(self):
-            return self.stopped
+    def dispatch(repo, state, job, *, model_slot, **kwargs):
+        if job == first:
+            with model_slot() as allowed:
+                assert allowed
+                assert banktwo_started.wait(3)
+                assert not next_bankone_started.is_set()
+        elif job == first_two:
+            banktwo_started.set()
+            assert next_bankone_started.wait(3)
+            with model_slot() as allowed:
+                assert not allowed  # Shutdown drains the captured job before model dispatch.
+        else:
+            assert job == next_one
+            stop.set()
+            next_bankone_started.set()
 
-        def wait(self, seconds):
-            pytest.fail(f"Worker slept {seconds}s with another job ready")
+    def no_poll(seconds):
+        pytest.fail(f"Worker polled for {seconds}s while jobs were active")
 
-    class Listener:
-        def notifies(self, **_):
-            pytest.fail("Worker waited for a notification with another job ready")
-
-        def close(self):
-            events.append("listener closed")
-
-    stop = Stop()
-
-    def dispatch(*args, **kwargs):
-        events.append("job")
-        stop.stopped = len(events) == 2
-        return True
-
+    monkeypatch.setattr(stop, "wait", no_poll)
     monkeypatch.setattr(worker, "database_now", lambda repo: NOW)
-    monkeypatch.setattr(worker, "_subscribe_to_article_jobs", lambda repo: Listener())
-    monkeypatch.setattr(worker, "dispatch_next", dispatch)
+    monkeypatch.setattr(worker, "_subscribe_to_article_jobs", lambda repo: None)
+    monkeypatch.setattr(worker, "_reserve_next_article", reserve)
+    monkeypatch.setattr(worker, "_dispatch_reserved_job", dispatch)
 
     worker.run_new_article_worker(
         None, continuous_state, registry={}, object_store=None, model_client=object(), stop=stop,
     )
 
-    assert events == ["job", "job", "listener closed"]
+    assert reserved == [first, first_two, next_one]
+    assert [item["job_id"] for item in continuous_state.read()["reservations"]] == list(map(str, reserved))
+    assert queued == [(next_two, "banktwo")]
 
 
 def test_continuous_clock_before_activation_fails_closed(continuous_state):
@@ -418,5 +433,5 @@ def test_continuous_disabled_at_quota_stops_without_dispatch(continuous_state,mo
     for _ in range(10):assert state.reserve(uuid4(),NOW)
     state.set_enabled(False)
     monkeypatch.setattr(worker,'database_now',lambda repo:NOW)
-    monkeypatch.setattr(worker,'dispatch_next',lambda *a,**k:pytest.fail('disabled dispatched'))
+    monkeypatch.setattr(worker,'_reserve_next_article',lambda *a,**k:pytest.fail('disabled reserved'))
     assert worker.run_new_article_worker(None,state,registry={},object_store=None,model_client=object())==0
