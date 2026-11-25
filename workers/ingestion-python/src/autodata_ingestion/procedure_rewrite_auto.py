@@ -2171,6 +2171,31 @@ def require_distinct_generated_introduction(source, candidate, *, rewritten_path
             raise ValueError("REWRITE_INTRODUCTION_COPIED")
 
 
+_REQUIRED_DIRECTIVE = re.compile(r"^\s*(?:install|remove|tighten)\s+\S", re.I)
+_OPTIONAL_DIRECTIVE = re.compile(r"\b(?:optionally|if desired|as desired|at your discretion)\b", re.I)
+_RECOMMENDED_VERB_PREFIX = re.compile(r"\bshould[ \t]+(?:then[ \t]+)?(?:be[ \t]+)?$", re.I)
+
+
+def advisory_required_action(original, wording):
+    """Find an advisory modal that governs the same leading repair action."""
+    original = _SENTENCES.split(original, maxsplit=1)[0]
+    if not _REQUIRED_DIRECTIVE.match(original) or _OPTIONAL_DIRECTIVE.search(original):
+        return None
+    first = _SENTENCES.split(wording, maxsplit=1)[0]
+    action = next(iter(_action_matches(first)), None)
+    if action is None or action.lastgroup != _ACTIONS.match(original.lstrip()).lastgroup:
+        return None
+    return _RECOMMENDED_VERB_PREFIX.search(first[:action.start()])
+
+
+def require_required_procedure_actions(source, candidate, *, rewritten_paths):
+    """Keep required repair steps mandatory in a new automatic publication."""
+    rewritten = {"blocks": candidate["blocks"][1:]}
+    for path in rewritten_paths:
+        if advisory_required_action(full._get(source, path), full._get(rewritten, path)):
+            raise ValueError("REWRITE_REQUIRED_ACTION_WEAKENED")
+
+
 def _display_control_quotations(text):
     quotations = []
     for match in _AUTHORED_QUOTATION.finditer(text):

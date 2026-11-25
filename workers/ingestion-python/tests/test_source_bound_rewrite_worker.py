@@ -65,6 +65,31 @@ def run_job(runtime, job_id, model, *, registry=None, hooks=None):
     )
 
 
+def test_retained_rewrite_keeps_stored_instructions_readable_when_draft_weakens_a_step(runtime, retained_job):
+    _, source_id, job_id = retained_job
+
+    class AdvisoryDraft(FixtureDraft):
+        def complete_json(self, prompt):
+            draft = super().complete_json(prompt)
+            draft["replacements"][-1]["text"] = "The pump should be installed."
+            return draft
+
+    with runtime.repo.connect() as conn:
+        before = conn.execute("SELECT count(*) AS total FROM publication_events").fetchone()["total"]
+    model = AdvisoryDraft()
+    assert run_job(runtime, job_id, model)
+    current = runtime.read_current()
+    assert current["content_origin"] == "source"
+    assert current["source_revision_id"] == source_id
+    assert current["canonical_revision_id"] is None
+    assert current["processing_error_code"] == "REWRITE_REQUIRED_ACTION_WEAKENED"
+    assert "Install the pump." in current["body"]
+    assert "18 N·m" in current["body"]
+    assert model.calls == [SOURCE_BOUND_REWRITE_PROFILE]
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS total FROM publication_events").fetchone()["total"] == before
+
+
 @pytest.fixture
 def retained_job(runtime):
     configuration = seed_configuration(runtime.repo, runtime.vehicle)
