@@ -11,6 +11,7 @@ from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE
 from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
+    FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
     FIRST_DRAFT_RECOVERY_METHOD,
 )
 from autodata_ingestion.published_media_publication import _publication_evidence
@@ -183,6 +184,13 @@ def test_echoed_draft_does_not_relax_other_rewrite_guards(runtime, variant, erro
         "It is safe to service the cover while the engine is running.",
         "The mounting plate bolts must be loosened.",
         FIRST_DRAFT_COOLING_RECOVERY_METHOD,
+    ),
+    (
+        "Place the gauge on the open part of the service tray.",
+        "Position the gauge on the exposed section of the service tray.",
+        "The article includes an 18 N·m torque specification.",
+        "Position the gauge on the open section of the service tray.",
+        FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
     ),
 ])
 def test_worker_replays_recovery_with_its_original_response_and_media(

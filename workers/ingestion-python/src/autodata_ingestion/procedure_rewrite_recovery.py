@@ -20,14 +20,17 @@ RECOVERY_METHOD = "source-bound-correction-recovery-v1"
 FIRST_DRAFT_RECOVERY_METHOD = "source-bound-first-draft-recovery-v1"
 FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v2"
 FIRST_DRAFT_COOLING_RECOVERY_METHOD = "source-bound-first-draft-recovery-v3"
+FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD = "source-bound-first-draft-recovery-v4"
 FIRST_DRAFT_RECOVERY_METHODS = (
     FIRST_DRAFT_RECOVERY_METHOD, FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD, FIRST_DRAFT_COOLING_RECOVERY_METHOD,
+    FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
 )
-FIRST_DRAFT_RECOVERABLE_ERRORS = frozenset({
+_FIRST_DRAFT_RECASTABLE_ERRORS = frozenset({
     "REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR", "REWRITE_ACTION_MUTATION",
     "REWRITE_QUALIFIER_MUTATION", "REWRITE_TECHNICAL_MUTATION",
     "REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM",
 })
+FIRST_DRAFT_RECOVERABLE_ERRORS = _FIRST_DRAFT_RECASTABLE_ERRORS | {"REWRITE_SPEC_SCOPE_MUTATION"}
 _PART_WORD = r"[a-z]+(?:-[a-z]+)*"
 _PART = rf"{_PART_WORD}(?: {_PART_WORD}){{0,9}}"
 _REFERENCE = r"\([0-9]{1,4}\)"
@@ -64,6 +67,10 @@ _FILL_BLEED_REFERENCE = re.compile(
     r"Fill and bleed the (?P<system>cooling system)\. For additional information, refer to "
     r"(?P<title>Cooling System Draining, Filling and Bleeding) in this section\.",
     re.I,
+)
+_OPEN_PLACEMENT = re.compile(
+    rf"(?:Place|Position|Set) the (?P<part>{_PART}) (?P<relation>in|on) the "
+    rf"(?P<state>open|exposed) (?:area|part|portion|section) of the (?P<target>{_PART})\.", re.I,
 )
 _DIRECTIVE_LABEL_EXCLUSIONS = auto._TARGET_DELIMITERS | frozenset(
     "against down during facing finger inside instead last must never no not only outside should tight together up".split()
@@ -141,6 +148,20 @@ def _equivalent_cooling_directive(text):
     return None
 
 
+def _restore_open_placement(source, replacement):
+    original = _OPEN_PLACEMENT.fullmatch(source)
+    draft = _OPEN_PLACEMENT.fullmatch(replacement)
+    if not original or not draft or original["state"].casefold() != "open" or draft["state"].casefold() != "exposed":
+        return None
+    labels = ("part", "target")
+    if any(not _plain_label(original[label]) for label in labels):
+        return None
+    if any(original[key].casefold() != draft[key].casefold() for key in (*labels, "relation")):
+        return None
+    start, end = draft.span("state")
+    return replacement[:start] + original["state"] + replacement[end:]
+
+
 def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version, method, original_error):
     introduction_replaced = raw["introduction"] != draft["introduction"]
     if not corrected_paths and not introduction_replaced:
@@ -163,8 +184,39 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
         "output_hash": digest_json(document),
         "corrected_paths": corrected_paths,
         **({"introduction_replaced": introduction_replaced}
-           if method == FIRST_DRAFT_COOLING_RECOVERY_METHOD else {}),
+           if method in (FIRST_DRAFT_COOLING_RECOVERY_METHOD, FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD) else {}),
     })
+
+
+def _recover_placement_draft(source, raw, slots, *, prompt_version, original_error):
+    draft = deepcopy(raw)
+    if original_error == "REWRITE_SPEC_SCOPE_MUTATION":
+        # A specification may be removed from the generated introduction.
+        # A changed authored specification must still fail the full validation.
+        try:
+            auto.check_automatic_introduction(source, raw["introduction"])
+        except ValueError as error:
+            if str(error) != original_error:
+                return None
+        else:
+            return None
+        try:
+            draft["introduction"] = _introduction(source, raw["introduction"])
+        except ValueError:
+            return None
+    action_paths = {issue["path"] for issue in auto.failed_rewrite_passages(
+        source, raw, prompt_version=prompt_version,
+    ) if issue["code"] == "REWRITE_ACTION_MUTATION"}
+    corrected = []
+    for slot, row in zip(slots, draft["replacements"], strict=True):
+        if row["action"] == "rewrite" and slot["path"] in action_paths:
+            if wording := _restore_open_placement(slot["text"], row["text"]):
+                row["text"] = wording
+                corrected.append(slot["path"])
+    return _validate_first_draft(
+        source, raw, draft, corrected, prompt_version=prompt_version,
+        method=FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD, original_error=original_error,
+    )
 
 
 def recover_first_draft(source, raw, *, prompt_version, method=None):
@@ -193,6 +245,14 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
         return None
     if original_error not in FIRST_DRAFT_RECOVERABLE_ERRORS:
         return None
+    if method in (None, FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD) and original_error in (
+        "REWRITE_ACTION_MUTATION", "REWRITE_SPEC_SCOPE_MUTATION",
+    ):
+        placement = _recover_placement_draft(source, raw, slots, prompt_version=prompt_version, original_error=original_error)
+        if placement is not None:
+            return placement
+    if method == FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD or original_error == "REWRITE_SPEC_SCOPE_MUTATION":
+        return None
     if method in (None, FIRST_DRAFT_RECOVERY_METHOD) and original_error == "REWRITE_UNCHANGED":
         draft = deepcopy(raw)
         corrected = []
@@ -216,7 +276,7 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
     corrected = []
     for slot, row in zip(slots, draft["replacements"], strict=True):
         error = invalid.get(slot["path"])
-        if row["action"] != "rewrite" or error not in FIRST_DRAFT_RECOVERABLE_ERRORS:
+        if row["action"] != "rewrite" or error not in _FIRST_DRAFT_RECASTABLE_ERRORS:
             continue
         wording = _equivalent_directive(slot["text"])
         if wording is None and row["text"] == slot["text"]:
@@ -238,7 +298,7 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
     for slot, row in zip(slots, draft["replacements"], strict=True):
         path = slot["path"]
         if (path in already_corrected or row["action"] != "rewrite"
-                or invalid.get(path) not in FIRST_DRAFT_RECOVERABLE_ERRORS):
+                or invalid.get(path) not in _FIRST_DRAFT_RECASTABLE_ERRORS):
             continue
         if wording := _equivalent_cooling_directive(slot["text"]):
             row.update(text=wording, reason="Distinct source-bound prose.")
