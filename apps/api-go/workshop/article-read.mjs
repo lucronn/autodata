@@ -91,7 +91,7 @@ export async function readArticle(
   let regularSourceReadAt = 0;
   let regularSourceReadJob;
   let keepRegularSourceRead = false;
-  let previewMidpointAt = 0;
+  let sourceMidpointAt = 0;
   let sourceConfirmationAt = 0;
   let publicationReadAt = 0;
   let publicationProbeJob;
@@ -109,8 +109,8 @@ export async function readArticle(
     advancedSourceProbeUntil = 0;
     const initialSourceFallback = initialSourceFallbackAt > startedAt ? initialSourceFallbackAt : 0;
     initialSourceFallbackAt = 0;
-    const previewMidpoint = previewMidpointAt > startedAt ? previewMidpointAt : 0;
-    previewMidpointAt = 0;
+    const sourceMidpoint = sourceMidpointAt > startedAt ? sourceMidpointAt : 0;
+    sourceMidpointAt = 0;
     const statusProbe = scheduledPublicationCheck?.regularReadAt > startedAt ? scheduledPublicationCheck : undefined;
     scheduledPublicationCheck = undefined;
     if (firstReadAt <= startedAt) firstReadAt = 0;
@@ -133,7 +133,7 @@ export async function readArticle(
       deadline, firstReadAt || deadline, nextSourceProbeAt || deadline,
       regularSourceDeadline || deadline, sourceConfirmationAt || deadline, publicationReadAt || deadline,
       statusProbe ? Math.min(statusProbe.regularReadAt, startedAt + publicationStatusProbeDelayMs) : deadline,
-      initialSourceFallback || deadline, advancedProbeLimit || deadline, previewMidpoint || deadline,
+      initialSourceFallback || deadline, advancedProbeLimit || deadline, sourceMidpoint || deadline,
     );
     const firstScheduledSourceRead = !firstReadAt && confirmedSourceCapture && earlyConfirmationJob !== undefined;
     // Keep the header deadline for a short read. Give a successful body on
@@ -144,7 +144,7 @@ export async function readArticle(
     // A confirmed publication can use the ordinary body deadline even
     // when the probe had a short deadline for its headers.
     const finishBodyBy = statusProbe?.late ? statusProbe.regularReadAt : startedAt + maxArticleRequestMs;
-    const bodyDeadline = advancedProbeLimit || previewMidpoint || sourceBodyDeadline || (finishPublishedBody && finishBodyBy);
+    const bodyDeadline = advancedProbeLimit || sourceMidpoint || sourceBodyDeadline || (finishPublishedBody && finishBodyBy);
     try {
       const response = await read({
         signal,
@@ -196,7 +196,7 @@ export async function readArticle(
     } catch (error) {
       signal?.throwIfAborted();
       sourceProbeFailed = error instanceof TypeError || error.code === "NETWORK_UNAVAILABLE" ||
-        Boolean((publicationCheck || initialSourceFallback) && error.code === "INVALID_RESPONSE") ||
+        Boolean((publicationCheck || initialSourceFallback || sourceMidpoint) && error.code === "INVALID_RESPONSE") ||
         Boolean(initialSourceFallback && error.status === 503 && error.retryable);
       if (!sourceProbeFailed && !([429, 503].includes(error.status) && error.retryable)) throw error;
       retryAfter = Number(error.retryAfterSeconds) || 0;
@@ -208,8 +208,8 @@ export async function readArticle(
       await wait(Math.min(remaining, Math.max(regularWait, retryAfter * 1000)), signal);
       continue;
     }
-    if (previewMidpoint) {
-      const midpointWait = Math.max(0, previewMidpoint - now());
+    if (sourceMidpoint) {
+      const midpointWait = Math.max(0, sourceMidpoint - now());
       await wait(Math.min(remaining, Math.max(midpointWait, retryAfter * 1000)), signal);
       continue;
     }
@@ -382,11 +382,11 @@ export async function readArticle(
       regularSourceReadJob = fastPendingJob;
       regularSourceReadAt = now() + backoff;
       backoff /= 2;
-      if (preview && backoff === 2000) {
-        // Try once before the first midpoint. A miss keeps that midpoint and
-        // the ordinary read available, including when another retry hint arrives.
-        previewMidpointAt = now() + backoff;
-        backoff = 1000;
+      if (fastPendingJob || backoff === 2000) {
+        // Check a confirmed cold capture once before the midpoint. Keep the
+        // midpoint and ordinary read for a miss, subject to the server's retry hint.
+        sourceMidpointAt = now() + backoff;
+        backoff /= 2;
       }
     }
     await wait(

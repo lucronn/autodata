@@ -870,18 +870,25 @@ test('reader credits time spent awaiting the prepared response before polling', 
 test('reader checks an active, slow first capture without delaying its regular read', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   for (const [sourceReadyAt, expectedVisibleAt, expectedLateStarts] of [
-    [5056, 6622, [6502]],
-    [7800, 8622, [6502, 8502]],
-    [9700, 12742, [6502, 8502, 12622]],
+    [5056, 5622, [5502]],
+    [5950, 6622, [5502, 6502]],
+    [7800, 8622, [5502, 6502, 8502]],
+    [9700, 10742, [5502, 6502, 8502, 10622]],
+    [11600, 12742, [5502, 6502, 8502, 10622, 12622]],
   ]) {
     let now = 142;
     let visibleAt;
-    let lateTimeout;
     const lateStarts = [];
-    await readArticle(async ({ preferShortSourceCheck, timeout }) => {
+    await readArticle(async ({ preferShortSourceCheck, timeout, readableBodyTimeout }) => {
       const initial = now === 142;
       if (now > 5000 && visibleAt === undefined) lateStarts.push(now);
-      if (now === 6502) lateTimeout = timeout;
+      if (now === 5502 || now === 10622) {
+        const budget = now === 5502 ? 1000 : 2000;
+        assert.equal(timeout, budget);
+        assert.equal(readableBodyTimeout, budget);
+        assert.equal(preferShortSourceCheck, true);
+      }
+      if (now === 6502) assert.equal(timeout, 2000);
       if (!initial) now += 120;
       if (visibleAt !== undefined) return { status: 200, data: { article: { body: 'Published article' } } };
       const processing = { job_id: 'job', state: initial ? 'queued' : 'fetching_source' };
@@ -900,7 +907,28 @@ test('reader checks an active, slow first capture without delaying its regular r
     });
     assert.equal(visibleAt, expectedVisibleAt);
     assert.deepEqual(lateStarts, expectedLateStarts);
-    assert.equal(lateTimeout, 2000);
+  }
+});
+
+test('the added cold capture check keeps the midpoint, retry floor, and access denial', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const processing = { job_id: 'same-job', state: 'fetching_source' };
+  const pending = { status: 202, retryAfterSeconds: 1, data: { article: { processing } } };
+  const done = { status: 200, data: { article: { content_origin: 'source', body: 'Stored procedure' } } };
+  const denied = Object.assign(new Error('Access revoked'), { status: 403, code: 'ENTITLEMENT_REVOKED' });
+  const retry = Object.assign(new Error('Rate limited'), { status: 429, retryable: true, retryAfterSeconds: 4 });
+  const invalid = Object.assign(new Error('Invalid response'), { code: 'INVALID_RESPONSE' });
+  for (const [error, nextRead] of [[invalid, 6000], [new TypeError('Network error'), 6000], [retry, 9000], [denied, undefined]]) {
+    let now = 0;
+    const starts = [];
+    const read = readArticle(async () => {
+      starts.push(now);
+      if (now === 5000) throw error;
+      return now >= 5600 ? done : pending;
+    }, { now: () => now, wait: async ms => { now += ms; } });
+    if (nextRead === undefined) await assert.rejects(read, error);
+    else assert.equal((await read).data.article.body, 'Stored procedure');
+    assert.deepEqual(starts, [0, 1000, 2000, 4000, 5000, ...(nextRead === undefined ? [] : [nextRead])]);
   }
 });
 
@@ -961,12 +989,12 @@ test('a first capture preview at a midpoint preserves the scheduled Original rea
   const busy = Object.assign(new Error('Busy'), { status: 503, retryable: true, retryAfterSeconds: 4 });
   const slowDownload = Symbol('slow Original download');
   for (const [job, storedAt, confirmation, expectedStarts] of [
-    ['job', 6900, null, [0, 1000, 2000, 4000, 6000, 7000]],
-    ['job', 6900, slowDownload, [0, 1000, 2000, 4000, 6000, 7000]],
-    ['job', 7800, null, [0, 1000, 2000, 4000, 6000, 7000, 8000]],
-    ['job', 7800, busy, [0, 1000, 2000, 4000, 6000, 7000, 11000]],
-    ['job', 10500, null, [0, 1000, 2000, 4000, 6000, 7000, 8000, 14000]],
-    ['other-job', 7800, null, [0, 1000, 2000, 4000, 6000, 7000, 14000]],
+    ['job', 6900, null, [0, 1000, 2000, 4000, 5000, 6000, 7000]],
+    ['job', 6900, slowDownload, [0, 1000, 2000, 4000, 5000, 6000, 7000]],
+    ['job', 7800, null, [0, 1000, 2000, 4000, 5000, 6000, 7000, 8000]],
+    ['job', 7800, busy, [0, 1000, 2000, 4000, 5000, 6000, 7000, 11000]],
+    ['job', 10500, null, [0, 1000, 2000, 4000, 5000, 6000, 7000, 8000, 14000]],
+    ['other-job', 7800, null, [0, 1000, 2000, 4000, 5000, 6000, 7000, 14000]],
   ]) {
     let now = 0;
     const starts = [], previews = [];
