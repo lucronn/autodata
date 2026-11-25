@@ -249,16 +249,20 @@ def correction_for_method(method):
     raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
 
 
-def correction_recovery_for_method(method):
+def correction_recovery_for_method(method, *, archived_method=None):
     from .procedure_rewrite_recovery import RECOVERY_METHOD, recover_retained_correction
     from .procedure_rewrite_sentence_correction import (
-        SENTENCE_CORRECTION_METHOD, SENTENCE_RECOVERY_METHOD, recover_sentence_correction,
+        SENTENCE_CORRECTION_METHOD, SENTENCE_INSTRUCTION_RECOVERY_METHOD, SENTENCE_RECOVERY_METHOD,
+        recover_numbered_sentence_instructions, recover_sentence_correction,
     )
 
-    if method == _CORRECTION_METHOD:
-        return RECOVERY_METHOD, recover_retained_correction
+    if method == _CORRECTION_METHOD and archived_method in (None, RECOVERY_METHOD):
+        return recover_retained_correction
     if method == SENTENCE_CORRECTION_METHOD:
-        return SENTENCE_RECOVERY_METHOD, recover_sentence_correction
+        if archived_method == SENTENCE_RECOVERY_METHOD:
+            return recover_sentence_correction
+        if archived_method in (None, SENTENCE_INSTRUCTION_RECOVERY_METHOD):
+            return recover_numbered_sentence_instructions
     raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
 
 

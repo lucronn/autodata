@@ -877,18 +877,17 @@ def resolve_source_bound_correction(cur, job, candidate):
             method=scheduled_method, preserve_notes=binding["preserve_notes"],
         )
     else:
-        recovery_method, recover = correction_recovery_for_method(scheduled_method)
         recovery = metadata.get("correction_recovery")
-        if (method != recovery_method
-            or not rounds or not isinstance(recovery, dict)
+        if (not rounds or not isinstance(recovery, dict)
             or recovery != job["checkpoint"].get("correction_recovery")
             or recovery.get("attempts") != _correction_round_bindings(rounds)):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+        recover = correction_recovery_for_method(scheduled_method, archived_method=method)
         result = recover(
             source, previous, model_call_budget=binding["model_call_budget"], attempts=rounds,
             preserve_notes=binding["preserve_notes"],
         )
-        if (not recovery.get("terminal_error")
+        if (result.evidence.get("method") != method or not recovery.get("terminal_error")
             or result.evidence.get("original_error_code") != recovery["terminal_error"]):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
     if (result.error_code is not None or result.document is None
@@ -981,7 +980,7 @@ def recover_source_bound_correction(repo, article_id, *, expected_job_id, expect
         _require_source_bound_rewrite_rights(cur, job, article)
         document = job["checkpoint"].get("normalized_document")
         binding, previous = _bound_correction_draft(cur, job, document)
-        recovery_method, recover = correction_recovery_for_method(binding.get("correction_method", _CORRECTION_METHOD))
+        recover = correction_recovery_for_method(binding.get("correction_method", _CORRECTION_METHOD))
         if cur.execute("SELECT 1 FROM canonical_article_revisions WHERE transformation_key=%s",
                        (job["transformation_key"],)).fetchone():
             raise ValueError("SOURCE_BOUND_CORRECTION_RECOVERY_STALE")
@@ -999,8 +998,7 @@ def recover_source_bound_correction(repo, article_id, *, expected_job_id, expect
             document, previous, model_call_budget=binding["model_call_budget"], attempts=rounds,
             preserve_notes=binding["preserve_notes"],
         )
-        if (result.evidence.get("method") != recovery_method
-            or result.evidence.get("original_error_code") != job["error_code"]):
+        if result.evidence.get("original_error_code") != job["error_code"]:
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
         _require_source_bound_rewrite_rights(cur, job, article)
         recovery = {

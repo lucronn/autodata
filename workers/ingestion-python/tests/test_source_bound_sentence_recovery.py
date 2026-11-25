@@ -7,6 +7,10 @@ import pytest
 
 from autodata_ingestion import article_lifecycle_store as store
 from autodata_ingestion.article_lifecycle_types import digest_json
+from autodata_ingestion.procedure_rewrite_correction import _mask_literals
+from autodata_ingestion.procedure_rewrite_sentence_correction import (
+    SENTENCE_INSTRUCTION_RECOVERY_METHOD, SENTENCE_RECOVERY_METHOD,
+)
 from autodata_ingestion.published_media_publication import _publication_evidence
 from lifecycle_support import fresh_database, runtime
 from test_source_bound_correction_recovery import job_and_candidates, recover
@@ -23,14 +27,19 @@ RECOVERED_WIRING = (
     "The two receivers lack wiring to the central controller, so the monitor has no direct communication "
     "on a service data network."
 )
+LINKED_REMOVAL = "Engine Coolant Supply Air Bleed Pipe(3)»Remove— Engine Coolant Supply Air Bleed Pipe Replacement"
+RECOVERED_REMOVAL = (
+    "Remove the component identified by (3) using the steps in Engine Coolant Supply Air Bleed Pipe Replacement."
+)
 
 
-class EchoedWiring:
+class EchoedSentence:
     _model = "fixture-sentence-archive"
 
-    def __init__(self):
+    def __init__(self, text):
         self.prompts = []
         self.responses = []
+        self.statement = _mask_literals(text)[0] or text
 
     def complete_json(self, prompt):
         request = json.loads(prompt)
@@ -40,28 +49,32 @@ class EchoedWiring:
             entries, field = request["passages"], "source"
         else:
             entries, field = request["statements"], "statement"
-            assert [entry[field] for entry in entries] == [WIRING]
+            assert [entry[field] for entry in entries] == [self.statement]
         response = {"rewrites": [{"slot": entry["slot"], "candidates": [entry[field]] * 3} for entry in entries]}
         self.responses.append(response)
         return response
 
 
-@pytest.fixture
+@pytest.fixture(params=[
+    (WIRING, RECOVERED_WIRING, SENTENCE_RECOVERY_METHOD),
+    (LINKED_REMOVAL, RECOVERED_REMOVAL, SENTENCE_INSTRUCTION_RECOVERY_METHOD),
+], ids=["wiring", "numbered-removal"])
 def terminal_sentence(runtime, request, monkeypatch):
+    text, wording, method = request.param
     connector = runtime.servers["bankone"]
     write = connector.body
 
-    def with_wiring(payload, *args, **kwargs):
+    def with_instruction(payload, *args, **kwargs):
         if "asset_bindings" in kwargs:
-            payload += f"<p>{WIRING}</p>".encode()
+            payload += f"<p>{text}</p>".encode()
         return write(payload, *args, **kwargs)
 
     with monkeypatch.context() as fixture:
-        fixture.setattr(connector, "body", with_wiring)
+        fixture.setattr(connector, "body", with_instruction)
         prior_id, source, _ = request.getfixturevalue("retained_media")
-    assert WIRING in source["body"] and source["images"][0]["status"] == "available"
+    assert text in source["body"] and source["images"][0]["status"] == "available"
     job = schedule(runtime, prior_id, source["source_revision_id"])
-    model = EchoedWiring()
+    model = EchoedSentence(text)
     assert run_job(runtime, job.job_id, model, registry=runtime.registry)
     assert runtime.read_current()["processing_error_code"] == "REWRITE_UNCHANGED"
     terminal, candidates = job_and_candidates(runtime, job.job_id)
@@ -74,11 +87,11 @@ def terminal_sentence(runtime, request, monkeypatch):
     assert all(row["status"] == "succeeded" and row["response_hash"] == digest_json(row["response"]) for row in archived)
     assert all(row["canonical_article_revision_id"] is None for row in archived)
     runtime.reset_counters()
-    return job.job_id, prior_id, source
+    return job.job_id, prior_id, source, text, wording, method
 
 
 def test_terminal_sentence_recovers_with_only_the_archived_calls(runtime, terminal_sentence):
-    job_id, prior_id, source = terminal_sentence
+    job_id, prior_id, source, text, wording, method = terminal_sentence
     source_id = source["source_revision_id"]
     archived = attempt_rows(runtime, job_id)
     prior_attempts = attempt_rows(runtime, prior_id)
@@ -93,7 +106,7 @@ def test_terminal_sentence_recovers_with_only_the_archived_calls(runtime, termin
     assert pending["lease_token"] == terminal["lease_token"]
     assert candidate["canonical_article_revision_id"] == revision_id and candidate["source_revision_id"] == source_id
     assert candidate["status"] == "validated" and candidate["validation_report"]["passed"]
-    assert candidate["model_metadata"]["transformation_method"] == "source-bound-sentence-recovery-v1"
+    assert candidate["model_metadata"]["transformation_method"] == method
     audit = pending["checkpoint"]["correction_recovery"]
     assert audit == candidate["model_metadata"]["correction_recovery"]
     assert audit["terminal_error"] == "REWRITE_UNCHANGED"
@@ -127,8 +140,8 @@ def test_terminal_sentence_recovers_with_only_the_archived_calls(runtime, termin
             cur, article, binding, fixture_mode=True, lock=False,
         )
         events = cur.execute("SELECT canonical_article_revision_id FROM publication_events").fetchall()
-    assert effective["replacements"][-1]["text"] == RECOVERED_WIRING
-    assert RECOVERED_WIRING in current["body"] and WIRING not in current["body"]
+    assert effective["replacements"][-1]["text"] == wording
+    assert wording in current["body"] and text not in current["body"]
     evidence = revision["model_metadata"]["correction_evidence"]
     assert evidence["original_error_code"] == "REWRITE_UNCHANGED"
     assert evidence["base_draft_hash"] != evidence["draft_hash"] == digest_json(effective)
@@ -139,7 +152,7 @@ def test_terminal_sentence_recovers_with_only_the_archived_calls(runtime, termin
 
 
 def test_terminal_sentence_recovery_rejects_a_changed_archive(runtime, terminal_sentence):
-    job_id, _, source = terminal_sentence
+    job_id, _, source, *_ = terminal_sentence
     with runtime.repo.connect() as conn:
         conn.execute("""UPDATE canonical_article_rewrite_attempts SET response='{"rewrites":[]}'::jsonb
             WHERE source_fetch_job_id=%s AND attempt_number=2""", (job_id,))
