@@ -157,6 +157,54 @@ func TestCatalogArticleSearchOmitsUnrenderableImageAltText(t *testing.T) {
 	}
 }
 
+func TestPaidCatalogArticleSearchMatchesRetainedMissingAndPendingCaptions(t *testing.T) {
+	projection := paidSearchProjection{
+		document: []byte(`{"blocks":[
+			{"type":"image","asset_id":"private-missing-figure","caption":"Missing standalone caption",
+			 "alt":"Hidden missing alt","status":"unavailable","unavailable_reason":"SOURCE_NOT_FOUND"},
+			{"type":"image","caption":"Pending standalone caption","alt":"Hidden pending alt",
+			 "status":"available","unavailable_reason":"SOURCE_MEDIA_PENDING"},
+			{"type":"image","asset_id":"unproven","caption":"Unproven media caption","alt":"Unproven media alt","status":"available"},
+			{"type":"image","caption":"Wrong status caption","status":"available","unavailable_reason":"SOURCE_NOT_FOUND"},
+			{"type":"image","caption":"Other failure caption","status":"unavailable","unavailable_reason":"UNKNOWN"},
+			{"type":"ordered_list","items":[{"images":[
+				{"caption":"Pending list caption","alt":"Hidden list alt","status":"unavailable","unavailable_reason":"SOURCE_MEDIA_PENDING"}
+			]}]},
+			{"type":"table","rows":[[{"caption":"Missing cell caption","alt":"Hidden cell alt","status":"unavailable",
+			 "unavailable_reason":"SOURCE_NOT_FOUND"}]],"images":[
+				{"asset_id":"table-missing","caption":"Missing table caption","status":"unavailable","unavailable_reason":"SOURCE_NOT_FOUND"}
+			]}
+		]}`),
+		images: []byte(`[{"asset_id":"unproven","storage_key":"procedure-images/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]`),
+	}
+	for _, test := range []struct {
+		query string
+		want  bool
+	}{
+		{"missing standalone caption", true},
+		{"pending standalone caption", true},
+		{"pending list caption", true},
+		{"missing cell caption", true},
+		{"missing table caption", true},
+		{"hidden missing alt", false},
+		{"hidden pending alt", false},
+		{"hidden list alt", false},
+		{"hidden cell alt", false},
+		{"unproven media", false},
+		{"wrong status caption", false},
+		{"other failure caption", false},
+		{"private-missing-figure", false},
+		{"table-missing", false},
+		{"source_not_found", false},
+		{"source_media_pending", false},
+	} {
+		matched, err := projection.matchesContent(CatalogArticle{Title: "Pump service"}, strings.Fields(test.query))
+		if err != nil || matched != test.want {
+			t.Errorf("query %q matched %v, want %v (error %v)", test.query, matched, test.want, err)
+		}
+	}
+}
+
 func TestCatalogArticleSearchLegacyStepImageRequiresRenderableURL(t *testing.T) {
 	images := []CatalogImage{
 		{ID: "ready", URL: "/v1/catalog/images/v2.ready", Alt: "ReadyLegacyFigureMarker"},
