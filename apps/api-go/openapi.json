@@ -3470,6 +3470,12 @@
                 "type": {
                   "type": "string"
                 },
+                "target_article_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$",
+                  "description": "Verified same-configuration canonical target on a link block."
+                },
                 "text": {
                   "type": "string"
                 },
