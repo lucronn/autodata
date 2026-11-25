@@ -1326,6 +1326,7 @@ def capture_source_article(
     missing_refs = {}
     missing_image_refs = {}
     first_missing_image_ids = {}
+    authored_images = set()
     for node in _walk(blocks):
         if not html_table_spans:
             node.pop("_html_table_cell_spans", None)
@@ -1373,6 +1374,7 @@ def capture_source_article(
                 }
             )
             if local:
+                authored_images.add(node["image_id"])
                 node.update(
                     {
                         "storage_key": local["object_key"],
@@ -1480,11 +1482,17 @@ def capture_source_article(
         )
         if projection_partial or placed_svg_digests != recovered_svg_digests or validate_ordered_document(doc, strict=True):
             raise SourceConnectorError(_LEGACY_SVG_RECOVERY_INCOMPLETE)
-    if (
-        not body_text.strip()
-        or body_text.strip() == str(context.descriptor.get("title", "")).strip()
-    ):
-        raise SourceConnectorError("INVALID_ARTICLE_BODY")
+    title = str(context.descriptor.get("title") or "").strip()
+    image_only = not body_text.strip() or body_text.strip() == title
+    if image_only:
+        if not title or not any(
+            image.get("status") == "available" and image.get("image_id") in authored_images
+            for image in images
+        ):
+            raise SourceConnectorError("INVALID_ARTICLE_BODY")
+        # Keep the descriptor title in the required legacy text field. The
+        # ordered document still contains only the original source blocks.
+        body_text = title
     if linked_decimal_preserved or (step_parser is not None and step_parser.preserved):
         new_structure = True
         for record in (resources[0], provenance[0], manifest[0]):
@@ -1533,4 +1541,5 @@ def capture_source_article(
             else "source-projection-v2"
         ),
         recovered_legacy_bankone_svg=recover_legacy_bankone_svg,
+        image_only=image_only,
     )
