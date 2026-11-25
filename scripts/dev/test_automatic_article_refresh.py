@@ -59,8 +59,10 @@ def test_source_bound_cli_passes_the_exact_job_and_source(tmp_path, monkeypatch,
     assert json.loads(capsys.readouterr().out)["items"][0]["job_id"] == str(new_job)
 
 
-@pytest.mark.parametrize(("by_sentence", "budget"), [(False, 8), (True, 2)])
-def test_correction_cli_requires_explicit_budget_and_exact_job(tmp_path, monkeypatch, capsys, by_sentence, budget):
+@pytest.mark.parametrize(("by_sentence", "first_draft", "budget"), [(False, False, 8), (True, False, 2), (True, True, 1)])
+def test_correction_cli_requires_explicit_budget_and_exact_job(
+    tmp_path, monkeypatch, capsys, by_sentence, first_draft, budget,
+):
     article, source, prior, current = (uuid4() for _ in range(4))
     path = tmp_path / "selection.json"
     path.write_text(json.dumps([{"canonical_article_id": str(article), "expected_source_revision_id": str(source)}]))
@@ -73,13 +75,14 @@ def test_correction_cli_requires_explicit_budget_and_exact_job(tmp_path, monkeyp
         return SimpleNamespace(job_id=current, created=True)
 
     monkeypatch.setattr(refresh, "schedule_source_bound_correction", schedule)
-    args = ["--selection", str(path), "--actor", "operator", "--reason", "Correct the draft",
-            "--correct-from", str(prior), "--apply"]
+    flag = "--correct-first-draft-from" if first_draft else "--correct-from"
+    args = ["--selection", str(path), "--actor", "operator", "--reason", "Correct the draft", flag, str(prior), "--apply"]
     if by_sentence:
         bare = args[:6]
         with pytest.raises(SystemExit):
             refresh.main([*bare, "--by-sentence"], repo=repo)
-        args.append("--by-sentence")
+        if not first_draft:
+            args.append("--by-sentence")
         with pytest.raises(SystemExit):
             refresh.main([*args, "--model-call-budget", "3"], repo=repo)
     with pytest.raises(SystemExit):
@@ -88,9 +91,11 @@ def test_correction_cli_requires_explicit_budget_and_exact_job(tmp_path, monkeyp
         refresh.main([*args, "--model-call-budget", "13"], repo=repo)
     assert not calls
     assert refresh.main([*args, "--model-call-budget", str(budget)], repo=repo) == 0
-    assert calls == [(repo, article, {"expected_job_id": prior, "expected_source_revision_id": source,
-                      "actor": "operator", "reason": "Correct the draft", "model_call_budget": budget,
-                      "by_sentence": by_sentence})]
+    expected = {"expected_job_id": prior, "expected_source_revision_id": source, "actor": "operator",
+                "reason": "Correct the draft", "model_call_budget": budget, "by_sentence": by_sentence}
+    if first_draft:
+        expected["first_draft"] = True
+    assert calls == [(repo, article, expected)]
     assert json.loads(capsys.readouterr().out)["items"][0]["job_id"] == str(current)
 
 

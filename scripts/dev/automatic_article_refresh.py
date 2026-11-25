@@ -9,6 +9,8 @@ source revision and supply the UUID of its previous rejected job. Run
 article_worker.py --job-id with the returned job ID to process that exact job.
 Use --correct-from with a failed v2 job and a model-call budget for passage correction.
 Add --by-sentence to try a sentence pass on the remaining rejected prose.
+Use --correct-first-draft-from with a failed v1 job to correct its saved reply
+by sentence, without fetching the source again or requesting a full v2 draft.
 Use --recover-from with a terminal v3 job to stage a correction from its saved replies.
 Use --recover-staged-media-from with a failed positioned media refresh and its
 expected published revision to replay the exact archived replies and publish.
@@ -92,6 +94,8 @@ def main(argv=None, *, repo=None):
                           help="schedule one new draft from the selected article's retained source")
     drafting.add_argument("--correct-from", type=UUID, metavar="FAILED_V2_JOB_ID",
                           help="correct a failed draft against the same retained source")
+    drafting.add_argument("--correct-first-draft-from", type=UUID, metavar="FAILED_V1_JOB_ID",
+                          help="correct the original failed draft by sentence using the exact stored source")
     drafting.add_argument("--recover-from", type=UUID, metavar="FAILED_V3_JOB_ID",
                           help="stage a correction using this job's archived model replies")
     drafting.add_argument("--recover-staged-media-from", type=UUID, metavar="FAILED_REFRESH_JOB_ID",
@@ -113,7 +117,8 @@ def main(argv=None, *, repo=None):
         raise ValueError("AUTOMATIC_SELECTION_LIMIT")
     targets = selection(json.loads(args.selection.read_text()))
     repair = args.repair_retained_procedure_from or args.repair_retained_note_labels_from
-    retained_job = (args.source_bound_from or args.correct_from or args.recover_from or args.recover_staged_media_from
+    correction_job = args.correct_from or args.correct_first_draft_from
+    retained_job = (args.source_bound_from or correction_job or args.recover_from or args.recover_staged_media_from
                     or repair)
     if retained_job is not None and (len(targets) != 1 or not args.apply):
         parser.error("retained-source drafting requires one selected article and --apply")
@@ -121,8 +126,12 @@ def main(argv=None, *, repo=None):
         args.model_call_budget is None or not 1 <= args.model_call_budget <= MAX_CORRECTION_CALLS
     ):
         parser.error(f"--correct-from requires --model-call-budget from 1 through {MAX_CORRECTION_CALLS}")
-    if args.correct_from is None and args.model_call_budget is not None:
-        parser.error("--model-call-budget requires --correct-from")
+    if args.correct_first_draft_from is not None and (
+        args.model_call_budget is None or not 1 <= args.model_call_budget <= MAX_SENTENCE_CORRECTION_CALLS
+    ):
+        parser.error(f"--correct-first-draft-from requires --model-call-budget from 1 through {MAX_SENTENCE_CORRECTION_CALLS}")
+    if correction_job is None and args.model_call_budget is not None:
+        parser.error("--model-call-budget requires a correction job")
     if args.by_sentence and (args.correct_from is None or args.model_call_budget > MAX_SENTENCE_CORRECTION_CALLS):
         parser.error(f"--by-sentence requires --correct-from and a budget of 1 through {MAX_SENTENCE_CORRECTION_CALLS}")
     if bool(args.recover_staged_media_from or repair) != bool(args.expected_published_revision_id):
@@ -166,7 +175,10 @@ def main(argv=None, *, repo=None):
             revision = recover_source_bound_correction(repo, article_id, **arguments)
             results = [{**target, "job_id": str(retained_job), "revision_id": str(revision), "action": "recovered"}]
         else:
-            if args.correct_from is not None:
+            if args.correct_first_draft_from is not None:
+                job = schedule_source_bound_correction(repo, article_id, model_call_budget=args.model_call_budget,
+                                                       by_sentence=True, first_draft=True, **arguments)
+            elif args.correct_from is not None:
                 job = schedule_source_bound_correction(repo, article_id, model_call_budget=args.model_call_budget,
                                                        by_sentence=args.by_sentence,
                                                        **arguments)

@@ -641,6 +641,7 @@ def _require_source_bound_rewrite_rights(cur, job, article):
     profile = job["rewrite_profile_version"]
     marker_version = {SOURCE_BOUND_REWRITE_PROFILE: 1, SOURCE_BOUND_CORRECTION_PROFILE: 2}.get(profile)
     predecessor_observation = None
+    require_current_observation_scope = False
     if "source_bound_rewrite" in job["checkpoint"] or profile == SOURCE_BOUND_CORRECTION_PROFILE:
         marker = job["checkpoint"].get("source_bound_rewrite")
         if (marker_version is None or not isinstance(marker, dict)
@@ -657,27 +658,38 @@ def _require_source_bound_rewrite_rights(cur, job, article):
                 )
             except (AttributeError, KeyError, TypeError, ValueError):
                 raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID") from None
-        if marker_version == 2 and "correction_method" in marker:
+        if marker_version == 2 and ("correction_method" in marker or "first_draft_observation_id" in marker):
             from .procedure_rewrite_sentence_correction import SENTENCE_CORRECTION_METHOD
-            if marker["correction_method"] != SENTENCE_CORRECTION_METHOD:
+            if marker.get("correction_method") != SENTENCE_CORRECTION_METHOD:
                 raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID")
             try:
                 prior_id = UUID(marker["prior_job_id"])
             except (AttributeError, KeyError, TypeError, ValueError):
                 raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID") from None
-            prior = cur.execute("""SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s
-                AND canonical_article_id=%s AND source_revision_id=%s AND rewrite_profile_version=%s""",
-                (prior_id, job["canonical_article_id"], job["source_revision_id"], SOURCE_BOUND_REWRITE_PROFILE),
-            ).fetchone()
-            if prior is None:
-                raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID")
-            # A v2 draft can be tied to a specific source-only observation.
-            _require_source_bound_rewrite_rights(cur, prior, article)
-            return
+            if "first_draft_observation_id" in marker:
+                require_current_observation_scope = True
+                generation = marker.get("prior_generation")
+                if type(generation) is not int or generation + 1 != job["request_generation"]:
+                    raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID")
+                try:
+                    predecessor_observation = (UUID(marker["first_draft_observation_id"]), prior_id, generation)
+                except (AttributeError, TypeError, ValueError):
+                    raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID") from None
+            else:
+                prior = cur.execute("""SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s
+                    AND canonical_article_id=%s AND source_revision_id=%s AND rewrite_profile_version=%s""",
+                    (prior_id, job["canonical_article_id"], job["source_revision_id"], SOURCE_BOUND_REWRITE_PROFILE),
+                ).fetchone()
+                if prior is None:
+                    raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID")
+                # A v2 draft can be tied to a specific source-only observation.
+                _require_source_bound_rewrite_rights(cur, prior, article)
+                return
     if marker_version is not None:
         from .source_job_persistence import source_bound_rewrite_source_allowed
         if not source_bound_rewrite_source_allowed(
             cur, article, job["source_revision_id"], predecessor_observation=predecessor_observation,
+            require_current_observation_scope=require_current_observation_scope,
         ):
             raise ValueError("SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE")
 
@@ -761,9 +773,10 @@ def _bound_correction_draft(cur, job, document):
         or checkpoint.get("normalized_document") != document
         or checkpoint.get("normalized_hash") != digest_json(document)):
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
-    if "correction_method" in binding:
+    first_draft = "first_draft_observation_id" in binding
+    if "correction_method" in binding or first_draft:
         from .procedure_rewrite_sentence_correction import MAX_SENTENCE_CORRECTION_CALLS, SENTENCE_CORRECTION_METHOD
-        if (binding["correction_method"] != SENTENCE_CORRECTION_METHOD
+        if (binding.get("correction_method") != SENTENCE_CORRECTION_METHOD
             or binding["model_call_budget"] > MAX_SENTENCE_CORRECTION_CALLS):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
     try:
@@ -776,6 +789,7 @@ def _bound_correction_draft(cur, job, document):
         "SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (prior_id,),
     ).fetchone()
     if (prior is None or prior["request_generation"] > binding["prior_generation"]
+        or (first_draft and prior["request_generation"] != binding["prior_generation"])
         or any(prior[field] != job[field] for field in (
             "canonical_article_id", "canonical_vehicle_id", "source_vehicle_ref",
             "source_article_ref", "provider_slug", "source_revision_id", "normalization_version",
@@ -792,9 +806,10 @@ def _bound_correction_draft(cur, job, document):
             *key_inputs, owner["rewrite_profile_version"], projection_version=source["projection_version"],
         ):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
-    attempt = source_bound_correction_prior_attempt(cur, prior)
+    attempt = source_bound_correction_prior_attempt(cur, prior, first_draft=first_draft)
     if (binding.get("prior_attempt_id") != str(attempt["rewrite_attempt_id"])
-        or binding.get("prior_response_hash") != attempt["response_hash"]):
+        or binding.get("prior_response_hash") != attempt["response_hash"]
+        or (first_draft and binding["first_draft_observation_id"] != str(attempt["observation_id"]))):
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
     return {**binding, "preserve_notes": attempt["guard_version"] == _NOTE_LABEL_PROMPT_VERSION}, attempt["response"]
 
