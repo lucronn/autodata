@@ -4772,7 +4772,7 @@ test('Enter flushes a pending typed Workshop search exactly once', async () => {
   const pending = new Map();
   let nextTimer = 0;
   h.context.setTimeout = (callback, delay) => {
-    assert.equal(delay, 300);
+    assert.equal(delay, 150);
     pending.set(++nextTimer, callback);
     return nextTimer;
   };
@@ -4795,6 +4795,33 @@ test('Enter flushes a pending typed Workshop search exactly once', async () => {
   assert.equal(h.requests.length, 2);
   assert.equal(h.requests[1].path, '/v1/catalog/vehicles/B/articles?q=oil+pump&region=US');
   await new Promise(setImmediate);
+});
+
+test('unchanged trimmed search text keeps in-flight and visible off-page results', async () => {
+  const remote = deferredAuthOperation();
+  const hit = { id: 'second-page', title: 'Oil pump' };
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'first-page', title: 'Brakes' }] }),
+    () => remote.promise,
+  ]);
+  await h.load();
+  const search = h.$('search');
+  search.value = 'oil pump';
+  search.events.input({ inputType: 'insertFromPaste' });
+  const initialRequest = h.requests[1];
+  search.value += ' ';
+  search.events.input({ inputType: 'insertText' });
+  assert.equal(initialRequest.signal.aborted, false);
+  assert.equal(h.requests.length, 2);
+
+  remote.resolve(indexResponse('completed', { complete: true, items: [hit] }));
+  await new Promise(setImmediate);
+  const row = h.$('articles').firstElementChild.firstElementChild;
+  assert.equal(row.dataset.articleId, hit.id);
+  search.value = `  ${search.value}`;
+  search.events.input({ inputType: 'insertText' });
+  assert.equal(h.$('articles').firstElementChild.firstElementChild, row);
+  assert.equal(h.requests.length, 2);
 });
 
 test('returning from a direct reader focuses the first partial index without moving focus at completion', async () => {
@@ -5939,7 +5966,7 @@ test('same-query hydration keeps settled hits and new queries show loaded matche
   assert.equal(refreshing.signal.aborted, true);
   assert.deepEqual(h.$('articles').children[0].children.map(row => row.dataset.articleId), [extra.id]);
   assert.match(h.$('catalog-count').textContent, /loaded index.*searching/i);
-  assert.deepEqual(typed.map(timer => timer.delay), [300]);
+  assert.deepEqual(typed.map(timer => timer.delay), [150]);
   typed[0].callback();
   refresh.resolve(indexResponse('completed', { complete: true, items: [hit] }));
   await new Promise(setImmediate);
