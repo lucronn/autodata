@@ -10,14 +10,15 @@ from .article_document import (
     has_only_list_ordinal_additions, has_only_table_span_additions, project_ordered_document,
 )
 from .article_lifecycle_types import (
-    AUTOMATIC_REWRITE_PROFILES, RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE, RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE,
+    AUTOMATIC_REWRITE_PROFILES, RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE, RETAINED_OPTIONAL_OBSERVATION_REPAIR_PROFILE,
+    RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE,
     SOURCE_BOUND_CORRECTION_PROFILE,
     ValidationResult, digest_json,
 )
 from .procedure_rewrite import _set_path, editable_slots, validate_article_rewrite
 from .procedure_rewrite_auto import (
     PROFILE, _DRAIN_SUBJECT_PROMPT_VERSION, _NOTE_LABEL_PROMPT_VERSION, _PROCEDURE_FIDELITY_PROMPT_VERSIONS,
-    _ROTATION_REMOVAL_PROMPT_VERSION,
+    _OPTIONAL_OBSERVATION_PROMPT_VERSION, _ROTATION_REMOVAL_PROMPT_VERSION,
     _include_cell_blocks, render_auto, validate_auto,
 )
 from .procedure_rewrite_full import PROFILE as REVIEW_PROFILE
@@ -29,6 +30,7 @@ TECHNICAL_V1 = "technical-prose-v1"
 _SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 61)) | {
     _DRAIN_SUBJECT_PROMPT_VERSION,
     _ROTATION_REMOVAL_PROMPT_VERSION,
+    _OPTIONAL_OBSERVATION_PROMPT_VERSION,
 }
 _BOUND_AUTOMATIC_PROMPTS = _SUPPORTED_PROMPTS | {_NOTE_LABEL_PROMPT_VERSION, *_PROCEDURE_FIDELITY_PROMPT_VERSIONS}
 _POSITION_KEYS = frozenset({"block_id", "source_order"})
@@ -225,7 +227,10 @@ def repair_published_media(
     ):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH")
     conditional_note = profile == RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE
-    archived_reply_repair = profile in (RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE, RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE)
+    archived_reply_repair = profile in (
+        RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE, RETAINED_OPTIONAL_OBSERVATION_REPAIR_PROFILE,
+        RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE,
+    )
     uses_automatic_reply = profile in AUTOMATIC_REWRITE_PROFILES or archived_reply_repair
     if uses_automatic_reply:
         supported_prompts = (
