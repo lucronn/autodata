@@ -1523,7 +1523,12 @@ def _store_rewrite_result(repo,lease,result):
             raise ValueError("rewrite input/output binding mismatch")
         recovered = None
         prompt_version = None
-        if result.profile_version == AUTOMATIC_REWRITE_PROFILE and result.error_code in FIRST_DRAFT_RECOVERABLE_ERRORS:
+        # Exact staged media recovery binds this failure to both immutable replies.
+        staged_media_technical_failure = (
+            STAGED_MEDIA_REFRESH in job["checkpoint"] and result.error_code == "REWRITE_TECHNICAL_MUTATION"
+        )
+        if (result.profile_version == AUTOMATIC_REWRITE_PROFILE and result.error_code in FIRST_DRAFT_RECOVERABLE_ERRORS
+                and not staged_media_technical_failure):
             from .procedure_rewrite_auto import _auto_prompt_version
 
             source = job["checkpoint"]["normalized_document"]
