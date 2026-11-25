@@ -41,6 +41,7 @@ from .article_lifecycle_types import (
     STRUCTURED_TABLE_CELL_ORDER_LAYOUT,
     STRUCTURED_TABLE_COLUMN_ORDER_LAYOUT,
     STRUCTURED_TABLE_COLUMNS_LAYOUT,
+    STRUCTURED_TABLE_NESTED_MEDIA_LAYOUT,
     ResourceRef,
     article_id,
     digest_json,
@@ -233,14 +234,24 @@ def _attach_figure_captions(blocks, key):
 
 
 def _mark_json_table_cells(blocks, *, keep_rows, keep_columns):
-    """Keep authored table content when a figure precedes procedure text."""
+    """Keep authored figure order and nested media in structured table cells."""
     textual = {"text", "paragraph", "callout", "warning", "caution", "note", "hint", "important"}
+    containers = {"ordered_list", "unordered_list", "list", "table", "grid"}
+    structured = textual | containers | {
+        "image", "heading", "title", "section", "step", "instruction", "link", "anchor",
+        "break", "hr", "separator",
+    }
+    nested_media = False
 
     def has_ordered_media(cell):
+        nonlocal nested_media
         children = cell.get("blocks") if isinstance(cell, dict) else None
         if not isinstance(children, list) or any(not isinstance(child, dict) for child in children):
             return False
         kinds = [str(child.get("type") or child.get("kind") or "text").casefold() for child in children]
+        if containers.intersection(kinds) and all(kind in structured for kind in kinds) and any(_image_nodes(children)):
+            nested_media = True
+            return True
         return ("image" in kinds and all(kind == "image" or kind in textual for kind in kinds)
                 and any(kind in textual for kind in kinds[kinds.index("image") + 1:]))
 
@@ -265,7 +276,7 @@ def _mark_json_table_cells(blocks, *, keep_rows, keep_columns):
                 ordered_rows.extend(cell for cell in row if has_ordered_media(cell))
     for cell in ordered_rows + ordered_columns:
         cell["_ordered_json_table_cell"] = True
-    return bool(ordered_rows), bool(ordered_columns)
+    return bool(ordered_rows), bool(ordered_columns), nested_media
 
 
 def _retain_missing_table_captions(table, missing_refs, first_image_ids):
@@ -965,10 +976,10 @@ def capture_source_article(
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
     retained_pdf_repeats = article.get("retained_repeated_pdf_figures") is True
     pdf_asset_order = article.get("pdf_legacy_asset_order", [])
-    structured_table_cell_order = structured_table_column_order = False
+    structured_table_cell_order = structured_table_column_order = structured_table_nested_media = False
     authored_json_blocks = article.get("authored_json_blocks") is True
     if authored_json_blocks:
-        structured_table_cell_order, structured_table_column_order = _mark_json_table_cells(
+        structured_table_cell_order, structured_table_column_order, structured_table_nested_media = _mark_json_table_cells(
             blocks, keep_rows=keep_structured_table_cell_order,
             keep_columns=keep_structured_table_columns and keep_structured_table_column_order,
         )
@@ -1036,6 +1047,8 @@ def capture_source_article(
         resources[0]["structured_table_cell_order_layout"] = manifest[0]["structured_table_cell_order_layout"] = STRUCTURED_TABLE_CELL_ORDER_LAYOUT
     if structured_table_column_order:
         resources[0]["structured_table_column_order_layout"] = manifest[0]["structured_table_column_order_layout"] = STRUCTURED_TABLE_COLUMN_ORDER_LAYOUT
+    if structured_table_nested_media:
+        resources[0]["structured_table_nested_media_layout"] = manifest[0]["structured_table_nested_media_layout"] = STRUCTURED_TABLE_NESTED_MEDIA_LAYOUT
     if image_only_headings:
         resources[0]["structured_heading_image_layout"] = manifest[0]["structured_heading_image_layout"] = STRUCTURED_HEADING_IMAGE_LAYOUT
     if step_layout:
