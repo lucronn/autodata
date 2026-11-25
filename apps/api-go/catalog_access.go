@@ -193,7 +193,8 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 		c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,`+paidArticleAvailabilitySQL+`,
 		COALESCE(c.review_status,'UNREVIEWED'),
 		COALESCE(c.document,early.document),COALESCE(c.body,''),c.steps,c.images,sr.source_images,early.linked_document,
-		CASE WHEN $2::boolean AND c.canonical_revision_id IS NOT NULL THEN sr.source_document END
+		CASE WHEN $2::boolean AND c.canonical_revision_id IS NOT NULL
+		  AND sr.canonical_article_id=a.canonical_article_id THEN sr.source_document END
 		FROM canonical_articles a
 		LEFT JOIN LATERAL (
 			SELECT * FROM catalog_article_current
@@ -203,7 +204,6 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 		LEFT JOIN LATERAL (`+catalogSourceBodyPreviewSQL+`) early ON $2::boolean
 		JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
 		LEFT JOIN canonical_article_source_revisions sr ON sr.source_revision_id=c.source_revision_id
-			AND sr.canonical_article_id=a.canonical_article_id
 		WHERE `+paidArticleScopeSQL+` AND `+lifecycleEligibleSQL+`
 		  AND a.takedown_status='active' AND descriptor.takedown_status='active'
 		  AND (a.current_source_revision_id IS NULL OR (c.availability='available' AND c.takedown_status='active'))
