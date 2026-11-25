@@ -1155,6 +1155,45 @@ test('capture preview checks preserve retry floors, access errors and cancellati
   }
 });
 
+test('an active source preview checks for retained media during the longest backoff', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const preview = { status: 200, previewSourceCheck: true, data: { article: {
+    content_origin: 'source', source_body_preview: true, source_revision_id: null,
+    body: 'Readable source preview', processing: { job_id: 'job', state: 'fetching_source' },
+  } } };
+  const stored = { status: 200, data: { article: {
+    content_origin: 'source', source_revision_id: 'revision',
+    body: 'Stored procedure', images: [{ id: 'retained-figure' }],
+  } } };
+  const busier = Object.assign(new Error('Busy'), { status: 503, retryable: true, retryAfterSeconds: 7 });
+  const initial = [0, 250, 1000, 3000, 4000, 5000, 7000, 11000, 15000];
+  for (const [storedAt, probeError, lateReads] of [
+    [15100, null, [20000]],
+    [20100, null, [20000, 25000]],
+    [15100, busier, [20000, 27000]],
+  ]) {
+    let now = 0;
+    const reads = [], visible = [];
+    const result = await readArticle(async ({ timeout, readableBodyTimeout }) => {
+      reads.push(now);
+      if (now === 20000) {
+        assert.equal(timeout, 5000);
+        assert.equal(readableBodyTimeout, 5000);
+        if (probeError) throw probeError;
+      }
+      return now < storedAt ? preview : stored;
+    }, {
+      now: () => now, wait: async ms => { now += ms; },
+      onUpdate(response) {
+        if (response.data.article.images?.length) visible.push(now);
+      },
+    });
+    assert.deepEqual(reads, [...initial, ...lateReads]);
+    assert.deepEqual(visible, [lateReads.at(-1)]);
+    assert.equal(result.data.article.source_revision_id, 'revision');
+  }
+});
+
 test('reader confirms newly visible source once before resuming publication backoff', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   const pending = { status: 202, retryAfterSeconds: 1, data: {

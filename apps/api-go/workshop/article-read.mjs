@@ -400,12 +400,16 @@ export async function readArticle(
         backoff /= 2;
       }
     }
-    if (previewSourceCheck && !checkedPreviewSource && !sourceMidpointAt &&
-        backoff > sourceProbeIntervalMs && remaining > sourceProbeIntervalMs) {
-      // Check once for the stored body and media, without losing the next regular read.
-      checkedPreviewSource = true;
-      sourceMidpointAt = now() + backoff;
-      backoff = sourceProbeIntervalMs;
+    if (previewSourceCheck && !sourceMidpointAt) {
+      const previewWait = !checkedPreviewSource ? sourceProbeIntervalMs
+        : backoff === maxArticleRequestMs ? backoff / 2 : backoff;
+      if (previewWait < backoff && previewWait < remaining) {
+        // A slow active capture can store its figures during the longest wait.
+        // Keep the regular deadline if this extra read misses them.
+        checkedPreviewSource = true;
+        sourceMidpointAt = now() + backoff;
+        backoff = previewWait;
+      }
     }
     await wait(
       Math.min(remaining, Math.max(backoff, retryAfter * 1000)),
