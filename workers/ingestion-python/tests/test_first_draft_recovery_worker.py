@@ -15,6 +15,7 @@ from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
 from autodata_ingestion.procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
 from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_COOLING_RECOVERY_METHOD,
+    FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
     FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
@@ -317,6 +318,13 @@ def test_echoed_draft_does_not_relax_other_rewrite_guards(runtime, variant, erro
         "The article includes an 18 N·m torque specification.",
         "The shield and the reservoir screen and return tube must be removed.",
         FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
+    ),
+    (
+        "Close the fixture valve.",
+        "Open the fixture valve.",
+        "This article covers the service sequence for the cover.",
+        "The fixture valve must be closed.",
+        FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
     ),
 ])
 def test_worker_replays_recovery_with_its_original_response_and_media(

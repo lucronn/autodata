@@ -24,11 +24,12 @@ FIRST_DRAFT_COOLING_RECOVERY_METHOD = "source-bound-first-draft-recovery-v3"
 FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD = "source-bound-first-draft-recovery-v4"
 FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD = "source-bound-first-draft-recovery-v5"
 FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD = "source-bound-first-draft-recovery-v6"
+FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v7"
 REQUIRED_ACTION_WEAKENED = "REWRITE_REQUIRED_ACTION_WEAKENED"
 FIRST_DRAFT_RECOVERY_METHODS = (
     FIRST_DRAFT_RECOVERY_METHOD, FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD, FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD, FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
-    FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
+    FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD, FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
 )
 _FIRST_DRAFT_RECASTABLE_ERRORS = frozenset({
     "REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR", "REWRITE_ACTION_MUTATION",
@@ -223,7 +224,8 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
         if not validation.passed:
             return None
         auto.require_current_publication_checks(source, document, saved_prompt_version=prompt_version)
-        if method in (FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD, FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD):
+        if method in (FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD, FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
+                      FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD):
             rewritten_paths = validation.report["changed_prose_slots"]
             auto.require_distinct_generated_introduction(source, document, rewritten_paths=rewritten_paths)
             auto.require_preserved_display_quotations(source, document, rewritten_paths=rewritten_paths)
@@ -290,6 +292,32 @@ def _recover_required_action_draft(source, raw, slots, *, prompt_version):
     return _validate_first_draft(
         source, raw, draft, corrected, prompt_version=prompt_version,
         method=FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD, original_error=REQUIRED_ACTION_WEAKENED,
+    )
+
+
+def _recover_cooling_sequence(source, raw, slots, invalid, *, prompt_version, original_error):
+    from .procedure_rewrite_cooling_recovery import recast_cooling_passage
+
+    draft = deepcopy(raw)
+    corrected_paths = []
+    sequence_recast = False
+    for slot, row in zip(slots, draft["replacements"], strict=True):
+        path = slot["path"]
+        error = invalid.get(path)
+        if row["action"] != "rewrite" or error not in _FIRST_DRAFT_RECASTABLE_ERRORS:
+            continue
+        wording = _equivalent_directive(slot["text"]) if error == "REWRITE_ACTION_MUTATION" else None
+        if wording is None:
+            wording = recast_cooling_passage(slot["text"], error)
+            sequence_recast |= wording is not None
+        if wording is not None:
+            row["text"] = wording
+            corrected_paths.append(path)
+    if not sequence_recast:
+        return None
+    return _validate_first_draft(
+        source, raw, draft, corrected_paths, prompt_version=prompt_version,
+        method=FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD, original_error=original_error,
     )
 
 
@@ -372,6 +400,10 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
     invalid = {issue["path"]: issue["code"] for issue in auto.failed_rewrite_passages(
         source, raw, prompt_version=prompt_version,
     )}
+    if method == FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD:
+        return _recover_cooling_sequence(
+            source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
+        )
     draft = deepcopy(raw)
     corrected = []
     for slot, row in zip(slots, draft["replacements"], strict=True):
@@ -391,7 +423,17 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
         )
         if directive is not None or method == FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD:
             return directive
+    cooling = _recover_legacy_cooling_draft(
+        source, raw, draft, slots, corrected, invalid, prompt_version=prompt_version, original_error=original_error,
+    )
+    if cooling is not None or method == FIRST_DRAFT_COOLING_RECOVERY_METHOD:
+        return cooling
+    return _recover_cooling_sequence(
+        source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
+    )
 
+
+def _recover_legacy_cooling_draft(source, raw, draft, slots, corrected, invalid, *, prompt_version, original_error):
     # A newly published recast must remain reproducible under the method saved
     # with its response. Earlier methods never use these extra source edits.
     already_corrected = set(corrected)
