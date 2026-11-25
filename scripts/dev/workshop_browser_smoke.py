@@ -156,6 +156,8 @@ def verify_provenance(args):
         if name=='index.html':
             for asset in html_assets:
                 local=local.replace(f'"/workshop/{asset}"'.encode(),f'"{asset_prefix}{asset}"'.encode(),1)
+            if args.mode=='api-fixture':
+                local=local.replace(b'data-public-selectors="false"', b'data-public-selectors="true"', 1)
         serve_path='/workshop' if name=='index.html' else asset_prefix+name
         with urlopen(args.base_url+serve_path,context=ssl._create_unverified_context(),timeout=10) as response: served=response.read()
         if local!=served: raise ValueError(f'compiled Go asset differs from candidate: {name}')

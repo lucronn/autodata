@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import { requestInitialYears, startSavedSelectorReads } from './workshop/catalog.mjs';
 const source = name => readFileSync(new URL(`./workshop/${name}`, import.meta.url), 'utf8');
 const assetBase = `https://workshop.example/workshop/assets/${'a'.repeat(64)}/`;
 const bootstrapCode = source('bootstrap.mjs').replaceAll('import(', 'loadModule(')
@@ -14,6 +15,63 @@ test('HTML starts only the isolated bootstrap', () => {
 });
 test('the entry page preloads the catalog helper before starting bootstrap', () => {
   assert.match(source('index.html'), /rel="modulepreload" href="\/workshop\/catalog\.mjs"[\s\S]*src="\/workshop\/bootstrap\.mjs"/);
+});
+const headPickerCode = source('index.html').match(/<script>([\s\S]+?)<\/script>/)[1];
+
+function startHeadPicker(search, publicSelectors = true) {
+  const calls = [], hints = [];
+  const catalogLink = { href: assetBase + 'catalog.mjs', dataset: { publicSelectors: String(publicSelectors) } };
+  const context = {
+    URL, URLSearchParams, AbortSignal, AbortController, location: { search },
+    document: {
+      head: { append: link => hints.push(link.href) },
+      createElement: () => ({}),
+      documentElement: { dataset: {} },
+      getElementById: id => id === 'workshop-catalog-module' ? catalogLink : {},
+    },
+    fetch: async (path, options) => {
+      calls.push({ path, options });
+      return { ok: true, json: async () => ({ items: [{ path }] }) };
+    },
+  };
+  runInNewContext(headPickerCode, context);
+  return { calls, hints, context };
+}
+
+test('entry starts matching stored reads and the saved selector consumes them once', async () => {
+  const { calls, hints, context } = startHeadPicker('?year=2024&make=buick-truck&model=envision-awd');
+  const root = '/v1/catalog/years';
+  const savedPaths = [root, root + '/2024/makes?region=US&stored_only=1',
+    root + '/2024/makes/buick-truck/models?region=US&stored_only=1',
+    root + '/2024/makes/buick-truck/models/envision-awd/configurations?region=US&stored_only=1'];
+  assert.deepEqual(calls.map(({ path }) => path), savedPaths);
+  assert.deepEqual(hints, ['app', 'auth', 'commerce', 'article-read'].map(name => `${assetBase}${name}.mjs`));
+  for (const { options } of calls) assert.equal(options.cache, 'no-store');
+  let restored;
+  context.loadModule = async path => {
+    if (path === './catalog.mjs') {
+      return { requestInitialYears, startSavedSelectorReads, requestJSON: () => assert.fail('duplicate selector read') };
+    }
+    if (path === './auth.mjs') return { readSessionBootstrap() {} };
+    return { bootstrap(_years, _account, { initialSelectors }) { restored = initialSelectors; } };
+  };
+  await runInNewContext(`(async () => { ${bootstrapCode} })()`, context);
+  assert.equal(calls.length, savedPaths.length + 1); // The app also reads its demo mode.
+  assert.equal(calls.at(-1).path, '/workshop/demo-mode.json');
+  assert.deepEqual(await restored.reads.configuration, { items: [{ path: savedPaths[3] }] });
+  restored.abort();
+  assert.ok(calls.slice(0, -1).every(({ options }) => options.signal.aborted));
+});
+
+test('entry keeps independent, private and unconfirmed paths on their ordinary reads', () => {
+  for (const search of ['?view=library', '?order=returning', '?article=saved', '?configuration=selected',
+    '?year=2024&region=CA', '?sample=1', '?demo=1']) {
+    assert.deepEqual(startHeadPicker(search).calls, [], search);
+  }
+  assert.deepEqual(startHeadPicker('?year=2024', false).calls, []);
+  assert.deepEqual(startHeadPicker('').calls.map(({ path }) => path), ['/v1/catalog/years']);
+  assert.deepEqual(startHeadPicker('?year=2024&make=%3Efoo&model=envision-awd').calls.map(({ path }) => path),
+    ['/v1/catalog/years', '/v1/catalog/years/2024/makes?region=US&stored_only=1']);
 });
 test('sign-in is inert in initial HTML until async app readiness', () => {
   const button = source('index.html').match(/<button\b[^>]*\bid="signin"[^>]*>/)?.[0];
