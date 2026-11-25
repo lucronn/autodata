@@ -2083,7 +2083,7 @@ def _build_source_bound_prompt(
             "punctuation and spacing. Reword matching text before returning the complete response.",
         ]
     if include_technical_tokens:
-        _add_required_technical_tokens(payload)
+        return _encode_prompt_with_technical_tokens(payload)
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
@@ -2213,27 +2213,38 @@ def _build_auto_prompt_v65(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _add_required_technical_tokens(payload):
-    has_token_slots = False
+def _encode_prompt_with_technical_tokens(payload):
+    tokens_by_path = {}
     for slot in payload["slots"]:
         if slot["required_action"] != "rewrite" or "required_text" in slot:
             continue
         if tokens := full._technical_tokens(slot["text"]):
-            slot["required_technical_tokens"] = list(tokens)
-            has_token_slots = True
-    if has_token_slots:
-        payload["rules"].insert(0,
-            "In each rewrite, copy every entry in required_technical_tokens into that same replacement's "
-            "text verbatim, in listed order and with the same number of occurrences. Keep their meaning "
-            "and attachment to the original parts, conditions and operations. Rewrite surrounding prose. "
-            "Check the final text against the list before responding. Do not return required_technical_tokens."
+            tokens_by_path[slot["path"]] = tokens
+    if tokens_by_path:
+        rules = [
+            "Every replacement object has exactly the keys block_id, path, action, text and reason. "
+            "Copy required_action from the input slot into the output key action, not required_action. "
+            "Use the exact block_id and path from the slot.",
+            "For a rewrite, use distinct wording for the whole passage, including each authored sentence. "
+            "Keep the same operations, conditions and order. Never return an unchanged passage with action "
+            "rewrite. Use the exact required_text instead when the slot provides it.",
+            "For each path in technical_tokens_by_path, copy the listed spans literally into that "
+            "replacement's text, in order and with repetitions. Check every span in your final text, "
+            "including the words, spaces and punctuation in the span. Keep its original relationship to "
+            "the parts, conditions and operations. Rephrase the prose around the spans. "
+            "The lists are input only.",
+        ]
+        prompt = json.dumps(
+            {**payload, "rules": rules + payload["rules"], "technical_tokens_by_path": tokens_by_path},
+            sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str,
         )
+        if len(prompt.encode("utf-8")) <= 200 * 1024:
+            return prompt
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _build_auto_prompt_with_technical_tokens(document, *, context):
-    payload = _auto_prompt_payload_v65(document, context=context)
-    _add_required_technical_tokens(payload)
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    return _encode_prompt_with_technical_tokens(_auto_prompt_payload_v65(document, context=context))
 
 
 def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROFILE):

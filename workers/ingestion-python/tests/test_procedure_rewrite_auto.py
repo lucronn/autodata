@@ -31,10 +31,9 @@ def test_automatic_prompt_lists_each_required_technical_token_and_replays_previo
     )
     current = auto.build_auto_prompt(source, context={}, profile_version=profile)
     payload = json.loads(current)
-    assert payload["slots"][0]["required_technical_tokens"] == ["2 clips", "2 clips"]
-    assert "required_technical_tokens" not in payload["slots"][1]
-    assert "copy every entry" in payload["rules"][0]
-    assert "required_technical_tokens" not in json.loads(historical)["slots"][0]
+    assert payload["technical_tokens_by_path"] == {"/blocks/0/text": ["2 clips", "2 clips"]}
+    assert "output key action" in payload["rules"][0]
+    assert "technical_tokens_by_path" not in json.loads(historical)
     assert current != historical
     for raw in [current, historical]:
         assert auto._auto_prompt_version(
