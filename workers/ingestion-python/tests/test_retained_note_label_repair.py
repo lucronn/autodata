@@ -32,18 +32,21 @@ SOURCE_NOTE = {f"Note: Remove the {part}.": f"Take the {part} off." for part in 
 class ArchivedNotes:
     _model = "fixture-note-labels"
 
+    def __init__(self, additional):
+        self.wording = SOURCE_NOTE | additional
+
     def complete_json(self, prompt):
         payload = json.loads(prompt)
         candidate_count = len(payload["response_shape"]["rewrites"][0]["candidates"])
         rows = []
         for passage in payload["passages"]:
             source = passage["source"]
-            old_rephrasing = SOURCE_NOTE.get(source, source)
+            old_rephrasing = self.wording.get(source, source)
             rows.append({"slot": passage["slot"], "candidates": [source, old_rephrasing, *([source] * (candidate_count - 2))]})
         return {"rewrites": rows}
 
 
-def seed_archived_note_publication(runtime):
+def seed_archived_note_publication(runtime, *, additional=None):
     configuration = seed_configuration(runtime.repo, runtime.vehicle)
     with runtime.repo.connect() as conn:
         conn.execute("UPDATE vehicle_configurations SET trim='Touring' WHERE vehicle_configuration_id=%s", (configuration,))
@@ -55,9 +58,12 @@ def seed_archived_note_publication(runtime):
 
     notes = list(SOURCE_NOTE)
     items = "".join(f"<li>{text}</li>" for text in notes[:6])
+    additional = additional or {}
+    appended = "".join(f"<p>{text}</p>" for text in additional)
     raw = (
         f"<h2>Service procedure</h2><ol start='3'>{items}</ol>"
         f"<img src='/fixture/figure' alt='Fixture component'><p>{notes[6]}</p><p>Remove the upper cover.</p>"
+        f"{appended}"
     ).encode()
     connector = runtime.servers["banktwo"]
     connector.body(raw, assets=["diagram"], asset_bindings=[{"source_url": "/fixture/figure", "resource_ref": "diagram"}])
@@ -88,7 +94,7 @@ def seed_archived_note_publication(runtime):
         )
         assert run_job(runtime, prior.job_id, CopiedSource())
     corrected = schedule_correction(runtime, prior.job_id, source_id, 2)
-    assert run_job(runtime, corrected.job_id, ArchivedNotes())
+    assert run_job(runtime, corrected.job_id, ArchivedNotes(additional))
     assert runtime.read_current()["processing_error_code"] == "REWRITE_UNCHANGED"
     published = recover(runtime, corrected.job_id, source_id)
     assert run_job(runtime, corrected.job_id, None)
@@ -120,6 +126,81 @@ def archived_notes(runtime):
 
 def _state(runtime):
     return all_rows(runtime.repo)
+
+
+def test_retained_required_action_repair_publishes_same_source_and_rolls_back_atomically(runtime, monkeypatch):
+    from autodata_ingestion.retained_required_action_repair import (
+        CHECKPOINT as ACTION_CHECKPOINT, PROFILE as ACTION_PROFILE, _rebuild,
+        repair_retained_required_actions,
+    )
+
+    draft = "The bracket's clamp should be tightened."
+    with monkeypatch.context() as archived_release:
+        # Reproduce the published archive from before the current guard.
+        archived_release.setattr(auto, "require_required_procedure_actions", lambda *_a, **_k: None)
+        args, _, source, _, _ = seed_archived_note_publication(runtime, additional={
+            "Tighten the clamp on the existing bracket.": draft,
+        })
+        prior_id = repair_retained_note_labels(runtime.repo, runtime.article_id, **args)
+    runtime.reset_counters()
+
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (runtime.article_id,)).fetchone()
+        prior = cur.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s",
+                            (prior_id,)).fetchone()
+        prior_job = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",
+                                (article["current_job_id"],)).fetchone()
+        plan = _rebuild(cur, article, prior_job, source["source_revision_id"], article["descriptor_source_snapshot_id"],
+                        prior_id, prior["rewrite_result_hash"], lock=False)
+    [path] = plan.evidence["restored_paths"]
+    assert _get({"blocks": prior["canonical_document"]["blocks"][1:]}, path) == draft
+    assert _get({"blocks": plan.document["blocks"][1:]}, path) == "The bracket's clamp must be tightened."
+    pins = {
+        **args, "expected_job_id": prior_job["source_fetch_job_id"], "expected_published_revision_id": prior_id,
+        "expected_published_hash": prior["rewrite_result_hash"], "expected_repaired_hash": digest_json(plan.document),
+    }
+    before = _state(runtime)
+
+    def abort_at_publication(point):
+        assert point == "inside_publication"
+        raise RuntimeError("fixture interrupted required wording publication")
+
+    with pytest.raises(RuntimeError, match="fixture interrupted required wording publication"):
+        repair_retained_required_actions(runtime.repo, runtime.article_id, **pins, hooks=abort_at_publication)
+    assert _state(runtime) == before
+
+    revision = repair_retained_required_actions(runtime.repo, runtime.article_id, **pins)
+    current = runtime.read_current()
+    assert current["content_origin"] == "canonical"
+    assert current["source_revision_id"] == source["source_revision_id"]
+    assert current["canonical_revision_id"] == revision
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (runtime.article_id,)).fetchone()
+        row, _, _, _, reply, version, _ = _publication_evidence(
+            cur, article, SimpleNamespace(source_revision_id=source["source_revision_id"]), fixture_mode=False, lock=False,
+        )
+        assert cur.execute("SELECT * FROM canonical_article_source_revisions WHERE source_revision_id=%s",
+                           (source["source_revision_id"],)).fetchone() == source
+        assert cur.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s",
+                           (prior_id,)).fetchone() == prior
+    assert row["rewrite_profile_version"] == ACTION_PROFILE
+    assert row["canonical_document"] == plan.document
+    assert row["canonical_images"] == prior["canonical_images"]
+    assert row["model_metadata"][ACTION_CHECKPOINT]["evidence"] == plan.evidence
+    assert reply == plan.reply and version == plan.evidence["guard_version"]
+    reverted = deepcopy(row["canonical_document"])
+    _set({"blocks": reverted["blocks"][1:]}, path, draft)
+    assert reverted == prior["canonical_document"]
+    after = _state(runtime)
+    assert after["canonical_article_rewrite_attempts"] == before["canonical_article_rewrite_attempts"]
+    assert len(after["publication_events"]) == len(before["publication_events"]) + 1
+    assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}
+    with pytest.raises(ValueError, match="^RETAINED_REQUIRED_ACTION_REPAIR_STALE$"):
+        repair_retained_required_actions(runtime.repo, runtime.article_id, **pins)
+    with pytest.raises(ProfileRefreshRequired):
+        refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="Reject implicit operator profile.")
 
 
 def test_retained_notes_publish_exact_successor_and_replay_after_descriptor_update(runtime, archived_notes, tmp_path, capsys):

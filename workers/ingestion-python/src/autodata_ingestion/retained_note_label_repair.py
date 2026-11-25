@@ -212,8 +212,6 @@ def repair_retained_note_labels(
     expected_published_revision_id, expected_published_hash, expected_repaired_hash, actor, reason, hooks=None,
 ):
     """Publish a pinned prefix repair and its outbox event in one transaction."""
-    from .article_lifecycle_store import _publish_article_revision
-
     if (not _valid_audit(actor, reason) or not all(
         isinstance(value, str) and _HASH.fullmatch(value) for value in (expected_published_hash, expected_repaired_hash)
     )):
@@ -239,34 +237,45 @@ def repair_retained_note_labels(
         if plan.evidence["repaired_document_hash"] != expected_repaired_hash:
             raise ValueError(_STALE)
 
-        audit = {"actor": actor, "reason": reason, "evidence": plan.evidence}
-        generation = article["request_generation"] + 1
-        normalization = prior_job["normalization_version"]
-        job_id, revision_id, worker_id = uuid4(), uuid4(), uuid4()
-        job = cur.execute("""INSERT INTO source_fetch_jobs(
-            source_fetch_job_id,provider_slug,canonical_vehicle_id,source_vehicle_ref,source_article_ref,
-            source_version,connector_name,idempotency_key,status,phase,job_kind,canonical_article_id,
-            request_generation,normalization_version,rewrite_profile_version,source_revision_id,transformation_key,
-            max_attempts,lease_owner,lease_token,lease_expires_at,heartbeat_at,checkpoint)
-            VALUES (%s,'banktwo',%s,%s,%s,%s,'banktwo',%s,'processing','publishing','article',%s,%s,%s,%s,%s,%s,
-            1,%s,1,clock_timestamp()+interval '90 seconds',clock_timestamp(),%s) RETURNING *""",
-            (job_id, article["vehicle_id"], article["source_vehicle_ref"], article["source_article_ref"],
-             METHOD, f"article:{article_id}:{generation}", article_id, generation, normalization,
-             PROFILE, source_id, plan.key, worker_id, Jsonb({CHECKPOINT: audit}))).fetchone()
-        projection = project_ordered_document(plan.document)
-        cur.execute("""INSERT INTO canonical_article_revisions(
-            canonical_article_revision_id,canonical_article_id,source_revision_id,transformation_key,
-            normalization_version,rewrite_profile_version,status,normalized_source_document,normalized_source_hash,
-            canonical_document,canonical_body,canonical_steps,canonical_images,validation_report,validation_hash,
-            rewrite_result_hash,model_metadata)
-            VALUES (%s,%s,%s,%s,%s,%s,'validated',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (revision_id, article_id, source_id, plan.key, normalization, PROFILE,
-             Jsonb(plan.source), digest_json(plan.source), Jsonb(plan.document), projection["body"],
-             Jsonb(projection["steps"]), Jsonb(projection["images"]), Jsonb(plan.validation.report),
-             digest_json(plan.validation.report), expected_repaired_hash,
-             Jsonb({"transformation_method": METHOD, "model": plan.attempt["model"],
-                    "profile_version": PROFILE, CHECKPOINT: audit})))
-        cur.execute("""UPDATE canonical_articles SET current_job_id=%s,request_generation=%s,
-            target_rewrite_profile_version=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s""",
-            (job_id, generation, PROFILE, article_id))
-        return _publish_article_revision(cur, _lease_from_row(job, worker_id), revision_id, hooks=hooks)
+        return _publish_archived_reply_repair(
+            cur, article, plan, profile=PROFILE, method=METHOD, checkpoint=CHECKPOINT,
+            actor=actor, reason=reason, hooks=hooks,
+        )
+
+
+def _publish_archived_reply_repair(cur, article, plan, *, profile, method, checkpoint, actor, reason, hooks):
+    from .article_lifecycle_store import _publish_article_revision
+
+    article_id = article["canonical_article_id"]
+    source_id = article["current_source_revision_id"]
+    audit = {"actor": actor, "reason": reason, "evidence": plan.evidence}
+    generation = article["request_generation"] + 1
+    normalization = article["target_normalization_version"]
+    job_id, revision_id, worker_id = uuid4(), uuid4(), uuid4()
+    job = cur.execute("""INSERT INTO source_fetch_jobs(
+        source_fetch_job_id,provider_slug,canonical_vehicle_id,source_vehicle_ref,source_article_ref,
+        source_version,connector_name,idempotency_key,status,phase,job_kind,canonical_article_id,
+        request_generation,normalization_version,rewrite_profile_version,source_revision_id,transformation_key,
+        max_attempts,lease_owner,lease_token,lease_expires_at,heartbeat_at,checkpoint)
+        VALUES (%s,'banktwo',%s,%s,%s,%s,'banktwo',%s,'processing','publishing','article',%s,%s,%s,%s,%s,%s,
+        1,%s,1,clock_timestamp()+interval '90 seconds',clock_timestamp(),%s) RETURNING *""",
+        (job_id, article["vehicle_id"], article["source_vehicle_ref"], article["source_article_ref"],
+         method, f"article:{article_id}:{generation}", article_id, generation, normalization,
+         profile, source_id, plan.key, worker_id, Jsonb({checkpoint: audit}))).fetchone()
+    projection = project_ordered_document(plan.document)
+    cur.execute("""INSERT INTO canonical_article_revisions(
+        canonical_article_revision_id,canonical_article_id,source_revision_id,transformation_key,
+        normalization_version,rewrite_profile_version,status,normalized_source_document,normalized_source_hash,
+        canonical_document,canonical_body,canonical_steps,canonical_images,validation_report,validation_hash,
+        rewrite_result_hash,model_metadata)
+        VALUES (%s,%s,%s,%s,%s,%s,'validated',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (revision_id, article_id, source_id, plan.key, normalization, profile,
+         Jsonb(plan.source), digest_json(plan.source), Jsonb(plan.document), projection["body"],
+         Jsonb(projection["steps"]), Jsonb(projection["images"]), Jsonb(plan.validation.report),
+         digest_json(plan.validation.report), plan.evidence["repaired_document_hash"],
+         Jsonb({"transformation_method": method, "model": plan.attempt["model"],
+                "profile_version": profile, checkpoint: audit})))
+    cur.execute("""UPDATE canonical_articles SET current_job_id=%s,request_generation=%s,
+        target_rewrite_profile_version=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s""",
+        (job_id, generation, profile, article_id))
+    return _publish_article_revision(cur, _lease_from_row(job, worker_id), revision_id, hooks=hooks)

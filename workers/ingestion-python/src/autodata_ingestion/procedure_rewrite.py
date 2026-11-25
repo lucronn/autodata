@@ -423,6 +423,15 @@ def rewrite_ordered_document(document, *, client, context, profile_version=_PROF
         validation = validate_full(source, candidate, response=raw, **render_options)
         if not validation.passed:
             return result(source, raw=raw, error=validation.error_codes[0])
+        if profile_version in AUTOMATIC_REWRITE_PROFILES:
+            from .procedure_rewrite_auto import require_required_procedure_actions
+
+            try:
+                require_required_procedure_actions(
+                    source, candidate, rewritten_paths=validation.report["changed_prose_slots"],
+                )
+            except ValueError as error:
+                return result(source, raw=raw, error=str(error))
         return result(candidate, validation.report["changed_slots"], raw)
     if profile_version == "technical-prose-v2":
         from .procedure_rewrite_v2 import plan_v2, render_v2

@@ -2171,6 +2171,49 @@ def require_distinct_generated_introduction(source, candidate, *, rewritten_path
             raise ValueError("REWRITE_INTRODUCTION_COPIED")
 
 
+_REQUIRED_DIRECTIVE = re.compile(r"^\s*(?:then[ \t]+)?(?P<verb>install|remove|tighten)\s+\S", re.I)
+_OPTIONAL_DIRECTIVE = re.compile(r"\b(?:optionally|if desired|as desired|at your discretion)\b", re.I)
+_NEXT_DIRECTIVE = re.compile(r"[;,]?[ \t]+(?:and[ \t]+)?then[ \t]+"
+                             r"(?=(?:optionally[ \t]+)?(?:install|remove|tighten)\b)", re.I)
+_RECOMMENDED_VERB_PREFIX = re.compile(r"\bshould[ \t]+(?:(?:then|be|[a-z]+ly)[ \t]+){0,3}$", re.I)
+
+
+def advisory_required_action(original, wording):
+    """Find a recommendation bound to an unambiguous required source action."""
+    if not re.search(r"\bshould\b", wording, re.I):
+        return None
+    original = _AUTHORED_QUOTATION.sub(lambda quote: " " * len(quote[0]), original)
+    wording = _AUTHORED_QUOTATION.sub(lambda quote: " " * len(quote[0]), wording)
+    required = set()
+    for sentence in _SENTENCES.split(original):
+        lead = _AUTHORED_NOTE_PREFIX.sub("", sentence, count=1)
+        directive = _NEXT_DIRECTIVE.split(lead, maxsplit=1)[0]
+        if (action := _REQUIRED_DIRECTIVE.match(directive)) and not _OPTIONAL_DIRECTIVE.search(directive):
+            required.add(action["verb"].casefold())
+    if not required:
+        return None
+
+    # A repeated action can refer to another component. Do not pair an
+    # advisory clause with a command based only on the shared verb.
+    original_counts = Counter(action.lastgroup for action in _action_matches(original))
+    draft_actions = _action_matches(wording)
+    draft_counts = Counter(action.lastgroup for action in draft_actions)
+    for action in draft_actions:
+        verb = action.lastgroup
+        if verb in required and original_counts[verb] == draft_counts[verb] == 1:
+            if modal := _RECOMMENDED_VERB_PREFIX.search(wording[:action.start()]):
+                return modal
+    return None
+
+
+def require_required_procedure_actions(source, candidate, *, rewritten_paths):
+    """Keep required repair steps mandatory in a new automatic publication."""
+    rewritten = {"blocks": candidate["blocks"][1:]}
+    for path in rewritten_paths:
+        if advisory_required_action(full._get(source, path), full._get(rewritten, path)):
+            raise ValueError("REWRITE_REQUIRED_ACTION_WEAKENED")
+
+
 def _display_control_quotations(text):
     quotations = []
     for match in _AUTHORED_QUOTATION.finditer(text):

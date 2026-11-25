@@ -81,6 +81,77 @@ def test_new_introduction_rejects_copied_sentence_without_rejecting_archived_rep
         )
 
 
+@pytest.mark.parametrize("profile", [PROFILE, SOURCE_BOUND_REWRITE_PROFILE])
+@pytest.mark.parametrize(("original", "advisory", "required"), [
+    (
+        "Tighten the clamp on the existing bracket.",
+        "The bracket's clamp should be tightened.",
+        "The bracket's clamp must be tightened.",
+    ),
+    (
+        "Install the protective cap over the port.",
+        "You should install the port's protective cap.",
+        "You must install the port's protective cap.",
+    ),
+])
+def test_new_automatic_drafts_preserve_required_directives_and_replay_old_prompts(profile, original, advisory, required):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source = document(original)
+    version = "full-prose-auto-prompt-v55"
+    weakening = response(advisory, introduction="This article describes service information.")
+    archived = auto.render_auto(source, weakening, prompt_version=version, profile_version=profile)
+    validation = auto.validate_auto(source, archived, response=weakening, prompt_version=version, profile_version=profile)
+    assert validation.passed
+    with pytest.raises(ValueError, match="^REWRITE_REQUIRED_ACTION_WEAKENED$"):
+        auto.require_required_procedure_actions(source, archived, rewritten_paths=validation.report["changed_prose_slots"])
+
+    failed = rewrite.rewrite_ordered_document(source, client=Draft(weakening), context={}, profile_version=profile)
+    assert failed.error_code == "REWRITE_REQUIRED_ACTION_WEAKENED"
+    assert failed.document == source and failed.raw_response == weakening
+    accepted = rewrite.rewrite_ordered_document(
+        source, client=Draft(response(required, introduction="This article describes service information.")),
+        context={}, profile_version=profile,
+    )
+    assert accepted.error_code is None
+
+
+@pytest.mark.parametrize(("original", "wording"), [
+    ("You should install the protective cap.", "The protective cap should be installed."),
+    ("Install the protective cap if desired.", "The protective cap should be installed if desired."),
+    ("Install the protective cap. Inspect the seal.", "Fit the cap in place. You should inspect the seal."),
+    ("Tighten the clamp.", "The clamp must be tightened."),
+    ("Install the cap.", "The technician should check the cap."),
+    ('Remove the frame. The screen says “You should remove the central cover.”',
+     'The display reads “You should remove the central cover.” Take the frame off.'),
+    ("Install the protective cap. The shop note recommends installing the neighboring cap.",
+     "You should install the neighboring cap, as the workshop suggests. Fit the protective cap into place."),
+])
+def test_required_action_guard_is_bound_to_the_source_directive(original, wording):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    auto.require_required_procedure_actions(
+        document(original), document("This covers service information.", wording), rewritten_paths=("/blocks/0/text",),
+    )
+
+
+@pytest.mark.parametrize(("original", "wording"), [
+    ("Install the dust cap. Tighten the clamp.",
+     "Fit the protective cap in place. The clamp should be tightened."),
+    ("Install the protective cap.", "A separate note about setup. The protective cap should be installed."),
+    ("Install the dust cap, then optionally tighten the retainer.",
+     "The dust cap should be fitted first, followed by optional tightening of the retainer."),
+    ("Note: Install the cap over the port.", "Note: The port's cap should carefully be installed."),
+])
+def test_required_action_guard_tracks_the_complete_rewritten_passage(original, wording):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    with pytest.raises(ValueError, match="^REWRITE_REQUIRED_ACTION_WEAKENED$"):
+        auto.require_required_procedure_actions(
+            document(original), document("This covers service information.", wording), rewritten_paths=("/blocks/0/text",),
+        )
+
+
 @pytest.mark.parametrize(("source_text", "introduction", "rewritten_paths"), [
     (
         "The panel shows “The system is ready for a check.”",
