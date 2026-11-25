@@ -1125,7 +1125,7 @@ function scheduleArticleSearch({ fromIndex = false, immediate = false, restoreFo
     });
   };
   if (fromIndex || immediate) startSearch();
-  else searchTimer = setTimeout(startSearch, 300);
+  else searchTimer = setTimeout(startSearch, 150);
 }
 
 function renderArticleLinks(items) {
@@ -3002,12 +3002,15 @@ $("check-order").addEventListener("click", checkPaymentStatus);
 $("article-prev").addEventListener("click", () => moveArticlePage(-1));
 $("article-next").addEventListener("click", () => moveArticlePage(1));
 $("search").addEventListener("input", (event) => {
+  const query = trimArticleSearch($("search").value);
+  // Preserve the protected result when whitespace changes after dispatch.
+  if (query && query === searchQuery && searchTimer === null && (searchPending || searchItems !== null)) return;
   if (pendingIndexPage?.current()) {
     navigation.clear();
     showArticleIndexStatus();
   }
   updateURL({ replace: true });
-  const loadIndex = !trimArticleSearch($("search").value) && !indexLoaded && access === "owned";
+  const loadIndex = !query && !indexLoaded && access === "owned";
   if (loadIndex) indexComplete = false;
   const immediate = !event?.isComposing &&
     ["insertFromPaste", "insertFromDrop", "insertReplacementText"].includes(event?.inputType);
