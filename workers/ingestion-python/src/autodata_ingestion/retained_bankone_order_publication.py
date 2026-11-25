@@ -181,7 +181,8 @@ def resolve_bankone_order_publication(cur, job, article, candidate, *, lock=Fals
 def _already_published(cur, article, approval):
     candidate = cur.execute("""
         SELECT r.* FROM canonical_article_revisions r
-        JOIN catalog_article_current visible ON visible.canonical_revision_id=r.canonical_article_revision_id
+        JOIN catalog_article_current visible ON visible.canonical_article_id=r.canonical_article_id
+          AND visible.canonical_revision_id=r.canonical_article_revision_id
         WHERE r.canonical_article_revision_id=%s AND r.canonical_article_id=%s
           AND r.source_revision_id=%s AND r.status='published' AND visible.availability='available'
           AND visible.takedown_status='active'
