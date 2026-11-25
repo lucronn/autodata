@@ -7130,9 +7130,50 @@ test('heading and paragraph illustrations keep their order, alt text, and captio
     { type: 'step', text: 'Remove the bracket.' },
   ], [{ asset_id: 'valid', url: '/v1/catalog/images/v2.inline' }]));
   assert.deepEqual(content.children.slice(0, 5).map(node => node.tagName), ['h3', 'figure', 'p', 'figure', 'section']);
-  assert.equal(content.children[1].children[0].alt, 'Bracket location');
-  assert.equal(content.children[1].children[1].textContent, 'View from above');
-  assert.equal(content.children[3].children[0].alt, 'Alignment mark');
+  assert.equal(mediaDescendants(content.children[1], 'img')[0].alt, 'Bracket location');
+  assert.equal(mediaDescendants(content.children[1], 'figcaption')[0].textContent, 'View from above');
+  assert.equal(mediaDescendants(content.children[3], 'img')[0].alt, 'Alignment mark');
+});
+
+test('full-size inspection uses the loaded figure and yields its keyboard scroll area', () => {
+  const h = articleMediaHarness();
+  const content = h.content(mediaArticle([
+    { type: 'image', asset_id: 'ready', alt: 'Bolt locations', caption: 'Bracket fasteners' },
+    { type: 'image', status: 'unavailable', unavailable_reason: 'SOURCE_NOT_FOUND', caption: 'Missing view' },
+  ], [{ id: 'ready', url: mediaURL('ready') }]));
+  const [button] = mediaDescendants(content, 'button');
+  assert.equal(mediaDescendants(content, 'button').length, 1);
+  const [img] = mediaDescendants(content, 'img');
+  const viewport = img.parentNode;
+  const src = img.src;
+  assert.equal(button.hidden, true);
+  button.dispatch('click');
+  assert.equal(button.getAttribute('aria-pressed'), 'false');
+  img.naturalWidth = 1100;
+  img.dispatch('load');
+  assert.equal(button.hidden, false);
+  button.dispatch('click');
+  assert.equal(button.getAttribute('aria-pressed'), 'true');
+  assert.equal(viewport.getAttribute('tabindex'), '0');
+  assert.equal(viewport.getAttribute('aria-label'), 'Bolt locations');
+  assert.equal(img.src, src);
+  assert.equal(img.parentNode, viewport);
+  assert.equal(mediaDescendants(content, 'figcaption')[0].textContent, 'Bracket fasteners');
+  viewport.scrollLeft = 105;
+  button.dispatch('click');
+  assert.equal(button.getAttribute('aria-pressed'), 'false');
+  assert.equal(viewport.getAttribute('tabindex'), null);
+  assert.equal(viewport.scrollLeft, 0);
+  button.dispatch('click');
+  img.dispatch('error');
+  assert.equal(button.hidden, true);
+  assert.equal(button.getAttribute('aria-pressed'), 'false');
+  assert.equal(viewport.getAttribute('tabindex'), null);
+  img.dispatch('load');
+  h.navigation.clear();
+  button.dispatch('click');
+  assert.equal(button.getAttribute('aria-pressed'), 'false');
+  assert.equal(img.src, src);
 });
 
 test('figure aliases keep the first available match and independent placement text', () => {
@@ -7339,7 +7380,7 @@ test('same-revision supplier preview keeps its position when figure preparation 
   const mounted = [...content.children];
   const [body, pending, prepared, unavailable] = mounted;
   const [placeholder, caption] = pending.children;
-  const image = prepared.children[0];
+  const [image] = mediaDescendants(prepared, 'img');
   h.context.document.activeElement = h.nodes.get('print');
   const update = retryable => h.render({ ...preview, processing: { ...preview.processing, state: 'failed', retryable } });
 
@@ -7354,7 +7395,7 @@ test('same-revision supplier preview keeps its position when figure preparation 
   assert.equal(pending.children[1], caption);
   assert.equal(caption.textContent, 'Retaining bolt locations');
   assert.equal(body.textContent, 'Remove the retaining bolts.');
-  assert.equal(prepared.children[0], image);
+  assert.equal(mediaDescendants(prepared, 'img')[0], image);
   assert.equal(image.src, 'https://cars.example' + mediaURL('ready'));
   assert.equal(unavailable.children[0].textContent, 'Illustration unavailable.');
   assert.equal(h.context.document.activeElement, h.nodes.get('print'));
