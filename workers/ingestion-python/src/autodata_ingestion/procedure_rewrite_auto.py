@@ -3576,6 +3576,7 @@ def _include_cell_blocks(prompt_version):
 
 def _require_changes(
     source, candidate, *, prompt_version, include_cell_blocks=None, slot_errors=None, introduction_only=False,
+    bankone_structure=None,
 ):
     # The introduced first block is the only offset in source paths.
     restored = {"blocks": candidate["blocks"][1:]}
@@ -3601,6 +3602,13 @@ def _require_changes(
     ):
         prompt_version = _PROSE_PROMPT_VERSION
     slots = full.prose_slots(source, include_cell_blocks=include_cell_blocks)
+    structural_slots = {}
+    if bankone_structure is not None:
+        from .bankone_first_draft_recovery import check_bankone_passage
+        from .bankone_first_draft_structure import validate_bankone_structure
+
+        validate_bankone_structure(source, bankone_structure)
+        structural_slots = bankone_structure["slots"]
     if guard_assembly_labels and slot_errors is None:
         _check_assembly_components(slots, restored)
     guard_prose = _uses_prose_guards(prompt_version, len(slots))
@@ -3744,6 +3752,11 @@ def _require_changes(
     def check_slot(slot):
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
+        prose = (original, replacement)
+        if entry := structural_slots.get(slot["path"]):
+            prose = check_bankone_passage(original, replacement, entry)
+            if prose is None:
+                return
         if guard_note_labels:
             original_label = authored_note_prefix(original)
             replacement_label = authored_note_prefix(replacement)
@@ -3831,7 +3844,7 @@ def _require_changes(
                 and not technical_only):
             raise ValueError("REWRITE_UNCHANGED")
         if guard_prose and not technical_only and _near_copy(
-            original, replacement, check_sentences=guard_copied_sentences,
+            *prose, check_sentences=guard_copied_sentences,
         ):
             raise ValueError("REWRITE_PROSE_TOO_SIMILAR")
         bound_alternatives = False
@@ -3954,7 +3967,7 @@ def _require_changes(
             _check_target_swaps(slots, restored, directive=_directive_with_extended_inspection_focus)
 
 
-def require_current_publication_checks(source, candidate, *, saved_prompt_version):
+def require_current_publication_checks(source, candidate, *, saved_prompt_version, bankone_structure=None):
     """Apply current prose rules to the saved prompt's editable slots."""
     if saved_prompt_version == _NOTE_LABEL_PROMPT_VERSION:
         saved_prompt_version = _auto_prompt_payload_v60(source, context={})["prompt_version"]
@@ -3989,6 +4002,7 @@ def require_current_publication_checks(source, candidate, *, saved_prompt_versio
     _require_changes(
         source, candidate, prompt_version=current_version,
         include_cell_blocks=_include_cell_blocks(saved_prompt_version),
+        bankone_structure=bankone_structure,
     )
 
 
@@ -3998,7 +4012,7 @@ def check_automatic_introduction(source, wording):
                      prompt_version=None, introduction_only=True)
 
 
-def failed_rewrite_passages(source, response, *, prompt_version=None):
+def failed_rewrite_passages(source, response, *, prompt_version=None, bankone_structure=None):
     """Locate passage failures in a complete, source-aligned draft for correction.
 
     The introduction and comparisons between passages still require the
@@ -4024,7 +4038,10 @@ def failed_rewrite_passages(source, response, *, prompt_version=None):
             errors[path] = str(error)
         else:
             full._set(restored, path, row["text"])
-    _require_changes(source, {"blocks": [None, *restored["blocks"]]}, prompt_version=prompt_version, slot_errors=errors)
+    _require_changes(
+        source, {"blocks": [None, *restored["blocks"]]}, prompt_version=prompt_version, slot_errors=errors,
+        bankone_structure=bankone_structure,
+    )
     return [{"path": slot["path"], "code": errors[slot["path"]]} for slot in slots if slot["path"] in errors]
 
 
@@ -4057,17 +4074,18 @@ def _restore_authored_note_labels(source, response):
     return {**response, "replacements": restored}
 
 
-def render_auto(source, response, *, prompt_version=None, profile_version=PROFILE):
+def render_auto(source, response, *, prompt_version=None, profile_version=PROFILE, bankone_structure=None):
     if prompt_version == _NOTE_LABEL_PROMPT_VERSION:
         response = _restore_authored_note_labels(source, response)
     candidate = full.render_full(
         source, response, profile_version=profile_version, include_cell_blocks=_include_cell_blocks(prompt_version),
     )
-    _require_changes(source, candidate, prompt_version=prompt_version)
+    _require_changes(source, candidate, prompt_version=prompt_version, bankone_structure=bankone_structure)
     return candidate
 
 
-def validate_auto(source, candidate, *, response=None, prompt_version=None, profile_version=PROFILE):
+def validate_auto(source, candidate, *, response=None, prompt_version=None, profile_version=PROFILE,
+                  bankone_structure=None):
     if prompt_version == _NOTE_LABEL_PROMPT_VERSION:
         response = _restore_authored_note_labels(source, response)
     validation = full.validate_full(
@@ -4077,7 +4095,7 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None, prof
     errors = list(validation.error_codes)
     if validation.passed:
         try:
-            _require_changes(source, candidate, prompt_version=prompt_version)
+            _require_changes(source, candidate, prompt_version=prompt_version, bankone_structure=bankone_structure)
         except ValueError as error:
             errors.append(str(error))
     report = dict(validation.report)

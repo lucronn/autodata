@@ -31,7 +31,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "workers/ingestion-
 from autodata_ingestion.article_lifecycle_store import recover_source_bound_correction
 from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILES, MAX_CORRECTION_CALLS
 from autodata_ingestion.procedure_rewrite_auto import PROFILE
-from autodata_ingestion.procedure_rewrite_recovery import FIRST_DRAFT_RECOVERY_METHODS
+from autodata_ingestion.procedure_rewrite_recovery import (
+    ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_STRUCTURAL_RECOVERY_METHOD,
+)
 from autodata_ingestion.procedure_rewrite_sentence_correction import MAX_SENTENCE_CORRECTION_CALLS
 from autodata_ingestion.retained_note_label_repair import repair_retained_note_labels
 from autodata_ingestion.retained_procedure_repair import repair_retained_procedure
@@ -87,7 +89,7 @@ def refresh_selected(repo, targets, *, actor, reason, apply=False):
     return results
 
 
-def main(argv=None, *, repo=None):
+def main(argv=None, *, repo=None, object_store=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--selection", type=Path, required=True)
     parser.add_argument("--actor", required=True)
@@ -116,7 +118,7 @@ def main(argv=None, *, repo=None):
     parser.add_argument("--expected-repaired-hash", metavar="SHA256")
     parser.add_argument("--expected-descriptor-snapshot-id", type=UUID,
                         help="bind a Note label repair to the exact active descriptor")
-    parser.add_argument("--first-draft-recovery-method", choices=FIRST_DRAFT_RECOVERY_METHODS)
+    parser.add_argument("--first-draft-recovery-method", choices=ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS)
     parser.add_argument("--expected-first-draft-recovery-hash", metavar="SHA256",
                         help="bind the recovery to the checked v1 document")
     parser.add_argument("--model-call-budget", type=int, metavar=f"1-{MAX_CORRECTION_CALLS}")
@@ -186,6 +188,11 @@ def main(argv=None, *, repo=None):
             )
             results = [{**target, "job_id": str(retained_job), "revision_id": str(revision), "action": "published"}]
         elif args.recover_first_draft_from is not None:
+            if args.first_draft_recovery_method == BANKONE_STRUCTURAL_RECOVERY_METHOD:
+                from reproject_article_source import article_archive
+
+                _, objects = article_archive(repo=repo, object_store=object_store)
+                arguments["object_store"] = objects
             job = publish_source_bound_first_draft(
                 repo, article_id, recovery_method=args.first_draft_recovery_method,
                 expected_recovery_hash=args.expected_first_draft_recovery_hash, **arguments,

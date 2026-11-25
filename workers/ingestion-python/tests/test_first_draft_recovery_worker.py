@@ -14,6 +14,7 @@ from autodata_ingestion.article_lifecycle_types import (
 from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
 from autodata_ingestion.procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
 from autodata_ingestion.procedure_rewrite_recovery import (
+    BANKONE_STRUCTURAL_RECOVERY_METHOD,
     FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
@@ -24,7 +25,8 @@ from autodata_ingestion.procedure_rewrite_recovery import (
 )
 from autodata_ingestion.published_media_publication import _publication_evidence
 from autodata_ingestion.source_job_persistence import (
-    ensure_article_job, publish_source_bound_first_draft, source_bound_correction_prior_attempt,
+    ensure_article_job, publish_source_bound_first_draft, read_bankone_archive_structure,
+    source_bound_correction_prior_attempt,
 )
 from lifecycle_support import fresh_database, runtime, seed_configuration
 from test_source_bound_correction_worker import attempt_rows
@@ -150,7 +152,7 @@ def test_echoed_draft_reuses_one_delivery_and_preserves_retained_media(runtime):
     assert effective["replacements"][1] == raw["replacements"][1]
 
 
-def test_publish_archived_first_draft_is_atomic_and_reuses_the_figure(runtime, monkeypatch):
+def scope_fixture_article(runtime):
     configuration = seed_configuration(runtime.repo, runtime.vehicle)
     with runtime.repo.connect() as conn:
         conn.execute("UPDATE vehicle_configurations SET trim='Touring' WHERE vehicle_configuration_id=%s",
@@ -165,6 +167,9 @@ def test_publish_archived_first_draft_is_atomic_and_reuses_the_figure(runtime, m
             WHERE vehicle_configuration_id=%s AND provider_slug='bankone'
             """, (configuration,)).fetchone()["canonical_article_id"]
 
+
+def test_publish_archived_first_draft_is_atomic_and_reuses_the_figure(runtime, monkeypatch):
+    scope_fixture_article(runtime)
     prior_id = queue_article(runtime, figure=True)
     model = EchoedDraft()
     # Reproduce an older worker that stored the error and the model reply.
@@ -251,6 +256,70 @@ def test_publish_archived_first_draft_is_atomic_and_reuses_the_figure(runtime, m
     assert provenance["rewrite_attempt_id"] == archived["rewrite_attempt_id"]
     assert provenance["response_hash"] == archived["response_hash"]
     assert effective == reviewed.response and guard == attempt["guard_version"]
+
+
+def test_bankone_archive_requires_verified_body_and_retains_authored_alternatives(runtime):
+    scope_fixture_article(runtime)
+    authored = (
+        'Fixture test adapter (2) » Remove <mtr-doc-link id="fixture-a">ordinary adapter</mtr-doc-link> '
+        '(test scope), <mtr-doc-link id="fixture-b">adapter (top to middle)</mtr-doc-link>, '
+        '<mtr-doc-link id="fixture-c">adapter (left to right)</mtr-doc-link>, or '
+        '<mtr-doc-link id="fixture-d">adapter (front to rear)</mtr-doc-link>'
+    )
+    prior_id = queue_article(runtime, figure=True, instruction=authored)
+
+    class CloseCopy:
+        _model = "fixture-auto"
+
+        def complete_json(self, prompt):
+            slots = json.loads(prompt)["slots"]
+            return {"introduction": "This article covers the service information that follows.", "replacements": [
+                {"block_id": slot["block_id"], "path": slot["path"], "action": slot["required_action"],
+                 "text": f"First, {slot['text']}" if slot["required_action"] == "rewrite" else slot["text"],
+                 "reason": "Preserve the authored parameter." if slot["required_action"] == "retain" else ""}
+                for slot in slots
+            ]}
+
+    assert run_job(runtime, prior_id, CloseCopy(), registry=runtime.registry)
+    source = runtime.read_current()
+    assert source["content_origin"] == "source" and source["availability"] == "available"
+    assert source["processing_error_code"] == "REWRITE_PROSE_TOO_SIMILAR"
+    source_id = source["source_revision_id"]
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        prior = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (prior_id,)).fetchone()
+        attempt = source_bound_correction_prior_attempt(cur, prior, first_draft=True)
+    structure = read_bankone_archive_structure(
+        runtime.repo, runtime.article_id, prior_id, source_id, object_store=runtime.objects,
+    )
+    [slot] = structure["proof"]["slots"].values()
+    assert slot["kind"] == "alternatives" and len(slot["reference_hashes"]) == 4
+    checked = recovery.recover_structured_bankone_first_draft(
+        prior["checkpoint"]["normalized_document"], attempt, structure["proof"],
+    )
+    assert checked is not None and checked.error_code is None
+    arguments = dict(
+        expected_job_id=prior_id, expected_source_revision_id=source_id, recovery_method=BANKONE_STRUCTURAL_RECOVERY_METHOD,
+        expected_recovery_hash=checked.evidence["output_hash"], actor="fixture-editor", reason="Check the retained choices.",
+    )
+
+    class WrongBody:
+        def get_object(self, key, *, max_bytes):
+            return b"<p>Changed fixture body.</p>"
+
+    runtime.reset_counters()
+    with pytest.raises(ValueError, match="FIRST_DRAFT_ARCHIVE_STRUCTURE_MISMATCH"):
+        publish_source_bound_first_draft(runtime.repo, runtime.article_id, object_store=WrongBody(), **arguments)
+    assert runtime.read_current() == source
+    published = publish_source_bound_first_draft(runtime.repo, runtime.article_id, object_store=runtime.objects, **arguments)
+    joined = publish_source_bound_first_draft(runtime.repo, runtime.article_id, object_store=runtime.objects, **arguments)
+    assert published.created and not joined.created and published.published_revision_id == joined.published_revision_id
+    current = runtime.read_current()
+    assert current["canonical_revision_id"] == published.published_revision_id
+    assert current["source_revision_id"] == source_id and current["content_origin"] == "canonical"
+    assert "follow the applicable removal option" in current["body"]
+    assert current["images"] == [{**image, "source_order": image["source_order"]+1} for image in source["images"]]
+    assert not attempt_rows(runtime, published.job_id)
+    assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}
 
 
 @pytest.mark.parametrize(("variant", "error_code"), (

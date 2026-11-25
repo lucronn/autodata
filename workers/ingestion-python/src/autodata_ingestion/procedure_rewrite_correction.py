@@ -27,6 +27,7 @@ class CorrectionResult:
     error_code: str | None
     evidence: dict
     archived_attempt: dict | None = field(default=None, repr=False)
+    bankone_structure: dict | None = field(default=None, repr=False)
 
 
 def _introduction(source, previous):
