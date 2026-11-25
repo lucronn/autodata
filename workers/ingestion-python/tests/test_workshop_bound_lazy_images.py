@@ -266,3 +266,26 @@ def test_ineligible_lazy_image_hints_keep_the_legacy_projection(capture_fixture,
     previous = _capture(capture_fixture, context, enabled=False)
     captured = _capture(capture_fixture, context)
     _assert_unchanged(previous, captured)
+
+
+def test_localized_linked_svg_preserves_original_and_authored_table_order(capture_fixture):
+    svg = (b'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">'
+           b'<a href="/fixture/component"><rect width="40" height="20" fill="green"/></a></svg>')
+    url = "/api/v1/content/carids/12/svgs/component?locale=en_US&region=US"
+    html = '<table><tr><td>Alignment data</td></tr></table><img src="' + url.replace("&", "&amp;") + '">'
+    raw = json.dumps({"_embedded": {"data": {"article": {"content": html}}}}).encode()
+    capture_fixture.body("banktwo", raw, "application/hal+json", assets=["fixture-figure"],
+                         asset_bindings=[{"source_url": url, "resource_ref": "fixture-figure"}])
+    capture_fixture.body("banktwo", svg, "image/svg+xml", ref="fixture-figure", kind="asset")
+    captured = _capture(capture_fixture, capture_fixture.context("banktwo"))
+    assert captured.projection_status == "readable"
+    table, figure = captured.source_document["blocks"]
+    assert table["type"] == "table" and "Alignment data" in str(table)
+    assert figure["type"] == "image" and figure["status"] == "available"
+    original, derivative = [r for r in captured.resource_manifest if r["role"] != "body"]
+    assert original["role"] == "asset_original" and original["sha256"] == sha256(svg).hexdigest()
+    assert derivative["role"] == "asset" and derivative["derived_from_sha256"] == original["sha256"]
+    assert figure["content_sha256"] == derivative["sha256"]
+    png, media = capture_fixture.objects.data[figure["storage_key"]]
+    assert media == "image/png" and sha256(png).hexdigest() == derivative["sha256"]
+    assert url not in repr(captured.source_document)
