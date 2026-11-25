@@ -1045,7 +1045,7 @@ function searchHitsOnCurrentIndex(items) {
   return items.filter((item) => sameArticleDescriptor(item, descriptors.get(item.id)));
 }
 
-function scheduleArticleSearch({ fromIndex = false, restoreFocus } = {}) {
+function scheduleArticleSearch({ fromIndex = false, immediate = false, restoreFocus } = {}) {
   const query = trimArticleSearch($("search").value);
   const refresh = fromIndex && query === searchQuery;
   if (refresh && searchPending && !indexCatalogEmpty) {
@@ -1111,7 +1111,7 @@ function scheduleArticleSearch({ fromIndex = false, restoreFocus } = {}) {
       restoreFocus?.();
     });
   };
-  if (fromIndex) startSearch();
+  if (fromIndex || immediate) startSearch();
   else searchTimer = setTimeout(startSearch, 300);
 }
 
@@ -2914,7 +2914,7 @@ $("purchase-action").addEventListener("click", () => void purchase());
 $("check-order").addEventListener("click", checkPaymentStatus);
 $("article-prev").addEventListener("click", () => moveArticlePage(-1));
 $("article-next").addEventListener("click", () => moveArticlePage(1));
-$("search").addEventListener("input", () => {
+$("search").addEventListener("input", (event) => {
   if (pendingIndexPage?.current()) {
     navigation.clear();
     showArticleIndexStatus();
@@ -2922,8 +2922,15 @@ $("search").addEventListener("input", () => {
   updateURL({ replace: true });
   const loadIndex = !trimArticleSearch($("search").value) && !indexLoaded && access === "owned";
   if (loadIndex) indexComplete = false;
-  scheduleArticleSearch();
+  const immediate = !event?.isComposing &&
+    ["insertFromPaste", "insertFromDrop", "insertReplacementText"].includes(event?.inputType);
+  scheduleArticleSearch({ immediate });
   if (loadIndex) void operation((g) => loadArticles(g), () => restoreRoute());
+});
+$("search").addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || event.isComposing || searchTimer === null) return;
+  event.preventDefault();
+  scheduleArticleSearch({ immediate: true });
 });
 $("retry").addEventListener("click", () => retryAction?.());
 $("cancel").addEventListener("click", () => {
