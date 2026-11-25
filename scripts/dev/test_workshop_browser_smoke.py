@@ -1354,9 +1354,11 @@ class API21FakeContext:
         elif phase=='warm-pinned-source-http':
             assert kwargs.get('headers') == {'Accept':'application/json'}
             data={'source':{'url':smoke.urlsplit(url).path+'?'+smoke.urlsplit(url).query}}
+        elif self.other and path.endswith('/source'):
+            status, data = (403 if self.signed else 401), {'error': 'denied'}
         elif '/images/' in path:
-            if self.other and not self.signed:
-                status, data = 401, {'error': 'denied'}
+            if self.other:
+                status, data = (404 if self.signed else 401), {'error': 'denied'}
             else:
                 browser.reads += 1
                 data = b'image-original-bytes'
@@ -1695,6 +1697,14 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(value['results'][0]['observations']['primary_failure'],'source_binding_failed')
 
     async def test_actual_api_case_all_21_scripted_surfaces_retain_phase_matrix(self):
+        async def original_figure_continuity(page, context, origin, source, expected, assertions):
+            # The phase matrix uses scripted surfaces. The actual browser
+            # integration owns the paused request and decode assertions.
+            await page.locator('#open-original').click()
+            assertions['paid_source_and_actual_s3_image'] = True
+            await smoke.api_control(context, origin, 'control/release-model', 'release-model-control')
+            return await page.locator('#source-review-frame img').get_attribute('src'), None
+
         matrix=json.loads((smoke.ROOT/'docs/agents/specs/2026-11-04-workshop-api21-producer-observability.json').read_text())['phase_matrix']
         count=0
         for name in smoke.API_CASES:
@@ -1703,6 +1713,7 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
                     binding=self.binding();binding.update(root=name,engine=engine,bank=bank)
                     buffer=smoke.APIObservations(binding);browser=API21FakeBrowser(name,bank)
                     with self.subTest(name=name,engine=engine,bank=bank),TemporaryDirectory() as temp, \
+                            patch.object(smoke,'expect_original_figure_continuity',original_figure_continuity), \
                             patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}):
                         result=await smoke.api_case(browser,'https://127.0.0.1:32001',name,Path(temp),observations=buffer)
                         self.assertEqual(result['status'],'passed',buffer.snapshot())

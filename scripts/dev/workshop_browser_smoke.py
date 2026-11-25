@@ -1404,6 +1404,95 @@ async def expect_linked_pdf(article, *, rewritten=False):
     await expect(figures.last.locator('img')).to_have_js_property('naturalWidth', 128)
 
 
+async def expect_original_figure_continuity(page, context, origin, source_path, expected_bytes, assertions):
+    from playwright.async_api import expect
+
+    source = urlsplit(source_path)
+    pinned_query = parse_qs(source.query)
+    [revision] = pinned_query['source_revision_id']
+    assert not source.scheme and not source.netloc
+    assert re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}', revision)
+    image_route = re.compile('^' + re.escape(origin) + r'/v1/catalog/images/v2\.[a-zA-Z0-9_-]+$')
+    image_url = asyncio.get_running_loop().create_future()
+    arrived, forward = asyncio.Event(), asyncio.Event()
+    source_reads, figure_requests = [], []
+
+    def record_source(request):
+        target = urlsplit(request.url)
+        if request.url.startswith(origin + '/') and target.path == source.path and request.method == 'GET':
+            source_reads.append((parse_qs(target.query), time.monotonic()))
+
+    async def hold_figure(route):
+        # Resolve the target from the mounted Original, before forwarding any
+        # image it starts. Other images use the existing fixture transport.
+        target = await asyncio.shield(image_url)
+        if route.request.method == 'GET' and route.request.url == target:
+            figure_requests.append(route.request)
+            arrived.set()
+            await forward.wait()
+        await route.fallback()
+
+    await page.route(image_route, hold_figure)
+    page.on('request', record_source)
+    try:
+        await page.locator('#open-original').click()
+        frame = page.locator('#source-review-frame')
+        await expect(frame).to_be_visible()
+        await expect(frame).to_contain_text('Remove the pump.')
+        await expect(frame).to_contain_text('Remove the cover while the ignition is off.')
+        await expect(frame).to_contain_text('Install a new oil seal after the flange is dry.')
+        await expect(page.locator('#source-review-title')).to_be_focused()
+        figure = frame.locator('ol[start="4"] > li[value="9"] table td img[alt="Figure from page 1"]').first
+        await expect(figure).to_have_attribute('src', image_route)
+        url = await figure.get_attribute('src')
+        original = await figure.element_handle()
+        image_url.set_result(url)
+        await figure.evaluate("image => image.closest('figure').scrollIntoView({block: 'nearest'})")
+        await asyncio.wait_for(arrived.wait(), timeout=5)
+        await expect(figure).to_have_js_property('naturalWidth', 0)
+
+        assertions['paid_source_and_actual_s3_image'] = True
+        await api_control(context, origin, 'control/release-model', 'release-model-control')
+        await expect(page.locator('#article-kind')).to_have_text('Workshop article', timeout=15000)
+        published = time.monotonic()
+        await expect(page.locator('#reader')).to_have_attribute('data-reading-original', 'true')
+        await expect(page.locator('#article-content')).to_be_hidden()
+        await expect(frame).to_be_visible()
+        assert await figure.evaluate('(node, original) => node === original', original)
+        assert await figure.get_attribute('src') == url
+        assert await figure.evaluate('image => image.naturalWidth') == 0
+
+        async with page.expect_response(lambda response: response.url == url, timeout=5000) as pending:
+            forwarded = time.monotonic()
+            forward.set()
+        delivered = await pending.value
+        assert delivered.status == 200 and delivered.request is figure_requests[0]
+        await asyncio.wait_for(figure.evaluate('image => image.decode()'), timeout=5)
+        decoded = time.monotonic()
+        body = await delivered.body()
+        assert body == expected_bytes
+        await expect_linked_pdf(frame)
+        assert await figure.evaluate('(node, original) => node === original', original)
+        assert await figure.get_attribute('src') == url
+        assert len(source_reads) == len(figure_requests) == 1
+        assert source_reads[0][0] == pinned_query
+        return url, {
+            'source_request_to_decode_ms': round((decoded - source_reads[0][1]) * 1000),
+            'publication_to_decode_ms': round((decoded - published) * 1000),
+            'forward_to_decode_ms': round((decoded - forwarded) * 1000),
+            'pinned_source_reads': len(source_reads),
+            'original_figure_requests': len(figure_requests),
+            'figure_sha256': hashlib.sha256(body).hexdigest(),
+            'figure_bytes': len(body),
+        }
+    finally:
+        if not image_url.done():
+            image_url.set_result(None)
+        forward.set()
+        page.remove_listener('request', record_source)
+        await page.unroute(image_route, hold_figure)
+
+
 async def expect_html_table_figure(article):
     from playwright.async_api import expect
 
@@ -1508,7 +1597,7 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
     from playwright.async_api import expect
     context=page=None;failure=None;result=None
     transport=APIFixture(origin,name,observations=observations)
-    assertions=APIAssertions(observations);restart_receipt={};warm_receipt={}
+    assertions=APIAssertions(observations);restart_receipt={};warm_receipt={};original_figure_receipt=None
     try:
         if observations:observations.note_lifecycle('setup','context-create','requested')
         context=await browser.new_context(ignore_https_errors=True,viewport={'width':1280,'height':900})
@@ -1685,23 +1774,25 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
             image_url=await article_content.locator(image_locator).first.get_attribute('src')
             assert urlsplit(image_url).path.startswith('/v1/catalog/images/v2.')
             image=await api21_get(context,image_url,phase='source-image-http');assert image.status==200 and len(await image.body())>0
+            source_path=await page.locator('#source-review-link').get_attribute('href')
+            assert parse_qs(urlsplit(source_path).query).get('source_revision_id')
             if observations:observations.phase='source-review-http'
             if linked_pdf:
-                source_link = page.locator(nested_item + ' table td figure + .source-reference').last
-                await source_link.press('Enter')
+                original_image_url, original_figure_receipt = await expect_original_figure_continuity(
+                    page, context, origin, source_path, await image.body(), assertions,
+                )
+                source_frame = page.locator('#source-review-frame')
+                await expect_html_table_figure(source_frame)
+                await expect_html_list_figure(source_frame)
+                await page.locator('#back-to-article').click()
+                await expect(article_content).to_be_visible()
+                await expect(page.locator('#article-title')).to_be_focused()
             else:
                 await expect(page.locator('#article-reference')).to_have_js_property('open', False)
                 await page.locator('#open-original').click()
-            await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
-            await expect(page.locator('#source-review-frame')).to_contain_text('Remove the cover while the ignition is off.')
-            await expect(page.locator('#source-review-frame')).to_contain_text('Install a new oil seal after the flange is dry.')
-            if linked_pdf:
-                source_frame = page.locator('#source-review-frame')
-                await expect_linked_pdf(source_frame)
-                await expect_html_table_figure(source_frame)
-                await expect_html_list_figure(source_frame)
-                await expect(source_frame.locator('table td figure').last).to_be_focused()
-            else:
+                await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
+                await expect(page.locator('#source-review-frame')).to_contain_text('Remove the cover while the ignition is off.')
+                await expect(page.locator('#source-review-frame')).to_contain_text('Install a new oil seal after the flange is dry.')
                 stored_figure = page.locator(
                     '#source-review-frame ol[start="4"] > li[value="9"] table td figure img[alt="Drive alignment"]'
                 )
@@ -1711,10 +1802,8 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
                 await page.locator('#back-to-article').click()
                 await expect(article_content).to_be_visible()
                 await expect(page.locator('#article-title')).to_be_focused()
-            source_path=await page.locator('#source-review-link').get_attribute('href')
-            assert parse_qs(urlsplit(source_path).query).get('source_revision_id')
-            assertions['paid_source_and_actual_s3_image']=True
-            await api_control(context,origin,'control/release-model','release-model-control')
+                assertions['paid_source_and_actual_s3_image']=True
+                await api_control(context,origin,'control/release-model','release-model-control')
             await expect(page.locator('#article-kind')).to_have_text('Workshop article',timeout=15000)
             await expect(article_content).to_contain_text('This procedure covers pump removal.')
             await expect(page.locator('#article-note')).to_contain_text('has not been reviewed')
@@ -1745,9 +1834,9 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
             await expect(page.locator('#article-content .source-reference').first).to_be_visible()
             await expect(page.locator('#source-review-frame')).to_be_visible()
             await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
-            if linked_pdf:
-                await expect(source_frame.locator('table td figure').last).to_be_focused()
-                await expect_linked_pdf(source_frame)
+            if linked_pdf and observations:
+                # The later keyboard check deliberately opens Original again.
+                observations.phase = 'warm-before-snapshot'
             warm_before=await api_snapshot(context,origin,'warm-before-snapshot')
             reader_before=(await api_measure(context,origin,'reader-before-measurement'))['image_reads']
             index_before_reader = []
@@ -1794,9 +1883,28 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
                 guest = await browser.new_context(ignore_https_errors=True)
                 try:
                     assert (await guest.request.get(warm_image)).status == 401
+                    assert (await guest.request.get(original_image_url)).status == 401
+                    assert (await guest.request.get(origin + source_path)).status == 401
                 finally:
                     await guest.close()
+                other = await browser.new_context(ignore_https_errors=True)
+                other_transport = APIFixture(origin, name)
+                other_transport.account = 'other'
+                await other.route('**/*', other_transport.route)
+                try:
+                    other_page = await other.new_page()
+                    await other_page.goto(route)
+                    await api_signin(other_page)
+                    assert (await other.request.get(original_image_url)).status == 404
+                    assert (await other.request.get(origin + source_path)).status in (403, 404)
+                    assert not other_transport.unexpected and not other_transport.errors
+                finally:
+                    await other.close()
                 assertions['linked_pdf_figure_reused_and_private'] = True
+                source_link = page.locator(nested_item + ' table td figure + .source-reference').last
+                await source_link.press('Enter')
+                await expect(source_frame.locator('table td figure').last).to_be_focused()
+                await expect_linked_pdf(source_frame)
                 await page.locator('#back').click()
                 await expect(page.locator('#catalog')).to_be_visible()
                 await expect(page.locator(f'#articles a[href*="article={article_id}"]')).to_be_visible()
@@ -1873,6 +1981,8 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
         observations.complete_case(name)
         result['observations']=observations.snapshot()
         if observations.primary:result['status']='failed'
+    if result['status']=='passed' and original_figure_receipt is not None:
+        print('WORKSHOP_ORIGINAL_FIGURE_CONTINUITY '+json.dumps(original_figure_receipt, sort_keys=True), flush=True)
     return result
 
 
