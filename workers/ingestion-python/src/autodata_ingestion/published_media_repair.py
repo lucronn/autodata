@@ -25,7 +25,7 @@ from .procedure_rewrite_v2 import _selection, plan_v2, render_v2
 
 TECHNICAL_V1 = "technical-prose-v1"
 _SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 61))
-_CONDITIONAL_NOTE_PROMPTS = _SUPPORTED_PROMPTS | {_NOTE_LABEL_PROMPT_VERSION, _PROCEDURE_FIDELITY_PROMPT_VERSION}
+_BOUND_AUTOMATIC_PROMPTS = _SUPPORTED_PROMPTS | {_NOTE_LABEL_PROMPT_VERSION, _PROCEDURE_FIDELITY_PROMPT_VERSION}
 _POSITION_KEYS = frozenset({"block_id", "source_order"})
 _IMAGE_KEYS = _POSITION_KEYS | {"type"}
 MEDIA_METHOD = "published-media-placement-v1"
@@ -124,18 +124,32 @@ def _validate_technical(source, candidate, *, response, profile, render):
     return validate_article_rewrite(source, candidate, profile_version=profile)
 
 
-def _remap_replacements(old_source, repaired_source, response, slots):
+def _remap_replacements(old_source, repaired_source, response, slots, *, bankone_structure):
     old_slots = slots(old_source)
     new_slots = slots(repaired_source)
     if [slot["text"] for slot in old_slots] != [slot["text"] for slot in new_slots]:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_SLOT_DRIFT")
-    return {
+    remapped_response = {
         **response,
         "replacements": [
             {**replacement, "block_id": slot["block_id"], "path": slot["path"]}
             for replacement, slot in zip(response["replacements"], new_slots, strict=True)
         ],
     }
+    remapped_structure = None
+    if bankone_structure is not None:
+        original_slots = bankone_structure["slots"]
+        remapped_slots = {
+            new["path"]: {**original_slots[old["path"]], "block_id": new["block_id"]}
+            for old, new in zip(old_slots, new_slots, strict=True)
+            if old["path"] in original_slots
+        }
+        if len(remapped_slots) != len(original_slots):
+            raise ValueError("PUBLISHED_MEDIA_REPAIR_SLOT_DRIFT")
+        remapped_structure = {
+            **bankone_structure, "source_hash": digest_json(repaired_source), "slots": remapped_slots,
+        }
+    return remapped_response, remapped_structure
 
 
 def _remap_v2_operations(old_source, repaired_source):
@@ -187,7 +201,7 @@ def _svg_recovery_changes(before, after):
 
 def repair_published_media(
     old_source, published, repaired_source, *, response, prompt_version=None, profile=PROFILE,
-    ordinals=False, table_spans=False, svg_recovery=False,
+    ordinals=False, table_spans=False, svg_recovery=False, bankone_structure=None,
 ) -> PublishedMediaRepair:
     """Restore figure placement, list numbering or table spans using the saved rewrite.
 
@@ -196,13 +210,21 @@ def repair_published_media(
     the original automatic prompt version from its stored prompt hash. For a
     reviewed publication, supply its approved effective response. Reviewed
     and technical publications do not use an automatic prompt version.
+    Structured Bankone recoveries also need their original validated proof.
     """
     if sum((ordinals, table_spans, svg_recovery)) > 1:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_MODE_INVALID")
+    if bankone_structure is not None and (
+        profile not in AUTOMATIC_REWRITE_PROFILES
+        or not isinstance(bankone_structure, dict) or not bankone_structure.get("slots")
+    ):
+        raise ValueError("PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH")
     conditional_note = profile == RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE
     uses_automatic_reply = profile in AUTOMATIC_REWRITE_PROFILES or conditional_note
     if uses_automatic_reply:
-        supported_prompts = _CONDITIONAL_NOTE_PROMPTS if conditional_note else _SUPPORTED_PROMPTS
+        supported_prompts = (
+            _BOUND_AUTOMATIC_PROMPTS if conditional_note or bankone_structure is not None else _SUPPORTED_PROMPTS
+        )
         if not isinstance(prompt_version, str) or prompt_version not in supported_prompts:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED")
         replay_options = {
@@ -229,8 +251,9 @@ def repair_published_media(
         raise ValueError("PUBLISHED_MEDIA_REPAIR_DOCUMENT_INVALID")
     if not isinstance(response, dict):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH")
+    old_options = {"bankone_structure": bankone_structure} if bankone_structure is not None else {}
     try:
-        previous_validation = validate(old_source, published, response=response)
+        previous_validation = validate(old_source, published, response=response, **old_options)
     except ValueError:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH") from None
     if not previous_validation.passed:
@@ -263,13 +286,17 @@ def repair_published_media(
         if old_positions == repaired_positions:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_UNCHANGED")
 
+    remapped_structure = None
     if profile == TECHNICAL_V2:
         new_response = _remap_v2_operations(old_source, repaired_source)
     else:
-        new_response = _remap_replacements(old_source, repaired_source, response, slots)
+        new_response, remapped_structure = _remap_replacements(
+            old_source, repaired_source, response, slots, bankone_structure=bankone_structure,
+        )
+    new_options = {"bankone_structure": remapped_structure} if remapped_structure is not None else {}
     try:
-        document = render(repaired_source, new_response)
-        validation = validate(repaired_source, document, response=new_response)
+        document = render(repaired_source, new_response, **new_options)
+        validation = validate(repaired_source, document, response=new_response, **new_options)
     except ValueError:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_REWRITE_INVALID") from None
     if not validation.passed:
@@ -313,5 +340,9 @@ def repair_published_media(
             "repaired_published_document_hash": digest_json(document),
             "remapped_response_hash": digest_json(new_response),
             "preserved_nonmedia_hash": digest_json(published_prose),
+            **({
+                "original_bankone_structure_hash": digest_json(bankone_structure),
+                "remapped_bankone_structure_hash": digest_json(remapped_structure),
+            } if remapped_structure is not None else {}),
         },
     )
