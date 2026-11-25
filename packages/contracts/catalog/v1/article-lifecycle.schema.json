@@ -393,6 +393,9 @@
             "retryable": {
               "type": "boolean"
             },
+            "check_for_correction": {
+              "type": "boolean"
+            },
             "retry_after_seconds": {
               "type": [
                 "integer",

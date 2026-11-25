@@ -24,6 +24,7 @@ type CatalogProcessing struct {
 	RetryAfterSeconds   *int    `json:"retry_after_seconds"`
 	ErrorCode           *string `json:"error_code"`
 	UpdatedAt           string  `json:"updated_at"`
+	CheckForCorrection  bool    `json:"check_for_correction,omitempty"`
 	shortReadPreference string
 }
 type CatalogArticleView struct {
@@ -221,6 +222,7 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 		return CatalogArticleView{}, ErrCatalogNotFound
 	}
 	var raw, preview, linkedPreview []byte
+	var correctionCheck bool
 	var originalRevision *string
 	var originalSnapshot, originalHash, originalVersion string
 	scope, paid := ctx.Value(paidCatalogContextKey{}).(paidCatalogContext)
@@ -228,7 +230,19 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 	// effective article view. Direct IDs take precedence within the same scope.
 	err := s.pool.QueryRow(ctx, `SELECT to_jsonb(view_row), early.document, early.linked_document,
 		original.source_revision_id::text,COALESCE(original.body_source_snapshot_id::text,''),
-		COALESCE(original.content_sha256::text,''),COALESCE(original.body_provider_revision,'')
+		COALESCE(original.content_sha256::text,''),COALESCE(original.body_provider_revision,''),
+		CASE WHEN $3 AND view_row.content_origin='source' AND view_row.availability='available'
+			AND view_row.processing_state='failed' AND a.current_canonical_revision_id IS NULL
+			AND view_row.takedown_status='active' THEN EXISTS (
+				SELECT 1 FROM source_fetch_jobs job
+				WHERE job.source_fetch_job_id=a.current_job_id AND job.source_fetch_job_id=view_row.job_id
+					AND job.canonical_article_id=a.canonical_article_id AND job.source_revision_id=view_row.source_revision_id
+					AND job.request_generation=a.request_generation AND job.request_generation=0
+					AND job.rewrite_profile_version='full-prose-auto-v1' AND job.status='dead_letter'
+					AND job.phase='validating' AND NOT job.retryable
+					AND job.error_code IN ('REWRITE_UNCHANGED','REWRITE_PROSE_TOO_SIMILAR','REWRITE_TECHNICAL_MUTATION')
+					AND job.checkpoint ? 'new_article_rollout' AND job.checkpoint ? 'rollout_model_observation_id'
+			) ELSE false END
 		FROM canonical_articles a
 		JOIN LATERAL (
 			SELECT * FROM catalog_article_current WHERE canonical_article_id=a.canonical_article_id LIMIT 1
@@ -245,7 +259,7 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 			AND legacy.vehicle_configuration_id IS NOT DISTINCT FROM owner.vehicle_configuration_id
 		)) AND `+lifecycleScopeSQL+` AND `+lifecycleEligibleSQL+`
 		ORDER BY (a.canonical_article_id=$2::uuid) DESC LIMIT 1`, v, id, paid && !scope.openDemo).Scan(
-		&raw, &preview, &linkedPreview, &originalRevision, &originalSnapshot, &originalHash, &originalVersion,
+		&raw, &preview, &linkedPreview, &originalRevision, &originalSnapshot, &originalHash, &originalVersion, &correctionCheck,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		legacy, e := s.legacyArticle(ctx, p, v, id)
@@ -306,7 +320,9 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 	}
 	article := CatalogArticle{ID: row.CanonicalArticleID, VehicleID: v, CanonicalArticleID: &row.CanonicalArticleID, Title: row.Title, Kind: row.Kind, Component: row.Component, SourceRevisionID: row.SourceRevisionID, CanonicalRevisionID: row.CanonicalRevisionID, ContentOrigin: row.ContentOrigin, Availability: row.Availability, Images: row.Images, Body: row.Body, Steps: row.Steps, ReviewStatus: row.Review, ContentStatus: "list_only"}
 	if row.JobID != nil && row.State != nil {
-		article.Processing = &CatalogProcessing{JobID: *row.JobID, State: *row.State, Retryable: row.Retryable, RetryAfterSeconds: row.Retry, ErrorCode: publicProcessingError(row.Error), UpdatedAt: row.Updated}
+		article.Processing = &CatalogProcessing{JobID: *row.JobID, State: *row.State, Retryable: row.Retryable,
+			RetryAfterSeconds: row.Retry, ErrorCode: publicProcessingError(row.Error), UpdatedAt: row.Updated,
+			CheckForCorrection: correctionCheck}
 	}
 	article.Complete = row.CanonicalRevisionID != nil && row.ContentOrigin != nil && *row.ContentOrigin == "canonical" && document != nil && len(document.Blocks) > 0
 	if article.Complete {

@@ -1688,6 +1688,88 @@ test('reader keeps nonretryable failures and completed outcomes terminal', async
     assert.equal(result.timedOut, false);
   }
 });
+test('reader shows stored source during the handoff to an automatic correction', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const source = {
+    content_origin: 'source', source_revision_id: 'source-revision', body: 'Stored source',
+    processing: { job_id: 'first-draft', state: 'failed', retryable: false, check_for_correction: true },
+  };
+  const correcting = { ...source, processing: { job_id: 'correction', state: 'rewriting' } };
+  const canonical = {
+    ...source, content_origin: 'canonical', body: 'Corrected article',
+    processing: { job_id: 'correction', state: 'completed' },
+  };
+  const responses = [source, source, correcting, canonical];
+  let now = 0, reads = 0;
+  const waits = [], updates = [];
+  const result = await readArticle(async ({ timeout }) => {
+    assert.equal(timeout, [10000, 3500, 1500, 10000][reads]);
+    return { status: 200, data: { article: responses[reads++] } };
+  }, {
+    now: () => now,
+    wait: async ms => { waits.push(ms); now += ms; },
+    onUpdate: response => updates.push(response.data.article.body),
+  });
+  assert.deepEqual(waits, [1000, 2000, 1000]);
+  assert.deepEqual(updates, ['Stored source', 'Stored source', 'Stored source', 'Corrected article']);
+  assert.equal(result.data.article, canonical);
+  assert.equal(result.timedOut, false);
+});
+test('reader bounds the correction handoff and honors throttling', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const source = {
+    content_origin: 'source', source_revision_id: 'source-revision', body: 'Stored source',
+    processing: { job_id: 'first-draft', state: 'failed', retryable: false, check_for_correction: true },
+  };
+  const unavailable = Object.assign(new Error('Unavailable'), { status: 503, retryable: true });
+  for (const [article, retryAfterSeconds, expectedWaits, transientFailure] of [
+    [source, 0, [1000, 2000], false],
+    [source, 0, [1000, 2000], true],
+    [source, 5, [], false],
+    [{ ...source, source_revision_id: null }, 0, [], false],
+    [{ ...source, body: '' }, 0, [], false],
+    [{ ...source, processing: { ...source.processing, job_id: '' } }, 0, [], false],
+  ]) {
+    let now = 0, reads = 0;
+    const waits = [];
+    const result = await readArticle(async () => {
+      reads++;
+      if (transientFailure && reads === 2) throw unavailable;
+      return { status: 200, data: { article }, retryAfterSeconds };
+    }, {
+      now: () => now,
+      wait: async ms => { waits.push(ms); now += ms; },
+    });
+    assert.deepEqual(waits, expectedWaits);
+    assert.equal(reads, 1 + expectedWaits.length);
+    assert.equal(result.data.article, article);
+    assert.equal(result.timedOut, false);
+  }
+});
+test('reader stops correction checks when access is denied or navigation changes', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const navigation = new NavigationGeneration();
+  const generation = navigation.next();
+  const denial = Object.assign(new Error('Access denied'), { status: 403 });
+  const source = {
+    content_origin: 'source', source_revision_id: 'source-revision', body: 'Stored source',
+    processing: { job_id: 'first-draft', state: 'failed', retryable: false, check_for_correction: true },
+  };
+  for (const cancel of [false, true]) {
+    let now = 0, reads = 0;
+    await assert.rejects(readArticle(async () => {
+      if (reads++) throw denial;
+      return { status: 200, data: { article: source } };
+    }, {
+      signal: generation.signal, now: () => now,
+      wait: async ms => {
+        now += ms;
+        if (cancel) navigation.next();
+      },
+    }), error => cancel ? error.name === 'AbortError' : error === denial);
+    assert.equal(reads, cancel ? 1 : 2);
+  }
+});
 test('reader retains retryable failed source when the absolute budget expires', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   const source = {

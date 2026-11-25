@@ -9,6 +9,8 @@ const publicationProbeIntervalMs = 500;
 const maxArticleRequestMs = 10000;
 const publicationStatusProbeDelayMs = 2000;
 const latePublicationProbeMinimumBackoffMs = 8000;
+const correctionCheckWaits = [1000, 2000];
+const correctionCheckBudgetMs = 4500;
 const publicationStates = ["normalizing", "rewriting", "validating", "publishing"];
 
 export class NavigationGeneration {
@@ -112,6 +114,8 @@ export async function readArticle(
   let checkedPreviewSource = false;
   let sawFastSource = false;
   let attempt = 0;
+  let correctionChecks = 0;
+  let correctionCheckDeadline = 0;
   while (now() < deadline) {
     signal?.throwIfAborted();
     let retryAfter = 0, fastPendingJob, fastSource = false, sourcePreview = false, readable = false;
@@ -144,7 +148,7 @@ export async function readArticle(
     const regularSourceDeadline = keepRegularSourceRead && regularSourceReadJob !== undefined
       ? 0 : regularSourceReadAt;
     const readDeadline = Math.min(
-      deadline, firstReadAt || deadline, nextSourceProbeAt || deadline,
+      deadline, correctionCheckDeadline || deadline, firstReadAt || deadline, nextSourceProbeAt || deadline,
       regularSourceDeadline || deadline, sourceConfirmationAt || deadline, publicationReadAt || deadline,
       statusProbe ? Math.min(statusProbe.regularReadAt, startedAt + publicationStatusProbeDelayMs) : deadline,
       initialSourceFallback || deadline, advancedProbeLimit || deadline, sourceMidpoint || deadline,
@@ -163,7 +167,9 @@ export async function readArticle(
       const response = await read({
         signal,
         timeout: Math.max(1, Math.floor(Math.min(maxArticleRequestMs, readDeadline - startedAt))),
-        readableBodyTimeout: bodyDeadline ? Math.floor(Math.min(deadline, bodyDeadline) - startedAt) : undefined,
+        readableBodyTimeout: bodyDeadline
+          ? Math.floor(Math.min(deadline, correctionCheckDeadline || deadline, bodyDeadline) - startedAt)
+          : undefined,
         finishPublishedBody,
         preferShortSourceCheck: Boolean(firstReadAt || regularSourceDeadline || firstScheduledSourceRead),
         preferShortPublicationCheck: !sawFastSource || Boolean(publicationReadAt),
@@ -188,8 +194,23 @@ export async function readArticle(
         retryAfter = articleRetryAfter(latest);
         if (response !== latest) retryAfter = Math.max(retryAfter, articleRetryAfter(response));
         const article = latest.data.article;
-        if (!processingArticle(article))
-          return { ...latest, timedOut: false };
+        if (!processingArticle(article)) {
+          if (latest.status !== 200 || article.processing?.state !== "failed" ||
+              article.processing.check_for_correction !== true || !article.processing.job_id ||
+              article.content_origin !== "source" || !article.source_revision_id || !readableArticle(article))
+            return { ...latest, timedOut: false };
+          // The saved draft has finished, but the same source may shortly
+          // have a new correction job. Give the handoff a small GET budget.
+          if (!correctionCheckDeadline) {
+            correctionCheckDeadline = Math.min(deadline, now() + correctionCheckBudgetMs);
+            publicationReadAt = 0;
+            sourceConfirmationAt = 0;
+            attempt = 0;
+            sawFastSource = false;
+          }
+        } else {
+          correctionCheckDeadline = 0;
+        }
         readable = readableArticle(article);
         shortSourceCheck = latest.shortSourceCheck === true && retryAfter === 0 &&
           latest.status === 202 && !readable &&
@@ -219,6 +240,12 @@ export async function readArticle(
       retryAfter = Number(error.retryAfterSeconds) || 0;
     }
     const remaining = deadline - now();
+    if (correctionCheckDeadline) {
+      const checkWait = Math.max(correctionCheckWaits[correctionChecks++] ?? Infinity, retryAfter * 1000);
+      if (now() + checkWait >= correctionCheckDeadline) return { ...latest, timedOut: false };
+      await wait(checkWait, signal);
+      continue;
+    }
     if (remaining <= 0) break;
     if (statusProbe) {
       const regularWait = Math.max(0, statusProbe.regularReadAt - now());
