@@ -217,11 +217,26 @@ class CacheFirstCatalogService:
 
 _HYDRATION_LOCK = RLock()
 _HYDRATION_RESULTS: dict[str, tuple[float, dict[str, Any]]] = {}
-# Incomplete or failed hydration results are only replayed briefly so a
+# Incomplete, failed, or nondurable hydration results are only replayed briefly so a
 # polling caller does not re-traverse providers on every request, while a
 # transient source failure (rate limit, upstream outage) must never brick
 # the scope for the lifetime of the process.
 _HYDRATION_INCOMPLETE_TTL_SECONDS = 20.0
+
+
+def _configuration_completion_cached(result: Mapping[str, Any]) -> bool:
+    coverage = result.get("coverage")
+    return bool(result.get("complete")) and (
+        result.get("status") == "cache_hit"
+        or (isinstance(coverage, Mapping) and coverage.get("status") == "persisted")
+    )
+
+
+def _remember_configuration_result(key: str, result: dict[str, Any]) -> None:
+    with _HYDRATION_LOCK:
+        previous = _HYDRATION_RESULTS.get(key)
+        if previous is None or _configuration_completion_cached(result) or not _configuration_completion_cached(previous[1]):
+            _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
 
 
 class _ArticleCatalogProgress:
@@ -334,9 +349,9 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
         previous = _HYDRATION_RESULTS.get(key)
         if previous is not None:
             cached_at, cached_result = previous
-            if cached_result.get("complete") or (
-                time.monotonic() - cached_at < _HYDRATION_INCOMPLETE_TTL_SECONDS
-            ):
+            complete = (_configuration_completion_cached(cached_result) if scope == "configurations"
+                        else cached_result.get("complete"))
+            if complete or time.monotonic() - cached_at < _HYDRATION_INCOMPLETE_TTL_SECONDS:
                 return deepcopy(cached_result)
 
     cached = request.get("cache")
@@ -360,29 +375,37 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
     if scope in {"years", "makes", "models"}:
         return _ensure_initial_selector(request, key)
 
+    result = {
+        "status": "accepted",
+        "hydration_key": key,
+        "scope": scope,
+        "complete": False,
+        "missing_scopes": [scope],
+        "rows": [],
+    }
     stage = "provider_configuration"
     resolved = None
-    configuration_control = _ConfigurationHydrationControl() if scope == "configurations" else None
-    if configuration_control is not None:
-        _configuration_budget_event(request, configuration_control, "started")
+    configuration_control = _ConfigurationHydrationControl()
+    progress_rows = ()
+    progress_persistence = None
+
+    def persist_progress(progress: CatalogResult) -> None:
+        nonlocal stage, progress_rows, progress_persistence
+        stage = "row_persistence"
+        configuration_control.remaining()
+        persistence = _persist_resolved_catalog_rows(progress.rows, scope=scope, provenance=progress.provenance)
+        if persistence.get("status") == "persisted":
+            progress_rows, progress_persistence = progress.rows, persistence
+        configuration_control.remaining()
+        stage = "resolve"
+
+    _configuration_budget_event(request, configuration_control, "started")
     try:
-        providers = (
-            _configured_catalog_providers(deepening_control=configuration_control)
-            if configuration_control is not None else _configured_catalog_providers()
-        )
+        providers = _configured_catalog_providers(deepening_control=configuration_control)
         if not providers:
             _configuration_diagnostic(request, stage="provider_configuration", outcome="unconfigured", row_count=0)
-            result = {
-                "status": "accepted",
-                "hydration_key": key,
-                "scope": scope,
-                "complete": False,
-                "missing_scopes": [scope],
-                "rows": [],
-            }
         else:
-            if scope == "configurations":
-                stage = "request_validation"
+            stage = "request_validation"
             request_model = CatalogRequest(
                 int(request.get("year", 2000)),
                 str(request.get("make", "unknown")),
@@ -397,20 +420,20 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
                 providers=providers,
             )
             stage = "resolve"
-            resolved = service.resolve(request_model)
-            if configuration_control is not None:
-                configuration_control.remaining()
+            resolved = service.resolve(request_model, on_progress=persist_progress)
+            configuration_control.remaining()
             stage = "row_persistence"
-            persistence = _persist_resolved_catalog_rows(
-                resolved.rows,
-                scope=scope,
-                provenance=resolved.provenance,
-            )
+            persistence = progress_persistence
+            if persistence is None or resolved.rows != progress_rows:
+                persistence = _persist_resolved_catalog_rows(
+                    resolved.rows, scope=scope, provenance=resolved.provenance,
+                )
             stage = "coverage_persistence"
-            if configuration_control is not None:
-                configuration_control.remaining()
-            coverage = _persist_hydration_scope(request, resolved)
-            if scope == "configurations" and not (isinstance(coverage, Mapping) and coverage.get("status") == "persisted"):
+            configuration_control.remaining()
+            coverage = {"status": "not_complete"}
+            if not resolved.rows or persistence.get("status") == "persisted":
+                coverage = _persist_hydration_scope(request, resolved)
+            if not (isinstance(coverage, Mapping) and coverage.get("status") == "persisted"):
                 _configuration_diagnostic(request, stage="coverage_persistence", outcome="not_persisted", row_count=len(resolved.rows))
             result = {
                 "status": "cache_hit" if resolved.cache_hit else "hydrated",
@@ -429,29 +452,21 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             outcome="incomplete", error=error,
             row_count=len(resolved.rows) if resolved is not None else -1,
         )
+        _remember_configuration_result(key, result)
         raise
     except Exception as error:
-        # ValueError is a request/row validation response, not the HTTP 502
-        # dependency failure this diagnostic is intended to distinguish.
-        if scope == "configurations":
-            # Provider/projection failures already carry the bank-specific event.
-            # Internal persistence ValueError still needs a safe aggregate signal.
-            if stage != "resolve":
-                _configuration_diagnostic(
-                    request, stage=stage, outcome="failed", error=error,
-                    row_count=len(resolved.rows) if resolved is not None else -1,
-                )
-        elif scope in {"makes", "models"} and not isinstance(error, ValueError):
-            _LOG.error(
-                "catalog selector ensure failed scope=%s stage=%s error_type=%s",
-                scope, stage, type(error).__name__,
+        # Provider/projection failures already carry the bank-specific event.
+        if stage != "resolve":
+            _configuration_diagnostic(
+                request, stage=stage, outcome="failed", error=error,
+                row_count=len(resolved.rows) if resolved is not None else -1,
             )
+        if stage != "request_validation":
+            _remember_configuration_result(key, result)
         raise
     finally:
-        if configuration_control is not None:
-            _configuration_budget_event(request, configuration_control, "finished")
-    with _HYDRATION_LOCK:
-        _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
+        _configuration_budget_event(request, configuration_control, "finished")
+    _remember_configuration_result(key, result)
     return result
 
 
@@ -1614,12 +1629,15 @@ def _persist_hydration_scope(
                     cursor.execute(
                         """
                         INSERT INTO vehicle_catalog_hydration_scopes
-                            (scope_key, scope, model_year, make, model, region, provenance)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            (scope_key, scope, model_year, make, model, region, provenance, completion_version)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (scope_key) DO UPDATE
-                        SET provenance = EXCLUDED.provenance, updated_at = now()
+                        SET provenance = EXCLUDED.provenance,
+                            completion_version = GREATEST(vehicle_catalog_hydration_scopes.completion_version, EXCLUDED.completion_version),
+                            updated_at = now()
                         """,
-                        (scope_key, scope, year, make, model, region, Jsonb(list(result.provenance))),
+                        (scope_key, scope, year, make, model, region, Jsonb(list(result.provenance)),
+                         1 if scope == "configurations" else 0),
                     )
         if deadline is not None:
             selector_job.SelectorJobControl(deadline - 1).remaining()

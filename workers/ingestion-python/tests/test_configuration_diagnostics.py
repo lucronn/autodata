@@ -181,7 +181,8 @@ def test_configuration_marker_requires_all_providers_and_successful_persistence(
     if outcome == 'exception':
         providers[0] = Provider('bankone', ValueError(SECRET))
     _assert_configuration_marker(repo, providers, monkeypatch, caplog, outcome)
-    assert [p.calls for p in providers] == [1, 1]
+    expected_calls = [1, 0] if outcome == 'persistence_failure' else [1, 1]
+    assert [p.calls for p in providers] == expected_calls
 
 
 def _assert_configuration_marker(repo, providers, monkeypatch, caplog, outcome):
@@ -192,7 +193,7 @@ def _assert_configuration_marker(repo, providers, monkeypatch, caplog, outcome):
            'AUTODATA_SOURCE_BUCKET': 'configuration-diagnostic-' + uuid.uuid4().hex}
     for k, v in env.items():
         monkeypatch.setenv(k, v)
-    monkeypatch.setattr(catalog, '_configured_catalog_providers', lambda: tuple(providers))
+    monkeypatch.setattr(catalog, '_configured_catalog_providers', lambda **_: tuple(providers))
     if outcome == 'persistence_failure':
         monkeypatch.setattr(catalog, '_persist_resolved_catalog_rows', Mock(side_effect=ValueError(SECRET)))
     with repo.connect() as conn:

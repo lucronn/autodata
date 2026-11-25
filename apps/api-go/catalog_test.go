@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -244,6 +245,72 @@ func TestStoredConfigurationsReportActualDiscovery(t *testing.T) {
 			assertState("?stored_only=1", false)
 		})
 	}
+}
+
+type configurationCoverageTestStore struct {
+	*memoryCatalogStore
+	providerComplete bool
+}
+
+func (s *configurationCoverageTestStore) configurationCoverage(context.Context, int, string, string, string) (bool, bool, error) {
+	return true, s.providerComplete, nil
+}
+
+func TestLegacyRawOnlyConfigurationsResumeDiscoveryAndSettle(t *testing.T) {
+	store := &configurationCoverageTestStore{memoryCatalogStore: newMemoryCatalogStore()}
+	raw := CatalogConfiguration{ID: "raw-option", VehicleID: "raw-option", Year: 2024, Make: "Acme", Model: "Legacy Roadster",
+		Region: "US", Complete: true, ConfigurationUnresolved: true}
+	store.PutConfiguration(raw)
+	client := &blockingCatalogHydrationClient{started: make(chan struct{}), release: make(chan struct{}), finished: make(chan struct{})}
+	released := false
+	t.Cleanup(func() {
+		if !released {
+			close(client.release)
+		}
+	})
+	server := catalogServer(store)
+	server.ingestionClient = client
+	path := "/v1/catalog/years/2024/makes/acme/models/legacy-roadster/configurations?region=US"
+	assertState := func(suffix string, complete, hydrating, discovering bool, count int) {
+		t.Helper()
+		response := catalogRequest(server, path+suffix)
+		var body CatalogConfigurationsResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || response.Code != http.StatusOK ||
+			body.Complete != complete || body.Hydrating != hydrating || body.Discovering != discovering ||
+			len(body.Items) != count || !slices.Contains(body.Items, raw) {
+			t.Fatalf("state %q = %d %s (%v)", suffix, response.Code, response.Body, err)
+		}
+	}
+
+	assertState("&stored_only=1", false, false, false, 1)
+	assertState("", false, true, false, 1)
+	select {
+	case <-client.started:
+	case <-time.After(time.Second):
+		t.Fatal("legacy raw configuration suppressed discovery")
+	}
+	assertState("&stored_only=1", false, true, false, 1)
+	assertState("", false, true, false, 1)
+
+	store.PutConfiguration(CatalogConfiguration{ID: "verified-option", Year: 2024, Make: "Acme", Model: "Legacy Roadster",
+		Region: "US", Engine: "2.0", Complete: true})
+	assertState("&stored_only=1", false, false, true, 2)
+	assertState("", false, false, true, 2)
+
+	store.providerComplete = true
+	close(client.release)
+	released = true
+	assertState("&stored_only=1", true, false, false, 2)
+	// A later request must not schedule even after the first ensure exits.
+	payload := map[string]any{"scope": "configurations", "year": 2024, "make": "acme", "model": "legacy roadster", "region": "US"}
+	deadline := time.Now().Add(time.Second)
+	for server.catalogHydrationRunning(payload) && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	assertState("", true, false, false, 2)
+
+	store.providerComplete = false
+	assertState("", true, false, false, 2)
 }
 
 func TestCatalogMakesDeduplicateProviderLabelVariants(t *testing.T) {

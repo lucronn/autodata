@@ -762,8 +762,17 @@ func (s *postgresCatalogStore) Configurations(ctx context.Context, _ Principal, 
 }
 
 func (s *postgresCatalogStore) CatalogScopeComplete(ctx context.Context, _ Principal, scope string, year int, makeName, model, region string) (bool, error) {
+	complete, _, err := s.catalogScopeCoverage(ctx, scope, year, makeName, model, region)
+	return complete, err
+}
+
+func (s *postgresCatalogStore) configurationCoverage(ctx context.Context, year int, makeName, model, region string) (bool, bool, error) {
+	return s.catalogScopeCoverage(ctx, "configurations", year, makeName, model, region)
+}
+
+func (s *postgresCatalogStore) catalogScopeCoverage(ctx context.Context, scope string, year int, makeName, model, region string) (bool, bool, error) {
 	if scope != "makes" && scope != "models" && scope != "configurations" {
-		return false, ErrCatalogInvalid
+		return false, false, ErrCatalogInvalid
 	}
 	prefix := strconv.Itoa(year) + ":"
 	if scope == "models" || scope == "configurations" {
@@ -772,18 +781,9 @@ func (s *postgresCatalogStore) CatalogScopeComplete(ctx context.Context, _ Princ
 	if scope == "configurations" {
 		prefix += model + ":"
 	}
-	var complete bool
+	var complete, providerComplete bool
 	err := s.pool.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM vehicle_catalog_hydration_scopes
-			WHERE scope = $1 AND model_year = $2
-			  AND ($3 = '' OR LOWER(make) = LOWER($3) OR ($7 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(make), '[^a-z0-9]+', '-', 'g')) = $7))
-			  AND ($4 = '' OR LOWER(model) = LOWER($4) OR ($8 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(model), '[^a-z0-9]+', '-', 'g')) = $8))
-			  AND ($5 = '' OR region = $5)
-			  AND ($1 = 'configurations' OR completion_version = 1)
-		)
-		OR EXISTS (
+		SELECT COALESCE(bool_or($1 = 'configurations' OR completion_version = 1), false) OR EXISTS (
 			SELECT 1
 			FROM vehicle_catalog_sync_scopes scope_row
 			JOIN vehicle_catalog_syncs sync ON sync.vehicle_catalog_sync_id = scope_row.vehicle_catalog_sync_id
@@ -791,8 +791,13 @@ func (s *postgresCatalogStore) CatalogScopeComplete(ctx context.Context, _ Princ
 			  AND sync.status = 'completed'
 			  AND scope_row.status = 'completed'
 			  AND scope_row.scope_key LIKE $6 || '%'
-		)`, scope, year, makeName, model, region, prefix, catalogSlug(makeName), catalogSlug(model)).Scan(&complete)
-	return complete, err
+		), COALESCE(bool_or(completion_version = 1), false)
+		FROM vehicle_catalog_hydration_scopes
+		WHERE scope = $1 AND model_year = $2
+		  AND ($3 = '' OR LOWER(make) = LOWER($3) OR ($7 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(make), '[^a-z0-9]+', '-', 'g')) = $7))
+		  AND ($4 = '' OR LOWER(model) = LOWER($4) OR ($8 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(model), '[^a-z0-9]+', '-', 'g')) = $8))
+		  AND ($5 = '' OR region = $5)`, scope, year, makeName, model, region, prefix, catalogSlug(makeName), catalogSlug(model)).Scan(&complete, &providerComplete)
+	return complete, providerComplete, err
 }
 
 func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Principal, vehicleID string) (*CatalogArticleProgress, error) {

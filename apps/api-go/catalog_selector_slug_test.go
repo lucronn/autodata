@@ -108,6 +108,16 @@ func TestPostgresPublicSelectorSlugsPreserveScope(t *testing.T) {
 	}
 	store := &postgresCatalogStore{pool: pool}
 	assertPublicSelectorSlugs(t, store)
+	for _, version := range []int{0, 1} {
+		if _, err = pool.Exec(ctx, `UPDATE vehicle_catalog_hydration_scopes SET completion_version=$1
+			WHERE scope='configurations' AND model_year=2020 AND make='Ford' AND region='US'`, version); err != nil {
+			t.Fatal(err)
+		}
+		complete, providerComplete, err := store.configurationCoverage(ctx, 2020, "ford", "figo-mexico", "US")
+		if err != nil || !complete || providerComplete != (version == 1) {
+			t.Fatalf("configuration coverage version %d = %t, %t (%v)", version, complete, providerComplete, err)
+		}
+	}
 	_, err = pool.Exec(ctx, `INSERT INTO vehicle_catalog_hydration_scopes VALUES
 	 ('models',2020,'Mercedes Benz','','US',1,'[{"model":"B-Class"}]'),
 	 ('models',2020,'Mercedes Benz','','CA',1,'[{"model":"Canada only"}]'),

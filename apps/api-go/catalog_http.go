@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -161,8 +162,8 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 	storedOnly := catalogStoredSelector(request)
 	// Check before reading the rows. In-flight work can finish and persist rows
 	// while this request is reading, in which case another stored read is safe.
-	running := storedOnly && s.catalogHydrationRunning(payload)
-	complete, statusErr := s.catalogSelectorCoverage(request, principal, "configurations", year, makeName, modelName, region)
+	running := s.catalogHydrationRunning(payload)
+	complete, providerComplete, statusErr := s.catalogConfigurationCoverage(request, principal, year, makeName, modelName, region)
 	items, err := s.catalog.Configurations(request.Context(), principal, year, makeName, modelName, region)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
@@ -171,8 +172,18 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 	if !s.catalogCanServeRows(response, request, len(items), statusErr) {
 		return
 	}
-	usable := !catalogConfigurationsIncomplete(items) || (complete && len(items) == 0)
-	scopeComplete := complete && usable
+	rowsComplete := !catalogConfigurationsIncomplete(items)
+	usable := rowsComplete && slices.ContainsFunc(items, func(item CatalogConfiguration) bool {
+		return !item.ConfigurationUnresolved && !item.EngineVariantMarketUnverified
+	})
+	// Keep recorded rows visible, and let current provider coverage settle a
+	// raw-only picker even when discovery finds no additional configuration.
+	scopeComplete := complete && (usable || len(items) == 0 || (rowsComplete && providerComplete))
+	// A new choice from the first provider must not let a legacy completion
+	// marker hide an in-flight check of the remaining providers.
+	if running && !providerComplete {
+		scopeComplete = false
+	}
 	discoveryInstance := ""
 	if !scopeComplete && s.ingestionClient != nil {
 		discoveryInstance = catalogDiscoveryInstance
@@ -186,6 +197,19 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 		DiscoveryInstance:        discoveryInstance,
 		CatalogHydrationResponse: CatalogHydrationResponse{Complete: scopeComplete, Hydrating: !usable && running},
 	})
+}
+
+func (s *Server) catalogConfigurationCoverage(request *http.Request, principal Principal, year int, makeName, model, region string) (bool, bool, error) {
+	if store, ok := s.catalog.(interface {
+		configurationCoverage(context.Context, int, string, string, string) (bool, bool, error)
+	}); ok {
+		ctx, cancel := context.WithTimeout(request.Context(), catalogStatusReadTimeout)
+		defer cancel()
+		complete, providerComplete, err := store.configurationCoverage(ctx, year, makeName, model, region)
+		return complete && err == nil, providerComplete && err == nil, err
+	}
+	complete, err := s.catalogSelectorCoverage(request, principal, "configurations", year, makeName, model, region)
+	return complete, false, err
 }
 
 func (s *Server) catalogSelectorCoverage(request *http.Request, principal Principal, scope string, year int, makeName, model, region string) (bool, error) {

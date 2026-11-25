@@ -53,7 +53,7 @@ def configure(monkeypatch,openers):
 def assert_no_persistence():
     service._persist_resolved_catalog_rows.assert_not_called()
     service._persist_hydration_scope.assert_not_called()
-    assert not service._HYDRATION_RESULTS
+    assert service._HYDRATION_RESULTS["budget-fixture"][1]["complete"] is False
 
 
 def test_shared_twelve_attempt_cap_includes_both_banks_parent_pages_and_repair(monkeypatch,caplog):
@@ -143,6 +143,102 @@ def test_rate_limit_stops_without_retry_or_second_bank(monkeypatch,caplog):
     assert 'stage=provider_resolution outcome=failed' not in caplog.text
 
 
+def test_configuration_failures_reuse_incomplete_ttl(monkeypatch):
+    clock = [1.0]
+    calls = []
+
+    def opener(req, timeout):
+        calls.append(req)
+        if len(calls) == 1:
+            return Response(req, {}, 429)
+        return Response(req, envelope('bankone', 'configurations'))
+
+    monkeypatch.setattr(service.time, "monotonic", lambda: clock[0])
+    configure(monkeypatch, {'bankone': opener})
+    body = json.dumps(request())
+
+    with pytest.raises(service._ConfigurationHydrationStopped) as caught:
+        service.ensure_catalog_hydration(body)
+    assert caught.value.reason == 'rate_limited'
+    clock[0] += service._HYDRATION_INCOMPLETE_TTL_SECONDS - 1
+    assert service.ensure_catalog_hydration(body)['complete'] is False
+    assert len(calls) == 1
+
+    clock[0] += 2
+    assert service.ensure_catalog_hydration(body)['complete'] is True
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize('failure', ['rows', 'coverage'])
+def test_complete_configuration_results_require_durable_persistence_for_long_cache(monkeypatch, failure):
+    clock = [1.0]
+    monkeypatch.setattr(service.time, "monotonic", lambda: clock[0])
+    provider = Mock(return_value={"complete": True, "rows": [
+        {"year": 2024, "make": "Acura", "model": "Integra", "region": "US", "engine": "1.5L"},
+    ]})
+    monkeypatch.setattr(service, "_configured_catalog_providers", lambda **kwargs: (provider,))
+    if failure == 'rows':
+        service._persist_resolved_catalog_rows.side_effect = [{"status": "disabled"}, {"status": "persisted"}]
+    else:
+        service._persist_hydration_scope.side_effect = [{"status": "not_complete"}, {"status": "persisted"}]
+    body = json.dumps(request())
+
+    result = service.ensure_catalog_hydration(body)
+    assert result['complete'] is True and result['missing_scopes'] == []
+    assert len(result['rows']) == 1
+    assert result['coverage']['status'] == 'not_complete'
+    if failure == 'rows':
+        service._persist_hydration_scope.assert_not_called()
+    assert service.ensure_catalog_hydration(body) == result and provider.call_count == 1
+
+    clock[0] += service._HYDRATION_INCOMPLETE_TTL_SECONDS + 1
+    durable = service.ensure_catalog_hydration(body)
+    assert durable['complete'] is True and durable['coverage']['status'] == 'persisted'
+    assert provider.call_count == 2
+    clock[0] += service._HYDRATION_INCOMPLETE_TTL_SECONDS + 1
+    assert service.ensure_catalog_hydration(body) == durable and provider.call_count == 2
+
+
+def test_configuration_coverage_commit_error_allows_retry(monkeypatch):
+    clock = [1.0]
+    monkeypatch.setattr(service.time, "monotonic", lambda: clock[0])
+    provider = Mock(return_value={"complete": True, "rows": []})
+    monkeypatch.setattr(service, "_configured_catalog_providers", lambda **kwargs: (provider,))
+    service._persist_hydration_scope.side_effect = [OSError("coverage commit failed"), {"status": "persisted"}]
+    body = json.dumps(request())
+
+    with pytest.raises(OSError, match="coverage commit failed"):
+        service.ensure_catalog_hydration(body)
+    assert service.ensure_catalog_hydration(body)['complete'] is False and provider.call_count == 1
+
+    clock[0] += service._HYDRATION_INCOMPLETE_TTL_SECONDS + 1
+    assert service.ensure_catalog_hydration(body)['complete'] is True
+    assert provider.call_count == 2
+
+
+def test_configuration_progress_uses_budget_before_next_provider(monkeypatch):
+    clock = [1.0]
+    monkeypatch.setattr(service.time, "monotonic", lambda: clock[0])
+    first = Mock(return_value={"complete": True, "rows": [
+        {"year": 2024, "make": "Acura", "model": "Integra", "region": "US", "engine": "1.5L"},
+    ], "provenance": [{"provider": "bankone", "source_uri": "fixture://configurations"}]})
+    second = Mock(side_effect=AssertionError("second provider dispatched after the budget"))
+    monkeypatch.setattr(service, "_configured_catalog_providers", lambda **kwargs: (first, second))
+
+    def persist(*args, **kwargs):
+        clock[0] += 21
+        return {"status": "persisted"}
+
+    service._persist_resolved_catalog_rows.side_effect = persist
+    with pytest.raises(service._ConfigurationHydrationStopped) as stopped:
+        service.ensure_catalog_hydration(json.dumps(request()))
+    assert stopped.value.reason == 'elapsed'
+    first.assert_called_once()
+    second.assert_not_called()
+    service._persist_resolved_catalog_rows.assert_called_once()
+    service._persist_hydration_scope.assert_not_called()
+
+
 def test_cancellation_after_response_stops_before_next_dispatch(monkeypatch):
     control=service._ConfigurationHydrationControl();calls=[]
     monkeypatch.setattr(service,'_ConfigurationHydrationControl',lambda:control)
@@ -190,9 +286,14 @@ def test_article_lifecycle_path_unchanged(monkeypatch,scope):
 
 
 def test_complete_cache_does_not_start_budget_or_call_provider(monkeypatch,caplog):
+    clock = [1.0]
+    monkeypatch.setattr(service.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(service,'_ConfigurationHydrationControl',Mock(side_effect=AssertionError('complete cache started budget')))
     req={**request(),'cache':{'complete':True,'rows':[]}}
-    assert service.ensure_catalog_hydration(json.dumps(req))['complete'] is True
+    result = service.ensure_catalog_hydration(json.dumps(req))
+    assert result['complete'] is True and result['status'] == 'cache_hit'
+    clock[0] += service._HYDRATION_INCOMPLETE_TTL_SECONDS + 1
+    assert service.ensure_catalog_hydration(json.dumps(request())) == result
     assert 'catalog configuration budget ' not in caplog.text
 
 
@@ -217,7 +318,7 @@ def test_deadline_after_row_persistence_cannot_write_complete_coverage(monkeypat
     assert 'stage=provider_resolution outcome=incomplete' not in caplog.text
     service._persist_resolved_catalog_rows.assert_called_once()
     service._persist_hydration_scope.assert_not_called()
-    assert not service._HYDRATION_RESULTS
+    assert service._HYDRATION_RESULTS["budget-fixture"][1]["complete"] is False
 
 
 def test_truthful_committed_scope_is_not_relabelled_after_deadline(monkeypatch):
