@@ -18,6 +18,7 @@ from .procedure_rewrite_recovery import _PART, _REFERENCE, _equivalent_wording, 
 SENTENCE_CORRECTION_METHOD = "source-bound-sentence-correction-v1"
 SENTENCE_RECOVERY_METHOD = "source-bound-sentence-recovery-v1"
 SENTENCE_INSTRUCTION_RECOVERY_METHOD = "source-bound-sentence-recovery-v2"
+SENTENCE_TOOL_RECOVERY_METHOD = "source-bound-sentence-recovery-v3"
 MAX_SENTENCE_CORRECTION_CALLS = 2
 _MAX_STATEMENTS = 60
 _MAX_COMBINATIONS = 27
@@ -49,6 +50,11 @@ _LOOSEN_THEN_SLIDE = re.compile(
     rf"Loosen the (?P<screw>(?P<tool>[A-Z]{{2,5}}-[0-9]{{4,6}}) {_PART} screw {_REFERENCE}), then slide "
     rf"the (?P<part>{_PART}) of the (?P<assembly>(?P=tool) {_PART} {_REFERENCE}) "
     rf"away from the (?P<target>{_PART})\.",
+    re.I,
+)
+_TOOL_INSTALLATION = re.compile(
+    rf"Install the (?P<tool>(?:{_PART} )?(?:wrench|socket)) (?P<reference>{_REFERENCE}) "
+    rf"to the (?P<target>{_PART})\.",
     re.I,
 )
 _COPY_REJECTIONS = {"REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR"}
@@ -351,6 +357,34 @@ def recover_numbered_sentence_instructions(source, previous, *, model_call_budge
     baseline = recover_sentence_correction(
         source, previous, model_call_budget=model_call_budget, attempts=attempts, preserve_notes=preserve_notes,
     )
+    return _recover_sentence_passages(
+        source, previous, baseline, preserve_notes=preserve_notes, errors=_COPY_REJECTIONS,
+        equivalent=_instruction_equivalent, method=SENTENCE_INSTRUCTION_RECOVERY_METHOD,
+    )
+
+
+def _tool_installation_equivalent(statement):
+    if (match := _TOOL_INSTALLATION.fullmatch(statement)) and all(
+        _plain_label(match[label]) for label in ("tool", "target")
+    ):
+        tool, reference, target = match.group("tool", "reference", "target")
+        return f"The {tool} {reference} must be fitted to the {target}."
+    return None
+
+
+def recover_tool_installation_sentence(source, previous, *, model_call_budget, attempts, preserve_notes=False):
+    """Keep the authored tool, figure reference and installation target."""
+    baseline = recover_numbered_sentence_instructions(
+        source, previous, model_call_budget=model_call_budget, attempts=attempts, preserve_notes=preserve_notes,
+    )
+    return _recover_sentence_passages(
+        source, previous, baseline, preserve_notes=preserve_notes,
+        errors=_COPY_REJECTIONS | {"REWRITE_ACTION_MUTATION"},
+        equivalent=_tool_installation_equivalent, method=SENTENCE_TOOL_RECOVERY_METHOD,
+    )
+
+
+def _recover_sentence_passages(source, previous, baseline, *, preserve_notes, errors, equivalent, method):
     if baseline.document is not None:
         return baseline
 
@@ -358,10 +392,10 @@ def recover_numbered_sentence_instructions(source, previous, *, model_call_budge
     draft = baseline.response
     indices, proposals = [], []
     for index, error in _remaining_passage_errors(source, slots, draft).items():
-        if error not in _COPY_REJECTIONS:
+        if error not in errors:
             continue
         original = slots[index]["text"].strip()
-        wording = _instruction_equivalent(original)
+        wording = equivalent(original)
         if wording and wording in _statement_options(original, [wording]):
             indices.append(index)
             proposals.append([wording])
@@ -369,6 +403,5 @@ def recover_numbered_sentence_instructions(source, previous, *, model_call_budge
         return baseline
     _apply_variants(source, slots, draft, indices, proposals)
     document, error_code = _validate_sentence_draft(source, slots, draft, version)
-    evidence = {**baseline.evidence, "method": SENTENCE_INSTRUCTION_RECOVERY_METHOD,
-                "draft_hash": digest_json(draft)}
+    evidence = {**baseline.evidence, "method": method, "draft_hash": digest_json(draft)}
     return CorrectionResult(draft, document, error_code, evidence)
