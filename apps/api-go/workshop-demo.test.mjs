@@ -18,15 +18,15 @@ test('the entry page preloads the catalog helper before starting bootstrap', () 
 });
 const headPickerCode = source('index.html').match(/<script>([\s\S]+?)<\/script>/)[1];
 
-function startHeadPicker(search, publicSelectors = true) {
+function startHeadPicker(search, publicSelectors = true, { entry = {}, origin = 'https://workshop.example' } = {}) {
   const calls = [], hints = [];
   const catalogLink = { href: assetBase + 'catalog.mjs', dataset: { publicSelectors: String(publicSelectors) } };
   const context = {
-    URL, URLSearchParams, AbortSignal, AbortController, location: { search },
+    URL, URLSearchParams, AbortSignal, AbortController, location: { search, origin },
     document: {
       head: { append: link => hints.push(link.href) },
       createElement: () => ({}),
-      documentElement: { dataset: {} },
+      documentElement: { dataset: entry },
       getElementById: id => id === 'workshop-catalog-module' ? catalogLink : {},
     },
     fetch: async (path, options) => {
@@ -72,6 +72,23 @@ test('entry keeps independent, private and unconfirmed paths on their ordinary r
   assert.deepEqual(startHeadPicker('').calls.map(({ path }) => path), ['/v1/catalog/years']);
   assert.deepEqual(startHeadPicker('?year=2024&make=%3Efoo&model=envision-awd').calls.map(({ path }) => path),
     ['/v1/catalog/years', '/v1/catalog/years/2024/makes?region=US&stored_only=1']);
+});
+test('entry preloads the app for confirmed public demos without starting regular picker reads', () => {
+  const entry = { workshopDemoOrigins: 'https://autodata.cars.tk https://autodata.curtis.click' };
+  const search = '?demo=1&configuration=selected';
+  const expected = ['app', 'auth', 'commerce', 'article-read'].map(name => assetBase + name + '.mjs');
+  for (const options of [
+    { entry, origin: 'https://autodata.cars.tk' },
+    { entry, origin: 'https://autodata.curtis.click' },
+    { entry: { workshopOpenDemo: 'true' } },
+  ]) {
+    const { calls, hints, context } = startHeadPicker(search, true, options);
+    assert.deepEqual(hints, expected);
+    assert.deepEqual(calls, []);
+    assert.equal(context.workshopPickerStartup, undefined);
+  }
+  assert.deepEqual(startHeadPicker(search, true, { entry }).hints, []);
+  assert.deepEqual(startHeadPicker('?sample=1', true, { entry: { workshopOpenDemo: 'true' } }).hints, []);
 });
 test('sign-in is inert in initial HTML until async app readiness', () => {
   const button = source('index.html').match(/<button\b[^>]*\bid="signin"[^>]*>/)?.[0];
