@@ -246,7 +246,14 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}", s.catalogProtected(s.getCatalogArticle, true))
 	if s.paidCatalogEnabled() {
 		mux.Handle("POST /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/prepare", s.catalogProtected(s.preparePaidCatalogArticle, true))
-		mux.Handle("GET /v1/catalog/images/{token}", s.paidCatalogAuthenticated(s.servePaidCatalogImage))
+		paidImage := s.paidCatalogAuthenticated(s.servePaidCatalogImage)
+		mux.HandleFunc("GET /v1/catalog/images/{token}", func(w http.ResponseWriter, r *http.Request) {
+			if s.workshopOpenDemoImageRequest(r) {
+				s.serveOpenDemoCatalogImage(w, r)
+				return
+			}
+			paidImage.ServeHTTP(w, r)
+		})
 	} else {
 		mux.HandleFunc("GET /v1/catalog/images/{token}", func(response http.ResponseWriter, request *http.Request) {
 			serveCatalogImage(response, request, s.catalogImageKey, s.catalogImageReader)

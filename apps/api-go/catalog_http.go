@@ -520,7 +520,10 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 	if paid {
 		view.Article = article
 		if scope.openDemo {
-			clonePaidCatalogArticleImages(&view.Article)
+			if err := s.rewriteOpenDemoCatalogArticleImages(request.Context(), scope.configuration, *scope.identity, &view); err != nil {
+				s.writePaidCatalogError(response, request, err)
+				return
+			}
 		} else {
 			if err := s.rewritePaidCatalogArticleImages(request.Context(), principal, scope.configuration, *scope.identity, &view); err != nil {
 				s.writePaidCatalogError(response, request, err)

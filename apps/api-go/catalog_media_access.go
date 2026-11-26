@@ -109,6 +109,18 @@ type paidCatalogAssetKey struct {
 	assetID, objectKey string
 }
 
+// Reserved account context for short-lived media links issued by the public
+// Workshop demo. A real customer token never uses this account.
+const workshopOpenDemoImageAccountID = "00000000-0000-4000-8000-000000000001"
+
+func (s *Server) workshopOpenDemoImageRequest(r *http.Request) bool {
+	if s.workshopOpenDemoHost == "" || r.Host != s.workshopOpenDemoHost || r.URL.RawQuery != "" || r.URL.ForceQuery {
+		return false
+	}
+	ref, err := openPaidCatalogImageReference(r.PathValue("token"), s.catalogImageKey, time.Now())
+	return err == nil && ref.CustomerAccountID == workshopOpenDemoImageAccountID
+}
+
 // Build the membership index once for this response. Its signed URLs can be
 // reused by identical placements because the account and revision anchors agree.
 func paidCatalogAssetURLs(source []CatalogImage) map[paidCatalogAssetKey]string {
@@ -168,7 +180,7 @@ type paidCatalogImageViewStore interface {
 
 // The article can acquire a source after the request authorized its identity.
 // Refresh once, and mint only when the response and current image view agree.
-func (s *Server) refreshPaidCatalogArticleImageContext(ctx context.Context, p Principal, configuration CatalogConfiguration, previous PaidArticleIdentity, view CatalogArticleView) (PaidArticleIdentity, []CatalogImage, error) {
+func (s *Server) refreshPaidCatalogArticleImageContext(ctx context.Context, p Principal, configuration CatalogConfiguration, previous PaidArticleIdentity, view CatalogArticleView, requireGrant bool) (PaidArticleIdentity, []CatalogImage, error) {
 	if err := ctx.Err(); err != nil {
 		return PaidArticleIdentity{}, nil, err
 	}
@@ -203,13 +215,23 @@ func (s *Server) refreshPaidCatalogArticleImageContext(ctx context.Context, p Pr
 	if err := ctx.Err(); err != nil {
 		return PaidArticleIdentity{}, nil, err
 	}
-	if err := s.checkPaidCatalogGrant(ctx, p, currentConfiguration); err != nil {
-		return PaidArticleIdentity{}, nil, err
+	if requireGrant {
+		if err := s.checkPaidCatalogGrant(ctx, p, currentConfiguration); err != nil {
+			return PaidArticleIdentity{}, nil, err
+		}
 	}
 	return current, images, ctx.Err()
 }
 
 func (s *Server) rewritePaidCatalogArticleImages(ctx context.Context, p Principal, configuration CatalogConfiguration, identity PaidArticleIdentity, view *CatalogArticleView) error {
+	return s.rewritePaidCatalogArticleImagesWithAccess(ctx, p, configuration, identity, view, true)
+}
+
+func (s *Server) rewriteOpenDemoCatalogArticleImages(ctx context.Context, configuration CatalogConfiguration, identity PaidArticleIdentity, view *CatalogArticleView) error {
+	return s.rewritePaidCatalogArticleImagesWithAccess(ctx, Principal{CustomerAccountID: workshopOpenDemoImageAccountID}, configuration, identity, view, false)
+}
+
+func (s *Server) rewritePaidCatalogArticleImagesWithAccess(ctx context.Context, p Principal, configuration CatalogConfiguration, identity PaidArticleIdentity, view *CatalogArticleView, requireGrant bool) error {
 	if view == nil {
 		return ErrCatalogNotFound
 	}
@@ -233,7 +255,7 @@ func (s *Server) rewritePaidCatalogArticleImages(ctx context.Context, p Principa
 	if samePaidCatalogID(identity.CurrentSourceRevisionID, view.Article.SourceRevisionID) {
 		sourceImages, err = s.paidCatalogSourceImages(ctx, p, configuration.ID, identity.CanonicalArticleID, selected)
 	} else {
-		identity, sourceImages, err = s.refreshPaidCatalogArticleImageContext(ctx, p, configuration, identity, *view)
+		identity, sourceImages, err = s.refreshPaidCatalogArticleImageContext(ctx, p, configuration, identity, *view, requireGrant)
 	}
 	if err != nil {
 		return err
@@ -251,6 +273,14 @@ func (s *Server) rewritePaidCatalogArticleImages(ctx context.Context, p Principa
 }
 
 func (s *Server) servePaidCatalogImage(w http.ResponseWriter, r *http.Request, p Principal) {
+	s.servePaidCatalogImageWithAccess(w, r, p, true)
+}
+
+func (s *Server) serveOpenDemoCatalogImage(w http.ResponseWriter, r *http.Request) {
+	s.servePaidCatalogImageWithAccess(w, r, Principal{CustomerAccountID: workshopOpenDemoImageAccountID}, false)
+}
+
+func (s *Server) servePaidCatalogImageWithAccess(w http.ResponseWriter, r *http.Request, p Principal, requireGrant bool) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -265,7 +295,7 @@ func (s *Server) servePaidCatalogImage(w http.ResponseWriter, r *http.Request, p
 		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 		return
 	}
-	configuration, err := s.resolvePaidCatalogScope(ctx, p, ref.ConfigurationID, ref.Region)
+	configuration, err := s.resolveCatalogScope(ctx, p, ref.ConfigurationID, ref.Region, requireGrant)
 	if err != nil {
 		s.writePaidCatalogError(w, r, err)
 		return
@@ -321,9 +351,11 @@ func (s *Server) servePaidCatalogImage(w http.ResponseWriter, r *http.Request, p
 		s.writePaidCatalogError(w, r, ErrVehicleGrantUnavailable)
 		return
 	}
-	if err = s.checkPaidCatalogGrant(ctx, p, configuration); err != nil {
-		s.writePaidCatalogError(w, r, err)
-		return
+	if requireGrant {
+		if err = s.checkPaidCatalogGrant(ctx, p, configuration); err != nil {
+			s.writePaidCatalogError(w, r, err)
+			return
+		}
 	}
 	readCtx, readCancel := context.WithTimeout(ctx, 4*time.Second)
 	defer readCancel()

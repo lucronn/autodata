@@ -120,19 +120,18 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	stored.Images = append([]CatalogImage{}, stored.Images...)
+	mediaPrincipal := p
 	if !scope.openDemo {
 		if err = s.checkPaidCatalogGrant(ctx, p, configuration); err != nil {
 			s.writePaidCatalogError(w, r, err)
 			return
 		}
-		now := time.Now()
-		ref := paidCatalogProjectionReference(p, configuration, identity, view, selected, "source", now)
-		s.rewritePaidCatalogImages(stored.Images, paidCatalogAssetURLs(stored.Images), ref, now)
 	} else {
-		for i := range stored.Images {
-			stored.Images[i].URL = ""
-		}
+		mediaPrincipal.CustomerAccountID = workshopOpenDemoImageAccountID
 	}
+	now := time.Now()
+	ref := paidCatalogProjectionReference(mediaPrincipal, configuration, identity, view, selected, "source", now)
+	s.rewritePaidCatalogImages(stored.Images, paidCatalogAssetURLs(stored.Images), ref, now)
 	var format, content string
 	if stored.Document != nil {
 		format, content = "html", renderCatalogSourceContent(w, r, stored.Document, stored.Images)
