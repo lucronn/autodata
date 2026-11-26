@@ -160,6 +160,15 @@ def verify_provenance(args):
                 local=local.replace(b'data-public-selectors="false"', b'data-public-selectors="true"', 1)
         serve_path='/workshop' if name=='index.html' else asset_prefix+name
         with urlopen(args.base_url+serve_path,context=ssl._create_unverified_context(),timeout=10) as response: served=response.read()
+        initial_years = b'<script id="workshop-initial-years" type="application/json">'
+        if name == 'index.html' and args.mode == 'api-fixture' and initial_years in served:
+            with urlopen(args.base_url+'/v1/catalog/years?stored_only=1',
+                         context=ssl._create_unverified_context(), timeout=10) as response:
+                year_data = response.read().removesuffix(b'\n')
+            snapshot = json.loads(year_data)
+            if snapshot.get('complete') is not True or not snapshot.get('items'):
+                raise ValueError('Workshop entry carried an incomplete year snapshot')
+            local = local.replace(b'<!-- Workshop initial years -->', initial_years+year_data+b'</script>', 1)
         if local!=served: raise ValueError(f'compiled Go asset differs from candidate: {name}')
         assets[name]={'sha256':hashlib.sha256(served).hexdigest(),'bytes':len(served)}
     for name in ('bootstrap.mjs','fonts/InstrumentSans.woff2'):

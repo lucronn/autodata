@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -54,6 +55,91 @@ func TestWorkshopEntryMarksPublicSelectors(t *testing.T) {
 	}
 	if len(public.Header().Values("Link")) != 0 {
 		t.Fatal("entry response tried to infer the browser route")
+	}
+}
+
+type workshopInitialYearsStore struct {
+	CatalogStore
+	items    []CatalogYear
+	complete bool
+	timeout  bool
+	reads    int
+}
+
+func (s *workshopInitialYearsStore) Years(ctx context.Context, _ Principal) ([]CatalogYear, *bool, error) {
+	s.reads++
+	if s.timeout {
+		<-ctx.Done()
+		return nil, nil, ctx.Err()
+	}
+	return s.items, &s.complete, nil
+}
+
+func TestWorkshopEntryCarriesOnlyCompletePublicYears(t *testing.T) {
+	server, store, _ := paidHTTPServer()
+	years := &workshopInitialYearsStore{CatalogStore: store, items: []CatalogYear{{Year: 2024}}, complete: true}
+	server.catalog = years
+	handler := server.Handler()
+	request := func(method, path, tag string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, nil)
+		req.Header.Set("If-None-Match", tag)
+		out := httptest.NewRecorder()
+		handler.ServeHTTP(out, req)
+		return out
+	}
+	const entry = "/workshop?year=2024"
+	const yearData = `<script id="workshop-initial-years" type="application/json">`
+	first := request(http.MethodGet, entry, "")
+	tag := first.Header().Get("ETag")
+	expected := strings.TrimSpace(request(http.MethodGet, "/v1/catalog/years", "").Body.String())
+	if first.Code != http.StatusOK || !strings.Contains(first.Body.String(), yearData+expected+"</script>") ||
+		first.Header().Get("Cache-Control") != "no-cache" || tag != fmt.Sprintf(`W/"%x"`, sha256.Sum256(first.Body.Bytes())) {
+		t.Fatal("entry did not carry the exact public snapshot and its own validator")
+	}
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		if cached := request(method, entry, tag); cached.Code != http.StatusNotModified || cached.Body.Len() != 0 {
+			t.Fatalf("conditional %s = %d with %d bytes", method, cached.Code, cached.Body.Len())
+		}
+	}
+	years.items = append(years.items, CatalogYear{Year: 2025})
+	if updated := request(http.MethodGet, entry, tag); updated.Code != http.StatusOK ||
+		updated.Header().Get("ETag") == tag || !strings.Contains(updated.Body.String(), `{"year":2025}`) {
+		t.Fatal("changed years did not invalidate the entry page")
+	}
+	reads := years.reads
+	for _, path := range []string{
+		"/workshop?view=library", "/workshop?article=owned", "/workshop?configuration=selected",
+		"/workshop?order=return", "/workshop?demo=1", "/workshop?sample=1", "/workshop?region=CA",
+		"/workshop/styles.css",
+	} {
+		if got := request(http.MethodGet, path, ""); got.Code != http.StatusOK || strings.Contains(got.Body.String(), yearData) {
+			t.Errorf("%s received model years or failed", path)
+		}
+	}
+	if years.reads != reads {
+		t.Fatal("unrelated routes queried the year store")
+	}
+	for _, tc := range []struct {
+		name              string
+		items             []CatalogYear
+		complete, timeout bool
+	}{
+		{name: "partial", items: []CatalogYear{{Year: 2024}}},
+		{name: "empty", complete: true},
+		{name: "deadline", timeout: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			years.items, years.complete, years.timeout = tc.items, tc.complete, tc.timeout
+			if got := request(http.MethodGet, entry, tag); got.Code != http.StatusOK || strings.Contains(got.Body.String(), yearData) {
+				t.Fatal("entry did not remain available without a complete public year snapshot")
+			}
+		})
+	}
+	server.customerAuth = nil
+	reads = years.reads
+	legacy := request(http.MethodGet, entry, "")
+	if legacy.Code != http.StatusOK || strings.Contains(legacy.Body.String(), yearData) || years.reads != reads {
+		t.Fatal("legacy private catalog did not keep its normal entry")
 	}
 }
 

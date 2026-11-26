@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -12,6 +14,8 @@ import (
 )
 
 const workshopEntryPath = "/workshop"
+const workshopInitialYearsMarker = "<!-- Workshop initial years -->"
+const workshopInitialYearsTimeout = 25 * time.Millisecond
 
 var workshopAssetsHandler = buildWorkshopAssetsHandler()
 
@@ -19,6 +23,34 @@ type workshopEntryOptions struct {
 	publicSelectors bool
 	openDemo        bool
 	publicDemo      bool
+	initialYears    []byte
+}
+
+func (s *Server) workshopInitialYears(r *http.Request) []byte {
+	if (r.URL.Path != workshopEntryPath && r.URL.Path != workshopEntryPath+"/") ||
+		(r.Method != http.MethodGet && r.Method != http.MethodHead) {
+		return nil
+	}
+	params := r.URL.Query()
+	region := params.Get("region")
+	if params.Get("sample") == "1" || params.Get("demo") == "1" || params.Get("view") == "library" ||
+		params.Has("article") || params.Has("configuration") || params.Has("order") ||
+		(region != "" && region != "US") {
+		return nil
+	}
+	// The same anonymous snapshot backs the public year endpoint. Keep the page
+	// available during database contention and leave discovery to the API.
+	ctx, cancel := context.WithTimeout(r.Context(), workshopInitialYearsTimeout)
+	defer cancel()
+	years, err := s.readCatalogYears(ctx, Principal{})
+	if err != nil || ctx.Err() != nil || !years.Complete || len(years.Items) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(years)
+	if err != nil {
+		return nil
+	}
+	return data
 }
 
 func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, workshopEntryOptions) {
@@ -60,6 +92,9 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 	}
 	if entryPage == nil {
 		panic("embedded Workshop entry page unavailable")
+	}
+	if bytes.Count(entryPage, []byte(workshopInitialYearsMarker)) != 1 {
+		panic("Workshop entry page must mark the initial year data location")
 	}
 	version := hex.EncodeToString(release.Sum(nil))
 	versionedPrefix := releasePrefix + version + "/"
@@ -149,6 +184,11 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 			} else if entry.publicSelectors {
 				document = publicEntry
 				w.Header().Set("ETag", publicEntryTag)
+			}
+			if len(entry.initialYears) != 0 {
+				data := fmt.Appendf(nil, `<script id="workshop-initial-years" type="application/json">%s</script>`, entry.initialYears)
+				document = bytes.Replace(document, []byte(workshopInitialYearsMarker), data, 1)
+				w.Header().Set("ETag", fmt.Sprintf(`W/"%x"`, sha256.Sum256(document)))
 			}
 			http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(document))
 			return

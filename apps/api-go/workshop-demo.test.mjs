@@ -18,7 +18,9 @@ test('the entry page preloads the catalog helper before starting bootstrap', () 
 });
 const headPickerCode = source('index.html').match(/<script>([\s\S]+?)<\/script>/)[1];
 
-function startHeadPicker(search, publicSelectors = true, { entry = {}, origin = 'https://workshop.example' } = {}) {
+function startHeadPicker(search, publicSelectors = true, {
+  entry = {}, origin = 'https://workshop.example', initialYears = null,
+} = {}) {
   const calls = [], hints = [];
   const catalogLink = { href: assetBase + 'catalog.mjs', dataset: { publicSelectors: String(publicSelectors) } };
   const context = {
@@ -27,7 +29,11 @@ function startHeadPicker(search, publicSelectors = true, { entry = {}, origin = 
       head: { append: link => hints.push(link.href) },
       createElement: () => ({}),
       documentElement: { dataset: entry },
-      getElementById: id => id === 'workshop-catalog-module' ? catalogLink : {},
+      getElementById(id) {
+        if (id === 'workshop-catalog-module') return catalogLink;
+        if (id === 'workshop-initial-years') return initialYears === null ? null : { textContent: initialYears };
+        return {};
+      },
     },
     fetch: async (path, options) => {
       calls.push({ path, options });
@@ -61,6 +67,29 @@ test('entry starts matching stored reads and the saved selector consumes them on
   assert.deepEqual(await restored.reads.configuration, { items: [{ path: savedPaths[3] }] });
   restored.abort();
   assert.ok(calls.slice(0, -1).every(({ options }) => options.signal.aborted));
+});
+
+test('the picker restores the complete entry snapshot and fetches when no usable snapshot exists', async () => {
+  const root = '/v1/catalog/years';
+  const snapshot = { version: 'v1', complete: true, hydrating: false, items: [{ year: 2024 }] };
+  const { calls, context } = startHeadPicker('?year=2024', true, { initialYears: JSON.stringify(snapshot) });
+  const makes = root + '/2024/makes?region=US&stored_only=1';
+  assert.deepEqual(calls.map(({ path }) => path), [makes]);
+  let restored;
+  context.loadModule = async path => {
+    if (path === './catalog.mjs') {
+      return { requestInitialYears, startSavedSelectorReads, requestJSON: () => assert.fail('duplicate selector read') };
+    }
+    if (path === './auth.mjs') return { readSessionBootstrap() {} };
+    return { bootstrap(_years, _account, { initialSelectors }) { restored = initialSelectors; } };
+  };
+  await runInNewContext(`(async () => { ${bootstrapCode} })()`, context);
+  assert.equal(JSON.stringify(await restored.reads.year), JSON.stringify(snapshot));
+  assert.deepEqual(calls.map(({ path }) => path), [makes, '/workshop/demo-mode.json']);
+  for (const initialYears of ['{invalid', JSON.stringify({ ...snapshot, complete: false }),
+    JSON.stringify({ ...snapshot, items: [] })]) {
+    assert.deepEqual(startHeadPicker('', true, { initialYears }).calls.map(({ path }) => path), [root]);
+  }
 });
 
 test('entry keeps independent, private and unconfirmed paths on their ordinary reads', () => {
