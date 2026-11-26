@@ -16,6 +16,7 @@ from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
 from autodata_ingestion.procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
 from autodata_ingestion.procedure_rewrite_recovery import (
     BANKONE_LINKED_RECOVERY_METHOD,
+    BANKONE_REFERENCED_RECOVERY_METHOD,
     BANKONE_STRUCTURAL_RECOVERY_METHOD,
     FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
@@ -372,7 +373,8 @@ def test_bankone_archive_requires_verified_body_and_retains_authored_alternative
 
 
 @pytest.mark.parametrize("automatic", [False, True])
-def test_bankone_linked_archive_publishes_from_the_exact_retained_body(runtime, monkeypatch, automatic):
+@pytest.mark.parametrize("referenced", [False, True])
+def test_bankone_linked_archive_publishes_from_the_exact_retained_body(runtime, monkeypatch, automatic, referenced):
     scope_fixture_article(runtime)
     prior_id = queue_article(runtime, figure=True)
     body = (
@@ -384,6 +386,17 @@ def test_bankone_linked_archive_publishes_from_the_exact_retained_body(runtime, 
         "Fixture Filter Replacement</mtr-doc-link></li></ol></dd></dl>"
         "<img src='/fixture/diagram' alt='Filter locations'>"
     ).encode()
+    if referenced:
+        body = (
+            '<h2>Fixture System Service</h2><dl><dt>Installation Procedure</dt><dd><ol>'
+            '<li>Install the hinge bracket. Refer to <mtr-doc-link id="fixture-install">'
+            'Hinge Bracket Installation</mtr-doc-link>.</li>'
+            '<li>Fill the fixture reservoir. Refer to <mtr-doc-link id="fixture-fill">'
+            'Reservoir Filling Instructions.</mtr-doc-link></li></ol></dd></dl>'
+            "<img src='/fixture/diagram' alt='Component locations'>"
+        ).encode()
+    method = BANKONE_REFERENCED_RECOVERY_METHOD if referenced else BANKONE_LINKED_RECOVERY_METHOD
+    link_kind = "referenced_directive" if referenced else "single_link_directive"
     runtime.servers["bankone"].body(body, assets=["figure"], asset_bindings=[
         {"source_url": "/fixture/diagram", "resource_ref": "figure"},
     ])
@@ -408,8 +421,8 @@ def test_bankone_linked_archive_publishes_from_the_exact_retained_body(runtime, 
         assert run_job(runtime, prior_id, model, registry=runtime.registry)
     if automatic:
         assert_automatic_bankone_recovery(
-            runtime, prior_id, model, method=BANKONE_LINKED_RECOVERY_METHOD,
-            proof_kinds={"procedure_section", "single_link_directive"},
+            runtime, prior_id, model, method=method,
+            proof_kinds={"procedure_section", link_kind},
         )
         return
     current = runtime.read_current()
@@ -420,12 +433,12 @@ def test_bankone_linked_archive_publishes_from_the_exact_retained_body(runtime, 
         prior = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (prior_id,)).fetchone()
         attempt = source_bound_correction_prior_attempt(cur, prior, first_draft=True)
     archived = read_bankone_archive_structure(
-        runtime.repo, runtime.article_id, prior_id, source_id, object_store=runtime.objects, structure_version=2,
+        runtime.repo, runtime.article_id, prior_id, source_id, object_store=runtime.objects,
+        structure_version=3 if referenced else 2,
     )
     proof = archived["proof"]
-    assert [entry["kind"] for entry in proof["slots"].values()].count("procedure_section") == 2
-    assert [entry["kind"] for entry in proof["slots"].values()].count("single_link_directive") == 2
-    method = BANKONE_LINKED_RECOVERY_METHOD
+    assert [entry["kind"] for entry in proof["slots"].values()].count("procedure_section") == (1 if referenced else 2)
+    assert [entry["kind"] for entry in proof["slots"].values()].count(link_kind) == 2
     checked = recovery.recover_structured_bankone_first_draft(
         prior["checkpoint"]["normalized_document"], attempt, proof, method=method,
     )
@@ -454,8 +467,12 @@ def test_bankone_linked_archive_publishes_from_the_exact_retained_body(runtime, 
     projection = runtime.read_current()
     assert projection["canonical_revision_id"] == published.published_revision_id
     assert projection["source_revision_id"] == source_id and projection["content_origin"] == "canonical"
-    for action in ("Remove", "Install"):
-        assert f"{action} the component identified by (7) as described in Fixture Filter Replacement." in projection["body"]
+    if referenced:
+        assert "The hinge bracket must be installed. See Hinge Bracket Installation for the procedure." in projection["body"]
+        assert "The fixture reservoir must be filled. See Reservoir Filling Instructions for the procedure." in projection["body"]
+    else:
+        for action in ("Remove", "Install"):
+            assert f"{action} the component identified by (7) as described in Fixture Filter Replacement." in projection["body"]
     assert projection["images"] == [{**image, "source_order": image["source_order"]+1} for image in current["images"]]
     assert not attempt_rows(runtime, published.job_id)
     assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}

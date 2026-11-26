@@ -7,7 +7,7 @@ import pytest
 
 from autodata_ingestion.article_lifecycle_types import digest_json
 from autodata_ingestion.bankone_first_draft_recovery import _plain_wording, check_bankone_passage, recover_bankone_draft
-from autodata_ingestion.bankone_first_draft_structure import extract_bankone_structure
+from autodata_ingestion.bankone_first_draft_structure import REFERENCED_STRUCTURE_VERSION, extract_bankone_structure
 from autodata_ingestion.procedure_rewrite_auto import (
     _NOTE_LABEL_PROMPT_VERSION, _near_copy, render_auto, validate_auto,
 )
@@ -222,6 +222,32 @@ def test_versioned_recovery_recasts_only_failed_sections_and_linked_instructions
     )
     assert rebuilt.response == checked.response
     assert rebuilt.evidence["first_draft_recovery"] == checked.evidence
+
+
+def test_referenced_directive_keeps_the_exact_authored_target_and_action():
+    text = "Install the hinge bracket. Refer to Hinge Bracket Installation."
+    source = document(text)
+    source["blocks"][0].update(type="ordered_list", items=[source["blocks"][0].pop("text")])
+    path = "/blocks/0/items/0"
+    prefix = b'<ol><li>Install the hinge bracket. Refer to <mtr-doc-link id="bracket">'
+    label = b"Hinge Bracket Installation"
+    for href_tail in (label + b"</mtr-doc-link>.", label + b".</mtr-doc-link>"):
+        html = prefix + href_tail + b"</li></ol>"
+        assert not extract_bankone_structure(source, html, version=2)["slots"]
+        proof = extract_bankone_structure(source, html, version=REFERENCED_STRUCTURE_VERSION)
+        entry = proof["slots"][path]
+        assert entry == {"block_id": "p0", "kind": "referenced_directive",
+                         "reference_hash": sha256(b"bracket").hexdigest()}
+        expected = "The hinge bracket must be installed. See Hinge Bracket Installation for the procedure."
+        assert check_bankone_passage(text, expected, entry) == (text, expected)
+        for mutation in (expected.replace("hinge bracket", "hinge"), expected.replace("Installation for", "Removal for"),
+                         expected.replace("must be", "may be")):
+            with pytest.raises(ValueError, match="REWRITE_BANKONE_PROCEDURE_SCOPE_MUTATION"):
+                check_bankone_passage(text, mutation, entry)
+        for unbound in (html.replace(b'id="bracket"', b'id="bracket" hidden'), html.replace(b'id="bracket"', b""),
+                        html.replace(b"Refer to <", b"Refer <").replace(label, b"to " + label),
+                        html.replace(b"</li>", b" and try again.</li>")):
+            assert not extract_bankone_structure(source, unbound, version=REFERENCED_STRUCTURE_VERSION)["slots"]
 
 
 @pytest.mark.parametrize("mutation", [
