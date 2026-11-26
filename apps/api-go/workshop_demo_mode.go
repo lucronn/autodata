@@ -57,11 +57,11 @@ func workshopOpenDemoHost(flag, environment, origin string) string {
 	return u.Host
 }
 
-// The existing public Workshop can offer the read-only demo only when the
-// operator enables this separate switch for its exact production origin.
+// The direct public tunnel serves the read-only demo. The operator switch and
+// production origin must both be explicit; Vercel serves autodata.cars.tk.
 func workshopPublicOpenDemoHost(flag, environment, origin string) string {
 	if flag == "1" && environment == "production" && origin == "https://autodata.cars.tk" {
-		return "autodata.cars.tk"
+		return "autodata.curtis.click"
 	}
 	return ""
 }
