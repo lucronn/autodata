@@ -2060,6 +2060,34 @@ test('saved Library startup requests its first page with the verified Firebase s
   ]);
 });
 
+test('only exact saved index startup requests an index with the verified session', async () => {
+  const { createSession, readSessionBootstrap } = await import('./workshop/auth.mjs');
+  const selection = `configuration=${routeConfiguration}&region=US`;
+  const index = { version: 'v1', configuration: { id: routeConfiguration, region: 'US' }, items: [{ id: routeArticle }] };
+  for (const [route, wantsIndex] of [
+    [selection, true], [selection + '&year=2024', false], [selection + '&order=return', false],
+    [selection + '&article=reader', false], [selection + '&q=oil', false],
+    [selection + '&region=CA', false], [selection.replace('US', 'us'), false],
+  ]) {
+    const calls = [];
+    const request = async (path, options) => {
+      calls.push([path, options.headers?.Prefer]);
+      if (path === '/auth/config') return new Promise(() => {});
+      return { mode: 'firebase', authenticated: true, roles: ['dataset_viewer'], csrf_token: 'verified',
+        expires_at: '2099-01-01T00:00:00Z', ...(wantsIndex ? { workshop_article_index: index } : {}) };
+    };
+    const session = createSession({ request });
+    const initial = readSessionBootstrap(request, { route: new URLSearchParams(route) });
+    assert.equal(await session.bootstrap({ initial }), wantsIndex ? index : undefined);
+    assert.equal(session.state.csrf, 'verified');
+    assert.deepEqual(calls, [
+      ['/auth/config', undefined],
+      wantsIndex ? [`/auth/session?configuration_id=${routeConfiguration}&region=US`,
+        'workshop-session-mode, workshop-session-article-index'] : ['/auth/session', 'workshop-session-mode'],
+    ]);
+  }
+});
+
 test('session mode cannot accelerate a missing dataset role, CSRF token or unexpired session', async () => {
   const { createSession } = await import('./workshop/auth.mjs');
   for (const invalid of [{ roles: [] }, { csrf_token: '' }, { expires_at: '2000-01-01T00:00:00Z' }]) {
@@ -3025,6 +3053,34 @@ test('restoring a previously readable history entry passes its readiness to the 
   await h.context.restoreRoute();
   assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: routeArticle }]);
   assert.equal(h.calls.selectionOptions[0].preferRetained, true);
+});
+
+test('saved vehicle restores the index only when the current verified session supplies the exact first page', async () => {
+  const index = { version: 'v1', configuration: { id: routeConfiguration, region: 'US' }, items: [{ id: routeArticle }] };
+  for (const [result, authenticated, accepted] of [
+    [index, true, true], [index, false, false], [undefined, true, false],
+    [{ ...index, configuration: { ...index.configuration, region: 'CA' } }, true, false],
+    [{ ...index, items: [] }, true, false], [{ ...index, page: null }, true, false],
+  ]) {
+    const h = loginRouteHarness(`?configuration=${routeConfiguration}&region=US`);
+    runInNewContext(appSection('function indexResponsePage(', 'async function loadArticles('), h.context);
+    const account = deferredAuthOperation();
+    h.context.sessionRequest = account.promise;
+    let selected = false;
+    h.context.selectVehicle = async (_g, article, options) => {
+      selected = true;
+      assert.equal(article, '');
+      assert.equal(options.firstIndex?.value, accepted ? result : undefined);
+      assert.equal(options.quoteMode, accepted ? 'if-needed' : undefined);
+    };
+    const opening = h.context.restoreRoute(null, { initialAccountCheck: account.promise });
+    assert.equal(selected, false);
+    h.context.session.state.authenticated = authenticated;
+    h.context.session.state.mode = 'firebase';
+    account.resolve(result);
+    await opening;
+    assert.equal(selected, true);
+  }
 });
 
 test('returning to a retained reader starts its scoped GET during account restoration', async () => {

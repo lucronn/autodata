@@ -160,6 +160,63 @@ func TestWorkshopSessionLibraryRequiresVerifiedOwnerAndOptIn(t *testing.T) {
 	}
 }
 
+func TestWorkshopSessionIndexUsesTheVerifiedExactGrant(t *testing.T) {
+	grant := &paidGrantClient{}
+	client := paidIndexQuoteClient{paidGrantClient: grant, commerceFixture: func(context.Context, string, []byte, string) (int, []byte, error) {
+		t.Fatal("the session index must only read the grant and catalog")
+		return 0, nil, nil
+	}}
+	s, cookie, csrf := commerceTestAPI(t, client)
+	catalog := &paidHTTPStore{memoryCatalogStore: newMemoryCatalogStore(),
+		progress: &CatalogArticleProgress{Status: "complete", Complete: true}}
+	s.catalog = catalog
+	catalog.PutConfiguration(CatalogConfiguration{ID: commerceConfigID, VehicleID: paidTestVehicle, Region: "US"})
+	id := "55555555-5555-4555-8555-555555555555"
+	catalog.PutArticle(CatalogArticle{ID: id, VehicleID: commerceConfigID, CanonicalArticleID: &id,
+		Title: "Stored procedure", Body: "hidden body", Images: []CatalogImage{{ID: "hidden image"}}})
+	handler := s.Handler()
+	preference := workshopSessionModePreference + ", " + workshopSessionIndexPreference
+	query := "?configuration_id=" + commerceConfigID + "&region=US"
+	read := func(query, prefer string, cookie *http.Cookie) *httptest.ResponseRecorder {
+		return customerHTTP(t, handler, "GET", "/auth/session"+query, "", map[string]string{"Prefer": prefer}, cookie)
+	}
+	if w := read(query, preference, nil); w.Code != 401 || grant.calls != 0 || strings.Contains(w.Body.String(), "workshop_article_index") {
+		t.Fatalf("unsigned session read reached the index: %d %s", w.Code, w.Body.String())
+	}
+	for _, request := range []struct{ query, prefer string }{
+		{query, workshopSessionModePreference},
+		{query, workshopSessionIndexPreference},
+		{query + "&region=US", preference},
+		{query + "&order=not-an-index", preference},
+		{strings.Replace(query, "=US", "=CA", 1), preference},
+	} {
+		w := read(request.query, request.prefer, cookie)
+		if w.Code != 200 || grant.calls != 0 || strings.Contains(w.Body.String(), "workshop_article_index") {
+			t.Fatalf("nonmatching session read reached the index: %d %s", w.Code, w.Body.String())
+		}
+	}
+	for _, grantErr := range []error{ErrVehicleGrantRequired, ErrVehicleGrantRevoked} {
+		grant.err = grantErr
+		w := read(query, preference, cookie)
+		if w.Code != 200 || strings.Contains(w.Body.String(), "workshop_article_index") {
+			t.Fatalf("denied scope changed the session response: %d %s", w.Code, w.Body.String())
+		}
+	}
+	grant.err = nil
+	w := read(query, preference, cookie)
+	var reply struct {
+		CSRF  string                   `json:"csrf_token"`
+		Index *CatalogArticlesResponse `json:"workshop_article_index"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &reply) != nil || reply.CSRF != csrf ||
+		reply.Index == nil || reply.Index.Configuration == nil || reply.Index.Configuration.ID != commerceConfigID ||
+		reply.Index.Configuration.Region != "US" || len(reply.Index.Items) != 1 || reply.Index.Items[0].ID != id ||
+		grant.calls != 3 || grant.account != "11111111-1111-4111-8111-111111111111" || grant.region != "US" ||
+		w.Header().Get("Cache-Control") != "no-store" || strings.Contains(w.Body.String(), "hidden") {
+		t.Fatalf("verified session missing its exact descriptor: %d %s", w.Code, w.Body.String())
+	}
+}
+
 func TestCommerceQuoteLibraryStatusAndSafeErrors(t *testing.T) {
 	var operation string
 	var payload map[string]any

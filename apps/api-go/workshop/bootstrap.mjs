@@ -62,6 +62,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
   const initialAccount = wantsDemo ? undefined : import('./auth.mjs')
     .then(({ readSessionBootstrap }) => readSessionBootstrap(undefined, {
       includeLibrary: params.get('view') === 'library' && !params.has('order'),
+      route: params,
     }))
     .catch(() => null);
   const { testCheckout, openDemo } = wantsDemo ? await modeRequest : {};

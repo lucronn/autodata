@@ -906,6 +906,19 @@ function indexResponsePage(result, requested, configuration, offset, anchor) {
   return page;
 }
 
+function firstIndexPageForVehicle(index, configuration) {
+  if (index?.version !== "v1" || index.configuration?.id !== configuration.id ||
+      index.configuration.region !== configuration.region || !Array.isArray(index.items) || !index.items.length)
+    return null;
+  try {
+    indexResponsePage(index, true, configuration, null);
+    return { value: index };
+  } catch {
+    // An unusable first page falls back to the ordinary authorized index read.
+    return null;
+  }
+}
+
 async function loadArticles(g, articleID = "", {
   focusOnShow = false, focusArticle = "", indexAnchor = "", offset = null,
   includePurchaseQuote = false, firstIndex = null, initialDemoIndex = null,
@@ -1248,8 +1261,7 @@ function renderArticleLinks(items) {
 }
 
 function renderArticles({ keepFocus = true } = {}) {
-  $("vehicle-caption").textContent =
-    quote?.configuration_label || $("purchase-selection").textContent;
+  $("vehicle-caption").textContent = $("purchase-selection").textContent;
   const search = $("search");
   const query = trimArticleSearch(search.value);
   const focusedSearch = document.activeElement === search;
@@ -2782,18 +2794,8 @@ async function openPaidOrder(g, order) {
   unconfirmedOrder = null;
   rememberOrderRoute(id);
   selectOrderVehicle(order);
-  const index = order.article_index;
-  let firstIndex = null;
-  if (index?.version === "v1" && index.configuration?.id === vehicle.id &&
-      index.configuration.region === vehicle.region && Array.isArray(index.items) && index.items.length &&
-      !trimArticleSearch($("search").value)) {
-    try {
-      indexResponsePage(index, true, vehicle, null);
-      firstIndex = { value: index };
-    } catch {
-      // Keep the checkout result and use the normal authorized index read.
-    }
-  }
+  const firstIndex = order.article_index && !trimArticleSearch($("search").value)
+    ? firstIndexPageForVehicle(order.article_index, vehicle) : null;
   try {
     await selectVehicle(g, "", { quoteMode: "skip", firstIndex });
   } catch (error) {
@@ -3122,6 +3124,14 @@ async function restoreRoute(initialYears = null, {
       if (uuid(exact.configuration_id) &&
           (!hasHierarchy || scopedSearch || (uuid(articleID) && validScope(exact)))) {
         vehicle = { id: exact.configuration_id, region: exact.region };
+        let firstIndex = null;
+        if (!openDemo && initialAccountCheck && !hasHierarchy && !articleID && !params.has("q") && validScope(exact)) {
+          if (sessionRequest) status("Checking your account…", { busy: true });
+          const result = await initialAccountCheck;
+          if (!g.current()) return;
+          if (session.state.authenticated && session.state.mode === "firebase")
+            firstIndex = firstIndexPageForVehicle(result, vehicle);
+        }
         const preferRetained = uuid(articleID) && history.state?.workshopArticleReadable === true;
         const earlyReader = preferRetained && !openDemo && sessionRequest && validScope(exact)
           ? new AbortController() : null;
@@ -3131,7 +3141,8 @@ async function restoreRoute(initialYears = null, {
         }).catch(error => error?.status === 429 || error?.retryAfterSeconds > 0 ? { retry: error } : null);
         try {
           await selectVehicle(g, articleID, {
-            savedLink: true, preferRetained, initialDemoIndex, initialRetainedReader, ...indexOptions,
+            savedLink: true, preferRetained, initialDemoIndex, initialRetainedReader,
+            ...(firstIndex ? { firstIndex, quoteMode: "if-needed" } : {}), ...indexOptions,
           });
         } finally {
           earlyReader?.abort();

@@ -33,6 +33,12 @@ type customerSession struct {
 	AuthTime                                  int64
 	ExpiresAt                                 time.Time
 }
+
+func (s customerSession) principal() Principal {
+	return Principal{OrganizationID: s.OrganizationID, Roles: []string{"dataset_viewer"},
+		CustomerAccountID: s.AccountID, FirebaseProjectID: s.ProjectID, FirebaseUID: s.UID}
+}
+
 type customerSessionStore interface {
 	Rotate(context.Context, VerifiedCustomerIdentity, []byte, []byte, time.Time, time.Time) (customerSession, error)
 	Lookup(context.Context, []byte, time.Time) (customerSession, error)
@@ -152,5 +158,5 @@ func (s *customerAuthService) authenticate(r *http.Request, confirmExchange bool
 		!hmac.Equal([]byte(r.Header.Get("X-CSRF-Token")), []byte(customerCSRF(token)))) {
 		return Principal{}, time.Time{}, ErrCustomerCSRF
 	}
-	return Principal{OrganizationID: session.OrganizationID, Roles: []string{"dataset_viewer"}, CustomerAccountID: session.AccountID, FirebaseProjectID: session.ProjectID, FirebaseUID: session.UID}, session.ExpiresAt, nil
+	return session.principal(), session.ExpiresAt, nil
 }
