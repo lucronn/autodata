@@ -49,7 +49,8 @@ func (s *customerAuthService) writeError(w http.ResponseWriter, r *http.Request,
 	case errors.Is(err, ErrCustomerCSRF):
 		status, code, message = 403, "FORBIDDEN", "Request origin or CSRF token is invalid."
 	default:
-		if s.config.Mode == "firebase" {
+		// A speculative reader response can arrive after a new sign-in.
+		if s.config.Mode == "firebase" && !wantsRetainedReaderSession(r) {
 			http.SetCookie(w, customerSessionCookie("", time.Time{}, s.clock()))
 		}
 	}

@@ -252,7 +252,7 @@ func (s *Server) Handler() http.Handler {
 	s.mountCatalogSelector(mux, "/v1/catalog/years/{year}/makes/{make}/models/{model}/configurations", s.listCatalogConfigurations)
 	mux.Handle(catalogArticleIndexPattern, s.catalogProtected(s.listCatalogArticles, false))
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source", s.catalogProtected(s.serveCatalogSource, false))
-	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}", s.catalogProtected(s.getCatalogArticle, true))
+	mux.Handle(catalogArticleDetailPattern, s.catalogProtected(s.getCatalogArticle, true))
 	if s.paidCatalogEnabled() {
 		mux.Handle("POST /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/prepare", s.catalogProtected(s.preparePaidCatalogArticle, true))
 		paidImage := s.paidCatalogAuthenticated(s.servePaidCatalogImage)

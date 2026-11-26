@@ -768,6 +768,14 @@ func TestPaidCatalogPrepareBodyOriginAndNoAcknowledgement(t *testing.T) {
 		if w.Header().Get("Workshop-Reader-Session") != "" {
 			t.Fatal("denied detail returned a session binding")
 		}
+		if w.Header().Get("Set-Cookie") != "" {
+			t.Fatal("speculative read changed the session cookie")
+		}
+	}
+	ordinaryGuest := httptest.NewRecorder()
+	s.Handler().ServeHTTP(ordinaryGuest, httptest.NewRequest(http.MethodGet, path, nil))
+	if ordinaryGuest.Code != http.StatusUnauthorized || ordinaryGuest.Header().Get("Set-Cookie") == "" {
+		t.Fatal("ordinary unauthenticated read no longer clears the session cookie")
 	}
 	if ensure.path != "" {
 		t.Fatal("observational detail GET scheduled work")

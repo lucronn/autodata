@@ -10993,6 +10993,15 @@ test('a prefetched reader is accepted only with the restored session and exact a
   }
 });
 
+test('a rate limit on the early reader GET does not start another GET', async () => {
+  const h = retainedReaderHarness(() => assert.fail('duplicate rate-limited request'));
+  const throttled = Object.assign(new Error('Try again later.'), { status: 429, retryAfterSeconds: 5 });
+  await assert.rejects(h.context.loadArticle(routeArticle, h.g, {
+    savedLink: true, preferRetained: true, initialRetainedReader: Promise.resolve({ retry: throttled }),
+  }), throttled);
+  assert.equal(h.context.currentArticle, null);
+});
+
 test('the same vehicle identity remains visible after its stored article is published', () => {
   const vehicle = {
     id: routeConfiguration, region: 'CA', year: 2025, make: 'Example', model: 'Wagon',

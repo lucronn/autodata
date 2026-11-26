@@ -401,6 +401,7 @@ type paidCatalogContext struct {
 
 const (
 	catalogArticleIndexPattern     = "GET /v1/catalog/vehicles/{vehicle_id}/articles"
+	catalogArticleDetailPattern    = "GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}"
 	purchaseQuotePreference        = "workshop-purchase-quote"
 	selectedIndexSessionPreference = "workshop-confirm-session"
 )
@@ -419,6 +420,11 @@ func wantsSelectedIndexSession(r *http.Request) bool {
 	}
 	query, ok := commerceQuery(r, "region")
 	return ok && commerceScopeValid(r.PathValue("vehicle_id"), query.Get("region"))
+}
+
+func wantsRetainedReaderSession(r *http.Request) bool {
+	return r.Method == http.MethodGet && r.Pattern == catalogArticleDetailPattern &&
+		catalogReadPreferenceRequested(r, retainedReaderSessionPreference)
 }
 
 func wantsCatalogPurchaseQuote(r *http.Request, configuration CatalogConfiguration) bool {

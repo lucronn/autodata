@@ -589,9 +589,9 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 	if configuration != nil && status == http.StatusOK && s.canCheckCatalogPublication(article) {
 		response.Header().Set(publicationCheckHeader, "supported")
 	}
-	if configuration != nil && status == http.StatusOK && request.Method == http.MethodGet &&
+	if configuration != nil && status == http.StatusOK &&
 		article.SourceRevisionID != nil && !article.SourceBodyPreview && s.selectedIndexAuth() != nil &&
-		catalogReadPreferenceRequested(request, retainedReaderSessionPreference) {
+		wantsRetainedReaderSession(request) {
 		// Bind the authorized body to the cookie checked by /auth/session.
 		if token, _, err := customerRequestToken(request); err == nil {
 			digest := sha256.Sum256([]byte(customerCSRF(token)))

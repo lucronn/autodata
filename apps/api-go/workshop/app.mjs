@@ -2077,6 +2077,8 @@ async function loadArticleView(id, g, order, {
       if (initialRetainedReader) {
         const csrf = session.state.csrf;
         const early = await initialRetainedReader;
+        if (!g.current() || !session.state.authenticated) return;
+        if (early?.retry) throw early.retry;
         const sameSession = await matchesRetainedReaderSession(early, csrf);
         if (!g.current() || !session.state.authenticated) return;
         if (sameSession && session.state.csrf === csrf &&
@@ -3114,7 +3116,7 @@ async function restoreRoute(initialYears = null, {
         const initialRetainedReader = earlyReader && requestArticleJSON(articleRequestPath(articleID), {
           retainedReaderSession: true, preferShortPublicationCheck: true,
           signal: AbortSignal.any([g.signal, earlyReader.signal]),
-        }).catch(() => null);
+        }).catch(error => error?.status === 429 || error?.retryAfterSeconds > 0 ? { retry: error } : null);
         try {
           await selectVehicle(g, articleID, {
             savedLink: true, preferRetained, initialDemoIndex, initialRetainedReader, ...indexOptions,
