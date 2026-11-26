@@ -223,12 +223,13 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 	}
 	var raw, preview, linkedPreview []byte
 	var correctionCheck bool
+	var serviceSchedule string
 	var originalRevision *string
 	var originalSnapshot, originalHash, originalVersion string
 	scope, paid := ctx.Value(paidCatalogContextKey{}).(paidCatalogContext)
 	// Resolve the direct ID and at most one proven alias before evaluating the
 	// effective article view. Direct IDs take precedence within the same scope.
-	err := s.pool.QueryRow(ctx, `SELECT to_jsonb(view_row), early.document, early.linked_document,
+	err := s.pool.QueryRow(ctx, `SELECT to_jsonb(view_row), early.document, early.linked_document,`+catalogServiceScheduleSQL("view_row.source_revision_id")+`,
 		original.source_revision_id::text,COALESCE(original.body_source_snapshot_id::text,''),
 		COALESCE(original.content_sha256::text,''),COALESCE(original.body_provider_revision,''),
 		CASE WHEN $3 AND view_row.content_origin='source' AND view_row.availability='available'
@@ -259,7 +260,7 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 			AND legacy.vehicle_configuration_id IS NOT DISTINCT FROM owner.vehicle_configuration_id
 		)) AND `+lifecycleScopeSQL+` AND `+lifecycleEligibleSQL+`
 		ORDER BY (a.canonical_article_id=$2::uuid) DESC LIMIT 1`, v, id, paid && !scope.openDemo).Scan(
-		&raw, &preview, &linkedPreview, &originalRevision, &originalSnapshot, &originalHash, &originalVersion, &correctionCheck,
+		&raw, &preview, &linkedPreview, &serviceSchedule, &originalRevision, &originalSnapshot, &originalHash, &originalVersion, &correctionCheck,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		legacy, e := s.legacyArticle(ctx, p, v, id)
@@ -319,6 +320,7 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 		}
 	}
 	article := CatalogArticle{ID: row.CanonicalArticleID, VehicleID: v, CanonicalArticleID: &row.CanonicalArticleID, Title: row.Title, Kind: row.Kind, Component: row.Component, SourceRevisionID: row.SourceRevisionID, CanonicalRevisionID: row.CanonicalRevisionID, ContentOrigin: row.ContentOrigin, Availability: row.Availability, Images: row.Images, Body: row.Body, Steps: row.Steps, ReviewStatus: row.Review, ContentStatus: "list_only"}
+	article.ServiceSchedule = serviceSchedule
 	if row.JobID != nil && row.State != nil {
 		article.Processing = &CatalogProcessing{JobID: *row.JobID, State: *row.State, Retryable: row.Retryable,
 			RetryAfterSeconds: row.Retry, ErrorCode: publicProcessingError(row.Error), UpdatedAt: row.Updated,

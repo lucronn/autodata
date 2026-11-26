@@ -216,6 +216,7 @@ class CapturedSource:
     projection_version: str = "source-projection-v1"
     recovered_legacy_bankone_svg: bool = False
     image_only: bool = False
+    service_schedule: str | None = None
 
 
 @dataclass(frozen=True)

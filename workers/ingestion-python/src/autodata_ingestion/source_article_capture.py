@@ -47,6 +47,7 @@ from .article_lifecycle_types import (
     article_id,
     digest_json,
 )
+from .banktwo_service_schedule import banktwo_service_schedule
 from .source_adapters import adapt_bound_article, adapt_bound_pdf_embed
 from .source_connector_client import SourceConnectorError
 from .article_document import (
@@ -1535,6 +1536,11 @@ def capture_source_article(
         ],
         "partial" if projection_partial else "readable",
         datetime.now(timezone.utc),
+        service_schedule=(
+            banktwo_service_schedule(body_payload.payload)
+            if provider == "banktwo" and context.descriptor.get("category") == "Service Intervals"
+            else None
+        ),
         projection_version=(
             "source-projection-v10" if retained_pdf_repeats
             else "source-projection-v9" if positioned_html_table_images

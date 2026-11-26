@@ -38,7 +38,7 @@ export function filterArticles(items, query) {
   }
   const words = q.toLocaleLowerCase().split(articleSearchWhitespace).filter(Boolean);
   return items.filter(item => {
-    const text = `${item.title || ''} ${item.component || ''} ${item.kind || ''}`.toLocaleLowerCase();
+    const text = [item.title, item.component, item.kind, item.service_schedule].filter(Boolean).join(' ').toLocaleLowerCase();
     return words.every(word => text.includes(word));
   });
 }

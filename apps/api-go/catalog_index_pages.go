@@ -50,6 +50,7 @@ func parseCatalogIndexPageRequest(filters url.Values) (catalogIndexPageRequest, 
 func catalogIndexRevision(items []CatalogArticle) string {
 	type descriptor struct {
 		ID, Title, Kind, Component, Availability, ContentStatus string
+		ServiceSchedule                                         string `json:",omitempty"`
 		SourceRevisionID, CanonicalRevisionID, ViewRevision     *string
 		ContentOrigin, Review                                   *string
 		Complete                                                bool
@@ -60,7 +61,8 @@ func catalogIndexRevision(items []CatalogArticle) string {
 	for _, item := range items {
 		projection = descriptor{
 			ID: item.ID, Title: item.Title, Kind: item.Kind, Component: item.Component,
-			Availability: item.Availability, ContentStatus: item.ContentStatus,
+			ServiceSchedule: item.ServiceSchedule,
+			Availability:    item.Availability, ContentStatus: item.ContentStatus,
 			SourceRevisionID: item.SourceRevisionID, CanonicalRevisionID: item.CanonicalRevisionID,
 			ViewRevision: item.ViewRevision, ContentOrigin: item.ContentOrigin, Review: item.ReviewStatus,
 			Complete: item.Complete,

@@ -243,6 +243,7 @@ type CatalogArticle struct {
 	Title                    string               `json:"title"`
 	Kind                     string               `json:"kind,omitempty"`
 	Component                string               `json:"component,omitempty"`
+	ServiceSchedule          string               `json:"service_schedule,omitempty"`
 	ContentStatus            string               `json:"content_status"`
 	Complete                 bool                 `json:"complete"`
 	Body                     string               `json:"body,omitempty"`
