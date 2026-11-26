@@ -8,6 +8,7 @@ import pytest
 from autodata_ingestion import article_lifecycle_store as store
 from autodata_ingestion.article_lifecycle_types import digest_json
 from autodata_ingestion.published_media_publication import _publication_evidence
+from autodata_ingestion.published_media_repair import repair_published_media
 from autodata_ingestion.retained_introduction_repair import COPIED_INTRODUCTION, repair_retained_introduction
 from lifecycle_support import fresh_database, runtime
 from test_first_draft_recovery_worker import queue_article, scope_fixture_article
@@ -86,10 +87,16 @@ def test_repair_copied_introduction_reuses_validated_body_and_rolls_back(runtime
     with runtime.repo.connect() as conn, conn.cursor() as cur:
         article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
                               (runtime.article_id,)).fetchone()
-        row, _, _, attempt, response, _, _ = _publication_evidence(cur, article, binding, fixture_mode=False, lock=False)
+        row, _, _, attempt, response, version, _ = _publication_evidence(
+            cur, article, binding, fixture_mode=False, lock=False,
+        )
         assert row["canonical_article_revision_id"] == revision and attempt == archived
         assert response == {**archived["response"], "introduction": INTRODUCTION}
         assert cur.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
+    source = row["normalized_source_document"]
+    with pytest.raises(ValueError, match="^PUBLISHED_MEDIA_REPAIR_UNCHANGED$"):
+        repair_published_media(source, row["canonical_document"], source, response=response,
+                               prompt_version=version, profile=row["rewrite_profile_version"])
     with pytest.raises(ValueError, match="^RETAINED_INTRODUCTION_REPAIR_STALE$"):
         repair_retained_introduction(runtime.repo, runtime.article_id, **kwargs)
     assert runtime.read_current() == after
