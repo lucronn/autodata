@@ -179,7 +179,7 @@ func TestOpenDemoRequiresApprovedTestOrigin(t *testing.T) {
 	for _, tc := range []struct {
 		flag, environment, origin, want string
 	}{
-		{"1", "production", "https://autodata.cars.tk", "autodata.cars.tk"},
+		{"1", "production", "https://autodata.cars.tk", "autodata.curtis.click"},
 		{"", "production", "https://autodata.cars.tk", ""},
 		{"1", "test", "https://autodata.cars.tk", ""},
 		{"1", "production", "https://cars.tk", ""},
@@ -273,15 +273,15 @@ func TestOpenDemoReadsExactCatalogWithoutLoginOrGrant(t *testing.T) {
 		t.Fatal("external demo accepted another Host or contacted the grant checker")
 	}
 	s.workshopOpenDemoHost = workshopPublicOpenDemoHost("1", "production", "https://autodata.cars.tk")
-	if w := request("/workshop/demo-mode.json", "autodata.cars.tk"); w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"enabled":true,"access":"open"}` {
+	if w := request("/workshop/demo-mode.json", "autodata.curtis.click"); w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"enabled":true,"access":"open"}` {
 		t.Fatalf("public mode = %d %s", w.Code, w.Body.String())
 	}
 	for _, path := range []string{root + "?demo=1", root + "/" + id + "?demo=1", root + "?demo=1&q=private"} {
-		if w := request(path, "autodata.cars.tk"); w.Code != 200 {
+		if w := request(path, "autodata.curtis.click"); w.Code != 200 {
 			t.Fatalf("public demo %s = %d %s", path, w.Code, w.Body.String())
 		}
 	}
-	if w := request(root+"?demo=1", "demo.cars.tk"); w.Code == 200 || grant.calls != 0 {
+	if w := request(root+"?demo=1", "autodata.cars.tk"); w.Code == 200 || grant.calls != 0 {
 		t.Fatal("public demo accepted another Host or contacted the grant checker")
 	}
 }
