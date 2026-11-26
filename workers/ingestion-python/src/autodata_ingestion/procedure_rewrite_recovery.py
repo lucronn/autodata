@@ -25,11 +25,13 @@ FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD = "source-bound-first-draft-recovery-v4"
 FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD = "source-bound-first-draft-recovery-v5"
 FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD = "source-bound-first-draft-recovery-v6"
 FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v7"
+FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v8"
 REQUIRED_ACTION_WEAKENED = "REWRITE_REQUIRED_ACTION_WEAKENED"
 FIRST_DRAFT_RECOVERY_METHODS = (
     FIRST_DRAFT_RECOVERY_METHOD, FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD, FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD, FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD, FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
+    FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD,
 )
 BANKONE_STRUCTURAL_RECOVERY_METHOD = "source-bound-bankone-first-draft-v1"
 BANKONE_LINKED_RECOVERY_METHOD = "source-bound-bankone-first-draft-v2"
@@ -43,8 +45,10 @@ _FIRST_DRAFT_RECASTABLE_ERRORS = frozenset({
     "REWRITE_QUALIFIER_MUTATION", "REWRITE_TECHNICAL_MUTATION",
     "REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM",
 })
+_LUBRICATION_MUTATION = "REWRITE_LUBRICATION_MUTATION"
 FIRST_DRAFT_RECOVERABLE_ERRORS = _FIRST_DRAFT_RECASTABLE_ERRORS | {
     "REWRITE_SPEC_SCOPE_MUTATION", REQUIRED_ACTION_WEAKENED,
+    _LUBRICATION_MUTATION,
 }
 _PART_WORD = r"[a-z]+(?:-[a-z]+)*"
 _PART = rf"{_PART_WORD}(?: {_PART_WORD}){{0,9}}"
@@ -237,7 +241,8 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
             source, document, saved_prompt_version=prompt_version, bankone_structure=bankone_structure,
         )
         if method in (FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD, FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
-                      FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD, *BANKONE_ARCHIVE_STRUCTURE_VERSIONS):
+                      FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD, FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD,
+                      *BANKONE_ARCHIVE_STRUCTURE_VERSIONS):
             rewritten_paths = validation.report["changed_prose_slots"]
             auto.require_distinct_generated_introduction(source, document, rewritten_paths=rewritten_paths)
             auto.require_preserved_display_quotations(source, document, rewritten_paths=rewritten_paths)
@@ -335,6 +340,34 @@ def _recover_cooling_sequence(source, raw, slots, invalid, *, prompt_version, or
     return _validate_first_draft(
         source, raw, draft, corrected_paths, prompt_version=prompt_version,
         method=FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD, original_error=original_error,
+    )
+
+
+def _recover_maintenance_draft(source, raw, slots, invalid, *, prompt_version, original_error):
+    from .procedure_rewrite_maintenance_recovery import recast_maintenance_passage
+
+    draft = deepcopy(raw)
+    corrected = []
+    maintenance_recast = False
+    for slot, row in zip(slots, draft["replacements"], strict=True):
+        error = invalid.get(slot["path"])
+        if row["action"] != "rewrite" or (
+            error not in _FIRST_DRAFT_RECASTABLE_ERRORS and error != _LUBRICATION_MUTATION
+        ):
+            continue
+        text = slot["text"]
+        wording = _equivalent_directive(text) or _equivalent_wording(text)
+        if wording is None:
+            wording = recast_maintenance_passage(text)
+            maintenance_recast |= wording is not None
+        if wording is not None:
+            row.update(text=wording, reason="Distinct source-bound prose.")
+            corrected.append(slot["path"])
+    if not maintenance_recast:
+        return None
+    return _validate_first_draft(
+        source, raw, draft, corrected, prompt_version=prompt_version,
+        method=FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD, original_error=original_error,
     )
 
 
@@ -458,6 +491,12 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
     invalid = {issue["path"]: issue["code"] for issue in auto.failed_rewrite_passages(
         source, raw, prompt_version=prompt_version,
     )}
+    if method == FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD or original_error == _LUBRICATION_MUTATION:
+        if method not in (None, FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD):
+            return None
+        return _recover_maintenance_draft(
+            source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
+        )
     if method == FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD:
         return _recover_cooling_sequence(
             source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
@@ -486,7 +525,12 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
     )
     if cooling is not None or method == FIRST_DRAFT_COOLING_RECOVERY_METHOD:
         return cooling
-    return _recover_cooling_sequence(
+    cooling_sequence = _recover_cooling_sequence(
+        source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
+    )
+    if cooling_sequence is not None or method is not None:
+        return cooling_sequence
+    return _recover_maintenance_draft(
         source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
     )
 
