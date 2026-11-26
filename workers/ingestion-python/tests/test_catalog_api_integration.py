@@ -208,7 +208,7 @@ def install_source_asset_fixture(runtime):
     both body and resource snapshots to exercise their quarantine policies.
     """
     from psycopg.types.json import Jsonb
-    png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')
+    png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=')
     for provider, server in runtime.servers.items():
         server.body(b'<ol><li>Remove the pump.</li></ol><img data-resource-ref="figure" alt="Pump figure" src="https://provider.invalid/figure">', assets=['figure'])
         server.body(png, 'image/png', ref='figure', kind='asset')

@@ -18,6 +18,7 @@ const {
   delay,
   filterArticles,
   localImageURL,
+  matchesRetainedReaderSession,
   readCollection,
   requestJSON,
   requestArticleJSON,
@@ -770,6 +771,7 @@ function purchaseConfigured() {
 async function selectVehicle(g, articleID = "", {
   quoteMode = "eager", savedLink = false, reuseQuote = false, focusOnShow = false,
   focusArticle = "", indexAnchor = "", firstIndex = null, preferRetained = false, initialDemoIndex = null,
+  initialRetainedReader = null,
 } = {}) {
   if (!g.current()) return;
   // Keep the exact public price visible while paid access and purchase
@@ -836,7 +838,7 @@ async function selectVehicle(g, articleID = "", {
     return;
   }
   try {
-    if (directArticle && await loadArticle(articleID, g, { savedLink: true, preferRetained })) return;
+    if (directArticle && await loadArticle(articleID, g, { savedLink: true, preferRetained, initialRetainedReader })) return;
     if (savedQuery && await loadSavedSearch(g, savedQuery, focusArticle)) return;
     if (!g.current()) return;
     await loadArticles(g, articleID, {
@@ -1995,7 +1997,7 @@ async function loadArticle(id, g, options) {
 }
 async function loadArticleView(id, g, order, {
   savedLink = false, refreshOnly = false, preferRetained = false, verifiedDetail = null,
-  initialDemoDetail = null, indexedArticle = null,
+  initialDemoDetail = null, indexedArticle = null, initialRetainedReader = null,
 } = {}) {
   const sameArticle = currentArticle?.id === id;
   let refreshVisibleArticle = sameArticle && !$("reader").hidden && readableArticle(currentArticle);
@@ -2071,7 +2073,19 @@ async function loadArticleView(id, g, order, {
     // The index or history entry advertises retained content. Read with current authorization.
     const startedAt = performance.now();
     try {
-      const response = await requestArticleDetail(order, detailPath, readOptions);
+      let response;
+      if (initialRetainedReader) {
+        const csrf = session.state.csrf;
+        const early = await initialRetainedReader;
+        const sameSession = await matchesRetainedReaderSession(early, csrf);
+        if (!g.current() || !session.state.authenticated) return;
+        if (sameSession && session.state.csrf === csrf &&
+            early.data?.article?.id === id && matchesConfiguration(early.data?.configuration) &&
+            hasRetainedArticleRevision(early.data.article) && !early.data.article.source_body_preview &&
+            readableArticle(early.data.article))
+          response = { ...early, [articleDetailSequence]: ++order.issued };
+      }
+      response ??= await requestArticleDetail(order, detailPath, readOptions);
       const article = response.data?.article;
       if (article?.id !== id || !matchesConfiguration(response.data?.configuration))
         throw new Error("The article response does not match the selected vehicle.");
@@ -3095,7 +3109,19 @@ async function restoreRoute(initialYears = null, {
           (!hasHierarchy || scopedSearch || (uuid(articleID) && validScope(exact)))) {
         vehicle = { id: exact.configuration_id, region: exact.region };
         const preferRetained = uuid(articleID) && history.state?.workshopArticleReadable === true;
-        await selectVehicle(g, articleID, { savedLink: true, preferRetained, initialDemoIndex, ...indexOptions });
+        const earlyReader = preferRetained && !openDemo && sessionRequest && validScope(exact)
+          ? new AbortController() : null;
+        const initialRetainedReader = earlyReader && requestArticleJSON(articleRequestPath(articleID), {
+          retainedReaderSession: true, preferShortPublicationCheck: true,
+          signal: AbortSignal.any([g.signal, earlyReader.signal]),
+        }).catch(() => null);
+        try {
+          await selectVehicle(g, articleID, {
+            savedLink: true, preferRetained, initialDemoIndex, initialRetainedReader, ...indexOptions,
+          });
+        } finally {
+          earlyReader?.abort();
+        }
         return;
       }
       const desired = Object.fromEntries(names.map((name) => [name, params.get(name) || ""]));

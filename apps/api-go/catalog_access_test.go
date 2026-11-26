@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -699,6 +700,8 @@ func TestPaidCatalogPrepareBodyOriginAndNoAcknowledgement(t *testing.T) {
 	}
 	ensure := &fakeIngestionClient{status: http.StatusAccepted}
 	s.ingestionClient = ensure
+	source := "66666666-6666-4666-8666-666666666666"
+	c.view.Article.SourceRevisionID = &source
 	want := CatalogConfiguration{ID: paidTestConfiguration, VehicleID: paidTestVehicle, Region: "CA", Year: 2024, Make: "Acme", Model: "Roadster", Complete: true}
 	for _, tc := range []struct {
 		method, availability string
@@ -722,6 +725,7 @@ func TestPaidCatalogPrepareBodyOriginAndNoAcknowledgement(t *testing.T) {
 		r.Header.Set("Origin", "https://cars.example")
 		r.Header.Set("X-CSRF-Token", customerCSRF(token))
 		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Prefer", retainedReaderSessionPreference)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		var response CatalogArticleResponse
@@ -730,6 +734,13 @@ func TestPaidCatalogPrepareBodyOriginAndNoAcknowledgement(t *testing.T) {
 		}
 		if response.Configuration == nil || *response.Configuration != want {
 			t.Fatalf("%s returned configuration %#v, want %#v", tc.method, response.Configuration, want)
+		}
+		binding := ""
+		if tc.method == http.MethodGet && tc.want == http.StatusOK {
+			binding = fmt.Sprintf("%x", sha256.Sum256([]byte(customerCSRF(token))))
+		}
+		if got := w.Header().Get("Workshop-Reader-Session"); got != binding {
+			t.Fatal("unexpected retained reader session binding")
 		}
 	}
 	for _, tc := range []struct {
@@ -748,10 +759,14 @@ func TestPaidCatalogPrepareBodyOriginAndNoAcknowledgement(t *testing.T) {
 		if tc.owner {
 			r.AddCookie(customerSessionCookie(token, now.Add(time.Hour), now))
 		}
+		r.Header.Set("Prefer", retainedReaderSessionPreference)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		if w.Code != tc.want || strings.Contains(w.Body.String(), `"configuration":`) || strings.Contains(w.Body.String(), "Roadster") {
 			t.Fatalf("denied detail status=%d want=%d body=%s", w.Code, tc.want, w.Body.String())
+		}
+		if w.Header().Get("Workshop-Reader-Session") != "" {
+			t.Fatal("denied detail returned a session binding")
 		}
 	}
 	if ensure.path != "" {
