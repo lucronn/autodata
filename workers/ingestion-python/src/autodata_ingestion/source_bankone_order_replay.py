@@ -11,7 +11,9 @@ from psycopg.rows import dict_row
 
 from .article_document import validate_ordered_document
 from .article_lifecycle_store import _remap_snapshot_references
-from .article_lifecycle_types import BANKONE_HTML_FLOW_LAYOUT, HTML_TABLE_SPAN_LAYOUT, digest_json
+from .article_lifecycle_types import (
+    BANKONE_HTML_FLOW_LAYOUT, HTML_INLINE_ARTICLE_LINK_LAYOUT, HTML_TABLE_SPAN_LAYOUT, digest_json,
+)
 from .source_article_capture import WORKSHOP_CAPTURE_OPTIONS, capture_source_article, project_document, snapshot_id
 from .source_connector_client import SourceConnectorError
 from .source_job_persistence import source_bound_rewrite_source_allowed
@@ -228,7 +230,12 @@ def _replay(repo, source_revision_id, object_store, deadline):
     try:
         replay = capture_source_article(
             binding.context, registry={"bankone": connector}, object_store=_VerifyOnlySink(verified),
-            deadline_seconds=remaining(), **WORKSHOP_CAPTURE_OPTIONS,
+            deadline_seconds=remaining(), **{
+                **WORKSHOP_CAPTURE_OPTIONS,
+                "keep_inline_article_links": (
+                    binding.resource_manifest[0].get("html_inline_article_link_layout") == HTML_INLINE_ARTICLE_LINK_LAYOUT
+                ),
+            },
         )
     except SourceConnectorError as error:
         code = _DEADLINE if error.code in ("CAPTURE_DEADLINE", "UPSTREAM_UNAVAILABLE") else _FLOW_DRIFT

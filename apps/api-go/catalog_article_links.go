@@ -43,6 +43,40 @@ func projectStoredCatalogDocument(document *CatalogDocument, raw []byte, links c
 	return projectCatalogDocument(raw, links)
 }
 
+// Capture stores these bindings on the immutable document so the source view
+// can resolve them before a rewrite is available.
+func capturedInlineCatalogLinks(value any, retained map[string][]retainedCatalogInlineLink) map[string][]retainedCatalogInlineLink {
+	doc, _ := value.(map[string]any)
+	rows, _ := doc["authored_inline_article_links"].([]any)
+	if len(rows) == 0 || len(rows) > maxCatalogArticleLinkTargets {
+		return retained
+	}
+	if retained == nil {
+		retained = make(map[string][]retainedCatalogInlineLink)
+	}
+	for _, raw := range rows {
+		row, _ := raw.(map[string]any)
+		block, _ := row["block_id"].(string)
+		label, _ := row["label"].(string)
+		labelHash, _ := row["label_sha256"].(string)
+		authored, _ := row["authored_id_sha256"].(string)
+		target, _ := row["target_ref_sha256"].(string)
+		index, ok := row["item_index"].(float64)
+		sum := sha256.Sum256([]byte(label))
+		if !ok || index < -1 || index > 2147483647 || index != float64(int(index)) ||
+			block == "" || len(block) > 256 || label == "" || len(label) > 384 ||
+			hex.EncodeToString(sum[:]) != labelHash || !catalogArticleReferenceDigest.MatchString(authored) ||
+			!catalogArticleReferenceDigest.MatchString(target) {
+			continue
+		}
+		binding := retainedCatalogInlineLink{label: label, targetHash: target, itemIndex: int(index)}
+		if !slices.Contains(retained[block], binding) {
+			retained[block] = append(retained[block], binding)
+		}
+	}
+	return retained
+}
+
 // Retained rows bind an immutable body and the currently effective published
 // revision. An unavailable binding lookup leaves the original view readable.
 func (s *postgresCatalogStore) retainedArticleLinkBindings(ctx context.Context, article string, source, canonical *string, bodySHA256 string) (map[string]retainedCatalogLink, map[string][]retainedCatalogInlineLink) {

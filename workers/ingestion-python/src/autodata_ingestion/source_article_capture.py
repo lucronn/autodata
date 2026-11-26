@@ -16,6 +16,7 @@ from .article_lifecycle_types import (
     CapturedSource,
     HTML_BOUND_IMAGE_LAYOUT,
     HTML_DOCUMENT_LINK_LAYOUT,
+    HTML_INLINE_ARTICLE_LINK_LAYOUT,
     HTML_FIGURE_CAPTION_LAYOUT,
     HTML_FLOW_FIGURE_CAPTION_LAYOUT,
     HTML_MEDIA_TABLE_HEADER_LAYOUT,
@@ -486,6 +487,7 @@ WORKSHOP_CAPTURE_OPTIONS = {
     "keep_leading_decimals": True,
     "keep_html_numeric_superscripts": True,
     "keep_html_document_links": True,
+    "keep_inline_article_links": True,
     "keep_html_section_titles": True,
     "keep_bankone_html_flow": True,
     "keep_mixed_html_pdf_embeds": True,
@@ -516,6 +518,7 @@ def capture_source_article(
     keep_leading_decimals=False,
     keep_html_numeric_superscripts=False,
     keep_html_document_links=False,
+    keep_inline_article_links=False,
     keep_html_section_titles=False,
     keep_bankone_html_flow=False,
     keep_mixed_html_pdf_embeds=False,
@@ -1471,6 +1474,24 @@ def capture_source_article(
         new_structure = True
         for record in (resources[0], provenance[0], manifest[0]):
             record["missing_table_image_caption_layout"] = caption_layout
+    if (keep_inline_article_links and provider == "bankone"
+        and body_payload.media_type == "text/html" and manifest[0].get("article_link_bindings")
+        and body_digest != context.legacy_published_inline_article_link_body):
+        from .retained_inline_article_links import INLINE_LINKS_FIELD, authored_inline_article_links
+
+        try:
+            references = authored_inline_article_links(
+                body_payload.payload.decode("utf-8-sig"), manifest[0]["article_link_bindings"], doc, doc,
+            )
+        except ValueError as error:
+            if str(error) != "INLINE_ARTICLE_LINK_LIMIT":
+                raise
+            references = []
+        if references:
+            doc[INLINE_LINKS_FIELD] = references
+            new_structure = True
+            for record in (resources[0], provenance[0], manifest[0]):
+                record["html_inline_article_link_layout"] = HTML_INLINE_ARTICLE_LINK_LAYOUT
     for node in _image_nodes(doc["blocks"]):
         local = image_records.get(node.get("image_id"))
         document_evidence = [evidence for evidence in node.get("evidence_ids", []) if evidence in evidence_sources]

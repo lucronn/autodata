@@ -32,6 +32,7 @@ HTML_MEDIA_TABLE_HEADER_LAYOUT = "html-media-table-header-v1"
 HTML_NESTED_TABLE_LAYOUT = "html-nested-tables-v1"
 HTML_NUMERIC_SUPERSCRIPT_LAYOUT = "html-numeric-superscript-v1"
 HTML_DOCUMENT_LINK_LAYOUT = "html-document-link-labels-v1"
+HTML_INLINE_ARTICLE_LINK_LAYOUT = "html-inline-article-links-v1"
 HTML_SECTION_TITLE_LAYOUT = "html-section-titles-v1"
 HTML_TABLE_SPAN_LAYOUT = "html-table-spans-v1"
 HTML_BOUND_IMAGE_LAYOUT = "html-bound-image-v1"
@@ -198,6 +199,7 @@ class SourceArticleContext:
     has_stored_source: bool = False
     fast_linked_pdf_png_roots: frozenset[str] = frozenset()
     legacy_published_positioned_label_body: str | None = None
+    legacy_published_inline_article_link_body: str | None = None
 
 
 @dataclass(frozen=True)

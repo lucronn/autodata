@@ -11,6 +11,7 @@ from .source_job_persistence import (claim_source_job, heartbeat_source_job, loc
                                      fail_source_job, park_automatic_for_model, LeaseLost)
 from .article_lifecycle_types import (
     AUTOMATIC_REWRITE_PROFILES, ArticleKey, BANKONE_HTML_FLOW_LAYOUT, HTML_DOCUMENT_LINK_LAYOUT,
+    HTML_INLINE_ARTICLE_LINK_LAYOUT,
     HTML_FIGURE_CAPTION_LAYOUT, HTML_FLOW_FIGURE_CAPTION_LAYOUT,
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT, HTML_SECTION_TITLE_LAYOUT, HTML_TABLE_CAPTION_LAYOUT,
     PDF_BLANK_PAGE_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT, PDF_FAST_PNG_ENCODING,
@@ -108,6 +109,7 @@ def _capture_context(repo,lease):
         legacy_multiline_figure_body = previous_body
         legacy_table_caption_body = previous_body
         legacy_document_link_body = previous_body
+        legacy_inline_article_link_body = previous_body
         legacy_section_title_body = previous_body
         legacy_bankone_flow_body = previous_body
         legacy_positioned_label_body = previous_body
@@ -139,6 +141,8 @@ def _capture_context(repo,lease):
                     legacy_table_caption_body = None
                 if resource.get("html_document_link_layout") == HTML_DOCUMENT_LINK_LAYOUT:
                     legacy_document_link_body = None
+                if resource.get("html_inline_article_link_layout") == HTML_INLINE_ARTICLE_LINK_LAYOUT:
+                    legacy_inline_article_link_body = None
                 if resource.get("html_section_title_layout") == HTML_SECTION_TITLE_LAYOUT:
                     legacy_section_title_body = None
                 if resource.get("bankone_html_flow_layout") == BANKONE_HTML_FLOW_LAYOUT:
@@ -177,6 +181,7 @@ def _capture_context(repo,lease):
             legacy_published_html_multiline_figure_body=legacy_multiline_figure_body,
             legacy_published_html_table_caption_body=legacy_table_caption_body,
             legacy_published_html_document_link_body=legacy_document_link_body,
+            legacy_published_inline_article_link_body=legacy_inline_article_link_body,
             legacy_published_html_section_title_body=legacy_section_title_body,
             legacy_published_bankone_flow_body=legacy_bankone_flow_body,
             legacy_published_positioned_label_body=legacy_positioned_label_body,

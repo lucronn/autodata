@@ -697,6 +697,7 @@ func projectCatalogDocument(raw []byte, links catalogArticleLinkProjection) *Cat
 	var slots map[string][]map[string]any
 	if links.resolve != nil {
 		slots = make(map[string][]map[string]any)
+		links.inline = capturedInlineCatalogLinks(value, links.inline)
 	}
 	var retainedMatches map[string]map[string]any
 	if links.resolve != nil && len(links.retained) != 0 {
