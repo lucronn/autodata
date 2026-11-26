@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+const (
+	workshopPublicDemoOrigin     = "https://autodata.cars.tk"
+	workshopPublicDemoTunnelHost = "autodata.curtis.click"
+)
+
 // A public presentation signal, never an access grant. Both processes must
 // independently agree that the merchant is in test mode before showing it.
 func workshopProductionOrigin(origin string) bool {
@@ -60,8 +65,8 @@ func workshopOpenDemoHost(flag, environment, origin string) string {
 // The direct public tunnel serves the read-only demo. The operator switch and
 // production origin must both be explicit; Vercel serves autodata.cars.tk.
 func workshopPublicOpenDemoHost(flag, environment, origin string) string {
-	if flag == "1" && environment == "production" && origin == "https://autodata.cars.tk" {
-		return "autodata.curtis.click"
+	if flag == "1" && environment == "production" && origin == workshopPublicDemoOrigin {
+		return workshopPublicDemoTunnelHost
 	}
 	return ""
 }

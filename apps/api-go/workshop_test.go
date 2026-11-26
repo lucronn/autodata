@@ -39,7 +39,7 @@ func TestWorkshopEntryMarksPublicSelectors(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/workshop", nil)
 		r.Header.Set("If-None-Match", tag)
-		workshopAssetsHandler(recorder, r, public, false)
+		workshopAssetsHandler(recorder, r, workshopEntryOptions{publicSelectors: public})
 		return recorder
 	}
 	legacy := request(false, "")
@@ -86,6 +86,33 @@ func TestWorkshopEntryMarksOpenDemoForConfiguredHost(t *testing.T) {
 	server.workshopOpenDemoHost = ""
 	if disabled := request("demo.cars.tk", tag); disabled.Code != http.StatusOK ||
 		!strings.Contains(disabled.Body.String(), `data-workshop-open-demo="false"`) {
+		t.Fatalf("disabled demo entry = %d", disabled.Code)
+	}
+}
+
+func TestWorkshopPublicDemoEntryBindsTheBrowserOriginsThroughTheProxy(t *testing.T) {
+	server, _, _ := paidHTTPServer()
+	server.workshopOpenDemoHost = workshopPublicOpenDemoHost("1", "production", workshopPublicDemoOrigin)
+	handler := server.Handler()
+	request := func(path, tag string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, "http://proxy.internal"+path, nil)
+		r.Header.Set("If-None-Match", tag)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+	entry := request("/workshop", "")
+	tag := entry.Header().Get("ETag")
+	if entry.Code != http.StatusOK || tag == "" || !strings.Contains(entry.Body.String(),
+		`data-workshop-demo-origins="https://autodata.cars.tk https://autodata.curtis.click"`) {
+		t.Fatalf("public demo entry = %d, tag %q", entry.Code, tag)
+	}
+	if mode := request("/workshop/demo-mode.json", ""); strings.TrimSpace(mode.Body.String()) != `{"enabled":false}` {
+		t.Fatalf("the readiness API accepted the proxy Host: %s", mode.Body)
+	}
+	server.workshopOpenDemoHost = ""
+	if disabled := request("/workshop", tag); disabled.Code != http.StatusOK ||
+		strings.Contains(disabled.Body.String(), "data-workshop-demo-origins") {
 		t.Fatalf("disabled demo entry = %d", disabled.Code)
 	}
 }

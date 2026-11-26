@@ -15,7 +15,13 @@ const workshopEntryPath = "/workshop"
 
 var workshopAssetsHandler = buildWorkshopAssetsHandler()
 
-func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, bool, bool) {
+type workshopEntryOptions struct {
+	publicSelectors bool
+	openDemo        bool
+	publicDemo      bool
+}
+
+func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, workshopEntryOptions) {
 	assets, err := fs.Sub(dashboardFiles, "workshop")
 	if err != nil {
 		panic("embedded Workshop assets unavailable: " + err.Error())
@@ -77,8 +83,12 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, bool,
 	}
 	openDemoEntry := bytes.Replace(publicEntry, []byte(demoMarker), []byte(`data-workshop-open-demo="true"`), 1)
 	openDemoEntryTag := fmt.Sprintf(`W/"%x"`, sha256.Sum256(openDemoEntry))
+	// The public proxy can serve the entry with a different origin Host.
+	browserOrigins := demoMarker + ` data-workshop-demo-origins="` + workshopPublicDemoOrigin + " https://" + workshopPublicDemoTunnelHost + `"`
+	publicDemoEntry := bytes.Replace(publicEntry, []byte(demoMarker), []byte(browserOrigins), 1)
+	publicDemoEntryTag := fmt.Sprintf(`W/"%x"`, sha256.Sum256(publicDemoEntry))
 	files := http.StripPrefix(prefix, http.FileServer(http.FS(assets)))
-	return func(w http.ResponseWriter, r *http.Request, publicSelectors, openDemo bool) {
+	return func(w http.ResponseWriter, r *http.Request, entry workshopEntryOptions) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -128,10 +138,13 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, bool,
 		}
 		if path == prefix {
 			document := entryPage
-			if openDemo {
+			if entry.publicDemo {
+				document = publicDemoEntry
+				w.Header().Set("ETag", publicDemoEntryTag)
+			} else if entry.openDemo {
 				document = openDemoEntry
 				w.Header().Set("ETag", openDemoEntryTag)
-			} else if publicSelectors {
+			} else if entry.publicSelectors {
 				document = publicEntry
 				w.Header().Set("ETag", publicEntryTag)
 			}

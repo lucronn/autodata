@@ -36,7 +36,10 @@ if (params.get('sample') === '1' && !wantsDemo) {
       document.head.append(link);
     }
   }
-  const modeRequest = wantsDemo && document.documentElement.dataset.workshopOpenDemo === 'true'
+  const entry = document.documentElement.dataset;
+  const openDemoInEntry = entry.workshopOpenDemo === 'true' ||
+    entry.workshopDemoOrigins?.split(' ').includes(location.origin);
+  const modeRequest = wantsDemo && openDemoInEntry
     ? Promise.resolve({ openDemo: true })
     : readDemoMode();
   const preview = wantsDemo ? null : import('./catalog.mjs')

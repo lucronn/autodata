@@ -1382,17 +1382,37 @@ test('early publication reads keep the displayed source with a negotiated pendin
   const captureQueued = { status: 202, shortSourceCheck: true, data: {
     article: { processing: { job_id: 'job', state: 'queued' } },
   } };
-  const responses = [captureQueued, source, pending, pending, pending, pending, ready];
-  let now = 0;
-  const optionsByRead = [];
-  const result = await readArticle(async (options) => {
-    optionsByRead.push({ time: now, check: options.publicationCheck, timeout: options.timeout });
-    return responses.shift();
-  }, { now: () => now, wait: async ms => { now += ms; } });
-  assert.deepEqual(optionsByRead.map(({ time }) => time), [0, 150, 400, 650, 900, 1150, 2150]);
-  assert.deepEqual(optionsByRead.filter(({ check }) => check).map(({ time, timeout }) => [time, timeout]),
-    [[400, 250], [650, 500], [900, 250], [1150, 1000]]);
-  assert.equal(result.data.article.body, 'Published');
+  for (const [confirmation, midpoint, regularAt] of [
+    [pending, ready],
+    [pending, pending, 2150],
+    [pending, new TypeError('Network failed'), 2150],
+    [pending, serverDelay, 7650],
+    [wrongSource, null, 2150],
+  ]) {
+    const responses = [captureQueued, source, pending, pending, pending, confirmation];
+    const expectedTimes = [0, 150, 400, 650, 900, 1150];
+    const expectedProbes = [[400, 250], [650, 500], [900, 250], [1150, 1000]];
+    if (midpoint) {
+      expectedTimes.push(1650);
+      expectedProbes.push([1650, 500]);
+      responses.push(midpoint);
+    }
+    if (regularAt) {
+      expectedTimes.push(regularAt);
+      responses.push(ready);
+    }
+    let now = 0;
+    const optionsByRead = [];
+    const result = await readArticle(async ({ publicationCheck, timeout }) => {
+      optionsByRead.push({ time: now, check: publicationCheck, timeout });
+      const response = responses.shift();
+      if (response instanceof Error) throw response;
+      return response;
+    }, { now: () => now, wait: async ms => { now += ms; } });
+    assert.deepEqual(optionsByRead.map(({ time }) => time), expectedTimes);
+    assert.deepEqual(optionsByRead.filter(({ check }) => check).map(({ time, timeout }) => [time, timeout]), expectedProbes);
+    assert.equal(result.data.article.body, 'Published');
+  }
 
   const controller = new AbortController();
   let reads = 0;
