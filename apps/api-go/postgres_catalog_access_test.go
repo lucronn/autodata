@@ -813,15 +813,39 @@ func TestPostgresPaidCatalogSourceBodyPreviewRights(t *testing.T) {
 	f := paidSetup(t)
 	f.grant(0, f.configuration, "US")
 	detail := f.path("/" + f.article)
+	assertDescriptor := func(item CatalogArticle, want bool) {
+		t.Helper()
+		if item.SourceBodyPreview != want || (item.Availability == "available") != want ||
+			item.SourceRevisionID != nil || item.CanonicalRevisionID != nil ||
+			item.Document != nil || item.Body != "" || len(item.Images) != 0 || len(item.Steps) != 0 {
+			t.Fatalf("unexpected preview descriptor %s: readiness %t, availability %q", item.ID, item.SourceBodyPreview, item.Availability)
+		}
+		if want && (item.ContentStatus != "content_partial" || item.ContentOrigin == nil || *item.ContentOrigin != "source" || item.Complete) {
+			t.Fatal("the preview descriptor must identify partial supplier content")
+		}
+	}
+	assertIndex := func(want bool) {
+		t.Helper()
+		raw := f.expect(0, "GET", f.path("?region=US"), "", http.StatusOK)
+		var response CatalogArticlesResponse
+		if bytes.Contains(raw, []byte(text)) || json.Unmarshal(raw, &response) != nil {
+			t.Fatal("invalid metadata-only index")
+		}
+		for _, item := range response.Items {
+			if item.ID == f.article {
+				assertDescriptor(item, want)
+				return
+			}
+		}
+		t.Fatal("missing preview article in index")
+	}
 	assertSearch := func(want bool) {
 		t.Helper()
 		found := false
 		for _, match := range f.contentSearch(0, query).Items {
 			if match.ID == f.article {
 				found = true
-				if match.SourceRevisionID != nil {
-					t.Fatal("preview search unexpectedly required a stored source revision")
-				}
+				assertDescriptor(match, want)
 			}
 		}
 		if found != want {
@@ -842,6 +866,7 @@ func TestPostgresPaidCatalogSourceBodyPreviewRights(t *testing.T) {
 	if !found {
 		t.Fatal("the title search dropped an article before its body was captured")
 	}
+	assertIndex(false)
 	assertSearch(false)
 	f.expect(0, "POST", detail+"/prepare", "{}", 202)
 	f.exec(`INSERT INTO source_snapshots(source_snapshot_id,adapter_name,source_uri,source_version,content_sha256,object_key,
@@ -858,6 +883,7 @@ func TestPostgresPaidCatalogSourceBodyPreviewRights(t *testing.T) {
 			got.Document == nil || len(got.Document.Blocks) != 1 || got.Document.Blocks[0].Text != text {
 			t.Fatal("owner did not receive the original source body")
 		}
+		assertIndex(true)
 		assertSearch(true)
 	}
 	assertHidden := func(owner, status int) {
@@ -866,8 +892,10 @@ func TestPostgresPaidCatalogSourceBodyPreviewRights(t *testing.T) {
 			t.Fatalf("preview body was visible to owner index %d with status %d", owner, status)
 		}
 		if owner == 0 {
+			assertIndex(false)
 			assertSearch(false)
 		} else {
+			f.expect(owner, "GET", f.path("?region=US"), "", status)
 			f.expect(owner, "GET", f.path("?q="+url.QueryEscape(query)), "", status)
 		}
 	}
@@ -876,6 +904,17 @@ func TestPostgresPaidCatalogSourceBodyPreviewRights(t *testing.T) {
 	demoContext := context.WithValue(context.Background(), paidCatalogContextKey{}, paidCatalogContext{
 		configuration: CatalogConfiguration{ID: f.configuration}, openDemo: true,
 	})
+	demoIndex, err := f.applications[0].catalog.(paidArticleDescriptorStore).PaidArticleDescriptors(
+		demoContext, Principal{}, f.configuration,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range demoIndex {
+		if item.ID == f.article {
+			assertDescriptor(item, false)
+		}
+	}
 	demoItems, err := f.applications[0].catalog.(paidArticleSearchStore).PaidArticleSearchDescriptors(
 		demoContext, Principal{}, f.configuration, query,
 	)

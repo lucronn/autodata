@@ -1106,7 +1106,7 @@ function showArticleIndexStatus(articleID = "", refreshFailed = false) {
 
 const articleDescriptorFields = [
   "id", "title", "kind", "component", "service_schedule", "availability", "content_status",
-  "source_revision_id", "canonical_revision_id", "view_revision", "review_status",
+  "source_revision_id", "canonical_revision_id", "view_revision", "review_status", "source_body_preview",
 ];
 
 function sameArticleDescriptor(item, current) {
@@ -1244,6 +1244,8 @@ function renderArticleLinks(items) {
     if (link.children[0].textContent !== title) link.children[0].textContent = title;
     if (type.textContent !== label) type.textContent = label;
     ready.hidden = openDemo || item.availability !== "available";
+    const readyLabel = item.source_body_preview ? "Supplier preview ready" : "Ready to read";
+    if (ready.textContent !== readyLabel) ready.textContent = readyLabel;
     url.searchParams.set("article", item.id);
     const href = url.pathname + url.search;
     if (link.getAttribute("href") !== href) link.href = href;
@@ -2089,7 +2091,9 @@ async function loadArticleView(id, g, order, {
     throw error;
   };
   let retainedReadStartedAt;
-  if ((preferRetained || initialRetainedReader) && !verifiedDetail && !refreshOnly && !openDemo &&
+  const readFirst = preferRetained || (indexedArticle?.id === id &&
+    indexedArticle.source_body_preview === true && indexedArticle.availability === "available");
+  if ((readFirst || initialRetainedReader) && !verifiedDetail && !refreshOnly && !openDemo &&
       session.state.mode === "firebase" && (savedLink || access === "owned") &&
       validScope({ configuration_id: selected.id, region: selected.region })) {
     // A saved route can already have a body authorized for the restored session.
@@ -2109,7 +2113,7 @@ async function loadArticleView(id, g, order, {
             readableArticle(early.data.article))
           response = { ...early, [articleDetailSequence]: ++order.issued };
       }
-      if (!response && preferRetained) response = await requestArticleDetail(order, detailPath, readOptions);
+      if (!response && readFirst) response = await requestArticleDetail(order, detailPath, readOptions);
       if (response) {
         const article = response.data?.article;
         if (article?.id !== id || !matchesConfiguration(response.data?.configuration))
@@ -3374,6 +3378,8 @@ function rememberRetainedIndexArticle(response, g) {
     readableArticle(article) && hasRetainedArticleRevision(article) ? {
       availability: article.availability,
       content_origin: article.content_origin,
+      content_status: article.content_status,
+      source_body_preview: undefined,
       source_revision_id: article.source_revision_id,
       canonical_revision_id: article.canonical_revision_id,
     } : null;

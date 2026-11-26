@@ -127,7 +127,22 @@ func catalogServiceScheduleSQL(sourceRevision string) string {
 	), '') ELSE '' END`
 }
 
-// Paid descriptors use a single metadata-only query, including descriptor rights.
+func catalogPreviewReadAllowed(ctx context.Context, configurationID string) bool {
+	scope, scoped := ctx.Value(paidCatalogContextKey{}).(paidCatalogContext)
+	return scoped && !scope.openDemo && scope.configuration.ID == configurationID
+}
+
+func setCatalogPreviewDescriptor(article *CatalogArticle, wrapper, linked []byte) {
+	if article.SourceRevisionID == nil && article.Availability != "available" &&
+		catalogSourcePreviewDocument(wrapper, linked) != nil {
+		article.Availability = "available"
+		article.ContentStatus = "content_partial"
+		article.ContentOrigin = stringPointer("source")
+		article.SourceBodyPreview = true
+	}
+}
+
+// Paid descriptors return only metadata, including readiness of a licensed preview.
 func (s *postgresCatalogStore) PaidArticleDescriptors(ctx context.Context, _ Principal, configurationID string) ([]CatalogArticle, error) {
 	if !commerceUUID(configurationID) {
 		return nil, ErrCatalogNotFound
@@ -144,7 +159,10 @@ func (s *postgresCatalogStore) PaidArticleDescriptors(ctx context.Context, _ Pri
 	}
 	rows, err := tx.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),
 		c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,
-		`+paidArticleAvailabilitySQL+`,COALESCE(c.review_status,'UNREVIEWED'),`+catalogServiceScheduleSQL("c.source_revision_id")+`
+		`+paidArticleAvailabilitySQL+`,COALESCE(c.review_status,'UNREVIEWED'),`+catalogServiceScheduleSQL("c.source_revision_id")+`,
+		CASE WHEN $2::boolean AND j.checkpoint ? 'source_body_preview' THEN
+			(SELECT to_jsonb(early) FROM (`+catalogSourceBodyPreviewSQL+`) early)
+		END
 		FROM canonical_articles a
 		LEFT JOIN LATERAL (
 		    SELECT source_revision_id,canonical_revision_id,content_origin,availability,review_status,takedown_status
@@ -155,7 +173,7 @@ func (s *postgresCatalogStore) PaidArticleDescriptors(ctx context.Context, _ Pri
 		JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
 		WHERE `+paidArticleScopeSQL+` AND `+lifecycleEligibleSQL+` AND a.takedown_status='active'
 		  AND (a.current_source_revision_id IS NULL OR c.takedown_status='active') AND descriptor.takedown_status='active'
-		ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID)
+		ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID, catalogPreviewReadAllowed(ctx, configurationID))
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +181,8 @@ func (s *postgresCatalogStore) PaidArticleDescriptors(ctx context.Context, _ Pri
 	result := []CatalogArticle{}
 	for rows.Next() {
 		var article CatalogArticle
-		if err = rows.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &article.ServiceSchedule); err != nil {
+		var preview []byte
+		if err = rows.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &article.ServiceSchedule, &preview); err != nil {
 			return nil, err
 		}
 		article.CanonicalArticleID = stringPointer(article.ID)
@@ -173,6 +192,15 @@ func (s *postgresCatalogStore) PaidArticleDescriptors(ctx context.Context, _ Pri
 		article.ContentStatus = "list_only"
 		if article.Complete {
 			article.ContentStatus = "content_complete"
+		}
+		if len(preview) > 0 {
+			var source struct {
+				Document       json.RawMessage `json:"document"`
+				LinkedDocument json.RawMessage `json:"linked_document"`
+			}
+			if json.Unmarshal(preview, &source) == nil {
+				setCatalogPreviewDescriptor(&article, source.Document, source.LinkedDocument)
+			}
 		}
 		result = append(result, article)
 	}
@@ -196,8 +224,7 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 	if _, err = tx.Exec(ctx, `SET LOCAL jit = off`); err != nil {
 		return nil, err
 	}
-	scope, scoped := ctx.Value(paidCatalogContextKey{}).(paidCatalogContext)
-	includeSource := scoped && !scope.openDemo && scope.configuration.ID == configurationID
+	includeSource := catalogPreviewReadAllowed(ctx, configurationID)
 	// Search the displayed article first, including an early source preview
 	// when available. The current Original shares the effective view's source
 	// pin, takedown checks and lifecycle eligibility.
@@ -270,6 +297,7 @@ func scanPaidArticleSearchRow(row interface{ Scan(...any) error }, configuration
 	if article.Complete {
 		article.ContentStatus = "content_complete"
 	}
+	setCatalogPreviewDescriptor(&article, projection.document, projection.linkedPreview)
 	return article, true, nil
 }
 
