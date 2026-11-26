@@ -561,9 +561,10 @@ async function loadOptions(name, g, desired = "", initial = null) {
         g.signal.throwIfAborted();
         if (Array.isArray(response?.items)) {
           if (name === "year" || (desired ? response.items.some(choice) : response.complete === true)) {
-            if (name !== "year" && response.complete !== true)
+            // A stored read can only report discovery that has already started.
+            if (name !== "year" && response.complete !== true && !response.hydrating && !response.discovering)
               void requestJSON(path, { signal: g.signal }).then(trackDiscovery).catch(() => null);
-            return response;
+            return trackDiscovery(response);
           }
           if (response.items.length) {
             // Make stored choices usable while the verified parent starts discovery.
