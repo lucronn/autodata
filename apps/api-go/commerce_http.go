@@ -147,6 +147,7 @@ func (s *Server) firstWorkshopArticleIndex(ctx context.Context, p Principal, con
 	if err != nil || len(items) == 0 || ctx.Err() != nil {
 		return CatalogArticlesResponse{}, false
 	}
+	readableArticlesFirst(items)
 	var page *CatalogArticleIndexPage
 	if len(items) > catalogIndexPageSize {
 		items, page = (catalogIndexPageRequest{}).selectPage(items)
