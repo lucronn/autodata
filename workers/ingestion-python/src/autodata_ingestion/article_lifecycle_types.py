@@ -17,6 +17,7 @@ RETAINED_NOTE_LABEL_REPAIR_PROFILE = "full-prose-note-label-repair-v1"
 RETAINED_OPTIONAL_OBSERVATION_REPAIR_PROFILE = "full-prose-optional-observation-repair-v1"
 RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE = "full-prose-conditional-note-repair-v1"
 RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE = "full-prose-rotation-removal-repair-v1"
+RETAINED_AUTHORED_PROCEDURE_REPAIR_PROFILE = "full-prose-authored-procedure-repair-v1"
 RETAINED_REQUIRED_ACTION_REPAIR_PROFILE = "full-prose-required-action-repair-v1"
 RETAINED_INTRODUCTION_REPAIR_PROFILE = "full-prose-introduction-repair-v1"
 MAX_CORRECTION_CALLS = 12
