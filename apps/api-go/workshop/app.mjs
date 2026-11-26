@@ -909,6 +909,8 @@ async function loadArticles(g, articleID = "", {
 } = {}) {
   if (!g.current()) return;
   const selected = { id: vehicle.id, region: vehicle.region };
+  const demoDetail = openDemo ? initialDemoIndex?.detail : null;
+  if (demoDetail) g.signal.addEventListener("abort", initialDemoIndex.abort, { once: true });
   let offerPaging = !openDemo && !articleID && (!focusArticle || indexAnchor) &&
     !trimArticleSearch($("search").value);
   let compactDemo = openDemo;
@@ -1055,7 +1057,8 @@ async function loadArticles(g, articleID = "", {
   if (openDemo && requestedArticle && requestedArticle.availability !== 'available') {
     status('This article is indexed but not readable yet. Choose an available article.', { error: true });
   } else if (articleID && requestedArticle) {
-    await loadArticle(articleID, g);
+    await loadArticle(articleID, g, demoDetail
+      ? { initialDemoDetail: demoDetail, indexedArticle: requestedArticle } : undefined);
   } else if (articleID && indexComplete) {
     throw new Error("This article is unavailable for the selected vehicle.");
   } else {
@@ -1948,6 +1951,7 @@ async function loadArticle(id, g, options) {
 }
 async function loadArticleView(id, g, order, {
   savedLink = false, refreshOnly = false, preferRetained = false, verifiedDetail = null,
+  initialDemoDetail = null, indexedArticle = null,
 } = {}) {
   const sameArticle = currentArticle?.id === id;
   let refreshVisibleArticle = sameArticle && !$("reader").hidden && readableArticle(currentArticle);
@@ -1980,6 +1984,27 @@ async function loadArticleView(id, g, order, {
   const detailPath = articleRequestPath(id);
   const preferPreviewSourceCheck = !openDemo && session.state.mode === "firebase";
   const readOptions = { signal: g.signal, preferShortPublicationCheck: true, preferPreviewSourceCheck };
+  const readInitialDetail = async () => {
+    if (openDemo && indexedArticle?.id === id && initialDemoDetail?.path === detailPath) {
+      const reply = await initialDemoDetail.response;
+      g.signal.throwIfAborted();
+      if (reply) {
+        const response = await requestArticleDetail(order, detailPath, {
+          ...readOptions, fetcher: async () => reply,
+        }).catch((error) => {
+          g.signal.throwIfAborted();
+          if (error.status === 0) return null;
+          throw error;
+        });
+        // Publication may have changed while the index and detail were in flight.
+        const article = response?.data?.article;
+        if (response?.status === 200 && article?.id === id && readableArticle(article) &&
+            (article.source_revision_id ?? null) === (indexedArticle.source_revision_id ?? null) &&
+            (article.canonical_revision_id ?? null) === (indexedArticle.canonical_revision_id ?? null)) return response;
+      }
+    }
+    return requestArticleDetail(order, detailPath, readOptions);
+  };
   const deniesArticle = (status) => [401, 403, 404, 410].includes(status);
   const showSavedConfiguration = (configuration) => {
     vehicle = configuration;
@@ -2097,7 +2122,7 @@ async function loadArticleView(id, g, order, {
         },
         headers: { "X-CSRF-Token": session.state.csrf },
       })
-    : requestArticleDetail(order, detailPath, readOptions)).then((response) => {
+    : readInitialDetail()).then((response) => {
       preparing = false;
       keepEarlyRead = Boolean(earlySignal && detailPending && pendingDetail(response));
       return response;
