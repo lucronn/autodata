@@ -695,6 +695,9 @@ func main() {
 	application.workshopTestCheckout = workshopTestCheckoutMode(os.Getenv("AUTODATA_COMMERCE_MODE"), os.Getenv("AUTODATA_ENV"), authConfig.Mode, authConfig.Origin)
 	application.workshopSimulation = authConfig.commerceMode == workshopSimulationMode
 	application.workshopOpenDemoHost = workshopOpenDemoHost(os.Getenv("AUTODATA_WORKSHOP_OPEN_DEMO"), os.Getenv("AUTODATA_ENV"), authConfig.Origin)
+	if application.workshopOpenDemoHost == "" {
+		application.workshopOpenDemoHost = workshopPublicOpenDemoHost(os.Getenv("AUTODATA_WORKSHOP_OPEN_DEMO_PUBLIC"), os.Getenv("AUTODATA_ENV"), authConfig.Origin)
+	}
 	if application.validatePaidCatalogDependencies() != nil {
 		log.Fatal("configure paid catalog: required dependency unavailable")
 	}

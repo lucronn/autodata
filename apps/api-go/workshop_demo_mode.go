@@ -57,6 +57,15 @@ func workshopOpenDemoHost(flag, environment, origin string) string {
 	return u.Host
 }
 
+// The existing public Workshop can offer the read-only demo only when the
+// operator enables this separate switch for its exact production origin.
+func workshopPublicOpenDemoHost(flag, environment, origin string) string {
+	if flag == "1" && environment == "production" && origin == "https://autodata.cars.tk" {
+		return "autodata.cars.tk"
+	}
+	return ""
+}
+
 func (s *Server) workshopOpenDemoRequest(r *http.Request) bool {
 	values := r.URL.Query()["demo"]
 	return s.workshopOpenDemoHost != "" && r.Method == http.MethodGet &&
