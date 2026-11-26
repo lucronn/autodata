@@ -7,10 +7,12 @@ import json
 import pytest
 
 from autodata_ingestion.article_lifecycle_types import digest_json
+from autodata_ingestion.procedure_rewrite_correction import correction_recovery_for_method
 from autodata_ingestion.procedure_rewrite_sentence_correction import (
     MAX_SENTENCE_CORRECTION_CALLS, SENTENCE_CORRECTION_METHOD, SENTENCE_INSTRUCTION_RECOVERY_METHOD,
-    SENTENCE_RECOVERY_METHOD, _instruction_equivalent, correct_sentence_draft,
-    recover_numbered_sentence_instructions, recover_sentence_correction,
+    SENTENCE_RECOVERY_METHOD, SENTENCE_TOOL_RECOVERY_METHOD, _instruction_equivalent,
+    _tool_installation_equivalent, correct_sentence_draft, recover_numbered_sentence_instructions,
+    recover_sentence_correction,
 )
 from test_procedure_rewrite_full import document, response
 
@@ -229,6 +231,48 @@ def test_numbered_instruction_recovery_keeps_bound_meaning_and_saved_rounds(sour
 ])
 def test_numbered_instruction_recovery_declines_ambiguous_or_different_actions(text):
     assert _instruction_equivalent(text) is None
+
+
+def test_tool_installation_recovery_preserves_action_and_reference_in_saved_draft():
+    text = "Install the seal wrench (7) to the seal carrier."
+    wording = "The seal wrench (7) must be fitted to the seal carrier."
+    prior = "Attach the seal wrench (7) to the seal carrier."
+    source, previous = document(text), response(prior)
+    replies = Replies(
+        lambda _: [[prior] * 3],
+        lambda prompt: [[entry["statement"].replace("Install", "Connect", 1)] * 3
+                        for entry in prompt["statements"]],
+    )
+    archive = []
+
+    def record(prompt):
+        reply = replies.complete(prompt)
+        archive.append({**replies.exchanges[-1], "response": reply})
+        return reply
+
+    terminal = correct_sentence_draft(source, previous, complete_json=record, model_call_budget=2)
+    assert terminal.document is None and terminal.error_code == "REWRITE_ACTION_MUTATION"
+    stale = recover_numbered_sentence_instructions(source, previous, model_call_budget=2, attempts=archive)
+    assert stale.document is None
+    recover = correction_recovery_for_method(SENTENCE_CORRECTION_METHOD)
+    result = recover(source, previous, model_call_budget=2, attempts=archive)
+    assert result.error_code is None and result.document["blocks"][1]["text"] == wording
+    assert len(replies.exchanges) == 2
+    assert result.evidence == {
+        **stale.evidence, "method": SENTENCE_TOOL_RECOVERY_METHOD, "draft_hash": digest_json(result.response),
+    }
+    replay = correction_recovery_for_method(SENTENCE_CORRECTION_METHOD, archived_method=result.evidence["method"])
+    assert replay(source, previous, model_call_budget=2, attempts=archive) == result
+
+
+@pytest.mark.parametrize("text", [
+    "Install the seal wrench to the seal carrier.",
+    "Install the seal wrench (7) near the seal carrier.",
+    "Install the seal wrench (7) to the seal carrier and tighten it.",
+    "Install the seal cover (7) to the seal carrier.",
+])
+def test_tool_installation_recovery_declines_other_instruction_forms(text):
+    assert _tool_installation_equivalent(text) is None
 
 
 def test_single_call_budget_keeps_unresolved_source():

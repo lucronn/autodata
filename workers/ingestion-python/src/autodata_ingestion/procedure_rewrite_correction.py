@@ -256,7 +256,8 @@ def correction_recovery_for_method(method, *, archived_method=None):
     from .procedure_rewrite_recovery import RECOVERY_METHOD, recover_retained_correction
     from .procedure_rewrite_sentence_correction import (
         SENTENCE_CORRECTION_METHOD, SENTENCE_INSTRUCTION_RECOVERY_METHOD, SENTENCE_RECOVERY_METHOD,
-        recover_numbered_sentence_instructions, recover_sentence_correction,
+        SENTENCE_TOOL_RECOVERY_METHOD, recover_numbered_sentence_instructions, recover_sentence_correction,
+        recover_tool_installation_sentence,
     )
 
     if method == _CORRECTION_METHOD and archived_method in (None, RECOVERY_METHOD):
@@ -264,8 +265,10 @@ def correction_recovery_for_method(method, *, archived_method=None):
     if method == SENTENCE_CORRECTION_METHOD:
         if archived_method == SENTENCE_RECOVERY_METHOD:
             return recover_sentence_correction
-        if archived_method in (None, SENTENCE_INSTRUCTION_RECOVERY_METHOD):
+        if archived_method == SENTENCE_INSTRUCTION_RECOVERY_METHOD:
             return recover_numbered_sentence_instructions
+        if archived_method in (None, SENTENCE_TOOL_RECOVERY_METHOD):
+            return recover_tool_installation_sentence
     raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
 
 
