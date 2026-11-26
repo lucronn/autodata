@@ -9,18 +9,26 @@
     <script>
       (() => {
         const params = new URLSearchParams(location.search);
-        if (params.get('sample') === '1' || params.get('demo') === '1') return;
+        const wantsDemo = params.get('demo') === '1';
+        if (params.get('sample') === '1' && !wantsDemo) return;
+        if (wantsDemo) {
+          const entry = document.documentElement.dataset;
+          const openDemo = entry.workshopOpenDemo === 'true' ||
+            entry.workshopDemoOrigins?.split(' ').includes(location.origin);
+          if (!openDemo) return;
+        }
 
         const catalog = document.getElementById('workshop-catalog-module');
-        const pending = new Map();
-        globalThis.workshopPickerStartup = pending;
         for (const name of ['app', 'auth', 'commerce', 'article-read']) {
           const hint = document.createElement('link');
           hint.rel = 'modulepreload';
           hint.href = new URL(`./${name}.mjs`, catalog.href).href;
           document.head.append(hint);
         }
+        if (wantsDemo) return;
 
+        const pending = new Map();
+        globalThis.workshopPickerStartup = pending;
         // Use the address bar because the entry proxy may omit its query.
         const region = params.get('region');
         if (catalog.dataset.publicSelectors !== 'true' ||
