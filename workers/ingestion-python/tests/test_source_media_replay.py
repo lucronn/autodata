@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from io import BytesIO
 from threading import Event
+from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -453,6 +454,40 @@ def test_modified_and_missing_retained_objects_are_rejected():
     del objects.data[asset_key]
     with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_OBJECT_UNAVAILABLE$"):
         replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects)
+
+
+def test_replay_can_read_large_verified_media_within_the_article_budget(monkeypatch):
+    from random import Random
+
+    from autodata_ingestion.worker import ArticleObjectStore
+
+    class Response(BytesIO):
+        def release_conn(self):
+            pass
+
+    buffer = BytesIO()
+    Image.frombytes("RGB", (768, 512), Random(7).randbytes(768 * 512 * 3)).save(buffer, format="PNG")
+    png = buffer.getvalue()
+    assert len(png) > replay._MAX_OBJECT_BYTES
+    client = _html_fixture("banktwo", "connector", embedded=False)
+    client.resources["figure"] = client._resource(png, "image/png")
+    cursor, objects = _retained_fixture(client, move_image=True)
+    source = cursor.row["source_revision_id"]
+    asset = next(resource["object_key"] for resource in cursor.row["resource_provenance"] if resource["role"] == "asset")
+    store = ArticleObjectStore.__new__(ArticleObjectStore)
+    store.bucket = "fixture"
+    store.client = SimpleNamespace(get_object=lambda _bucket, key: Response(objects.data[key]))
+    _, result = replay.preview_media_replay(cursor, source, object_store=store)
+    assert [block["type"] for block in result.source_document["blocks"]] == ["paragraph", "image", "paragraph"]
+    assert result.resource_provenance == cursor.row["resource_provenance"]
+    image, = result.source_images
+    assert image["content_sha256"] == sha256(png).hexdigest() and image["storage_key"] == asset
+    with pytest.raises(ValueError, match="^SOURCE_BODY_TOO_LARGE$"):
+        store.get_object(asset, max_bytes=replay._MAX_OBJECT_BYTES)
+
+    monkeypatch.setattr(replay, "_MAX_TOTAL_BYTES", sum(map(len, objects.data.values())) - 1)
+    with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_OBJECT_UNAVAILABLE$"):
+        replay.preview_media_replay(cursor, source, object_store=store)
 
 
 def test_replay_rejects_unchanged_projection():

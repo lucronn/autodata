@@ -21,6 +21,7 @@ from .article_lifecycle_types import (
     CapturedSource,
     HTML_INLINE_ARTICLE_LINK_LAYOUT,
     LEADING_DECIMAL_LAYOUT,
+    RETAINED_MEDIA_REPLAY_MAX_BYTES,
     SourceArticleContext,
     article_id,
     digest_json,
@@ -45,8 +46,8 @@ MEDIA_REPLAY_SOURCE_VERSIONS = frozenset({"source-projection-v1", "source-projec
 MEDIA_REPLAY_PROJECTION_VERSION = "source-projection-v3"
 ORDINAL_REPLAY_PROJECTION_VERSION = "source-projection-v4"
 
-_MAX_OBJECT_BYTES = 1024 * 1024  # ArticleObjectStore.get_object's retained-object bound.
-_MAX_TOTAL_BYTES = 8 * _MAX_OBJECT_BYTES
+_MAX_OBJECT_BYTES = 1024 * 1024  # Retained article body limit.
+_MAX_TOTAL_BYTES = RETAINED_MEDIA_REPLAY_MAX_BYTES
 _MAX_RESOURCES = 32
 _BODY_MEDIA = frozenset({"text/html", "application/json", "application/hal+json", "application/pdf"})
 _REVERSED_HTML_LIST = re.compile(r"<ol\b[^>]*\breversed\b", re.IGNORECASE)
@@ -531,6 +532,7 @@ def _raster_matches(mime: str, payload: bytes) -> bool:
 def _read_objects(binding, object_store, remaining):
     verified = {}
     total = 0
+    read_asset = getattr(object_store, "get_replay_asset", None)
     for resource in binding.resource_provenance:
         remaining()
         key, mime = resource["object_key"], resource["media_type"]
@@ -538,11 +540,12 @@ def _read_objects(binding, object_store, remaining):
             if verified[key][1] != mime:
                 raise ValueError("SOURCE_MEDIA_REPLAY_OBJECT_MISMATCH")
             continue
-        limit = min(_MAX_OBJECT_BYTES, _MAX_TOTAL_BYTES - total)
+        asset_reader = read_asset if resource["role"] in {"asset", "asset_original", "embedded_asset"} else None
+        limit = min(_MAX_TOTAL_BYTES if asset_reader else _MAX_OBJECT_BYTES, _MAX_TOTAL_BYTES - total)
         if limit <= 0:
             raise ValueError("SOURCE_MEDIA_REPLAY_OBJECT_LIMIT")
         try:
-            data = object_store.get_object(key, max_bytes=limit)
+            data = (asset_reader or object_store.get_object)(key, max_bytes=limit)
         except Exception:
             raise ValueError("SOURCE_MEDIA_REPLAY_OBJECT_UNAVAILABLE") from None
         remaining()
