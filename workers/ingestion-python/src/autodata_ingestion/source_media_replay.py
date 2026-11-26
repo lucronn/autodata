@@ -607,11 +607,28 @@ def _replay(repo, source_revision_id, object_store, deadline, *, ordinals):
         str(snapshot_id(resource["sha256"])): resource["source_snapshot_id"]
         for resource in binding.resource_provenance
     }
+    manifest = [dict(resource) for resource in replayed.resource_manifest]
+    provenance = [dict(resource) for resource in replayed.resource_provenance]
+    resources = [dict(resource) for resource in replayed.resources]
+    # A retained v1 SVG can rasterize to the same verified PNG under v2. Keep
+    # its original derivation label so replay remains bound to the observation.
+    for index, (retained, current) in enumerate(zip(binding.resource_manifest, manifest, strict=True)):
+        if (retained.get("derivation_version") in SUPPORTED_RASTERIZER_VERSIONS
+                and retained.get("derivation_version") != RASTERIZER_VERSION
+                and current.get("derivation_version") == RASTERIZER_VERSION):
+            manifest[index]["derivation_version"] = retained["derivation_version"]
+            provenance[index]["derivation_version"] = retained["derivation_version"]
+            for resource in resources:
+                if (resource.get("sha256") == current["sha256"]
+                        and resource.get("derived_from_sha256") == current["derived_from_sha256"]):
+                    resource["derivation_version"] = retained["derivation_version"]
     captured = replace(
         replayed, projection_version=ORDINAL_REPLAY_PROJECTION_VERSION if ordinals else MEDIA_REPLAY_PROJECTION_VERSION,
         captured_at=binding.captured_at, body_source_snapshot_id=binding.body_source_snapshot_id,
-        resources=tuple(_remap_snapshot_references(resource, snapshot_ids) for resource in replayed.resources),
-        resource_provenance=_remap_snapshot_references(replayed.resource_provenance, snapshot_ids),
+        resources=tuple(_remap_snapshot_references(resource, snapshot_ids) for resource in resources),
+        resource_manifest=manifest,
+        resource_provenance=_remap_snapshot_references(provenance, snapshot_ids),
+        source_fingerprint=_replay_fingerprint(binding.context, manifest, provenance[0].get("asset_bindings")),
         evidence_manifest=_remap_snapshot_references(replayed.evidence_manifest, snapshot_ids),
     )
     validate_media_replay_result(binding, captured, ordinals=ordinals)
