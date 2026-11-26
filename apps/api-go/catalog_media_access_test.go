@@ -242,6 +242,76 @@ func paidMediaRequest(s *Server, p Principal, token string) *httptest.ResponseRe
 	return response
 }
 
+func TestOpenDemoArticleAndSourceImagesWithoutLogin(t *testing.T) {
+	s, catalog, grant, reader, paidPrincipal, paidRef := paidMediaFixture()
+	s.auth = &fakeAuthenticator{err: ErrUnauthenticated}
+	s.workshopOpenDemoHost = "autodata.curtis.click"
+	handler := s.Handler()
+	request := func(path, host string, acceptJSON bool) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, path, nil)
+		r.Host = host
+		if acceptJSON {
+			r.Header.Set("Accept", "application/json")
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+	articlePath := "/v1/catalog/vehicles/" + catalog.configuration.ID + "/articles/" + catalog.identity.CanonicalArticleID
+	articleResponse := request(articlePath+"?demo=1", s.workshopOpenDemoHost, true)
+	var article CatalogArticleResponse
+	if articleResponse.Code != http.StatusOK || json.Unmarshal(articleResponse.Body.Bytes(), &article) != nil || len(article.Article.Images) != 1 {
+		t.Fatal("open demo article did not return its stored image", articleResponse.Code)
+	}
+	articleURL := article.Article.Images[0].URL
+	articleRef, err := openPaidCatalogImageReference(strings.TrimPrefix(articleURL, "/v1/catalog/images/"), s.catalogImageKey, time.Now())
+	if err != nil || articleRef.CustomerAccountID != workshopOpenDemoImageAccountID || articleRef.Projection != "article" {
+		t.Fatal("open demo article did not mint a scoped image reference", err)
+	}
+	if w := request(articleURL, s.workshopOpenDemoHost, false); w.Code != http.StatusOK || w.Body.String() != string(reader.body) {
+		t.Fatal("open demo article image was not readable", w.Code)
+	}
+	sourceResponse := request(articlePath+"/source?demo=1", s.workshopOpenDemoHost, true)
+	var source CatalogSourceContentResponse
+	if sourceResponse.Code != http.StatusOK || json.Unmarshal(sourceResponse.Body.Bytes(), &source) != nil || len(source.Images) != 1 {
+		t.Fatal("open demo source did not return its stored image", sourceResponse.Code)
+	}
+	sourceURL := source.Images[0].URL
+	sourceRef, err := openPaidCatalogImageReference(strings.TrimPrefix(sourceURL, "/v1/catalog/images/"), s.catalogImageKey, time.Now())
+	if err != nil || sourceRef.CustomerAccountID != workshopOpenDemoImageAccountID || sourceRef.Projection != "source" {
+		t.Fatal("open demo source did not mint a scoped image reference", err)
+	}
+	if w := request(sourceURL, s.workshopOpenDemoHost, false); w.Code != http.StatusOK || w.Body.String() != string(reader.body) {
+		t.Fatal("open demo source image was not readable", w.Code)
+	}
+	readCount := reader.calls.Load()
+	for _, tc := range []struct{ path, host string }{
+		{articleURL, "autodata.cars.tk"},
+		{articleURL + "?demo=1", s.workshopOpenDemoHost},
+		{articlePath, s.workshopOpenDemoHost},
+	} {
+		if w := request(tc.path, tc.host, false); w.Code != http.StatusUnauthorized {
+			t.Fatal("ordinary or wrong-host access was permitted", tc.path, w.Code)
+		}
+	}
+	if grant.calls.Load() != 0 || reader.calls.Load() != readCount {
+		t.Fatal("open demo contacted the grant checker or denied access read media")
+	}
+	paidToken, err := sealPaidCatalogImageReference(paidRef, s.catalogImageKey, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.auth = &fakeAuthenticator{principal: paidPrincipal}
+	grant.err = ErrVehicleGrantRequired
+	if w := request("/v1/catalog/images/"+paidToken, s.workshopOpenDemoHost, false); w.Code != http.StatusForbidden || reader.calls.Load() != readCount {
+		t.Fatal("paid media token bypassed its grant on the demo host", w.Code)
+	}
+	catalog.view.Withdrawn = true
+	if w := request(articleURL, s.workshopOpenDemoHost, false); w.Code != http.StatusGone || reader.calls.Load() != readCount {
+		t.Fatal("withdrawn article image remained readable", w.Code)
+	}
+}
+
 func TestPaidCatalogMediaProjectionClonesAndProvesSourceAssets(t *testing.T) {
 	s, c, _, _, p, ref := paidMediaFixture()
 	original := c.view.Article.Images[0].URL
