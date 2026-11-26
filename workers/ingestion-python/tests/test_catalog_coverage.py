@@ -232,6 +232,130 @@ def test_resolution_empty_and_ambiguity_are_distinct(
     assert not any("/articles" in call for call in capture_fixture.calls("banktwo"))
 
 
+@pytest.mark.parametrize("case", [
+    "exact", "no_observation", "rejected", "wrong_engine", "wrong_drivetrain",
+    "wrong_market", "partial",
+])
+def test_banktwo_catalog_recovers_only_an_exact_retained_configuration(
+    fresh_database, capture_fixture, monkeypatch, case,
+):
+    from urllib.parse import parse_qs, unquote, urlsplit
+    from psycopg.types.json import Jsonb
+    from lifecycle_support import seed_configuration
+    from autodata_ingestion.catalog_coverage import (
+        ensure_article_catalog_jobs, read_catalog_coverage, run_catalog_index_job,
+    )
+
+    repo = fresh_database()
+    vehicle = seed_vehicle(repo)
+    ref = "vehicle:exact-1.2"
+    configuration = seed_configuration(repo, vehicle, engine_displacement_l=1.2)
+    with repo.connect() as conn:
+        conn.execute("UPDATE vehicles SET model='Car Fwd' WHERE vehicle_id=%s", (vehicle,))
+        if case != "no_observation":
+            conn.execute(
+                """INSERT INTO vehicle_identity_observations
+                    (observation_key,vehicle_id,vehicle_identity_base_id,vehicle_configuration_id,
+                     source_snapshot_id,extraction_evidence_id,source_locator,evidence_locator,
+                     evidence_confidence,reviewer_state,raw_observation,canonical_observation,resolution_status)
+                    SELECT %s,vehicle_id,vehicle_identity_base_id,vehicle_configuration_id,
+                         source_snapshot_id,extraction_evidence_id,'fixture','fixture',1,'pending',%s,%s,'matched'
+                    FROM vehicle_configurations WHERE vehicle_configuration_id=%s""",
+                (uuid.uuid4().hex, Jsonb({"provider_mappings": [
+                    {"provider": "autoapitwo", "entity_type": "car", "provider_id": ref},
+                ]}), Jsonb({"region": "US"}), configuration),
+            )
+        if case == "rejected":
+            conn.execute(
+                """INSERT INTO vehicle_provider_mappings
+                    (mapping_key,vehicle_id,vehicle_configuration_id,provider,entity_type,provider_id,
+                     source_snapshot_id,extraction_evidence_id,source_locator,evidence_locator,
+                     evidence_confidence,mapping_status)
+                    SELECT %s,vehicle_id,vehicle_configuration_id,'banktwo','car',%s,
+                         source_snapshot_id,extraction_evidence_id,'fixture','fixture',1,'rejected'
+                    FROM vehicle_configurations WHERE vehicle_configuration_id=%s""",
+                (uuid.uuid4().hex, ref, configuration),
+            )
+
+    server = capture_fixture.servers["banktwo"]
+    server.candidates = []
+    server.pages = [page("exact-index-entry")]
+    original_response = server.response
+    row = dict(
+        opaque_ref=ref, label="L3-1.2L Turbo", year=2024,
+        make="Example", model="Car FWD", configuration="L3-1.2L Turbo",
+    )
+    if case == "wrong_engine":
+        row["engine"] = "L3-1.3L Turbo"
+    if case == "wrong_drivetrain":
+        row["drivetrain"] = "AWD"
+    if case == "wrong_market":
+        row["region"] = "CA"
+
+    def response(path, request_payload=None):
+        parsed = urlsplit(path)
+        if parsed.path != "/v1/catalog/configurations":
+            return original_response(path, request_payload)
+        assert parse_qs(parsed.query) == {"year": ["2024"], "make": ["Example"], "model": ["Car Fwd"]}
+        server.calls.append(path)
+        return 200, server.envelope(
+            scope="configurations", complete=case != "partial",
+            next_cursor="next" if case == "partial" else None,
+            items=[row, {**row, "opaque_ref": "vehicle:other",
+                         "label": "L3-1.3L Turbo", "configuration": "L3-1.3L Turbo"}],
+        )
+
+    monkeypatch.setattr(server, "response", response)
+    ensure_article_catalog_jobs(repo, vehicle_id=vehicle, vehicle_configuration_id=configuration)
+    with repo.connect() as conn:
+        job = conn.execute(
+            "SELECT source_fetch_job_id FROM source_fetch_jobs WHERE provider_slug='banktwo'"
+        ).fetchone()["source_fetch_job_id"]
+    lease = claim_source_job(repo, worker_id=uuid.uuid4(), job_id=job)
+    run_catalog_index_job(repo, lease, registry=capture_fixture.registry, object_store=capture_fixture.objects)
+    state = read_catalog_coverage(repo, vehicle_id=vehicle, vehicle_configuration_id=configuration)
+    banktwo = state["coverage"]["banktwo"]
+    assert banktwo["status"] == "complete"
+    assert len(server.resolution_requests) == 1
+    assert any(path.startswith("/v1/catalog/configurations?") for path in server.calls) == (
+        case not in {"no_observation", "rejected"}
+    )
+    if case == "exact":
+        assert banktwo["source_vehicle_ref"] == ref
+        assert banktwo["row_count"] == 1
+        assert [item["source_article_ref"] for item in state["items"]] == ["exact-index-entry"]
+        assert any(unquote(path).endswith(f"/{ref}/articles") for path in server.calls)
+        with repo.connect() as conn:
+            snapshot = conn.execute(
+                "SELECT object_key FROM source_snapshots WHERE source_snapshot_id=%s",
+                (banktwo["resolution_source_snapshot_id"],),
+            ).fetchone()
+        assert b'"scope": "configurations"' in capture_fixture.objects.data[snapshot["object_key"]][0]
+    else:
+        assert banktwo["error_code"] == "NO_MATCHING_SOURCE_VEHICLE"
+        assert not any(path.endswith("/articles") for path in server.calls)
+
+
+def test_scoped_refresh_keeps_the_other_suppliers_completed_index(fresh_database, capture_fixture):
+    from autodata_ingestion.catalog_coverage import read_catalog_coverage, refresh_catalog_jobs
+
+    repo = fresh_database()
+    capture_fixture.servers["bankone"].pages = [page("retained")]
+    capture_fixture.servers["banktwo"].candidates = []
+    vehicle = run_catalog(repo, capture_fixture)
+    jobs = refresh_catalog_jobs(
+        repo, vehicle_id=vehicle, vehicle_configuration_id=None,
+        actor="fixture", reason="confirm a retained match", provider="banktwo",
+    )
+    assert len(jobs) == 1
+    state = read_catalog_coverage(repo, vehicle_id=vehicle, vehicle_configuration_id=None)
+    assert state["coverage"]["banktwo"]["generation"] == 1
+    assert state["coverage"]["banktwo"]["status"] == "pending"
+    assert state["coverage"]["bankone"]["generation"] == 0
+    assert state["coverage"]["bankone"]["status"] == "complete"
+    assert [item["source_article_ref"] for item in state["items"]] == ["retained"]
+
+
 def test_unconfigured_bank_is_not_empty_success(fresh_database, capture_fixture):
     from autodata_ingestion.catalog_coverage import (
         ensure_article_catalog_jobs,
