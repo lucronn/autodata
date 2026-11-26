@@ -348,13 +348,13 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 	article.canonicalVehicleID = row.VehicleID
 	article.canonicalConfigurationID = row.ConfigurationID
 	var links catalogArticleLinkProjection
-	if paid && !scope.openDemo && row.Takedown == "active" && scope.identity != nil &&
+	if paid && row.Takedown == "active" && scope.identity != nil &&
 		scope.configuration.ID == v && row.ConfigurationID != nil && *row.ConfigurationID == v &&
 		row.CanonicalArticleID == scope.identity.CanonicalArticleID {
-		links.resolve = s.authoredArticleLinkResolver(ctx, *scope.identity)
+		links.resolve = s.authoredArticleLinkResolver(ctx, *scope.identity, scope.openDemo)
 		if links.resolve != nil && article.Complete {
-			links.retained = s.retainedArticleLinkBindings(ctx, row.CanonicalArticleID, row.SourceRevisionID,
-				row.CanonicalRevisionID, article.sourceContentSHA256, row.Document)
+			links.retained, links.inline = s.retainedArticleLinkBindings(ctx, row.CanonicalArticleID, row.SourceRevisionID,
+				row.CanonicalRevisionID, article.sourceContentSHA256)
 		}
 	}
 	article.Document = projectStoredCatalogDocument(document, row.Document, links)
@@ -702,6 +702,7 @@ func projectCatalogDocument(raw []byte, links catalogArticleLinkProjection) *Cat
 	if links.resolve != nil && len(links.retained) != 0 {
 		retainedMatches = make(map[string]map[string]any)
 	}
+	inlineMatches := make(map[string]map[string]any)
 	var project func(any) any
 	project = func(value any) any {
 		switch node := value.(type) {
@@ -757,6 +758,13 @@ func projectCatalogDocument(raw []byte, links catalogArticleLinkProjection) *Cat
 			if retainedMatches != nil {
 				collectRetainedCatalogLink(links.retained, retainedMatches, node, out)
 			}
+			if blockID, _ := node["block_id"].(string); len(links.inline[blockID]) != 0 {
+				if _, duplicate := inlineMatches[blockID]; duplicate {
+					inlineMatches[blockID] = nil
+				} else {
+					inlineMatches[blockID] = out
+				}
+			}
 			return out
 		default:
 			return value
@@ -766,8 +774,29 @@ func projectCatalogDocument(raw []byte, links catalogArticleLinkProjection) *Cat
 	if len(retainedMatches) != 0 && len(slots) <= maxCatalogArticleLinkTargets {
 		addRetainedCatalogLinkSlots(slots, links.retained, retainedMatches)
 	}
+	if slots != nil && len(inlineMatches) != 0 && len(slots) <= maxCatalogArticleLinkTargets {
+		extra := make(map[string]struct{})
+		for blockID, node := range inlineMatches {
+			if node == nil {
+				continue
+			}
+			for _, binding := range links.inline[blockID] {
+				if _, exists := slots[binding.targetHash]; !exists {
+					extra[binding.targetHash] = struct{}{}
+				}
+			}
+		}
+		if len(slots)+len(extra) <= maxCatalogArticleLinkTargets {
+			for hash := range extra {
+				slots[hash] = nil
+			}
+		} else {
+			inlineMatches = nil
+		}
+	}
 	if len(slots) != 0 && len(slots) <= maxCatalogArticleLinkTargets {
-		addResolvedCatalogArticleLinks(slots, links.resolve)
+		resolved := addResolvedCatalogArticleLinks(slots, links.resolve)
+		applyRetainedInlineCatalogLinks(links.inline, inlineMatches, resolved)
 	}
 	raw, err := json.Marshal(projectedValue)
 	if err != nil {

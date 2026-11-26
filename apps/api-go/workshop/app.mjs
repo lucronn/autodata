@@ -1552,28 +1552,56 @@ function articleHeadingOutline(blocks, base) {
   }
   return { base, offset: base - lowest };
 }
-function articleLinkText(value, tag, g) {
-  const text = value.text ?? "";
-  const target = value.target_article_id;
-  if (value.type !== "link" || !uuid(target) || !session.state.authenticated)
-    return element(tag, text);
+function articleReferenceLink(text, target, g) {
+  if (!uuid(target) || (!openDemo && !session.state.authenticated)) return null;
   const selected = scope();
-  if (!validScope(selected)) return element(tag, text);
+  if (!validScope(selected)) return null;
   const csrf = session.state.csrf;
   const url = new URL("/workshop", location.origin);
   url.searchParams.set("configuration", selected.configuration_id);
   url.searchParams.set("region", selected.region);
   url.searchParams.set("article", target);
+  if (openDemo) url.searchParams.set("demo", "1");
   const link = element("a", text);
   link.href = url.pathname + url.search;
   link.addEventListener("click", (event) => {
     if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
-    if (g.current() && session.state.authenticated && session.state.csrf === csrf && sameScope(selected, scope()))
+    if (g.current() && sameScope(selected, scope()) &&
+        (openDemo || session.state.authenticated && session.state.csrf === csrf))
       openArticle(target);
   });
+  return link;
+}
+
+function articleLinkText(value, tag, g) {
+  const text = value.text ?? "";
+  if (value.type === "link") {
+    const link = articleReferenceLink(text, value.target_article_id, g);
+    if (!link) return element(tag, text);
+    const wrapper = element(tag);
+    wrapper.append(link);
+    return wrapper;
+  }
+  if (typeof text !== "string" || !Array.isArray(value.article_links)) return element(tag, text);
+  const matches = value.article_links.flatMap(reference => {
+    const label = reference?.label;
+    if (typeof label !== "string" || !label) return [];
+    const start = text.indexOf(label);
+    if (start < 0 || text.lastIndexOf(label) !== start) return [];
+    const link = articleReferenceLink(label, reference.target_article_id, g);
+    return link ? [{ start, end: start + label.length, link }] : [];
+  }).sort((a, b) => a.start - b.start);
+  if (!matches.length || matches.some((match, i) => i && match.start < matches[i - 1].end))
+    return element(tag, text);
   const wrapper = element(tag);
-  wrapper.append(link);
+  let position = 0;
+  for (const { start, end, link } of matches) {
+    if (start > position) wrapper.append(element("span", text.slice(position, start)));
+    wrapper.append(link);
+    position = end;
+  }
+  if (position < text.length) wrapper.append(element("span", text.slice(position)));
   return wrapper;
 }
 function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = null, figures = null,

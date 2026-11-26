@@ -128,6 +128,11 @@ type CatalogDocument struct {
 	Blocks               []CatalogDocumentBlock `json:"blocks"`
 }
 
+type CatalogArticleLink struct {
+	Label           string `json:"label"`
+	TargetArticleID string `json:"target_article_id"`
+}
+
 type CatalogDocumentBlock struct {
 	Images            []CatalogImage       `json:"images,omitempty"`
 	Caption           string               `json:"caption,omitempty"`
@@ -141,6 +146,7 @@ type CatalogDocumentBlock struct {
 	Label             string               `json:"label,omitempty"`
 	Href              string               `json:"href,omitempty"`
 	TargetArticleID   string               `json:"target_article_id,omitempty"`
+	ArticleLinks      []CatalogArticleLink `json:"article_links,omitempty"`
 	Columns           []any                `json:"columns,omitempty"`
 	Rows              [][]any              `json:"rows,omitempty"`
 	Items             []any                `json:"items,omitempty"`

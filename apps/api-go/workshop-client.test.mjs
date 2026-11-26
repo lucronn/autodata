@@ -6868,6 +6868,44 @@ test('an authored link is inert after its vehicle or session changes', () => {
   }
 });
 
+test('an inline article reference preserves its sentence and the authorized demo scope', () => {
+  const target = '11111111-1111-4111-8111-111111111111';
+  const calls = [];
+  for (const openDemo of [false, true]) {
+    const h = articleMediaHarness({
+      openDemo, session: { state: { authenticated: false, mode: 'firebase' } },
+      vehicle: { id: routeConfiguration, region: 'US' },
+      location: { origin: 'https://cars.example' },
+      scope: () => ({ configuration_id: h.context.vehicle.id, region: h.context.vehicle.region }),
+      openArticle(id) { calls.push(id); },
+    });
+    const label = 'Cover Removal';
+    const text = `Refer to ${label}.`;
+    const article_links = [{ label, target_article_id: target }];
+    const root = h.content(mediaArticle([
+      { type: 'paragraph', text, article_links },
+      { type: 'ordered_list', items: [{ text, article_links, number: 8 }] },
+      { type: 'paragraph', text: `${label} and ${label}`, article_links },
+    ]));
+    const links = mediaDescendants(root, 'a');
+    assert.equal(links.length, openDemo ? 2 : 0);
+    const list = mediaDescendants(root, 'li')[0];
+    assert.equal(list.textContent, text);
+    assert.equal(list.getAttribute('value'), '8');
+    if (openDemo) {
+      assert.deepEqual(links.map(link => link.textContent), [label, label]);
+      const url = new URL(links[1].href, h.context.location.origin);
+      assert.equal(url.searchParams.get('demo'), '1');
+      assert.equal(url.searchParams.get('configuration'), routeConfiguration);
+      assert.equal(url.searchParams.get('article'), target);
+      links[1].dispatch('click', { button: 0, preventDefault() {} });
+      h.context.vehicle.region = 'CA';
+      links[0].dispatch('click', { button: 0, preventDefault() {} });
+    }
+  }
+  assert.deepEqual(calls, [target]);
+});
+
 function warmFigureHarness({ count = 7, origin = 'canonical', repeated = false } = {}) {
   const timeout = deferredAuthOperation(), printed = [];
   const window = Object.assign(new EventTarget(), { print() { printed.push(true); } });
