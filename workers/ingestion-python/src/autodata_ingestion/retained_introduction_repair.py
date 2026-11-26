@@ -12,6 +12,7 @@ from .procedure_rewrite_auto import (
     _auto_prompt_version, render_auto, require_current_publication_checks,
     require_distinct_generated_introduction, validate_auto,
 )
+from .procedure_rewrite_recovery import NEUTRAL_INTRODUCTION
 from .retained_note_label_repair import _HASH, _Plan, _publish_archived_reply_repair, _source_evidence
 from .retained_procedure_repair import _valid_audit
 from .source_job_persistence import source_bound_rewrite_source_allowed
@@ -23,7 +24,6 @@ CHECKPOINT = "retained_introduction_repair"
 COPIED_INTRODUCTION = "REWRITE_INTRODUCTION_COPIED"
 _INVALID = "RETAINED_INTRODUCTION_REPAIR_INVALID"
 _STALE = "RETAINED_INTRODUCTION_REPAIR_STALE"
-_INTRODUCTION = "This article describes the service information that follows."
 
 
 def _replace_copied_introduction(source, prior, reply, changed, *, version):
@@ -36,7 +36,7 @@ def _replace_copied_introduction(source, prior, reply, changed, *, version):
         raise ValueError(_INVALID)
 
     repaired = deepcopy(reply)
-    repaired["introduction"] = _INTRODUCTION
+    repaired["introduction"] = NEUTRAL_INTRODUCTION
     document = render_auto(source, repaired, prompt_version=version, profile_version=AUTOMATIC_REWRITE_PROFILE)
     if {**document, "blocks": document["blocks"][1:]} != {**prior, "blocks": prior["blocks"][1:]}:
         raise ValueError(_INVALID)

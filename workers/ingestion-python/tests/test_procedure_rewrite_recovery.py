@@ -12,10 +12,12 @@ from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
     FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
+    FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
     FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD,
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
     FIRST_DRAFT_RECOVERY_METHOD,
     FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
+    NEUTRAL_INTRODUCTION,
     _equivalent_cooling_directive,
     _equivalent_directive,
     _equivalent_wording,
@@ -24,6 +26,40 @@ from autodata_ingestion.procedure_rewrite_recovery import (
     recover_first_draft,
 )
 from test_procedure_rewrite_full import document, response
+
+
+def test_ambiguous_introduction_can_be_recovered_without_changing_the_saved_body():
+    source = document("The acoustic insulation softens vibration from the ventilation system.")
+    raw = response(
+        "Vibration from the ventilation unit is damped by the acoustic insulation.",
+        introduction="This article describes the service information for an area of 25 mm².",
+    )
+    saved = deepcopy(raw)
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    with pytest.raises(ValueError, match="^REWRITE_TECHNICAL_AMBIGUOUS$"):
+        render_auto(source, raw, prompt_version=version)
+
+    result = recover_first_draft(source, raw, prompt_version=version)
+    assert raw == saved
+    assert result.response == {**saved, "introduction": NEUTRAL_INTRODUCTION}
+    assert result.evidence["method"] == FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD
+    assert result.evidence["introduction_replaced"] is True
+    assert result.evidence["corrected_paths"] == []
+    assert result.evidence["raw_response_hash"] == digest_json(saved)
+    assert recover_first_draft(
+        source, raw, prompt_version=version, method=FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD,
+    ) is None
+
+    archived = recover_archived_first_draft(source, {
+        "guard_version": version, "response": saved, "error_code": "REWRITE_TECHNICAL_AMBIGUOUS",
+        "rewrite_attempt_id": "fixture-attempt", "prompt_hash": "fixture-prompt",
+    }, method=result.evidence["method"], expected_hash=result.evidence["output_hash"])
+    assert archived.evidence["first_draft_recovery"] == result.evidence
+    assert archived.response == result.response
+
+    ambiguous_body = document("Area is 25 mm².")
+    still_ambiguous = response("The area equals 25 mm².", introduction=saved["introduction"])
+    assert recover_first_draft(ambiguous_body, still_ambiguous, prompt_version=version) is None
 
 
 def test_maintenance_recovery_rebuilds_the_original_procedure_from_its_saved_draft():
