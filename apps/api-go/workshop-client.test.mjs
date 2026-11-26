@@ -670,7 +670,7 @@ test('reader shows pinned stored source while the rewrite is waiting for its mod
     body: 'Stored fixture source.',
     content_origin: 'source',
     source_revision_id: 'fixture-source',
-    processing: { job_id: 'fixture-job', state: 'failed', retryable: true, error_code: 'MODEL_NOT_CONFIGURED' },
+    processing: { job_id: 'fixture-job', state: 'failed', retryable: true, error_code: 'CATALOG_REWRITE_PENDING' },
   };
   let reads = 0;
   const result = await readArticle(async () => {
@@ -10746,38 +10746,41 @@ test('navigation cancels the optional prepare read before or during its GET', as
   }
 });
 
-test('a retained original can check for a later rewrite without hiding the source or preparing it again', async () => {
-  const original = mediaArticle([{ type: 'paragraph', text: 'Remove the cover.' }], [], {
-    processing: { job_id: 'old', state: 'needs_review', retryable: false },
+for (const [reason, processing] of [
+  ['needs review', { job_id: 'old', state: 'needs_review', retryable: false }],
+  ['rewrite queued', { job_id: 'old', state: 'failed', retryable: true, error_code: 'CATALOG_REWRITE_PENDING' }],
+]) {
+  test(`a retained original can check for a later rewrite without hiding the source or preparing it again (${reason})`, async () => {
+    const original = mediaArticle([{ type: 'paragraph', text: 'Remove the cover.' }], [], { processing });
+    const published = mediaArticle([{ type: 'paragraph', text: 'Take off the cover.' }], [], {
+      content_origin: 'canonical', view_revision: 'view-published',
+    });
+    const authorized = deferredAuthOperation();
+    const reads = [];
+    const h = articleRouteHarness('firebase', (path, options) => {
+      reads.push([path, options.method || 'GET']);
+      return reads.length === 1 ? { status: 200, data: { article: original } } : authorized.promise;
+    });
+    h.context.openArticle = (id, link, options) => {
+      assert.equal(link, null);
+      return h.context.loadArticle(id, h.navigation.next(), options);
+    };
+    await h.context.loadArticle('a', h.g);
+    const ready = h.statuses.at(-1);
+    assert.equal(ready.options.retryText, 'Check for an update');
+    const checking = ready.options.retry();
+    assert.equal(h.nodes.get('article-content').textContent, 'Remove the cover.');
+    assert.equal(h.nodes.get('print').disabled, false);
+    assert.deepEqual(reads, [
+      ['/v1/catalog/vehicles/v/articles/a/prepare?region=US', 'POST'],
+      ['/v1/catalog/vehicles/v/articles/a?region=US', 'GET'],
+    ]);
+    authorized.resolve({ status: 200, data: { article: published } });
+    await checking;
+    assert.equal(h.nodes.get('article-content').textContent, 'Take off the cover.');
+    assert.equal(h.statuses.at(-1).options.retry, null);
   });
-  const published = mediaArticle([{ type: 'paragraph', text: 'Take off the cover.' }], [], {
-    content_origin: 'canonical', view_revision: 'view-published',
-  });
-  const authorized = deferredAuthOperation();
-  const reads = [];
-  const h = articleRouteHarness('firebase', (path, options) => {
-    reads.push([path, options.method || 'GET']);
-    return reads.length === 1 ? { status: 200, data: { article: original } } : authorized.promise;
-  });
-  h.context.openArticle = (id, link, options) => {
-    assert.equal(link, null);
-    return h.context.loadArticle(id, h.navigation.next(), options);
-  };
-  await h.context.loadArticle('a', h.g);
-  const ready = h.statuses.at(-1);
-  assert.equal(ready.options.retryText, 'Check for an update');
-  const checking = ready.options.retry();
-  assert.equal(h.nodes.get('article-content').textContent, 'Remove the cover.');
-  assert.equal(h.nodes.get('print').disabled, false);
-  assert.deepEqual(reads, [
-    ['/v1/catalog/vehicles/v/articles/a/prepare?region=US', 'POST'],
-    ['/v1/catalog/vehicles/v/articles/a?region=US', 'GET'],
-  ]);
-  authorized.resolve({ status: 200, data: { article: published } });
-  await checking;
-  assert.equal(h.nodes.get('article-content').textContent, 'Take off the cover.');
-  assert.equal(h.statuses.at(-1).options.retry, null);
-});
+}
 
 test('the saved reader uses the authorized configuration and can fall back on an older response', async () => {
   const article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);

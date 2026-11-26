@@ -1939,9 +1939,12 @@ function showArticleReadStatus(id, article, timedOut = false) {
   }
   const readable = readableArticle(article);
   const checkUpdate = readable && !openDemo && session.state.mode === "firebase" &&
-    (timedOut || article.content_origin === "source");
+    (timedOut || article.content_origin === "source")
+    ? () => openArticle(id, null, { refreshOnly: true })
+    : null;
+  const retryText = checkUpdate ? "Check for an update" : undefined;
   if (awaitingArticleRewrite(article)) {
-    status("Stored source is ready. The Workshop rewrite is pending.");
+    status("Stored source is ready. The Workshop rewrite is pending.", { retry: checkUpdate, retryText });
     return;
   }
   status(
@@ -1959,10 +1962,8 @@ function showArticleReadStatus(id, article, timedOut = false) {
             ? "Article ready."
             : "No readable content is available.",
     {
-      retry: checkUpdate
-        ? () => openArticle(id, null, { refreshOnly: true })
-        : timedOut || !readable ? () => openArticle(id) : null,
-      retryText: checkUpdate ? "Check for an update" : undefined,
+      retry: checkUpdate || (timedOut || !readable ? () => openArticle(id) : null),
+      retryText,
       complete: readable,
     },
   );

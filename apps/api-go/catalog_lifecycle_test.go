@@ -10,15 +10,21 @@ import (
 )
 
 func TestPublicProcessingErrorDistinguishesSourceReprojection(t *testing.T) {
-	for _, tc := range []struct{ internal, public string }{
-		{"SOURCE_ONLY_REPROJECTION", "CATALOG_SOURCE_REPROJECTED"},
-		{"SOURCE_ONLY_REPROJECTION_FAILED", "CATALOG_SOURCE_UNAVAILABLE"},
-		{"CATALOG_SOURCE_UNAVAILABLE", "CATALOG_SOURCE_UNAVAILABLE"},
-		{"CANONICAL_REVIEW_REJECTED", "CATALOG_REVIEW_REQUIRED"},
-		{"CATALOG_REWRITE_REJECTED", "CATALOG_REWRITE_REJECTED"},
+	for _, tc := range []struct {
+		internal, public string
+		retryable        bool
+	}{
+		{"SOURCE_ONLY_REPROJECTION", "CATALOG_SOURCE_REPROJECTED", false},
+		{"SOURCE_ONLY_REPROJECTION_FAILED", "CATALOG_SOURCE_UNAVAILABLE", false},
+		{"CATALOG_SOURCE_UNAVAILABLE", "CATALOG_SOURCE_UNAVAILABLE", true},
+		{"CANONICAL_REVIEW_REJECTED", "CATALOG_REVIEW_REQUIRED", false},
+		{"CATALOG_REWRITE_REJECTED", "CATALOG_REWRITE_REJECTED", false},
+		{"MODEL_NOT_CONFIGURED", "CATALOG_REWRITE_PENDING", true},
+		{"MODEL_NOT_CONFIGURED", "CATALOG_REWRITE_UNAVAILABLE", false},
+		{"MODEL_HTTP_FAILURE", "CATALOG_REWRITE_UNAVAILABLE", true},
 	} {
 		t.Run(tc.internal, func(t *testing.T) {
-			got := publicProcessingError(&tc.internal)
+			got := publicProcessingError(&tc.internal, tc.retryable)
 			if got == nil || *got != tc.public {
 				t.Fatalf("expected public error code %q, got %v", tc.public, got)
 			}
@@ -92,6 +98,36 @@ func TestCatalogArticleActiveReadRetryAfter(t *testing.T) {
 					response.Code, response.Header().Get("Retry-After"), test.status, test.header)
 			}
 		})
+	}
+}
+
+func TestCatalogQueuedRewriteKeepsPinnedSourceReadable(t *testing.T) {
+	store := newMemoryCatalogStore()
+	retryDelay := 1
+	store.PutArticle(CatalogArticle{
+		ID: "a", VehicleID: "v", CanonicalArticleID: stringPointer("a"), Title: "Pump",
+		Availability: "available", ContentOrigin: stringPointer("source"), SourceRevisionID: stringPointer("source"),
+		Document: &CatalogDocument{
+			SchemaVersion: 1, NormalizationVersion: "ordered-article-v1",
+			Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "Remove the pump."}},
+		},
+		Processing: &CatalogProcessing{
+			JobID: "job", State: "failed", Retryable: true, RetryAfterSeconds: &retryDelay,
+			ErrorCode: publicProcessingError(stringPointer("MODEL_NOT_CONFIGURED"), true),
+		},
+	})
+	response := catalogRequest(catalogServer(store), "/v1/catalog/vehicles/v/articles/a")
+	if response.Code != 200 || response.Header().Get("Retry-After") != "" {
+		t.Fatalf("expected readable source without a retry hint, got status=%d retry=%q", response.Code, response.Header().Get("Retry-After"))
+	}
+	var result CatalogArticleResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	article := result.Article
+	if article.Processing == nil || article.Processing.ErrorCode == nil || *article.Processing.ErrorCode != "CATALOG_REWRITE_PENDING" ||
+		article.Processing.RetryAfterSeconds != nil || article.Document == nil || len(article.Document.Blocks) != 1 {
+		t.Fatal("expected a queued rewrite and its stored article")
 	}
 }
 

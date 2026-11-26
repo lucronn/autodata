@@ -469,6 +469,7 @@
                 null,
                 "CATALOG_SOURCE_UNAVAILABLE",
                 "CATALOG_SOURCE_REPROJECTED",
+                "CATALOG_REWRITE_PENDING",
                 "CATALOG_REWRITE_UNAVAILABLE",
                 "CATALOG_REWRITE_REJECTED",
                 "CATALOG_REVIEW_REQUIRED"

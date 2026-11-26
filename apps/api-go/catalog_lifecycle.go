@@ -123,6 +123,10 @@ func catalogArticleLifecycle(article CatalogArticle) CatalogArticle {
 			n := 1
 			article.Processing.RetryAfterSeconds = &n
 		}
+		if processing.State == "failed" && processing.Retryable && processing.ErrorCode != nil && *processing.ErrorCode == "CATALOG_REWRITE_PENDING" &&
+			readable && article.SourceRevisionID != nil && article.ContentOrigin != nil && *article.ContentOrigin == "source" {
+			processing.RetryAfterSeconds = nil
+		}
 	}
 	return article
 }
@@ -323,7 +327,7 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 	article.ServiceSchedule = serviceSchedule
 	if row.JobID != nil && row.State != nil {
 		article.Processing = &CatalogProcessing{JobID: *row.JobID, State: *row.State, Retryable: row.Retryable,
-			RetryAfterSeconds: row.Retry, ErrorCode: publicProcessingError(row.Error), UpdatedAt: row.Updated,
+			RetryAfterSeconds: row.Retry, ErrorCode: publicProcessingError(row.Error, row.Retryable), UpdatedAt: row.Updated,
 			CheckForCorrection: correctionCheck}
 	}
 	article.Complete = row.CanonicalRevisionID != nil && row.ContentOrigin != nil && *row.ContentOrigin == "canonical" && document != nil && len(document.Blocks) > 0
@@ -375,7 +379,7 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 	}
 	return view, nil
 }
-func publicProcessingError(code *string) *string {
+func publicProcessingError(code *string, retryable bool) *string {
 	if code == nil {
 		return nil
 	}
@@ -385,6 +389,11 @@ func publicProcessingError(code *string) *string {
 		safe = "CATALOG_REVIEW_REQUIRED"
 	case "SOURCE_ONLY_REPROJECTION":
 		safe = "CATALOG_SOURCE_REPROJECTED"
+	case "MODEL_NOT_CONFIGURED":
+		safe = "CATALOG_REWRITE_UNAVAILABLE"
+		if retryable {
+			safe = "CATALOG_REWRITE_PENDING"
+		}
 	case "CATALOG_SOURCE_UNAVAILABLE":
 		safe = *code
 	case "CATALOG_REWRITE_REJECTED":
