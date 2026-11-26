@@ -176,6 +176,21 @@ func TestOpenDemoRequiresApprovedTestOrigin(t *testing.T) {
 			t.Fatalf("open demo host for %q %q %q = %q, want %q", tc.flag, tc.environment, tc.origin, got, tc.want)
 		}
 	}
+	for _, tc := range []struct {
+		flag, environment, origin, want string
+	}{
+		{"1", "production", "https://autodata.cars.tk", "autodata.cars.tk"},
+		{"", "production", "https://autodata.cars.tk", ""},
+		{"1", "test", "https://autodata.cars.tk", ""},
+		{"1", "production", "https://cars.tk", ""},
+		{"1", "production", "http://autodata.cars.tk", ""},
+		{"1", "production", "https://autodata.cars.tk:443", ""},
+		{"1", "production", "https://autodata.cars.tk/path", ""},
+	} {
+		if got := workshopPublicOpenDemoHost(tc.flag, tc.environment, tc.origin); got != tc.want {
+			t.Fatalf("public demo host for %q %q %q = %q, want %q", tc.flag, tc.environment, tc.origin, got, tc.want)
+		}
+	}
 }
 
 func TestOpenDemoReadsExactCatalogWithoutLoginOrGrant(t *testing.T) {
@@ -256,6 +271,18 @@ func TestOpenDemoReadsExactCatalogWithoutLoginOrGrant(t *testing.T) {
 	}
 	if w := request(root+"?demo=1", "localhost:3013"); w.Code == 200 || grant.calls != 0 {
 		t.Fatal("external demo accepted another Host or contacted the grant checker")
+	}
+	s.workshopOpenDemoHost = workshopPublicOpenDemoHost("1", "production", "https://autodata.cars.tk")
+	if w := request("/workshop/demo-mode.json", "autodata.cars.tk"); w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"enabled":true,"access":"open"}` {
+		t.Fatalf("public mode = %d %s", w.Code, w.Body.String())
+	}
+	for _, path := range []string{root + "?demo=1", root + "/" + id + "?demo=1", root + "?demo=1&q=private"} {
+		if w := request(path, "autodata.cars.tk"); w.Code != 200 {
+			t.Fatalf("public demo %s = %d %s", path, w.Code, w.Body.String())
+		}
+	}
+	if w := request(root+"?demo=1", "demo.cars.tk"); w.Code == 200 || grant.calls != 0 {
+		t.Fatal("public demo accepted another Host or contacted the grant checker")
 	}
 }
 func TestPaidCatalogPublicSelectorsAndDeniedBeforeWork(t *testing.T) {

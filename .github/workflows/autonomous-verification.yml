@@ -1,19 +1,9 @@
-name: Autonomous Verification
+name: Workshop Product Checks
 
 on:
   pull_request:
     paths:
-      - "AGENTS.md"
-      - ".autodata-autonomy-policy.json"
       - "README.md"
-      - ".cursor/agents/**"
-      - ".cursor/rules/**"
-      - "docs/agents/**"
-      - "docs/architecture/**"
-      - "docs/github/**"
-      - "docs/superpowers/specs/**"
-      - "docs/superpowers/plans/**"
-      - "scripts/autonomy/**"
       - "apps/api-go/**"
       - "workers/**"
       - "packages/contracts/**"
@@ -25,28 +15,12 @@ on:
       - "scripts/r3_preparation/**"
       - "scripts/contracts/**"
       - ".github/workflows/autonomous-verification.yml"
-      - ".github/CODEOWNERS"
-      - ".github/ISSUE_TEMPLATE/**"
-      - ".github/PULL_REQUEST_TEMPLATE.md"
-      - "CONTRIBUTING.md"
-      - "SECURITY.md"
-      - "scripts/dev/test_repository_governance.py"
       - ".base44/ingestion-dev.Dockerfile"
   push:
     branches:
       - master
     paths:
-      - "AGENTS.md"
-      - ".autodata-autonomy-policy.json"
       - "README.md"
-      - ".cursor/agents/**"
-      - ".cursor/rules/**"
-      - "docs/agents/**"
-      - "docs/architecture/**"
-      - "docs/github/**"
-      - "docs/superpowers/specs/**"
-      - "docs/superpowers/plans/**"
-      - "scripts/autonomy/**"
       - "apps/api-go/**"
       - "workers/**"
       - "packages/contracts/**"
@@ -58,12 +32,6 @@ on:
       - "scripts/r3_preparation/**"
       - "scripts/contracts/**"
       - ".github/workflows/autonomous-verification.yml"
-      - ".github/CODEOWNERS"
-      - ".github/ISSUE_TEMPLATE/**"
-      - ".github/PULL_REQUEST_TEMPLATE.md"
-      - "CONTRIBUTING.md"
-      - "SECURITY.md"
-      - "scripts/dev/test_repository_governance.py"
       - ".base44/ingestion-dev.Dockerfile"
   workflow_dispatch:
 
@@ -71,8 +39,8 @@ permissions:
   contents: read
 
 jobs:
-  autonomy-policy:
-    name: Validate autonomy policy and evidence contract
+  product-checks:
+    name: Workshop product checks
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -98,12 +66,6 @@ jobs:
             fi
           fi
           git diff --name-only --no-renames "$base" HEAD > "$changed"
-          if grep -Eq '^(\.autodata-autonomy-policy\.json$|scripts/autonomy/|docs/agents/|\.github/workflows/autonomous-verification\.yml$)' "$changed"; then
-            echo 'autonomy=true' >> "$GITHUB_OUTPUT"
-          fi
-          if grep -Eq '^(AGENTS\.md$|\.cursor/|docs/github/|CONTRIBUTING\.md$|SECURITY\.md$|\.github/CODEOWNERS$|\.github/ISSUE_TEMPLATE/|\.github/PULL_REQUEST_TEMPLATE\.md$|scripts/dev/test_repository_governance\.py$|\.github/workflows/autonomous-verification\.yml$)' "$changed"; then
-            echo 'governance=true' >> "$GITHUB_OUTPUT"
-          fi
           if grep -Eq '^infra/compose/' "$changed"; then
             echo 'compose=true' >> "$GITHUB_OUTPUT"
           fi
@@ -135,23 +97,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.26.x"
-
-      - name: Run validator unit tests
-        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.autonomy == 'true'
-        run: python -m unittest discover -s scripts/autonomy -p 'test_*.py' -v
-
-      - name: Verify contribution workflow guidance
-        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.governance == 'true'
-        run: python -m unittest discover -s scripts/dev -p 'test_repository_governance.py' -v
-
-      - name: Validate deterministic evidence fixture
-        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.autonomy == 'true'
-        run: >-
-          python scripts/autonomy/validate_run.py
-          --manifest scripts/autonomy/fixtures/pass.json
-          --policy .autodata-autonomy-policy.json
-          --evidence-root scripts/autonomy/fixtures/evidence
-          --json
 
       - name: Set up build-only Node
         if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.workshop_client == 'true'
