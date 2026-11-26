@@ -6,7 +6,7 @@ from psycopg.types.json import Jsonb
 from .article_lifecycle_types import ArticleKey, scope_key
 from .article_lifecycle_store import _upsert_descriptor, persist_resource
 from .source_job_persistence import _result, lock_live_lease, fail_source_job, LeaseLost
-from .source_connector_client import SourceConnectorError
+from .source_connector_client import SourceCatalogAbsence, SourceConnectorError
 from .source_article_capture import upload_envelope
 from .vehicle_identity import _extract_engine_displacement, engine_variants_from_label
 
@@ -77,18 +77,26 @@ def _create_catalog_job(cur, scope, checkpoint=None):
     return job
 
 
-def refresh_catalog_jobs(repo, *, vehicle_id, vehicle_configuration_id, actor, reason):
+def refresh_catalog_jobs(repo, *, vehicle_id, vehicle_configuration_id, actor, reason, provider=None):
+    """Refresh both suppliers by default, or one existing supplier scope."""
     if not actor.strip() or not reason.strip():
         raise ValueError("actor/reason required")
-    ensure_article_catalog_jobs(
-        repo, vehicle_id=vehicle_id, vehicle_configuration_id=vehicle_configuration_id
-    )
+    if provider is not None and provider not in PROVIDERS:
+        raise ValueError("unknown catalog provider")
+    if provider is None:
+        ensure_article_catalog_jobs(
+            repo, vehicle_id=vehicle_id, vehicle_configuration_id=vehicle_configuration_id
+        )
     results = []
+    providers = [provider] if provider is not None else list(PROVIDERS)
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
         scopes = cur.execute(
-            "SELECT * FROM catalog_article_provider_scopes WHERE scope_key=%s ORDER BY provider_slug FOR UPDATE",
-            (scope_key(vehicle_id, vehicle_configuration_id),),
+            """SELECT * FROM catalog_article_provider_scopes
+               WHERE scope_key=%s AND provider_slug=ANY(%s) ORDER BY provider_slug FOR UPDATE""",
+            (scope_key(vehicle_id, vehicle_configuration_id), providers),
         ).fetchall()
+        if provider is not None and not scopes:
+            raise KeyError("catalog provider scope not found")
         for scope in scopes:
             job = cur.execute(
                 "SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",
@@ -265,6 +273,84 @@ def _configuration_candidate_matches(cur, scope, configuration, candidate):
     ).fetchone()["matched"]
 
 
+def _retained_banktwo_catalog_refs(cur, scope, region):
+    rows = cur.execute(
+        """SELECT DISTINCT mapping->>'provider_id' AS ref
+        FROM vehicle_identity_observations o
+        JOIN source_snapshots snapshot USING(source_snapshot_id)
+        CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(o.raw_observation->'provider_mappings')='array'
+                THEN o.raw_observation->'provider_mappings' ELSE '[]'::jsonb END
+        ) AS mappings(mapping)
+        WHERE o.vehicle_id=%s AND o.vehicle_configuration_id=%s
+          AND o.resolution_status='matched' AND o.reviewer_state<>'rejected'
+          AND o.extraction_evidence_id IS NOT NULL AND snapshot.takedown_status='active'
+          AND o.canonical_observation->>'region'=%s
+          AND mapping->>'provider'='autoapitwo' AND mapping->>'entity_type'='car'
+          AND COALESCE(mapping->>'source_provider','banktwo')='banktwo'
+          AND COALESCE(mapping->>'source_region',%s)=%s
+          AND nullif(btrim(mapping->>'provider_id'),'') IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM vehicle_provider_mappings review
+            WHERE review.vehicle_id=o.vehicle_id AND review.vehicle_configuration_id=o.vehicle_configuration_id
+              AND review.provider IN ('autoapitwo','banktwo') AND review.entity_type='car'
+              AND review.provider_id=mapping->>'provider_id' AND review.mapping_status='rejected'
+          )""",
+        (scope["vehicle_id"], scope["vehicle_configuration_id"], region, region, region),
+    ).fetchall()
+    return {row["ref"] for row in rows}
+
+
+def _resolve_banktwo_catalog_configuration(repo, client, scope, selector, configuration):
+    """Confirm a retained reference against the supplier's current selector catalog."""
+    if configuration is None or configuration["trim"] or configuration["engine_variant"]:
+        return None, None
+    displacement = configuration["engine_displacement_l"]
+    if displacement is None:
+        return None, None
+    region = configuration["region"]
+    with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+        retained = _retained_banktwo_catalog_refs(cur, scope, region)
+    if not retained:
+        return None, None
+
+    query = {key: selector[key] for key in ("year", "make", "model")}
+    try:
+        catalog = client.catalog("configurations", query, timeout=6)
+    except SourceConnectorError as error:
+        if error.code != "NOT_FOUND":
+            raise
+        return None, None
+    if isinstance(catalog, SourceCatalogAbsence) or not catalog.complete:
+        return None, None
+
+    matches = {}
+    drivetrain = configuration["drivetrain"]
+    model_suffix = selector["model"].strip().upper().rsplit(" ", 1)[-1]
+    if not drivetrain and model_suffix in {"FWD", "RWD", "AWD", "2WD", "4WD"}:
+        drivetrain = model_suffix
+    for row in catalog.body["items"]:
+        ref = row["opaque_ref"]
+        if ref not in retained or row.get("year") != selector["year"]:
+            continue
+        if any((row.get(key) or "").casefold() != selector[key].casefold() for key in ("make", "model")):
+            continue
+        if (row.get("region") or "US").upper() != region:
+            continue
+        if drivetrain and (row.get("drivetrain") or model_suffix).casefold() != drivetrain.casefold():
+            continue
+        label = row.get("configuration") or row["label"]
+        engine = row.get("engine") or label
+        if (not engine_variants_from_label(label + " " + engine)
+            and _extract_engine_displacement(label) == float(displacement)
+            and _extract_engine_displacement(engine) in {None, float(displacement)}):
+            matches[ref] = {"opaque_ref": ref, "label": label}
+    if len(matches) > 1:
+        raise SourceConnectorError("AMBIGUOUS")
+    candidate = next(iter(matches.values()), None)
+    return (candidate, catalog) if candidate is not None else (None, None)
+
+
 def run_catalog_index_job(repo, lease, *, registry, object_store):
     if lease is None or lease.kind != "catalog_index":
         raise ValueError("catalog lease required")
@@ -335,6 +421,7 @@ def run_catalog_index_job(repo, lease, *, registry, object_store):
         ambiguous = False
         if not ref:
             candidate = None
+            catalog_evidence = None
             with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
                 mappings = cur.execute(
                     "SELECT provider_id,source_snapshot_id FROM vehicle_provider_mappings WHERE vehicle_id=%s AND vehicle_configuration_id IS NOT DISTINCT FROM %s AND provider=%s AND entity_type='car' AND mapping_status='verified'",
@@ -351,15 +438,24 @@ def run_catalog_index_job(repo, lease, *, registry, object_store):
                 if configuration_unresolved:
                     raise SourceConnectorError("UNRESOLVED_CONFIGURATION")
                 resolution = client.resolve_vehicle(selector)
-                resolution_resource = upload_envelope(
-                    resolution, "vehicle_resolution", object_store
-                )
                 candidates = resolution.body["candidates"]
                 ambiguous = len(candidates) > 1
                 candidate = candidates[0] if len(candidates) == 1 else None
+                if provider == "banktwo" and not candidates:
+                    candidate, catalog_evidence = _resolve_banktwo_catalog_configuration(
+                        repo, client, scope, selector, configuration
+                    )
+                resolution_resource = upload_envelope(
+                    catalog_evidence or resolution, "vehicle_resolution", object_store
+                )
                 ref = candidate["opaque_ref"] if candidate is not None else None
             with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
                 scope = _lock_scope(cur, lease)
+                if catalog_evidence is not None and ref not in _retained_banktwo_catalog_refs(
+                    cur, scope, configuration["region"]
+                ):
+                    ref = None
+                    configuration_unresolved = True
                 if (
                     candidate is not None
                     and configuration is not None
