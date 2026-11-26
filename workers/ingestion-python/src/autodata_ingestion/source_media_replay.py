@@ -37,7 +37,7 @@ from .source_connector_client import (
     _valid_article_link_bindings,
     _valid_asset_bindings,
 )
-from .svg_rasterization import RASTERIZER_VERSION
+from .svg_rasterization import RASTERIZER_VERSION, SUPPORTED_RASTERIZER_VERSIONS
 
 MEDIA_REPLAY_SOURCE_VERSIONS = frozenset({"source-projection-v1", "source-projection-v2"})
 MEDIA_REPLAY_PROJECTION_VERSION = "source-projection-v3"
@@ -186,7 +186,8 @@ def _resource_binding(row, context, manifest, provenance, *, ordinals, table_spa
                 )
         elif original is not None:
             supported = (
-                role == "asset" and mime == "image/png" and entry.get("derivation_version") == RASTERIZER_VERSION
+                role == "asset" and mime == "image/png"
+                and entry.get("derivation_version") in SUPPORTED_RASTERIZER_VERSIONS
             )
             entry_fields = entry_fields | _DERIVATION_FIELDS
             expected_fields = expected_fields | _DERIVATION_FIELDS
