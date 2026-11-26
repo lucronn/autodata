@@ -73,14 +73,64 @@
         }
 
         const years = '/v1/catalog/years';
-        function read(path) {
+        function read(path, cache = path === years ? 'default' : 'no-store') {
           const controller = new AbortController();
           const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]);
-          const cache = path === years ? 'default' : 'no-store';
           const response = fetch(path, { signal, credentials: 'same-origin', cache,
             headers: { Accept: 'application/json' } })
             .then(reply => reply.ok ? reply.json() : null).catch(() => null);
-          pending.set(path, { controller, response });
+          const request = { controller, response };
+          pending.set(path, request);
+          return request;
+        }
+
+        function showYears(snapshot) {
+          if (['year', 'make', 'model', 'view', 'q'].some(key => params.has(key)) ||
+              !snapshot.items.every(item => Number.isInteger(item?.year) && item.year >= 1886 && item.year <= 2100))
+            return;
+          const values = snapshot.items.map(item => item.year).sort((a, b) => b - a);
+          let picker, placeholder, makeRead;
+          function chooseYear() {
+            if (picker.options[0] !== placeholder || location.search !== route) return;
+            const year = picker.value;
+            if (makeRead?.year === year) return;
+            makeRead?.abort();
+            makeRead = null;
+            if (!values.includes(Number(year))) return;
+            // The embedded catalog already confirms this parent selection.
+            const path = `${years}/${year}/makes?region=US`;
+            const { controller, response } = read(path, 'default');
+            makeRead = { year, response, abort() {
+              controller.abort();
+              pending.delete(path);
+            } };
+          }
+          const route = location.search;
+          // The page can offer its stored years before module evaluation.
+          const observer = new MutationObserver(() => {
+            const select = document.getElementById('year');
+            if (!select?.options.length) return;
+            observer.disconnect();
+            picker = select;
+            placeholder = new Option('Choose year', '');
+            picker.replaceChildren(placeholder, ...values.map(year => new Option(year, year)));
+            picker.addEventListener('change', chooseYear);
+            picker.disabled = false;
+          });
+          observer.observe(document, { childList: true, subtree: true });
+          pending.takeYearPicker = () => {
+            observer.disconnect();
+            picker?.removeEventListener('change', chooseYear);
+            if (!picker || picker.options[0] !== placeholder || location.search !== route) {
+              makeRead?.abort();
+              return null;
+            }
+            if (makeRead && makeRead.year !== picker.value) {
+              makeRead.abort();
+              makeRead = null;
+            }
+            return { snapshot, makeRead };
+          };
         }
 
         const initialYears = document.getElementById('workshop-initial-years');
@@ -90,6 +140,7 @@
             if (snapshot?.version === 'v1' && snapshot.complete === true &&
                 Array.isArray(snapshot.items) && snapshot.items.length) {
               pending.set(years, { controller: new AbortController(), response: Promise.resolve(snapshot) });
+              showYears(snapshot);
             }
           } catch {
             // Fall back to the regular year read if the embedded data is unavailable.

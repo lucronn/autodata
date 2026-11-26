@@ -76,10 +76,11 @@ if (params.get('sample') === '1' && !wantsDemo) {
     document.getElementById('test-banner').hidden = !testCheckout;
     document.getElementById('open-demo-banner').hidden = !openDemo;
     document.documentElement.dataset.workshopMode = openDemo ? 'open-demo' : 'regular';
-    const { bootstrap } = await import('./app.mjs');
     const initial = await preview;
+    const { bootstrap } = await import('./app.mjs');
     await bootstrap(initial?.years, initialAccount, {
       initialSelectors: initial?.selectors,
+      initialYearPicker: pickerStartup?.takeYearPicker?.(),
       testCheckout: wantsDemo ? undefined : modeRequest.then(mode => mode.testCheckout === true),
       initialDemoIndex: openDemo ? demoIndex : null,
     });
