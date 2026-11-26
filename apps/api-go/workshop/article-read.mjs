@@ -3,6 +3,7 @@ import { delay } from "./catalog.mjs";
 const sourceProbeIntervalMs = 250;
 const initialSourceProbeDelayMs = 150;
 const minimumSourceProbeAdvanceMs = 50;
+const newlyFetchingProbeDelayMs = 600;
 const sourceConfirmationDelayMs = 1000;
 const initialPublicationProbeDelayMs = 250;
 const publicationProbeIntervalMs = 500;
@@ -103,6 +104,7 @@ export async function readArticle(
   let nextSourceProbeAt = 0;
   let firstSourceProbePending = false;
   let confirmedSourceCapture = false;
+  let queuedThroughShortProbes = false;
   let regularSourceReadAt = 0;
   let regularSourceReadJob;
   let keepRegularSourceRead = false;
@@ -113,6 +115,7 @@ export async function readArticle(
   let scheduledPublicationCheck;
   const publicationStatusProbes = new Map();
   let checkedPreviewSource = false;
+  let sawSourcePreview = false;
   let sawFastSource = false;
   let attempt = 0;
   let correctionChecks = 0;
@@ -155,7 +158,8 @@ export async function readArticle(
       statusProbe ? Math.min(statusProbe.regularReadAt, startedAt + publicationStatusProbeDelayMs) : deadline,
       initialSourceFallback || deadline, advancedProbeLimit || deadline, sourceMidpoint || deadline,
     );
-    const firstScheduledSourceRead = !firstReadAt && confirmedSourceCapture && earlyConfirmationJob !== undefined;
+    const firstScheduledSourceRead = !firstReadAt && earlyConfirmationJob !== undefined &&
+      (confirmedSourceCapture || queuedThroughShortProbes);
     // Keep the header deadline for a short read. Give a successful body on
     // the later probes one extra interval to finish without downloading twice.
     const sourceBodyDeadline = firstReadAt
@@ -222,6 +226,7 @@ export async function readArticle(
           ["queued", "fetching_source"].includes(article.processing.state);
         const readableSource = latest.status === 200 && readable && article.content_origin === "source";
         sourcePreview = readableSource && article.source_body_preview === true && article.source_revision_id === null;
+        sawSourcePreview ||= sourcePreview;
         previewSourceCheck = sourcePreview && latest.previewSourceCheck === true && retryAfter === 0 &&
           article.processing.state === "fetching_source";
         if (latest.shortPublicationCheck === true && retryAfter === 0 &&
@@ -254,6 +259,14 @@ export async function readArticle(
     if (remaining <= 0) break;
     if (statusProbe) {
       const regularWait = Math.max(0, statusProbe.regularReadAt - now());
+      if (sawSourcePreview && publicationStatusConfirmed && !statusProbe.late && !statusProbe.followUp &&
+          regularWait >= 2 * publicationProbeIntervalMs) {
+        // A newly captured article can publish just after the compact check.
+        // Preserve the ordinary read if one follow-up still finds it rewriting.
+        scheduledPublicationCheck = { ...statusProbe, followUp: true };
+        await wait(Math.min(remaining, regularWait / 2), signal);
+        continue;
+      }
       await wait(Math.min(remaining, Math.max(regularWait, retryAfter * 1000)), signal);
       continue;
     }
@@ -299,6 +312,7 @@ export async function readArticle(
         continue;
       }
       const regularWait = Math.max(0, firstReadAt - now());
+      queuedThroughShortProbes = samePendingSource && latest.data.article.processing.state === "queued";
       firstReadAt = 0;
       nextSourceProbeAt = 0;
       firstSourceProbePending = false;
@@ -362,17 +376,20 @@ export async function readArticle(
       // keep the normal two-second check before resuming the usual backoff.
       earlyConfirmationJob = fastPendingJob;
     } else if (earlyConfirmationJob !== undefined) {
-      const stillFetching = firstScheduledSourceRead && shortSourceCheck &&
-        latest.data.article.processing.job_id === earlyConfirmationJob &&
-        latest.data.article.processing.state === "fetching_source";
-      if (fastPendingJob === earlyConfirmationJob || stillFetching) {
+      const sameSource = firstScheduledSourceRead && shortSourceCheck &&
+        latest.data.article.processing.job_id === earlyConfirmationJob;
+      const stillFetching = sameSource && latest.data.article.processing.state === "fetching_source";
+      if (fastPendingJob === earlyConfirmationJob || stillFetching || sameSource && !confirmedSourceCapture) {
         backoff = 1000;
         attempt--;
       }
       if (stillFetching) {
         // Keep the next ordinary read if this resumed short check misses.
         regularSourceReadAt = now() + backoff;
-        backoff = sourceProbeIntervalMs;
+        // This follow-up may find just the text. Keep the next ordinary read
+        // for the figures even after displaying that preview.
+        keepRegularSourceRead = !confirmedSourceCapture;
+        backoff = confirmedSourceCapture ? sourceProbeIntervalMs : newlyFetchingProbeDelayMs;
       }
       earlyConfirmationJob = undefined;
     }

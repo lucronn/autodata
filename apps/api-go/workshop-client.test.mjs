@@ -903,6 +903,7 @@ test('reader checks negotiated cold source early and preserves scheduled reads o
       const headerBudget = { 150: 100, 250: 250, 375: 125, 500: 500, 750: 250 };
       const bodyBudget = { 150: 850, 250: 750, 375: 625, 500: 750, 750: 500 };
       const confirmedAtOrdinaryRead = now === 1000 && [
+        'pending at both probes',
         'third miss retains the ordinary read',
         'a slow second response rejoins the ordinary read',
         'same capture finishes just after the ordinary read',
@@ -1008,6 +1009,78 @@ test('reader checks an active, slow first capture without delaying its regular r
     });
     assert.equal(visibleAt, expectedVisibleAt);
     assert.deepEqual(lateStarts, expectedLateStarts);
+  }
+});
+
+test('the first ordinary read can confirm a capture that was queued during the short checks', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  for (const outcome of ['stored', 'preview', 'retry-after']) {
+    let now = 0;
+    const starts = [];
+    const shown = [];
+    const retryAfterSeconds = outcome === 'retry-after' ? 2 : 0;
+    const result = await readArticle(async ({ preferShortSourceCheck, timeout }) => {
+      starts.push(now);
+      if (now === 1600 && outcome === 'preview') {
+        assert.equal(timeout, 400);
+        return { status: 200, previewSourceCheck: true, data: { article: {
+          content_origin: 'source', source_body_preview: true, source_revision_id: null, body: 'Supplier preview',
+          processing: { job_id: 'same-capture', state: 'fetching_source' },
+        } } };
+      }
+      if (now >= 1550) {
+        if (now === 1600) assert.equal(timeout, 400);
+        return { status: 200, data: { article: { body: 'Stored supplier text' } } };
+      }
+      if (now === 1000) assert.equal(preferShortSourceCheck, true);
+      return {
+        status: 202, shortSourceCheck: now < 1000 || !retryAfterSeconds,
+        retryAfterSeconds: now < 1000 ? 0 : retryAfterSeconds,
+        data: { article: { processing: { job_id: 'same-capture', state: now < 1000 ? 'queued' : 'fetching_source' } } },
+      };
+    }, {
+      now: () => now, wait: async ms => { now += ms; },
+      onUpdate: ({ data }) => { if (data.article.body) shown.push(data.article.body); },
+    });
+    assert.equal(result.data.article.body, 'Stored supplier text');
+    assert.deepEqual(starts, [0, 150, 250, 500, 1000, ...{
+      stored: [1600], preview: [1600, 2000], 'retry-after': [3000],
+    }[outcome]]);
+    assert.deepEqual(shown, outcome === 'preview' ? ['Supplier preview', 'Stored supplier text'] : ['Stored supplier text']);
+  }
+});
+
+test('a confirmed rewrite gets one compact follow-up after a supplier preview', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const article = { id: 'a', source_revision_id: 'source', content_origin: 'source',
+    body: 'Stored article', processing: { job_id: 'job', state: 'rewriting' } };
+  const stored = { status: 200, retryAfterSeconds: 1, publicationCheckSupported: true, data: { article } };
+  const preview = { status: 200, retryAfterSeconds: 1, data: { article: {
+    ...article, source_revision_id: null, source_body_preview: true, processing: { job_id: 'job', state: 'fetching_source' },
+  } } };
+  const canonical = { status: 200, data: { article: { id: 'a', content_origin: 'canonical', body: 'Published article' } } };
+  for (const outcome of ['published', 'pending', 'mismatch', 'retry-after']) {
+    let now = 0;
+    const starts = [];
+    const read = await readArticle(async ({ publicationCheck }) => {
+      starts.push(now);
+      if (now === 0) return preview;
+      if (now === 1000 || now === 3000) return stored;
+      if (now >= 7000 || now === 6000 && outcome === 'published') return canonical;
+      assert.deepEqual(publicationCheck, { articleId: 'a', sourceRevisionId: 'source', jobId: 'job' });
+      return { status: 200, publicationStatus: true, data: {
+        version: 'v1', article_id: 'a', job_id: 'job', state: 'rewriting',
+        source_revision_id: outcome === 'mismatch' ? 'other' : 'source',
+        ...(outcome === 'retry-after' ? { retry_after_seconds: 3 } : {}),
+      } };
+    }, { now: () => now, wait: async ms => { now += ms; } });
+    assert.equal(read.data.article.body, 'Published article', outcome);
+    assert.deepEqual(starts, {
+      published: [0, 1000, 3000, 5000, 6000],
+      pending: [0, 1000, 3000, 5000, 6000, 7000],
+      mismatch: [0, 1000, 3000, 5000, 7000],
+      'retry-after': [0, 1000, 3000, 5000, 8000],
+    }[outcome]);
   }
 });
 
