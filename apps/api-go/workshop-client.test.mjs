@@ -2319,7 +2319,7 @@ async function sessionPreparationHarness({
       assert.equal(actualAuth, auth);
       assert.ok(actualProvider instanceof sdk.GoogleAuthProvider);
       assert.equal(actualProvider, provider);
-      return popup ? popup() : Promise.resolve({ user });
+      return popup ? popup(user) : Promise.resolve({ user });
     },
     getIdTokenResult: async (actualUser, forceRefresh) => {
       assert.equal(actualUser, user);
@@ -2373,6 +2373,30 @@ test('a session recheck disables sign-in until the account is ready again', asyn
 
   assert.equal(readyDuringRecheck, false);
   assert.equal(changes.at(-1).ready, true);
+});
+
+test('reopening Google sign-in ignores a result from the previous popup', async () => {
+  const windows = [deferredAuthOperation(), deferredAuthOperation()];
+  let opened = 0;
+  const { session, calls } = await sessionPreparationHarness({
+    popup: user => windows[opened++].promise.then(() => ({ user })),
+  });
+  await session.bootstrap();
+  const first = session.signIn();
+  assert.equal(session.state.popupPending, true);
+  assert.equal(session.state.ready, false);
+  const reopened = session.signIn();
+  assert.equal(calls.popups, 2);
+  windows[0].resolve();
+  await first;
+  assert.equal(calls.exchanges, 0);
+  assert.equal(calls.signouts, 0);
+  assert.equal(session.state.popupPending, true);
+  windows[1].resolve();
+  await reopened;
+  assert.equal(calls.exchanges, 1);
+  assert.equal(session.state.popupPending, false);
+  assert.equal(session.state.authenticated, true);
 });
 
 test('selected index checks the exchanged cookie after SDK sign-out', async () => {
@@ -3755,7 +3779,7 @@ test('login route shares the existing sign-in guard rather than starting another
   const login = new Promise(resolve => { finish = resolve; });
   const h = loginRouteHarness('?view=library', { login: () => login });
   const first = h.context.signIn();
-  assert.equal(h.context.signingIn, true);
+  assert.ok(h.context.signingIn);
   await h.context.signIn();
   assert.equal(h.calls.signIns, 1);
   assert.equal(h.calls.checkoutClears, 1);

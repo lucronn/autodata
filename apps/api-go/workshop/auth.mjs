@@ -78,6 +78,7 @@ export function createSession({
     csrf: "",
     ready: false,
     available: false,
+    popupPending: false,
     confirm: false,
     message: "",
   };
@@ -103,6 +104,7 @@ export function createSession({
     state.authenticated = false;
     state.csrf = "";
     state.ready = false;
+    state.popupPending = false;
     changed();
   };
   async function prepare(current) {
@@ -164,13 +166,14 @@ export function createSession({
     },
     async bootstrap({ signal, initial } = {}) {
       const current = ++epoch;
-      const wasReady = state.ready;
+      const wasReady = state.ready || state.popupPending;
       selectedIndexConfirmation?.abort();
       pendingLoginConfiguration = null;
       state.mode = null;
       state.authenticated = false;
       state.csrf = "";
       state.ready = false;
+      state.popupPending = false;
       if (wasReady) changed();
       const initialResult = initial ? await initial : null;
       const [configuration, response] = initialResult ?? readSessionBootstrap(request, { signal });
@@ -207,10 +210,14 @@ export function createSession({
       // App assets can span releases during a rolling deployment.
       const useSelectedIndex = typeof selectedIndexSessionPreference === "string" &&
         typeof confirmSelectedIndex === "function";
-      if (!state.available || !state.ready || state.authenticated)
+      if (!state.available || (!state.ready && !state.popupPending) || state.authenticated)
         return Promise.reject(new Error("Sign-in is unavailable."));
-      const current = epoch;
+      // Firebase cancels the previous popup when a new one opens. Only this
+      // attempt may exchange a token or update the customer session.
+      const current = ++epoch;
       state.ready = false;
+      state.popupPending = true;
+      state.message = "Continue in the Google sign-in window.";
       changed();
       return (async () => {
         try {
@@ -219,6 +226,9 @@ export function createSession({
             ? sdk.reauthenticateWithPopup(auth.currentUser, provider)
             : sdk.signInWithPopup(auth, provider));
           if (current !== epoch) return;
+          state.popupPending = false;
+          state.message = "Finishing sign-in…";
+          changed();
           let token = await sdk.getIdTokenResult(result.user);
           if (current !== epoch) return;
           const issuedAge = Date.now() - Date.parse(token.issuedAtTime);
@@ -287,6 +297,10 @@ export function createSession({
           return confirmedIndex;
         } catch (error) {
           if (current !== epoch) return;
+          if (state.popupPending) {
+            state.popupPending = false;
+            changed();
+          }
           if (error.code === "FRESH_SIGN_IN_REQUIRED" && !retried) {
             state.confirm = true;
             retried = true;
@@ -294,9 +308,11 @@ export function createSession({
             state.confirm = false;
             await sdk.signOut(auth).catch(() => {});
           }
+          if (current !== epoch) return;
           state.message = authMessage(error);
         } finally {
           if (current === epoch) {
+            state.popupPending = false;
             state.ready = !state.authenticated;
             changed();
           }
