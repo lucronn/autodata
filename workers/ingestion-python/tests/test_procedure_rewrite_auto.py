@@ -4331,6 +4331,45 @@ _ROTATE_REMOVE_REPHRASED = "Turn the retaining sleeve in a clockwise direction a
 
 
 @pytest.mark.parametrize("profile", [PROFILE, SOURCE_BOUND_REWRITE_PROFILE])
+@pytest.mark.parametrize("direction", ["counter clockwise", "counter-clockwise", "anti clockwise"])
+@pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
+def test_split_counterclockwise_binds_direction_and_both_components(profile, direction, in_cell):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    original = f"Rotate the counter shaft {direction} and remove the guide plate."
+    source = _scoped_prose_source(original, in_cell=in_cell)
+    prompt = auto.build_auto_prompt(source, context={}, profile_version=profile)
+    version = json.loads(prompt)["prompt_version"]
+    assert version == auto._SPACED_ROTATION_PROMPT_VERSION
+    expected = "Turn the counter shaft counterclockwise, then take off the guide plate."
+    assert json.loads(prompt)["slots"][-1]["required_text"] == expected
+    candidate = _scoped_prose_response(prompt, expected)
+    result = rewrite.rewrite_ordered_document(source, client=Draft(candidate), context={}, profile_version=profile)
+    assert result.error_code is None
+    auto.require_current_publication_checks(source, result.document, saved_prompt_version=version)
+    assert auto._auto_prompt_version(source, context={}, prompt_hash=sha256(prompt.encode()).hexdigest(),
+                                     profile_version=profile) == version
+    wrong = _scoped_prose_response(prompt, "Turn the counter shaft counter in a clockwise direction and take the guide plate off.")
+    with pytest.raises(ValueError, match="REWRITE_ROTATION_DIRECTION_MUTATION"):
+        auto.render_auto(source, wrong, prompt_version=version, profile_version=profile)
+
+
+def test_split_direction_keeps_archived_reply_verifiable_and_blocks_republication():
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source = _scoped_prose_source("Rotate the retaining sleeve counter clockwise and remove the guide plate.", in_cell=False)
+    old = auto._build_auto_prompt_v65_with_technical_tokens(source, context={})
+    old_version = auto._ROTATION_REMOVAL_PROMPT_VERSION
+    assert auto._auto_prompt_version(source, context={}, prompt_hash=sha256(old.encode()).hexdigest()) == old_version
+    wording = "Turn the retaining sleeve counter in a clockwise direction and take the guide plate off."
+    response = _scoped_prose_response(old, wording)
+    historical = auto.render_auto(source, response, prompt_version=old_version)
+    assert auto.validate_auto(source, historical, response=response, prompt_version=old_version).passed
+    with pytest.raises(ValueError, match="REWRITE_ROTATION_DIRECTION_MUTATION"):
+        auto.require_current_publication_checks(source, historical, saved_prompt_version=old_version)
+
+
+@pytest.mark.parametrize("profile", [PROFILE, SOURCE_BOUND_REWRITE_PROFILE])
 @pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
 def test_plain_rotation_and_removal_rewrites_use_a_separate_prompt_version(profile, in_cell):
     from autodata_ingestion import procedure_rewrite_auto as auto

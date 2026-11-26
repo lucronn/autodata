@@ -20,7 +20,8 @@ from autodata_ingestion.procedure_rewrite_sentence_correction import SENTENCE_CO
 from autodata_ingestion.retained_note_label_repair import (
     AUTHORED_PROCEDURE_CHECKPOINT, AUTHORED_PROCEDURE_PROFILE, _restore_authored_procedure_reply,
     CHECKPOINT, PROFILE, ROTATION_REMOVAL_CHECKPOINT, ROTATION_REMOVAL_METHOD, ROTATION_REMOVAL_PROFILE,
-    _restore_reply, repair_retained_authored_procedure, repair_retained_note_labels, repair_retained_rotation_removal,
+    SPACED_ROTATION_CHECKPOINT, _restore_reply, repair_retained_authored_procedure, repair_retained_note_labels,
+    repair_retained_rotation_removal, repair_retained_spaced_rotation,
 )
 from autodata_ingestion.source_job_persistence import ProfileRefreshRequired, ensure_article_job, refresh_article_job, schedule_source_bound_rewrite
 from lifecycle_support import fresh_database, runtime, seed_configuration, seed_snapshot
@@ -489,3 +490,75 @@ def test_retained_rotation_removal_replays_exact_v61_archive_and_publishes_one_v
     assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}
     with pytest.raises(ValueError, match="^RETAINED_ROTATION_REMOVAL_REPAIR_STALE$"):
         repair_retained_rotation_removal(runtime.repo, runtime.article_id, **pins)
+
+
+def test_spaced_rotation_republishes_a_held_reply_using_the_same_source_and_figure(runtime, monkeypatch):
+    original = "Rotate the retaining sleeve counter clockwise and remove the guide plate."
+    ambiguous = "Turn the retaining sleeve counter in a clockwise direction and take the guide plate off."
+    corrected = "Turn the retaining sleeve counterclockwise, then take off the guide plate."
+    figure = seed_banktwo_figure(runtime, (
+        f"<h2>Service procedure</h2><ol><li>{original}</li></ol>"
+        "<img src='/fixture/figure' alt='Fixture component'><p>Note: Remove the upper cover.</p>"
+    ).encode())
+    old_job, source = seed_banktwo_correction_job(runtime, preserve_notes=True, first_draft=True)
+    assert run_job(runtime, old_job, SentenceReplies())
+    binding = SimpleNamespace(source_revision_id=source)
+
+    def state():
+        with runtime.repo.connect() as conn, conn.cursor() as cur:
+            article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                                  (runtime.article_id,)).fetchone()
+            publication, _, _, _, reply, _, _ = _publication_evidence(cur, article, binding, fixture_mode=False, lock=False)
+            return article, publication, reply
+
+    def pins(article, publication, document):
+        return {
+            "expected_job_id": article["current_job_id"], "expected_source_revision_id": source,
+            "expected_descriptor_snapshot_id": article["descriptor_source_snapshot_id"],
+            "expected_published_revision_id": publication["canonical_article_revision_id"],
+            "expected_published_hash": publication["rewrite_result_hash"], "expected_repaired_hash": digest_json(document),
+            "actor": "fixture-editor", "reason": "Correct the direction against the retained procedure.",
+        }
+
+    article, prior, archived_reply = state()
+    [path] = [row["path"] for row in archived_reply["replacements"] if row["text"] == original and row["action"] == "retain"]
+    expected = deepcopy(prior["canonical_document"])
+    _set({"blocks": expected["blocks"][1:]}, path, ambiguous)
+    with monkeypatch.context() as historical:
+        historical.setattr(auto, "recast_spaced_rotation_removal", lambda text: None)
+        repair_retained_rotation_removal(runtime.repo, runtime.article_id, **pins(article, prior, expected))
+    article, ambiguous_revision, _ = state()
+    assert ambiguous_revision["canonical_document"] == expected
+    _set({"blocks": expected["blocks"][1:]}, path, corrected)
+    arguments = pins(article, ambiguous_revision, expected)
+    with pytest.raises(ValueError, match="^RETAINED_SPACED_ROTATION_REPAIR_STALE$"):
+        repair_retained_spaced_rotation(runtime.repo, runtime.article_id, **arguments)
+
+    with runtime.repo.connect() as conn:
+        conn.execute("UPDATE canonical_articles SET current_canonical_revision_id=NULL WHERE canonical_article_id=%s",
+                     (runtime.article_id,))
+    assert runtime.read_current()["content_origin"] == "source"
+    before = _state(runtime)
+    runtime.reset_counters()
+
+    def interrupt(point):
+        assert point == "inside_publication"
+        assert runtime.read_current()["canonical_revision_id"] is None
+        raise RuntimeError("fixture interrupted direction repair")
+
+    with pytest.raises(RuntimeError, match="fixture interrupted direction repair"):
+        repair_retained_spaced_rotation(runtime.repo, runtime.article_id, hooks=interrupt, **arguments)
+    assert _state(runtime) == before
+    revision = repair_retained_spaced_rotation(runtime.repo, runtime.article_id, **arguments)
+    assert runtime.read_current()["canonical_revision_id"] == revision
+    _, published, reply = state()
+    assert published["canonical_document"] == expected
+    assert published["canonical_images"] == ambiguous_revision["canonical_images"]
+    [image] = published["canonical_images"]
+    assert runtime.objects.get_object(image["storage_key"], max_bytes=1024 * 1024) == figure
+    assert published["model_metadata"][SPACED_ROTATION_CHECKPOINT]["evidence"]["restored_paths"] == [path]
+    assert any(entry["path"] == path and entry["text"] == corrected for entry in reply["replacements"])
+    after = _state(runtime)
+    assert after["canonical_article_rewrite_attempts"] == before["canonical_article_rewrite_attempts"]
+    assert len(after["publication_events"]) == len(before["publication_events"]) + 1
+    assert runtime.counters()["model"] == 0
