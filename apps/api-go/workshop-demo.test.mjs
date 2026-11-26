@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { requestInitialYears, startSavedSelectorReads } from './workshop/catalog.mjs';
+import { requestArticleJSON, requestInitialYears, startSavedSelectorReads } from './workshop/catalog.mjs';
+import { readSessionBootstrap } from './workshop/auth.mjs';
 const source = name => readFileSync(new URL(`./workshop/${name}`, import.meta.url), 'utf8');
 const assetBase = `https://workshop.example/workshop/assets/${'a'.repeat(64)}/`;
 const bootstrapCode = source('bootstrap.mjs').replaceAll('import(', 'loadModule(')
@@ -17,9 +18,11 @@ test('the entry page preloads the catalog helper before starting bootstrap', () 
   assert.match(source('index.html'), /rel="modulepreload" href="\/workshop\/catalog\.mjs"[\s\S]*src="\/workshop\/bootstrap\.mjs"/);
 });
 const headPickerCode = source('index.html').match(/<script>([\s\S]+?)<\/script>/)[1];
+const entrySettingsPaths = ['/auth/config', '/auth/session', '/workshop/purchase-config.json'];
 
 function startHeadPicker(search, publicSelectors = true, {
   entry = {}, origin = 'https://workshop.example', initialYears = null, directSelectorOrigin, yearPicker,
+  reply = path => ({ ok: true, json: async () => ({ items: [{ path }] }) }),
 } = {}) {
   const calls = [], hints = [];
   let parsed;
@@ -48,7 +51,7 @@ function startHeadPicker(search, publicSelectors = true, {
     },
     fetch: async (path, options) => {
       calls.push({ path, options });
-      return { ok: true, json: async () => ({ items: [{ path }] }) };
+      return reply(path, options, calls);
     },
   };
   runInNewContext(headPickerCode, context);
@@ -99,7 +102,7 @@ test('the picker restores the complete entry snapshot and fetches when no usable
   assert.deepEqual(calls.map(({ path }) => path), [makes, '/workshop/demo-mode.json']);
   for (const initialYears of ['{invalid', JSON.stringify({ ...snapshot, complete: false }),
     JSON.stringify({ ...snapshot, items: [] })]) {
-    assert.deepEqual(startHeadPicker('', true, { initialYears }).calls.map(({ path }) => path), [root]);
+    assert.deepEqual(startHeadPicker('', true, { initialYears }).calls.map(({ path }) => path), [...entrySettingsPaths, root]);
   }
 });
 
@@ -122,13 +125,14 @@ test('the public entry offers stored years and passes the latest early make requ
   yearPicker.change();
   yearPicker.value = '2023';
   yearPicker.change();
-  assert.deepEqual(calls.map(call => call.path), [2024, 2023].map(year => `/v1/catalog/years/${year}/makes?region=US`));
-  assert.ok(calls.every(call => call.options.cache === 'default'));
-  assert.equal(calls[0].options.signal.aborted, true);
-  assert.equal(calls[1].options.signal.aborted, false);
+  const makeReads = calls.slice(entrySettingsPaths.length);
+  assert.deepEqual(makeReads.map(call => call.path), [2024, 2023].map(year => `/v1/catalog/years/${year}/makes?region=US`));
+  assert.ok(makeReads.every(call => call.options.cache === 'default'));
+  assert.equal(makeReads[0].options.signal.aborted, true);
+  assert.equal(makeReads[1].options.signal.aborted, false);
   const handoff = context.workshopPickerStartup.takeYearPicker();
   assert.equal(handoff.makeRead.year, '2023');
-  assert.deepEqual(await handoff.makeRead.response, { items: [{ path: calls[1].path }] });
+  assert.deepEqual(await handoff.makeRead.response, { items: [{ path: makeReads[1].path }] });
   assert.equal(yearPicker.value, '2023');
   assert.equal(yearPicker.change, null);
 });
@@ -142,7 +146,7 @@ test('entry keeps independent, private and unconfirmed paths on their ordinary r
     assert.equal(context.workshopPickerStartup?.takeYearPicker, undefined, search);
   }
   assert.deepEqual(startHeadPicker('?year=2024', false).calls, []);
-  assert.deepEqual(startHeadPicker('').calls.map(({ path }) => path), ['/v1/catalog/years']);
+  assert.deepEqual(startHeadPicker('').calls.map(({ path }) => path), [...entrySettingsPaths, '/v1/catalog/years']);
   assert.deepEqual(startHeadPicker('?year=2024&make=%3Efoo&model=envision-awd').calls.map(({ path }) => path),
     ['/v1/catalog/years', '/v1/catalog/years/2024/makes?region=US&stored_only=1']);
 });
@@ -151,12 +155,55 @@ test('the public picker starts one early connection for public model and engine 
   const options = { origin: 'https://autodata.cars.tk', directSelectorOrigin };
   const { hints, calls } = startHeadPicker('', true, options);
   assert.deepEqual(hints.filter(href => href === directSelectorOrigin), [directSelectorOrigin]);
-  assert.deepEqual(calls.map(({ path }) => path), ['/v1/catalog/years']);
+  assert.deepEqual(calls.map(({ path }) => path), [...entrySettingsPaths, '/v1/catalog/years']);
   assert.ok(!startHeadPicker('', false, options).hints.includes(directSelectorOrigin));
   for (const search of ['?view=library', '?sample=1', '?demo=1', '?article=chosen', '?order=returning']) {
     assert.ok(!startHeadPicker(search, true, options).hints.includes(directSelectorOrigin), search);
   }
   assert.ok(!startHeadPicker('', true, { directSelectorOrigin }).hints.includes(directSelectorOrigin));
+});
+
+test('account and purchase bootstrap consume the original entry reads and preserve a guest denial', async () => {
+  for (const failedTransport of [false, true]) {
+    const snapshot = { version: 'v1', complete: true, items: [{ year: 2024 }] };
+    const purchase = { enabled: false, checkout_mode: 'simulation' };
+    const { calls, context } = startHeadPicker('', true, {
+      initialYears: JSON.stringify(snapshot),
+      reply(path, _options, seen) {
+        if (path === '/auth/config' && failedTransport && seen.length === 1)
+          throw new TypeError('transport failure');
+        if (path === '/auth/session')
+          return Response.json({ error: { code: 'AUTH_REQUIRED' } }, { status: 401 });
+        return Response.json(path === '/workshop/purchase-config.json' ? purchase : { version: 'v1' });
+      },
+    });
+    assert.deepEqual(calls.map(call => call.path), entrySettingsPaths);
+    assert.equal(calls[1].options.headers.Prefer, 'workshop-session-mode');
+    assert.ok(calls.every(({ options }) => options.credentials === 'same-origin' && options.cache === 'no-store'));
+    context.loadModule = async path => {
+      if (path === './catalog.mjs') return {
+        requestInitialYears, startSavedSelectorReads,
+        async requestJSON(path, options) {
+          return (await requestArticleJSON(path, { fetcher: context.fetch, ...options })).data;
+        },
+      };
+      if (path === './auth.mjs') return { readSessionBootstrap };
+      return { async bootstrap(years, account, { initialPurchaseConfig }) {
+        assert.equal((await years).items[0].year, 2024);
+        const [config, session] = await account;
+        assert.deepEqual(await config, { status: 'fulfilled', value: { version: 'v1' } });
+        const denied = await session;
+        assert.equal(denied.status, 'rejected');
+        assert.equal(denied.reason.status, 401);
+        assert.equal(denied.reason.code, 'AUTH_REQUIRED');
+        assert.deepEqual(await initialPurchaseConfig, purchase);
+      } };
+    };
+    await runInNewContext(`(async () => { ${bootstrapCode} })()`, context);
+    assert.deepEqual(calls.map(call => call.path), [
+      ...entrySettingsPaths, '/workshop/demo-mode.json', ...(failedTransport ? ['/auth/config'] : []),
+    ]);
+  }
 });
 test('entry preloads the app for confirmed public demos without starting regular picker reads', () => {
   const entry = { workshopDemoOrigins: 'https://autodata.cars.tk https://autodata.curtis.click' };
