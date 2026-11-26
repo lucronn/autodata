@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f8f9f5" />
     <title>AutoData — The workshop reference</title>
-    <link rel="modulepreload" href="/workshop/catalog.mjs" id="workshop-catalog-module" data-public-selectors="false" />
+    <link rel="modulepreload" href="/workshop/catalog.mjs" id="workshop-catalog-module"
+      data-public-selectors="false" data-direct-selector-origin="https://autodata.curtis.click" />
     <!-- Workshop initial years -->
     <script>
       (() => {
@@ -62,6 +63,14 @@
         if (catalog.dataset.publicSelectors !== 'true' ||
             ['article', 'configuration', 'order'].some(key => params.has(key)) ||
             params.get('view') === 'library' || (region && region !== 'US')) return;
+
+        if (location.origin === 'https://autodata.cars.tk' && catalog.dataset.directSelectorOrigin) {
+          const connection = document.createElement('link');
+          connection.rel = 'preconnect';
+          connection.href = catalog.dataset.directSelectorOrigin;
+          connection.crossOrigin = 'anonymous';
+          document.head.append(connection);
+        }
 
         const years = '/v1/catalog/years';
         function read(path) {
