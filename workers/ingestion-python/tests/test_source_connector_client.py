@@ -332,6 +332,28 @@ class SourceConnectorClientTests(unittest.TestCase):
         self.assertEqual([item["opaque_ref"] for item in resolved.body["candidates"]], ["car:1", "car:2"])
         self.assertEqual([item["resource_ref"] for item in listed.body["articles"]], ["resource:2", "resource:1"])
 
+    def test_only_banktwo_article_continuations_request_larger_pages(self):
+        calls = []
+
+        def capture(request, timeout):
+            calls.append((parse_qs(urlsplit(request.full_url).query), request.get_header("Prefer")))
+            return _Response(_envelope(provider, complete=True, articles=[]), url=request.full_url)
+
+        for provider, max_bytes in (("banktwo", 20_000_000), ("bankone", 20_000_000), ("banktwo", 2_000_000)):
+            client = SourceConnectorClient(
+                f"https://{provider}.cars.tk", provider=provider, max_bytes=max_bytes, opener=capture,
+            )
+            client.list_articles("vehicle:1")
+            client.list_articles("vehicle:1", cursor="position/100")
+        self.assertEqual(calls, [
+            ({}, None),
+            ({"cursor": ["position/100"]}, "max-page-size=500"),
+            ({}, None),
+            ({"cursor": ["position/100"]}, None),
+            ({}, None),
+            ({"cursor": ["position/100"]}, None),
+        ])
+
     def test_resource_keeps_exact_bytes_sha_and_locator(self):
         payload = b"\x89PNG\r\n\x1a\nsource bytes"
         digest = hashlib.sha256(payload).hexdigest()

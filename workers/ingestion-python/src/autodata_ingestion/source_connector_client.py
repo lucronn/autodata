@@ -30,6 +30,7 @@ from .source_adapters import SourceResource
 
 
 DEFAULT_MAX_BYTES = 20_000_000
+_BANKTWO_BATCH_MIN_RESPONSE_BYTES = 4 * 1024 * 1024
 DEFAULT_TIMEOUT_SECONDS = 25.0
 _PROVIDERS = {"bankone": "autoapi", "banktwo": "autoapitwo"}
 _ORIGINS = {"bankone": "https://bankone.cars.tk", "banktwo": "https://banktwo.cars.tk"}
@@ -307,9 +308,12 @@ class SourceConnectorClient:
 
     def list_articles(self, source_vehicle_ref: str, cursor: str | None = None) -> SourceEnvelopeV1:
         path = f"/v1/vehicles/{_opaque_ref(source_vehicle_ref, 1024)}/articles"
+        prefer = None
         if cursor is not None:
             path += "?" + urlencode({"cursor": _bounded_text(cursor, "cursor", 512)})
-        return self._read("GET", path, operation="articles")
+            if self.provider == "banktwo" and self.max_bytes >= _BANKTWO_BATCH_MIN_RESPONSE_BYTES:
+                prefer = "max-page-size=500"
+        return self._read("GET", path, operation="articles", prefer=prefer)
 
     def search_articles(
         self, source_vehicle_ref: str, query: str, cursor: str | None = None
@@ -328,7 +332,7 @@ class SourceConnectorClient:
     def _read(
         self, method: str, path: str, *, operation: str, payload: Mapping[str, Any] | None = None,
         scope: str | None = None, timeout: float | None = None, deadline: float | None = None,
-        read_control: Any = None,
+        read_control: Any = None, prefer: str | None = None,
     ) -> SourceEnvelopeV1:
         response_limit = min(self.max_bytes, 1024 * 1024) if read_control is not None else self.max_bytes
         url = self.base_url + path
@@ -336,6 +340,8 @@ class SourceConnectorClient:
         headers = {"Accept": "application/json, application/octet-stream", "User-Agent": "autodata-source-client/1"}
         if data is not None:
             headers["Content-Type"] = "application/json"
+        if prefer is not None:
+            headers["Prefer"] = prefer
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
             if operation == "resource" and self.provider == "bankone":
