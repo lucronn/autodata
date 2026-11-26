@@ -339,13 +339,17 @@ class SourceConnectorClientTests(unittest.TestCase):
             calls.append((parse_qs(urlsplit(request.full_url).query), request.get_header("Prefer")))
             return _Response(_envelope(provider, complete=True, articles=[]), url=request.full_url)
 
-        for provider in ("banktwo", "bankone"):
-            client = SourceConnectorClient(f"https://{provider}.cars.tk", provider=provider, opener=capture)
+        for provider, max_bytes in (("banktwo", 20_000_000), ("bankone", 20_000_000), ("banktwo", 2_000_000)):
+            client = SourceConnectorClient(
+                f"https://{provider}.cars.tk", provider=provider, max_bytes=max_bytes, opener=capture,
+            )
             client.list_articles("vehicle:1")
             client.list_articles("vehicle:1", cursor="position/100")
         self.assertEqual(calls, [
             ({}, None),
             ({"cursor": ["position/100"]}, "max-page-size=500"),
+            ({}, None),
+            ({"cursor": ["position/100"]}, None),
             ({}, None),
             ({"cursor": ["position/100"]}, None),
         ])

@@ -30,6 +30,7 @@ from .source_adapters import SourceResource
 
 
 DEFAULT_MAX_BYTES = 20_000_000
+_BANKTWO_BATCH_MIN_RESPONSE_BYTES = 4 * 1024 * 1024
 DEFAULT_TIMEOUT_SECONDS = 25.0
 _PROVIDERS = {"bankone": "autoapi", "banktwo": "autoapitwo"}
 _ORIGINS = {"bankone": "https://bankone.cars.tk", "banktwo": "https://banktwo.cars.tk"}
@@ -307,9 +308,11 @@ class SourceConnectorClient:
 
     def list_articles(self, source_vehicle_ref: str, cursor: str | None = None) -> SourceEnvelopeV1:
         path = f"/v1/vehicles/{_opaque_ref(source_vehicle_ref, 1024)}/articles"
+        prefer = None
         if cursor is not None:
             path += "?" + urlencode({"cursor": _bounded_text(cursor, "cursor", 512)})
-        prefer = "max-page-size=500" if self.provider == "banktwo" and cursor is not None else None
+            if self.provider == "banktwo" and self.max_bytes >= _BANKTWO_BATCH_MIN_RESPONSE_BYTES:
+                prefer = "max-page-size=500"
         return self._read("GET", path, operation="articles", prefer=prefer)
 
     def search_articles(
