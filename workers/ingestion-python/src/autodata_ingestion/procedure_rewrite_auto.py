@@ -2218,7 +2218,10 @@ def _encode_prompt_with_technical_tokens(payload):
     for slot in payload["slots"]:
         if slot["required_action"] != "rewrite" or "required_text" in slot:
             continue
-        if tokens := full._technical_tokens(slot["text"]):
+        tokens = full._technical_tokens(slot["text"])
+        # Existing rules cover unique spans. List repeated spans explicitly so
+        # the model cannot collapse them while preserving older prompt bytes.
+        if any(tokens.count(token) > 1 for token in tokens):
             tokens_by_path[slot["path"]] = tokens
     if tokens_by_path:
         rules = [
