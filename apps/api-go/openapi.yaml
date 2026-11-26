@@ -2186,6 +2186,9 @@ components:
               - CATALOG_REWRITE_REJECTED
               - CATALOG_REVIEW_REQUIRED
               nullable: true
+            check_for_correction:
+              type: boolean
+              description: Allows the reader to briefly check for an automatic correction while displaying the stored source.
             updated_at:
               type: string
               format: date-time

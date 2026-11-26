@@ -38,6 +38,21 @@ class CatalogLifecycleContract(unittest.TestCase):
         article['article']['steps'][0]['images'][0]['storage_key'] = 'sources/private'
         self.assertTrue(list(validator.iter_errors(article)))
 
+    def test_stored_source_can_advertise_an_automatic_correction(self):
+        schema = json.loads((CATALOG / 'article-lifecycle.schema.json').read_text())
+        validator = jsonschema.Draft202012Validator(schema)
+        article = json.loads((CATALOG / 'fixtures/source-needs-review.json').read_text())
+        processing = article['article']['processing']
+        processing.update(state='failed', error_code='CATALOG_REWRITE_UNAVAILABLE', check_for_correction=True)
+        self.assertEqual(list(validator.iter_errors(article)), [])
+        processing['check_for_correction'] = 'true'
+        self.assertTrue(list(validator.iter_errors(article)))
+
+        spec = json.loads((ROOT / 'apps/api-go/openapi.json').read_text())
+        public_processing = spec['components']['schemas']['CatalogArticle']['properties']['processing']
+        self.assertEqual(public_processing['properties']['check_for_correction']['type'], 'boolean')
+        self.assertNotIn('check_for_correction', public_processing['required'])
+
     def test_source_reprojection_has_a_distinct_public_error_code(self):
         schema = json.loads((CATALOG / 'article-lifecycle.schema.json').read_text())
         validator = jsonschema.Draft202012Validator(schema)

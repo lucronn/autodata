@@ -759,7 +759,7 @@ function purchaseConfigured() {
 }
 async function selectVehicle(g, articleID = "", {
   quoteMode = "eager", savedLink = false, reuseQuote = false, focusOnShow = false,
-  focusArticle = "", indexAnchor = "", firstIndex = null,
+  focusArticle = "", indexAnchor = "", firstIndex = null, preferRetained = false,
 } = {}) {
   if (!g.current()) return;
   // Keep the exact public price visible while paid access and purchase
@@ -826,7 +826,7 @@ async function selectVehicle(g, articleID = "", {
     return;
   }
   try {
-    if (directArticle && await loadArticle(articleID, g, { savedLink: true })) return;
+    if (directArticle && await loadArticle(articleID, g, { savedLink: true, preferRetained })) return;
     if (savedQuery && await loadSavedSearch(g, savedQuery, focusArticle)) return;
     if (!g.current()) return;
     await loadArticles(g, articleID, { focusOnShow, focusArticle, indexAnchor, includePurchaseQuote: Boolean(retainedQuote), firstIndex });
@@ -1135,6 +1135,19 @@ function hasRetainedArticleRevision(article) {
   return article.availability === "available" &&
     (article.content_origin === "canonical" && uuid(article.canonical_revision_id) ||
       article.content_origin === "source" && uuid(article.source_revision_id));
+}
+
+function rememberRetainedReader(response) {
+  const { article, configuration } = response.data;
+  if (openDemo || session.state.mode !== "firebase" || !session.state.authenticated ||
+      response.status !== 200 || !uuid(article.id) || article.source_body_preview ||
+      !readableArticle(article) || !hasRetainedArticleRevision(article)) return;
+  const params = new URLSearchParams(location.search);
+  if (params.get("article") === article.id && params.get("configuration") === configuration?.id &&
+      params.get("region") === configuration?.region && history.state?.workshopArticleReadable !== true) {
+    // Remember readiness only. Every history entry still reloads the authorized body.
+    history.replaceState({ ...history.state, workshopArticleReadable: true }, "");
+  }
 }
 
 function renderArticleLinks(items) {
@@ -1910,9 +1923,9 @@ async function loadArticleView(id, g, order, {
   };
   let retainedReadStartedAt;
   if (preferRetained && !verifiedDetail && !refreshOnly && !openDemo &&
-      session.state.mode === "firebase" && access === "owned" &&
+      session.state.mode === "firebase" && (savedLink || access === "owned") &&
       validScope({ configuration_id: selected.id, region: selected.region })) {
-    // The index advertises retained content. Read it with current authorization.
+    // The index or history entry advertises retained content. Read with current authorization.
     const startedAt = performance.now();
     try {
       const response = await requestArticleDetail(order, detailPath, readOptions);
@@ -1926,6 +1939,7 @@ async function loadArticleView(id, g, order, {
       }
     } catch (error) {
       if (!g.current()) return;
+      if (savedLink && error.status === 404) return false;
       const unavailable = error.status === 503 && error.retryable === true &&
         ["CATALOG_SOURCE_UNAVAILABLE", "CATALOG_UNAVAILABLE"].includes(error.code);
       const transport = error.status === 0 && error.code === "NETWORK_UNAVAILABLE";
@@ -1943,6 +1957,7 @@ async function loadArticleView(id, g, order, {
     if (retained && (!readable || olderThanRetained(response))) return;
     renderArticle(article, g, refreshVisibleArticle && !verifiedDetail);
     rememberRetainedIndexArticle(response, g);
+    rememberRetainedReader(response);
     refreshVisibleArticle = false;
     if (readerAlignment && readable) {
       const controller = readerAlignment;
@@ -2927,7 +2942,8 @@ async function restoreRoute(initialYears = null, {
       if (uuid(exact.configuration_id) &&
           (!hasHierarchy || scopedSearch || (uuid(articleID) && validScope(exact)))) {
         vehicle = { id: exact.configuration_id, region: exact.region };
-        await selectVehicle(g, articleID, { savedLink: true, ...indexOptions });
+        const preferRetained = uuid(articleID) && history.state?.workshopArticleReadable === true;
+        await selectVehicle(g, articleID, { savedLink: true, preferRetained, ...indexOptions });
         return;
       }
       const desired = Object.fromEntries(names.map((name) => [name, params.get(name) || ""]));

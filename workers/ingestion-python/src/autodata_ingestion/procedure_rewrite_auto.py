@@ -2046,18 +2046,19 @@ def _keeps_authored_note_labels(prompt_version):
 
 def build_auto_prompt(document, *, context, profile_version=PROFILE):
     if profile_version == PROFILE:
-        return _build_auto_prompt_v65(document, context=context)
+        return _build_auto_prompt_with_technical_tokens(document, context=context)
     if profile_version != SOURCE_BOUND_REWRITE_PROFILE:
         raise ValueError("REWRITE_PROFILE_UNSUPPORTED")
     return _build_source_bound_prompt(
         document, preserve_notes=True, procedure_fidelity=True,
         allow_drain_subject=True, allow_rotation_removal=True, allow_optional_observation=True,
+        include_technical_tokens=True,
     )
 
 
 def _build_source_bound_prompt(
     document, *, preserve_notes, procedure_fidelity=False, allow_drain_subject=False, allow_rotation_removal=False,
-    allow_optional_observation=False,
+    allow_optional_observation=False, include_technical_tokens=False,
 ):
     builder = _auto_prompt_payload_v61 if preserve_notes else _auto_prompt_payload_v60
     if procedure_fidelity:
@@ -2081,6 +2082,8 @@ def _build_source_bound_prompt(
             "rewrite, check that the wording differs from the supplied source after ignoring case, "
             "punctuation and spacing. Reword matching text before returning the complete response.",
         ]
+    if include_technical_tokens:
+        return _encode_prompt_with_technical_tokens(payload)
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
@@ -2210,9 +2213,49 @@ def _build_auto_prompt_v65(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
+def _encode_prompt_with_technical_tokens(payload):
+    tokens_by_path = {}
+    for slot in payload["slots"]:
+        if slot["required_action"] != "rewrite" or "required_text" in slot:
+            continue
+        tokens = full._technical_tokens(slot["text"])
+        # Existing rules cover unique spans. List repeated spans explicitly so
+        # the model cannot collapse them while preserving older prompt bytes.
+        if any(tokens.count(token) > 1 for token in tokens):
+            tokens_by_path[slot["path"]] = tokens
+    if tokens_by_path:
+        rules = [
+            "Every replacement object has exactly the keys block_id, path, action, text and reason. "
+            "Copy required_action from the input slot into the output key action, not required_action. "
+            "Use the exact block_id and path from the slot.",
+            "For a rewrite, use distinct wording for the whole passage, including each authored sentence. "
+            "Keep the same operations, conditions and order. Never return an unchanged passage with action "
+            "rewrite. Use the exact required_text instead when the slot provides it.",
+            "For each path in technical_tokens_by_path, copy the listed spans literally into that "
+            "replacement's text, in order and with repetitions. Check every span in your final text, "
+            "including the words, spaces and punctuation in the span. Keep its original relationship to "
+            "the parts, conditions and operations. Rephrase the prose around the spans. "
+            "The lists are input only.",
+        ]
+        prompt = json.dumps(
+            {**payload, "rules": rules + payload["rules"], "technical_tokens_by_path": tokens_by_path},
+            sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str,
+        )
+        if len(prompt.encode("utf-8")) <= 200 * 1024:
+            return prompt
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _build_auto_prompt_with_technical_tokens(document, *, context):
+    return _encode_prompt_with_technical_tokens(_auto_prompt_payload_v65(document, context=context))
+
+
 def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROFILE):
     """Identify the rules bound to the saved model attempt."""
     if profile_version == SOURCE_BOUND_REWRITE_PROFILE:
+        current = build_auto_prompt(document, context=context, profile_version=profile_version)
+        if sha256(current.encode()).hexdigest() == prompt_hash:
+            return json.loads(current)["prompt_version"]
         current = _build_source_bound_prompt(
             document, preserve_notes=True, procedure_fidelity=True, allow_drain_subject=True,
             allow_rotation_removal=True, allow_optional_observation=True,
@@ -2233,6 +2276,7 @@ def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROF
     if profile_version != PROFILE:
         return None
     for builder in (
+        _build_auto_prompt_with_technical_tokens,
         _build_auto_prompt_v65,
         _build_auto_prompt_v64,
         _build_auto_prompt_v63,

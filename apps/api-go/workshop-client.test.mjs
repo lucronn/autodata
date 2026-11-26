@@ -1688,6 +1688,88 @@ test('reader keeps nonretryable failures and completed outcomes terminal', async
     assert.equal(result.timedOut, false);
   }
 });
+test('reader shows stored source during the handoff to an automatic correction', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const source = {
+    content_origin: 'source', source_revision_id: 'source-revision', body: 'Stored source',
+    processing: { job_id: 'first-draft', state: 'failed', retryable: false, check_for_correction: true },
+  };
+  const correcting = { ...source, processing: { job_id: 'correction', state: 'rewriting' } };
+  const canonical = {
+    ...source, content_origin: 'canonical', body: 'Corrected article',
+    processing: { job_id: 'correction', state: 'completed' },
+  };
+  const responses = [source, source, correcting, canonical];
+  let now = 0, reads = 0;
+  const waits = [], updates = [];
+  const result = await readArticle(async ({ timeout }) => {
+    assert.equal(timeout, [10000, 3500, 1500, 10000][reads]);
+    return { status: 200, data: { article: responses[reads++] } };
+  }, {
+    now: () => now,
+    wait: async ms => { waits.push(ms); now += ms; },
+    onUpdate: response => updates.push(response.data.article.body),
+  });
+  assert.deepEqual(waits, [1000, 2000, 1000]);
+  assert.deepEqual(updates, ['Stored source', 'Stored source', 'Stored source', 'Corrected article']);
+  assert.equal(result.data.article, canonical);
+  assert.equal(result.timedOut, false);
+});
+test('reader bounds the correction handoff and honors throttling', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const source = {
+    content_origin: 'source', source_revision_id: 'source-revision', body: 'Stored source',
+    processing: { job_id: 'first-draft', state: 'failed', retryable: false, check_for_correction: true },
+  };
+  const unavailable = Object.assign(new Error('Unavailable'), { status: 503, retryable: true });
+  for (const [article, retryAfterSeconds, expectedWaits, transientFailure] of [
+    [source, 0, [1000, 2000], false],
+    [source, 0, [1000, 2000], true],
+    [source, 5, [], false],
+    [{ ...source, source_revision_id: null }, 0, [], false],
+    [{ ...source, body: '' }, 0, [], false],
+    [{ ...source, processing: { ...source.processing, job_id: '' } }, 0, [], false],
+  ]) {
+    let now = 0, reads = 0;
+    const waits = [];
+    const result = await readArticle(async () => {
+      reads++;
+      if (transientFailure && reads === 2) throw unavailable;
+      return { status: 200, data: { article }, retryAfterSeconds };
+    }, {
+      now: () => now,
+      wait: async ms => { waits.push(ms); now += ms; },
+    });
+    assert.deepEqual(waits, expectedWaits);
+    assert.equal(reads, 1 + expectedWaits.length);
+    assert.equal(result.data.article, article);
+    assert.equal(result.timedOut, false);
+  }
+});
+test('reader stops correction checks when access is denied or navigation changes', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const navigation = new NavigationGeneration();
+  const generation = navigation.next();
+  const denial = Object.assign(new Error('Access denied'), { status: 403 });
+  const source = {
+    content_origin: 'source', source_revision_id: 'source-revision', body: 'Stored source',
+    processing: { job_id: 'first-draft', state: 'failed', retryable: false, check_for_correction: true },
+  };
+  for (const cancel of [false, true]) {
+    let now = 0, reads = 0;
+    await assert.rejects(readArticle(async () => {
+      if (reads++) throw denial;
+      return { status: 200, data: { article: source } };
+    }, {
+      signal: generation.signal, now: () => now,
+      wait: async ms => {
+        now += ms;
+        if (cancel) navigation.next();
+      },
+    }), error => cancel ? error.name === 'AbortError' : error === denial);
+    assert.equal(reads, cancel ? 1 : 2);
+  }
+});
 test('reader retains retryable failed source when the absolute budget expires', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   const source = {
@@ -2467,6 +2549,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
   const configuration = { id: routeConfiguration, region: 'US' };
   const context = {
     URLSearchParams, AbortSignal, uuid, validScope, configurationLabel, selectedIndexSessionPreference, validQuote,
+    history: { state: null },
     Option: function(text, value) { return { text, value }; },
     location: { pathname: '/workshop/', search }, signingIn: false, sessionRequest: null, viewGeneration: navigation.next(),
     vehicle: { id: previousConfiguration, region: 'US' }, quote: null,
@@ -2820,6 +2903,14 @@ for (const query of ['', '&q=brake+pads']) {
     assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: routeArticle }]);
   });
 }
+
+test('restoring a previously readable history entry passes its readiness to the exact reader', async () => {
+  const h = loginRouteHarness(`?configuration=${routeConfiguration}&region=US&article=${routeArticle}`);
+  h.context.history.state = { workshopArticleReadable: true };
+  await h.context.restoreRoute();
+  assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: routeArticle }]);
+  assert.equal(h.calls.selectionOptions[0].preferRetained, true);
+});
 
 for (const query of ['?view=library', `?order=${routeOrder}`]) {
   test(`non-selector route ${query} drops prior vehicle context and query`, async () => {
@@ -6585,6 +6676,7 @@ function articleMediaHarness(overrides = {}) {
     appSection('const element =', 'const session ='),
     appSection('function clearProtected(', 'async function operation('),
     appSection('function vehicleIdentityLabel(', 'function purchaseConfigured('),
+    appSection('function hasRetainedArticleRevision(', 'function renderArticleLinks('),
     appSection('const assetID =', 'async function loadArticle('),
     appSection('function rememberRetainedIndexArticle(', 'function returnToArticleIndex('),
     appSection('function validSourceURL(', 'async function library('),
@@ -10089,6 +10181,44 @@ test('a retained paid index entry opens through one fresh scoped GET', async () 
   assert.equal(await opening, true);
   assert.equal(h.calls.length, 1);
   assert.equal(h.nodes.get('article-content').textContent, 'Checked Ford procedure.');
+});
+
+test('a readable history entry stores only readiness and has to open again with current access', async t => {
+  const stored = mediaArticle([{ type: 'paragraph', text: 'Stored source procedure.' }], [], {
+    id: routeArticle, availability: 'available',
+  });
+  for (const outcome of ['readable', 'revoked', 'stale', 'missing']) {
+    await t.test(outcome, async () => {
+      const h = retainedReaderHarness((_path, options) => {
+        if (options.method === 'POST') {
+          return { status: 200, data: { article: stored, configuration: h.configuration } };
+        }
+        if (outcome === 'revoked') throw new CatalogRequestError('Access revoked.', { status: 403, code: 'ENTITLEMENT_REVOKED' });
+        if (outcome === 'missing') throw new CatalogRequestError('Article missing.', { status: 404, code: 'CATALOG_NOT_FOUND' });
+        if (outcome === 'stale') {
+          throw new CatalogRequestError('Source pending.', { status: 503, code: 'CATALOG_SOURCE_UNAVAILABLE', retryable: true });
+        }
+        return { status: 200, data: { article: stored, configuration: h.configuration } };
+      });
+      h.context.location.search = `?configuration=${h.configuration.id}&region=US&article=${routeArticle}`;
+      h.context.history = { state: null, replaceState(state) { this.state = state; } };
+      assert.equal(await h.context.loadArticle(routeArticle, h.g, { savedLink: true }), true);
+      assert.deepEqual({ ...h.context.history.state }, { workshopArticleReadable: true });
+      const g = h.navigation.next();
+      h.context.resetReaderContent();
+      h.context.access = 'unknown';
+      const loading = h.context.loadArticle(routeArticle, g, {
+        savedLink: true, preferRetained: h.context.history.state.workshopArticleReadable,
+      });
+      assert.equal(h.nodes.get('article-content').textContent, '');
+      if (outcome === 'revoked') await assert.rejects(loading, { code: 'ENTITLEMENT_REVOKED' });
+      else assert.equal(await loading, outcome !== 'missing');
+      assert.deepEqual(h.calls.map(call => call.method || 'GET'),
+        outcome === 'stale' ? ['POST', 'GET', 'POST'] : ['POST', 'GET']);
+      assert.equal(h.nodes.get('article-content').textContent,
+        ['readable', 'stale'].includes(outcome) ? 'Stored source procedure.' : '');
+    });
+  }
 });
 
 test('a stale retained index entry can start preparation once', async t => {

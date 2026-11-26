@@ -1,18 +1,92 @@
-"""Find one parked source for the serialized rollout model worker."""
+"""Claim one stored-source rewrite or correction for the serialized model worker."""
 
 from uuid import UUID
 
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from .article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE, NORMALIZATION_VERSION, digest_json, transformation_key
-from .new_article_worker import WINDOW, _timestamp
+from .article_lifecycle_types import (
+    AUTOMATIC_REWRITE_PROFILE, NORMALIZATION_VERSION, SOURCE_BOUND_CORRECTION_PROFILE,
+    digest_json, transformation_key,
+)
+from .new_article_worker import WINDOW, _PAID_SOURCE_SCOPE, _timestamp
+from .procedure_rewrite_sentence_correction import MAX_SENTENCE_CORRECTION_CALLS
 from .source_job_persistence import (
-    _SOURCE_BOUND_CURRENT_OWNER_SQL, _lease_from_row, source_bound_rewrite_source_allowed,
+    _SOURCE_BOUND_CURRENT_OWNER_SQL, _claim_automatic_resume, _finalize_exhausted_source_jobs,
+    _lease_from_row, claim_source_job, schedule_source_bound_correction, source_bound_rewrite_source_allowed,
 )
 
 
 MAX_MODEL_DISPATCHES_PER_WINDOW = 10
+_CORRECTION_ACTOR = "workshop-automatic-sentence-correction"
+_CORRECTION_ERRORS = ["REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR", "REWRITE_TECHNICAL_MUTATION"]
+
+
+def _claim_automatic_correction(repo, args, *, worker_id, model_budget_available):
+    # Select only first drafts spent by this rollout. Scheduling and claiming
+    # use the existing exact-source transaction and lease checks.
+    with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+        rows = cur.execute(f"""SELECT j.source_fetch_job_id AS current_id, a.canonical_article_id,
+                       failed.source_fetch_job_id AS prior_id, failed.source_revision_id
+            FROM source_fetch_jobs failed
+            JOIN canonical_articles a ON a.canonical_article_id=failed.canonical_article_id
+            JOIN source_fetch_jobs j ON {_SOURCE_BOUND_CURRENT_OWNER_SQL}
+            WHERE failed.job_kind='article' AND failed.rewrite_profile_version=%(profile)s
+              AND failed.normalization_version=%(normalization)s AND failed.request_generation=0
+              AND failed.created_at>%(cutoff_at)s AND failed.provider_slug=ANY(%(providers)s)
+              AND failed.status='dead_letter' AND failed.phase='validating' AND NOT failed.retryable
+              AND failed.error_code=ANY(%(correction_errors)s)
+              AND failed.source_revision_id=j.source_revision_id
+              AND (failed.source_fetch_job_id=ANY(%(reserved)s::uuid[])
+                   OR failed.checkpoint ? 'paid_source_reserved_at')
+              AND ((failed.checkpoint->'new_article_rollout') - 'source_sha'::text)=%(marker)s
+              AND failed.checkpoint->'new_article_rollout'->>'source_sha' ~ '^[a-f0-9]{{40}}$'
+              AND a.membership_status='active' AND a.takedown_status='active'
+              AND a.current_canonical_revision_id IS NULL AND {_PAID_SOURCE_SCOPE}
+              AND (%(model_budget_available)s OR (j.rewrite_profile_version=%(correction_profile)s AND (
+                   (j.phase IN ('validating','publishing') AND j.checkpoint->>'candidate_revision_id' IS NOT NULL)
+                   OR (j.status='processing' AND j.retry_count>=j.max_attempts
+                       AND j.lease_expires_at<clock_timestamp()
+                       AND EXISTS (SELECT 1 FROM canonical_article_rewrite_attempts attempt
+                           WHERE attempt.source_fetch_job_id=j.source_fetch_job_id
+                             AND attempt.lease_token=j.lease_token AND attempt.dispatched_at IS NOT NULL)))))
+              AND (j.source_fetch_job_id=failed.source_fetch_job_id OR (
+                   j.rewrite_profile_version=%(correction_profile)s
+                   AND j.checkpoint->'source_bound_rewrite'->>'actor'=%(correction_actor)s
+                   AND j.checkpoint->'source_bound_rewrite'->>'prior_job_id'=failed.source_fetch_job_id::text
+                   AND (j.status='pending'
+                        OR (j.status='processing' AND j.lease_expires_at<clock_timestamp())
+                        OR (j.status='failed' AND j.error_code='MODEL_NOT_CONFIGURED'))))
+            ORDER BY failed.created_at,failed.source_fetch_job_id
+            """, {**args, "model_budget_available": model_budget_available}).fetchall()
+    for row in rows:
+        job_id = row["current_id"]
+        if not model_budget_available:
+            # Settle existing work without admitting another model call.
+            with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+                lease = _claim_automatic_resume(cur, worker_id, job_id)
+                if lease is None:
+                    _finalize_exhausted_source_jobs(cur, job_id)
+            if lease is not None:
+                return lease
+            continue
+        if job_id == row["prior_id"]:
+            try:
+                scheduled = schedule_source_bound_correction(
+                    repo, row["canonical_article_id"], expected_job_id=job_id,
+                    expected_source_revision_id=row["source_revision_id"],
+                    actor=_CORRECTION_ACTOR, reason="Correct a rejected Workshop first draft.",
+                    model_call_budget=MAX_SENTENCE_CORRECTION_CALLS, by_sentence=True, first_draft=True,
+                )
+            except ValueError:
+                # The source or current job may have changed since selection,
+                # or the archived reply may not have the required exact shape.
+                continue
+            job_id = scheduled.job_id
+        lease = claim_source_job(repo, worker_id=worker_id, job_id=job_id)
+        if lease is not None:
+            return lease
+    return None
 
 
 def claim_rollout_model_job(repo, snapshot, *, worker_id):
@@ -25,6 +99,8 @@ def claim_rollout_model_job(repo, snapshot, *, worker_id):
         "providers": snapshot["providers"], "marker": Jsonb(marker),
         "reserved": [UUID(item["job_id"]) for item in snapshot["reservations"]],
         "profile": AUTOMATIC_REWRITE_PROFILE, "normalization": NORMALIZATION_VERSION,
+        "correction_actor": _CORRECTION_ACTOR, "correction_profile": SOURCE_BOUND_CORRECTION_PROFILE,
+        "correction_errors": _CORRECTION_ERRORS,
     }
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
         # A release can rebind the source SHA without resetting the rollout's
@@ -32,12 +108,16 @@ def claim_rollout_model_job(repo, snapshot, *, worker_id):
         used = cur.execute("""SELECT count(*) AS used
             FROM canonical_article_rewrite_attempts t
             JOIN source_fetch_jobs j ON j.source_fetch_job_id=t.source_fetch_job_id
+            LEFT JOIN source_fetch_jobs prior ON prior.canonical_article_id=j.canonical_article_id
+                AND j.rewrite_profile_version=%(correction_profile)s
+                AND j.checkpoint->'source_bound_rewrite'->>'actor'=%(correction_actor)s
+                AND prior.source_fetch_job_id::text=j.checkpoint->'source_bound_rewrite'->>'prior_job_id'
             WHERE t.dispatched_at>clock_timestamp()-%(window)s
-              AND j.checkpoint->'new_article_rollout'->>'rollout_id'=%(rollout_id)s
-              AND j.checkpoint->'new_article_rollout'->>'cutoff'=%(cutoff)s
+              AND COALESCE(prior.checkpoint,j.checkpoint)->'new_article_rollout'->>'rollout_id'=%(rollout_id)s
+              AND COALESCE(prior.checkpoint,j.checkpoint)->'new_article_rollout'->>'cutoff'=%(cutoff)s
             """, args).fetchone()["used"]
         if used >= MAX_MODEL_DISPATCHES_PER_WINDOW:
-            return None
+            return _claim_automatic_correction(repo, args, worker_id=worker_id, model_budget_available=False)
         # Source pins can change during a release. Keep the rollout identity
         # and spent job UUID bound to the parked source across a release.
         candidates = cur.execute(f"""SELECT a.*,j.source_fetch_job_id,
@@ -104,4 +184,7 @@ def claim_rollout_model_job(repo, snapshot, *, worker_id):
                 (worker_id, Jsonb({"rollout_model_observation_id": str(row["source_observation_id"])}),
                  row["source_fetch_job_id"])).fetchone()
             return _lease_from_row(lease, worker_id)
-    return None
+    return _claim_automatic_correction(
+        repo, args, worker_id=worker_id,
+        model_budget_available=used + MAX_SENTENCE_CORRECTION_CALLS <= MAX_MODEL_DISPATCHES_PER_WINDOW,
+    )
