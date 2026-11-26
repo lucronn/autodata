@@ -39,7 +39,7 @@ func TestWorkshopEntryMarksPublicSelectors(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/workshop", nil)
 		r.Header.Set("If-None-Match", tag)
-		workshopAssetsHandler(recorder, r, public)
+		workshopAssetsHandler(recorder, r, public, false)
 		return recorder
 	}
 	legacy := request(false, "")
@@ -54,6 +54,39 @@ func TestWorkshopEntryMarksPublicSelectors(t *testing.T) {
 	}
 	if len(public.Header().Values("Link")) != 0 {
 		t.Fatal("entry response tried to infer the browser route")
+	}
+}
+
+func TestWorkshopEntryMarksOpenDemoForConfiguredHost(t *testing.T) {
+	server, _, _ := paidHTTPServer()
+	server.workshopOpenDemoHost = "demo.cars.tk"
+	handler := server.Handler()
+	request := func(host, tag string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, "/workshop", nil)
+		r.Host = host
+		r.Header.Set("If-None-Match", tag)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+	demo := request("demo.cars.tk", "")
+	tag := demo.Header().Get("ETag")
+	if demo.Code != http.StatusOK || tag == "" ||
+		!strings.Contains(demo.Body.String(), `data-workshop-open-demo="true"`) ||
+		!strings.Contains(demo.Body.String(), `data-public-selectors="true"`) {
+		t.Fatalf("open demo entry = %d, tag %q", demo.Code, tag)
+	}
+	if cached := request("demo.cars.tk", tag); cached.Code != http.StatusNotModified {
+		t.Fatalf("open demo entry validator returned %d", cached.Code)
+	}
+	regular := request("another.example", tag)
+	if regular.Code != http.StatusOK || !strings.Contains(regular.Body.String(), `data-workshop-open-demo="false"`) {
+		t.Fatalf("other host entry = %d", regular.Code)
+	}
+	server.workshopOpenDemoHost = ""
+	if disabled := request("demo.cars.tk", tag); disabled.Code != http.StatusOK ||
+		!strings.Contains(disabled.Body.String(), `data-workshop-open-demo="false"`) {
+		t.Fatalf("disabled demo entry = %d", disabled.Code)
 	}
 }
 

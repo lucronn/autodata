@@ -36,7 +36,9 @@ if (params.get('sample') === '1' && !wantsDemo) {
       document.head.append(link);
     }
   }
-  const modeRequest = readDemoMode();
+  const modeRequest = wantsDemo && document.documentElement.dataset.workshopOpenDemo === 'true'
+    ? Promise.resolve({ openDemo: true })
+    : readDemoMode();
   const preview = wantsDemo ? null : import('./catalog.mjs')
     .then(({ requestJSON, requestInitialYears, startSavedSelectorReads }) => {
       const request = (path, options) => {
