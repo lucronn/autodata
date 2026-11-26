@@ -15,6 +15,7 @@ from .article_document import (
 )
 from .article_lifecycle_types import (
     BANKONE_DEFINITION_HEADING_LAYOUT,
+    BANKONE_LIST_BOUNDARY_LAYOUT,
     BANKONE_HTML_FLOW_LAYOUT,
     BANKTWO_LIST_NOTICE_LAYOUT,
     HTML_BOUND_IMAGE_LAYOUT,
@@ -74,6 +75,7 @@ def normalize_procedure_article(
             or entry.get("html_section_title_layout") == HTML_SECTION_TITLE_LAYOUT
             or entry.get("bankone_html_flow_layout") == BANKONE_HTML_FLOW_LAYOUT
             or entry.get("bankone_definition_heading_layout") == BANKONE_DEFINITION_HEADING_LAYOUT
+            or entry.get("bankone_list_boundary_layout") == BANKONE_LIST_BOUNDARY_LAYOUT
             or entry.get("banktwo_list_notice_layout") == BANKTWO_LIST_NOTICE_LAYOUT
             or entry.get("html_bound_image_layout") == HTML_BOUND_IMAGE_LAYOUT
             or entry.get("mixed_html_pdf_layout") == MIXED_HTML_PDF_LAYOUT

@@ -12,7 +12,8 @@ from psycopg.rows import dict_row
 from .article_document import validate_ordered_document
 from .article_lifecycle_store import _remap_snapshot_references
 from .article_lifecycle_types import (
-    BANKONE_HTML_FLOW_LAYOUT, HTML_INLINE_ARTICLE_LINK_LAYOUT, HTML_TABLE_SPAN_LAYOUT, digest_json,
+    BANKONE_HTML_FLOW_LAYOUT, HTML_DOCUMENT_LINK_LAYOUT, HTML_INLINE_ARTICLE_LINK_LAYOUT,
+    HTML_TABLE_SPAN_LAYOUT, digest_json,
 )
 from .source_article_capture import WORKSHOP_CAPTURE_OPTIONS, capture_source_article, project_document, snapshot_id
 from .source_connector_client import SourceConnectorError
@@ -52,7 +53,7 @@ def _graphic_bindings(provenance):
     return bindings
 
 
-def _legacy_resource_ids(row, context, manifest, provenance, *, has_positioned_flow=False):
+def _legacy_resource_ids(row, context, manifest, provenance, *, has_positioned_flow=False, has_document_links=False):
     if (
         len(manifest) < 3 or len(manifest) != len(provenance)
         or manifest[0].get("role") != "body" or manifest[0].get("media_type") != "text/html"
@@ -62,7 +63,10 @@ def _legacy_resource_ids(row, context, manifest, provenance, *, has_positioned_f
         raise ValueError(_UNSUPPORTED)
     if _replay_fingerprint(context, manifest) != row["source_fingerprint"]:
         raise ValueError(_BINDING)
-    known_layout = {_SPAN: HTML_TABLE_SPAN_LAYOUT}
+    known_layout = (
+        {"html_document_link_layout": HTML_DOCUMENT_LINK_LAYOUT} if has_document_links
+        else {_SPAN: HTML_TABLE_SPAN_LAYOUT}
+    )
     if has_positioned_flow:
         known_layout.update({_LAYOUT: BANKONE_HTML_FLOW_LAYOUT, _POSITIONS: _graphic_bindings(provenance)})
     if any(entry.get(key) != value for entry in (manifest[0], provenance[0]) for key, value in known_layout.items()):
@@ -77,7 +81,7 @@ def _legacy_resource_ids(row, context, manifest, provenance, *, has_positioned_f
     )
 
 
-def load_bankone_order_binding(cur, source_revision_id, *, lock=False, has_positioned_flow=False):
+def load_bankone_order_binding(cur, source_revision_id, *, lock=False, has_positioned_flow=False, has_document_links=False):
     """Bind the retained source and read the rights of every retained snapshot."""
     row = _source_replay_row(cur, source_revision_id)
     if (
@@ -91,7 +95,8 @@ def load_bankone_order_binding(cur, source_revision_id, *, lock=False, has_posit
     context = _context(row)
     manifest = _rows(row["resource_manifest"])
     provenance = _rows(row["resource_provenance"])
-    resource_ids = _legacy_resource_ids(row, context, manifest, provenance, has_positioned_flow=has_positioned_flow)
+    resource_ids = _legacy_resource_ids(row, context, manifest, provenance,
+                                        has_positioned_flow=has_positioned_flow, has_document_links=has_document_links)
     _graphic_bindings(provenance)
     evidence = _rows(row["evidence_manifest"])
     if not context.evidence_ids or evidence != tuple(

@@ -1409,15 +1409,19 @@ def automatic_candidate_validation(cur, job, candidate, *, require_current=False
     profile = job["rewrite_profile_version"]
     if profile not in AUTOMATIC_REWRITE_PROFILES or candidate["rewrite_profile_version"] != profile:
         raise ValueError("automatic candidate profile binding mismatch")
-    from .retained_banktwo_notice_reply import BANKONE_DEFINITION_METHOD, BANKTWO_NOTICE_METHOD
+    from .retained_banktwo_notice_reply import BANKONE_DEFINITION_METHOD, BANKONE_LIST_BOUNDARY_METHOD, BANKTWO_NOTICE_METHOD
     method = candidate["model_metadata"].get("transformation_method")
-    if method in (BANKONE_DEFINITION_METHOD, BANKTWO_NOTICE_METHOD):
+    if method in (BANKONE_DEFINITION_METHOD, BANKONE_LIST_BOUNDARY_METHOD, BANKTWO_NOTICE_METHOD):
         from .retained_banktwo_notice_publication import (
-            resolve_bankone_definition_heading_publication, resolve_banktwo_notice_publication,
+            resolve_bankone_definition_heading_publication, resolve_bankone_list_boundary_publication,
+            resolve_banktwo_notice_publication,
         )
 
-        resolve = (resolve_bankone_definition_heading_publication if method == BANKONE_DEFINITION_METHOD
-                   else resolve_banktwo_notice_publication)
+        resolve = {
+            BANKONE_DEFINITION_METHOD: resolve_bankone_definition_heading_publication,
+            BANKONE_LIST_BOUNDARY_METHOD: resolve_bankone_list_boundary_publication,
+            BANKTWO_NOTICE_METHOD: resolve_banktwo_notice_publication,
+        }[method]
 
         article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
                               (job["canonical_article_id"],)).fetchone()
