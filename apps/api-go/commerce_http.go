@@ -10,10 +10,18 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 )
 
 const libraryCatalogEmptyPreference = "workshop-library-catalog-empty"
+const checkoutArticleIndexPreference = "workshop-checkout-article-index"
 const libraryDefaultLimit = 20
+const checkoutArticleIndexTimeout = 80 * time.Millisecond
+
+type commerceCheckoutWithIndex struct {
+	commerceCheckout
+	ArticleIndex CatalogArticlesResponse `json:"article_index"`
+}
 
 func (s *Server) mountCommerceRoutes(mux *http.ServeMux) {
 	mountPublicRead(mux, "/v1/workshop/quote", s.commerceQuoteHTTP)
@@ -71,7 +79,7 @@ func (s *Server) commerceQuoteHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, _ := s.workshopSimulationOwner(r)
-	s.commerceCall(w, r, "quote", s.workshopQuoteInput(q.Get("configuration_id"), q.Get("region"), p), nil, "")
+	s.commerceCall(w, r, "quote", s.workshopQuoteInput(q.Get("configuration_id"), q.Get("region"), p), nil, "", nil)
 }
 func (s *Server) commerceCheckoutHTTP(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.commercePrincipal(w, r)
@@ -117,7 +125,36 @@ func (s *Server) commerceCheckoutHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.workshopTestCheckout {
 		input["expected_mode"] = "stripe_test"
 	}
-	s.commerceCall(w, r, "checkouts", input, nil, "")
+	s.commerceCall(w, r, "checkouts", input, nil, "", &p)
+}
+
+// Read after checkout commits and use the same exact grant as the index route.
+// A slow or empty index leaves the successful checkout response usable.
+func (s *Server) firstCheckoutArticleIndex(ctx context.Context, p Principal, checkout commerceCheckout) (CatalogArticlesResponse, bool) {
+	ctx, cancel := context.WithTimeout(ctx, checkoutArticleIndexTimeout)
+	defer cancel()
+	configuration, err := s.resolvePaidCatalogScope(ctx, p, checkout.ConfigurationID, checkout.Region)
+	if err != nil {
+		return CatalogArticlesResponse{}, false
+	}
+	progressCtx, stopProgress := context.WithTimeout(ctx, ownedIndexStatusReadTimeout)
+	progress, progressErr := s.catalog.CatalogArticleProgress(progressCtx, p, configuration.ID)
+	stopProgress()
+	if progressErr != nil {
+		progress = nil
+	}
+	items, err := s.catalogIndexRows(ctx, p, configuration.ID, "", "")
+	if err != nil || len(items) == 0 || ctx.Err() != nil {
+		return CatalogArticlesResponse{}, false
+	}
+	var page *CatalogArticleIndexPage
+	if len(items) > catalogIndexPageSize {
+		items, page = (catalogIndexPageRequest{}).selectPage(items)
+	}
+	return CatalogArticlesResponse{
+		Version: "v1", Items: items, Configuration: &configuration, Page: page,
+		Complete: progress != nil && progress.Complete, Hydrating: catalogIndexHydrating(progress), Progress: progress,
+	}, ctx.Err() == nil
 }
 
 // Reject duplicate, unknown, missing, nonstring and trailing JSON fields.
@@ -176,7 +213,7 @@ func (s *Server) commerceOrderHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	input := commerceOwner(p)
 	input["order_id"] = r.PathValue("order_id")
-	s.commerceCall(w, r, "orders/status", input, nil, "")
+	s.commerceCall(w, r, "orders/status", input, nil, "", nil)
 }
 func (s *Server) commerceLibraryHTTP(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.commercePrincipal(w, r)
@@ -199,7 +236,7 @@ func (s *Server) commerceLibraryHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	input := commerceOwner(p)
 	input["cursor"], input["limit"] = q.Get("cursor"), limit
-	s.commerceCall(w, r, "library", input, nil, "")
+	s.commerceCall(w, r, "library", input, nil, "", nil)
 }
 func (s *Server) firstWorkshopLibrary(ctx context.Context, session customerSession) *commerceLibrary {
 	if !commerceUUID(session.AccountID) || !commerceUUID(session.OrganizationID) {
@@ -235,7 +272,7 @@ func (s *Server) commerceWebhookHTTP(w http.ResponseWriter, r *http.Request) {
 		commerceInvalid(w, r, status)
 		return
 	}
-	s.commerceCall(w, r, "stripe/webhook", nil, b, sig)
+	s.commerceCall(w, r, "stripe/webhook", nil, b, sig, nil)
 }
 func (s *Server) doCommerce(ctx context.Context, operation string, input map[string]any, body []byte, signature string) (int, []byte, error) {
 	if s.commerceClient == nil {
@@ -253,7 +290,7 @@ func (s *Server) doCommerce(ctx context.Context, operation string, input map[str
 	return s.commerceClient.Do(ctx, operation, body, signature)
 }
 
-func (s *Server) commerceCall(w http.ResponseWriter, r *http.Request, operation string, input map[string]any, raw []byte, signature string) {
+func (s *Server) commerceCall(w http.ResponseWriter, r *http.Request, operation string, input map[string]any, raw []byte, signature string, checkoutPrincipal *Principal) {
 	w.Header().Set("Cache-Control", "no-store")
 	unavailable := func() { writeAPIError(w, r, 503, "COMMERCE_UNAVAILABLE", "Commerce is temporarily unavailable.", true) }
 	status, result, err := s.doCommerce(r.Context(), operation, input, raw, signature)
@@ -286,6 +323,14 @@ func (s *Server) commerceCall(w http.ResponseWriter, r *http.Request, operation 
 	if !ok {
 		unavailable()
 		return
+	}
+	if checkout, isCheckout := public.(commerceCheckout); isCheckout && checkout.State == "owned" &&
+		checkoutPrincipal != nil && input["expected_mode"] == workshopSimulationMode && s.paidCatalogEnabled() &&
+		catalogReadPreferenceRequested(r, checkoutArticleIndexPreference) {
+		if index, ready := s.firstCheckoutArticleIndex(r.Context(), *checkoutPrincipal, checkout); ready {
+			public = commerceCheckoutWithIndex{commerceCheckout: checkout, ArticleIndex: index}
+			w.Header().Set("Preference-Applied", checkoutArticleIndexPreference)
+		}
 	}
 	if library, isLibrary := public.(commerceLibrary); isLibrary {
 		// The existing v1 schema is closed. Only clients opting in can

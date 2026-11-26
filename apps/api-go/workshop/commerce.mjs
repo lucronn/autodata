@@ -200,7 +200,11 @@ export function createCheckout({
       signal,
       timeout: 10000,
       body,
-      headers: { "X-CSRF-Token": csrf, "Idempotency-Key": attempt.key },
+      headers: {
+        "X-CSRF-Token": csrf,
+        "Idempotency-Key": attempt.key,
+        ...(mode === "simulation" ? { Prefer: "workshop-checkout-article-index" } : {}),
+      },
     })
       .then((data) => {
         signal?.throwIfAborted();

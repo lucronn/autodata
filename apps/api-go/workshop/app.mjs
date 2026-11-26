@@ -2782,8 +2782,20 @@ async function openPaidOrder(g, order) {
   unconfirmedOrder = null;
   rememberOrderRoute(id);
   selectOrderVehicle(order);
+  const index = order.article_index;
+  let firstIndex = null;
+  if (index?.version === "v1" && index.configuration?.id === vehicle.id &&
+      index.configuration.region === vehicle.region && Array.isArray(index.items) && index.items.length &&
+      !trimArticleSearch($("search").value)) {
+    try {
+      indexResponsePage(index, true, vehicle, null);
+      firstIndex = { value: index };
+    } catch {
+      // Keep the checkout result and use the normal authorized index read.
+    }
+  }
   try {
-    await selectVehicle(g, "", { quoteMode: "skip" });
+    await selectVehicle(g, "", { quoteMode: "skip", firstIndex });
   } catch (error) {
     if (!g.current()) return;
     if (error.code === "ENTITLEMENT_REVOKED") {

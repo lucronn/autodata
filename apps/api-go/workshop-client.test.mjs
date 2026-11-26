@@ -627,6 +627,7 @@ test('main Workshop simulation sends an explicit mode and refuses a Stripe redir
   const { createCheckout } = await import('./workshop/commerce.mjs');
   const calls = [];
   const checkout = createCheckout({ uuid: () => orderID, request: async (path, options) => {
+    assert.equal(options.headers.Prefer, 'workshop-checkout-article-index');
     calls.push([path, options.body]);
     return calls.length === 1
       ? { version: 'v1', ...scope, order_id: orderID, state: 'owned', library_item_id: orderID }
@@ -11034,6 +11035,28 @@ test('a legacy reader keeps the selected paid order label when configuration fie
   assert.equal(await h.context.loadArticle('a', h.g), true);
   assert.equal(h.nodes.get('reader-vehicle').textContent, '2025 Example Wagon Touring 3.0 L');
   assert.equal(h.nodes.get('reader-engine').textContent, 'CA');
+});
+
+test('a completed simulation opens only its own valid bundled index', async () => {
+  const configuration = { id: routeConfiguration, region: 'US' };
+  const index = { version: 'v1', configuration, items: [{ id: routeArticle }] };
+  for (const [candidate, used] of [[index, true], [undefined, false],
+    [{ ...index, configuration: { ...configuration, region: 'CA' } }, false],
+    [{ ...index, page: { offset: -1 } }, false]]) {
+    const h = loginRouteHarness('');
+    h.context.clearProtected = () => {};
+    h.context.rememberOrderRoute = () => {};
+    h.context.trimArticleSearch = value => value.trim();
+    runInNewContext(appSection('function indexResponsePage(', 'async function loadArticles('), h.context);
+    runInNewContext(appSection('function selectOrderVehicle(', 'async function purchase('), h.context);
+    h.context.completePaidOrder = () => {};
+    await h.context.openPaidOrder(h.context.viewGeneration, {
+      configuration_id: configuration.id, region: configuration.region, order_id: routeOrder, article_index: candidate,
+    });
+    const options = h.calls.selectionOptions[0];
+    assert.equal(options.quoteMode, 'skip');
+    assert.equal(options.firstIndex?.value, used ? index : undefined);
+  }
 });
 
 test('lost paid prepare recovers stored source or a durable job with scoped GETs only', async () => {
