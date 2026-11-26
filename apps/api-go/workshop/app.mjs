@@ -1397,8 +1397,20 @@ function imageMap(article) {
     ...(article?.steps || []).flatMap((step) => step.images || []),
   ];
 }
+function appendFigureLabels(parent, layout, positioned) {
+  for (const { left, top, font_size: fontSize, lines } of layout.labels) {
+    const label = element("span", lines.join("\n"), "figure-label");
+    if (positioned) {
+      label.style.left = `${100 * left / layout.width}%`;
+      label.style.top = `${100 * top / layout.height}%`;
+      label.style.fontSize = `${100 * fontSize / layout.width}cqw`;
+    }
+    parent.append(label);
+  }
+}
+
 function addImage(parent, image, reference, g, figures = null, useAltCaption = false) {
-  const { caption, alt } = reference || {};
+  const { caption, alt, figure_layout: layout } = reference || {};
   const figure = element("figure");
   const url = localImageURL(image?.url, location.origin, { authMode: session.state.mode }),
     id = assetID(image);
@@ -1450,7 +1462,15 @@ function addImage(parent, image, reference, g, figures = null, useAltCaption = f
     });
     if (figures) figures.push({ img, url });
     else img.src = url;
-    viewport.append(img);
+    if (layout) {
+      const placement = element("div", undefined, "positioned-figure");
+      placement.style.setProperty("--figure-width", `${layout.width}px`);
+      placement.style.setProperty("--figure-ratio", String(layout.width / layout.height));
+      placement.style.aspectRatio = `${layout.width} / ${layout.height}`;
+      placement.append(img);
+      appendFigureLabels(placement, layout, true);
+      viewport.append(placement);
+    } else viewport.append(img);
     figure.append(size, viewport);
   } else {
     const missingID = missing ? imageReferenceID(reference) : "";
@@ -1458,6 +1478,7 @@ function addImage(parent, image, reference, g, figures = null, useAltCaption = f
     const placeholder = element("p", preparing ? pendingSourceImageText : unavailableImageText, "image-missing");
     if (preparing) placeholder.dataset.pendingSourceImage = "";
     figure.append(placeholder);
+    if (layout) appendFigureLabels(figure, layout, false);
   }
   if ((available || missing || preparing) && visibleCaption)
     figure.append(element("figcaption", visibleCaption));
@@ -1756,11 +1777,19 @@ function retryImage(img, images) {
 }
 function showUnavailableImage(img) {
   if ($("source-review-frame").contains(img)) mountedSource = null;
-  img.replaceWith(element(
+  const placeholder = element(
     "p",
     "Illustration unavailable. Refresh this article to try again.",
     "image-missing",
-  ));
+  );
+  if (img.parentElement?.classList.contains("positioned-figure")) {
+    const placement = img.parentElement;
+    placement.before(placeholder);
+    placement.classList.remove("positioned-figure");
+    placement.style.removeProperty("aspect-ratio");
+    for (const label of placement.querySelectorAll(".figure-label")) label.removeAttribute("style");
+    img.remove();
+  } else img.replaceWith(placeholder);
 }
 const articleDetailOrders = new WeakMap();
 const articleDetailSequence = Symbol();

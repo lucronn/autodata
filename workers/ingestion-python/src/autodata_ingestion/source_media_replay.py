@@ -19,6 +19,7 @@ from .article_lifecycle_store import _remap_snapshot_references
 from .article_lifecycle_types import (
     ArticleKey,
     CapturedSource,
+    LEADING_DECIMAL_LAYOUT,
     SourceArticleContext,
     article_id,
     digest_json,
@@ -142,7 +143,7 @@ def _context(row) -> SourceArticleContext:
     )
 
 
-def _resource_binding(row, context, manifest, provenance, *, ordinals, table_spans=False):
+def _resource_binding(row, context, manifest, provenance, *, ordinals, table_spans=False, positioned_labels=False):
     minimum_resources = 1 if ordinals or table_spans else 2
     supported_statuses = {"readable", "partial"} if table_spans else {"readable"}
     if row["projection_status"] not in supported_statuses or not minimum_resources <= len(manifest) <= _MAX_RESOURCES:
@@ -173,6 +174,11 @@ def _resource_binding(row, context, manifest, provenance, *, ordinals, table_spa
         expected_fields = _PROVENANCE_FIELDS
         if index == 0:
             supported = role == "body" and isinstance(mime, str) and mime in _BODY_MEDIA
+            if positioned_labels:
+                supported = supported and context.key.provider == "banktwo" and mime in {"text/html", "application/hal+json"}
+                if entry.get("leading_decimal_layout") == LEADING_DECIMAL_LAYOUT:
+                    entry_fields |= {"leading_decimal_layout"}
+                    expected_fields |= {"leading_decimal_layout"}
             if table_spans:
                 supported = supported and mime == "text/html" and "asset_bindings" not in owner
             if "asset_bindings" in owner:
@@ -407,7 +413,8 @@ def _source_replay_row(cur, source_revision_id):
         """, (source_revision_id,)).fetchone()
 
 
-def load_media_replay_binding(cur, source_revision_id, *, lock=False, ordinals=False) -> MediaReplayBinding:
+def load_media_replay_binding(cur, source_revision_id, *, lock=False, ordinals=False,
+                              positioned_labels=False) -> MediaReplayBinding:
     """Select one immutable source observation and all its current snapshot rights."""
     row = _source_replay_row(cur, source_revision_id)
     if row is None:
@@ -415,6 +422,8 @@ def load_media_replay_binding(cur, source_revision_id, *, lock=False, ordinals=F
     versions = MEDIA_REPLAY_SOURCE_VERSIONS
     if ordinals:
         versions = versions | {MEDIA_REPLAY_PROJECTION_VERSION}
+    if positioned_labels:
+        versions = versions | {"source-projection-v5"}
     if row["projection_version"] not in versions:
         raise ValueError("SOURCE_MEDIA_REPLAY_UNSUPPORTED")
     if row["membership_status"] != "active" or row["takedown_status"] != "active":
@@ -424,7 +433,9 @@ def load_media_replay_binding(cur, source_revision_id, *, lock=False, ordinals=F
     manifest = _rows(row["resource_manifest"])
     provenance = _rows(row["resource_provenance"])
     evidence = _rows(row["evidence_manifest"])
-    snapshot_ids = _resource_binding(row, context, manifest, provenance, ordinals=ordinals)
+    snapshot_ids = _resource_binding(
+        row, context, manifest, provenance, ordinals=ordinals, positioned_labels=positioned_labels,
+    )
     if ordinals and manifest[0]["media_type"] == "application/pdf":
         raise ValueError("SOURCE_MEDIA_REPLAY_UNSUPPORTED")
     expected_evidence = context.evidence_ids or ("source:" + str(snapshot_id(manifest[0]["sha256"])),)

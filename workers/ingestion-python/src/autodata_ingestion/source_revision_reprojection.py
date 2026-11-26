@@ -225,15 +225,19 @@ def _apply_source_only(cur, article, captured, checkpoint):
 
 def apply_media_reprojection(repo, canonical_article_id, expected_source_revision_id, *, object_store,
                              expected_observation_id, expected_fingerprint, expected_body_sha256,
-                             expected_document_sha256, actor, reason):
+                             expected_document_sha256, actor, reason, positioned_labels=False):
     """Replay again and install a verified media correction on a source-only article."""
     from .source_media_replay import (
-        MEDIA_REPLAY_PROJECTION_VERSION, load_media_replay_binding, media_replay_document_hash,
+        load_media_replay_binding, media_replay_document_hash,
         preview_media_replay, validate_media_replay_result,
     )
 
     _validate_actor_reason(actor, reason)
-    binding, captured = preview_media_replay(repo, expected_source_revision_id, object_store=object_store)
+    preview, validate = preview_media_replay, validate_media_replay_result
+    if positioned_labels:
+        from .positioned_figure_replay import preview_positioned_figure_replay, validate_positioned_figure_replay
+        preview, validate = preview_positioned_figure_replay, validate_positioned_figure_replay
+    binding, captured = preview(repo, expected_source_revision_id, object_store=object_store)
     if (binding.canonical_article_id != canonical_article_id
         or binding.source_observation_id != expected_observation_id
         or binding.source_fingerprint != expected_fingerprint
@@ -249,6 +253,7 @@ def apply_media_reprojection(repo, canonical_article_id, expected_source_revisio
         "expected_fingerprint": expected_fingerprint,
         "expected_body_sha256": expected_body_sha256,
         "projection_document_hash": expected_document_sha256,
+        **({"positioned_figure_reprojection": True} if positioned_labels else {}),
     }
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
         article = cur.execute(
@@ -257,10 +262,12 @@ def apply_media_reprojection(repo, canonical_article_id, expected_source_revisio
         ).fetchone()
         if article is None:
             raise KeyError("SOURCE_REPLAY_ARTICLE_NOT_FOUND")
-        locked_binding = load_media_replay_binding(cur, expected_source_revision_id, lock=True)
+        locked_binding = load_media_replay_binding(
+            cur, expected_source_revision_id, lock=True, positioned_labels=positioned_labels,
+        )
         if locked_binding != binding:
             raise ValueError("SOURCE_MEDIA_REPLAY_PREVIEW_BINDING_MISMATCH")
-        validate_media_replay_result(locked_binding, captured)
+        validate(locked_binding, captured)
         if article["current_canonical_revision_id"] is not None:
             raise ValueError("SOURCE_MEDIA_REPLAY_PUBLISHED_REVISION")
         current = cur.execute("""
@@ -273,12 +280,21 @@ def apply_media_reprojection(repo, canonical_article_id, expected_source_revisio
             and current["error_code"] == "SOURCE_ONLY_REPROJECTION"
             and current["checkpoint"] == checkpoint
             and current["request_generation"] == article["request_generation"]
-            and current["projection_version"] == MEDIA_REPLAY_PROJECTION_VERSION
+            and current["projection_version"] == captured.projection_version
             and digest_json(current["source_document"]) == expected_document_sha256):
             return {"status": "already_applied", "source_revision_id": str(current["source_revision_id"]),
                     "job_id": str(current["source_fetch_job_id"])}
         if article["current_source_revision_id"] != expected_source_revision_id:
             raise ValueError("SOURCE_REPLAY_CURRENT_SOURCE_CHANGED")
+        if positioned_labels:
+            from .source_job_persistence import source_bound_rewrite_source_allowed
+            predecessor = (locked_binding.source_observation_id, article["current_job_id"], article["request_generation"])
+            if not source_bound_rewrite_source_allowed(
+                cur, article, expected_source_revision_id, predecessor_observation=predecessor,
+                require_current_observation_scope=True,
+            ):
+                raise ValueError("SOURCE_MEDIA_REPLAY_SOURCE_UNAVAILABLE")
+            _verify_projection_conflict(cur, canonical_article_id, captured, error="SOURCE_FIGURE_LABEL_PROJECTION_CONFLICT")
         _require_no_active_normal_job(cur, canonical_article_id)
         return _apply_source_only(cur, article, captured, checkpoint)
 

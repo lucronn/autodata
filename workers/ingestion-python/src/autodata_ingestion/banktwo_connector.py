@@ -196,6 +196,7 @@ class ArticleParser(HTMLParser):
         include_untyped_pdf_positions=False, keep_bound_html_images=False, skip_noscript_images=frozenset(),
         declared_image_refs=frozenset(), lazy_image_alts=None, keep_html_document_links=False,
         keep_html_section_titles=False, keep_bankone_html_flow=False,
+        positioned_figures=None,
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -205,6 +206,8 @@ class ArticleParser(HTMLParser):
         self._keep_bound_html_images = keep_bound_html_images and bool(self._asset_bindings)
         self._skip_noscript_images = skip_noscript_images
         self._lazy_image_alts = lazy_image_alts or {}
+        self._positioned_figures, self._positioned_paragraphs = positioned_figures or ({}, {})
+        self.bound_positioned_images = set()
         self._declared_image_refs = declared_image_refs
         self._hidden_image_scope = None
         self._hidden_image_depth = 0
@@ -733,6 +736,10 @@ class ArticleParser(HTMLParser):
             self._skip += 1
         if self._skip:
             return
+        if tag == "p" and self._positioned_paragraphs.get(self.getpos()) in self.bound_positioned_images:
+            self._hidden_html_tag = tag
+            self._hidden_html_depth = 1
+            return
         if self._include_untyped_pdf_positions and (tag == "template" or "hidden" in attrs):
             if tag not in _VOID_TAGS:
                 self._hidden_html_tag = tag
@@ -917,6 +924,10 @@ class ArticleParser(HTMLParser):
                 image = {"kind": "image", "alt": attrs.get("alt", ""), "name": attrs.get("img_name", "")}
             if self._lazy_image_alts:
                 image["alt"] = self._lazy_image_alts.get(self.getpos(), image["alt"])
+            if (tag == "img" and self._hidden_image_scope is None
+                    and (layout := self._positioned_figures.get(self.getpos())) is not None):
+                image["figure_layout"] = layout
+                self.bound_positioned_images.add(self.getpos())
             if src:
                 image["url"] = src
             if ref:

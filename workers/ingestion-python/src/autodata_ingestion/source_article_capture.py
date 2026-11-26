@@ -490,6 +490,7 @@ WORKSHOP_CAPTURE_OPTIONS = {
     "keep_bankone_html_flow": True,
     "keep_mixed_html_pdf_embeds": True,
     "keep_bound_html_images": True,
+    "keep_positioned_figure_labels": True,
 }
 
 
@@ -519,6 +520,7 @@ def capture_source_article(
     keep_bankone_html_flow=False,
     keep_mixed_html_pdf_embeds=False,
     keep_bound_html_images=False,
+    keep_positioned_figure_labels=False,
     on_body_preview=None,
     on_linked_preview=None,
 ):
@@ -808,6 +810,9 @@ def capture_source_article(
         body_payload = body.to_source_resource()
         adapt = partial(
             adapt_bound_article, body_payload, context,
+            keep_positioned_figure_labels=(
+                keep_positioned_figure_labels and body_digest != context.legacy_published_positioned_label_body
+            ),
             keep_embedded_pdf=keep_embedded_pdf, keep_html_headings=keep_html_headings,
             keep_bound_pdf_iframes=keep_bound_pdf_iframes,
             keep_pdf_figure_order=keep_pdf_figure_order,
@@ -1010,6 +1015,7 @@ def capture_source_article(
     html_media_table_headers = article.get("html_media_table_headers") is True
     html_nested_tables = article.get("html_nested_tables") is True
     html_numeric_superscripts = article.get("html_numeric_superscripts") is True
+    positioned_figure_labels = article.get("positioned_figure_labels") is True
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     # Both HTML and mixed HAL carry confirmed anchor labels on the placed nodes.
     html_document_links = article.get("html_document_links") is True or (
@@ -1042,7 +1048,7 @@ def capture_source_article(
     new_structure = (
         structured_table_columns or structured_table_cell_order or step_layout or html_table_captions or html_flow_figure_captions
         or html_table_spans or html_media_table_headers or html_nested_tables or html_numeric_superscripts or image_only_headings
-        or html_bound_images or html_document_links or html_section_titles or bankone_html_flow
+        or html_bound_images or html_document_links or html_section_titles or bankone_html_flow or positioned_figure_labels
         or article.get("embedded_pdf")
         or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
     )
@@ -1090,6 +1096,9 @@ def capture_source_article(
         resources[0]["html_section_title_layout"] = manifest[0]["html_section_title_layout"] = HTML_SECTION_TITLE_LAYOUT
     if html_bound_images:
         resources[0]["html_bound_image_layout"] = manifest[0]["html_bound_image_layout"] = HTML_BOUND_IMAGE_LAYOUT
+    if positioned_figure_labels:
+        from .positioned_figure import FIGURE_LABEL_LAYOUT
+        resources[0]["html_positioned_figure_layout"] = manifest[0]["html_positioned_figure_layout"] = FIGURE_LABEL_LAYOUT
     if mixed_html_pdf_embeds:
         resources[0]["mixed_html_pdf_layout"] = manifest[0]["mixed_html_pdf_layout"] = MIXED_HTML_PDF_LAYOUT
     if structured_table_columns:

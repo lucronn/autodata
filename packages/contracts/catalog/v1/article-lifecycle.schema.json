@@ -90,6 +90,9 @@
               "source_locator": {
                 "type": "string"
               },
+              "figure_layout": {
+                "$ref": "#/$defs/figure_layout"
+              },
               "source_order": {
                 "type": "integer"
               },
@@ -177,6 +180,9 @@
                           },
                           "image_id": {
                             "type": "string"
+                          },
+                          "figure_layout": {
+                            "$ref": "#/$defs/figure_layout"
                           },
                           "status": {
                             "type": "string"
@@ -276,6 +282,39 @@
         },
         "caption": {
           "type": "string"
+        },
+        "figure_layout": {
+          "$ref": "#/$defs/figure_layout"
+        }
+      }
+    },
+    "figure_layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height", "labels"],
+      "properties": {
+        "width": {"type": "number", "minimum": 1, "maximum": 10000},
+        "height": {"type": "number", "minimum": 1, "maximum": 10000},
+        "labels": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["left", "top", "font_size", "lines"],
+            "properties": {
+              "left": {"type": "number", "minimum": 0, "maximum": 10000},
+              "top": {"type": "number", "minimum": 0, "maximum": 10000},
+              "font_size": {"type": "number", "minimum": 5, "maximum": 72},
+              "lines": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 8,
+                "items": {"type": "string", "minLength": 1, "maxLength": 160}
+              }
+            }
+          }
         }
       }
     },

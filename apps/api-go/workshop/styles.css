@@ -707,6 +707,29 @@ select:enabled:hover {
   inline-size: min(100%, 20rem);
   block-size: 8rem;
 }
+.article-content .positioned-figure {
+  position: relative;
+  container-type: inline-size;
+  inline-size: min(100%, var(--figure-width), calc(650px * var(--figure-ratio)));
+}
+.article-content .positioned-figure img {
+  inline-size: 100%;
+  block-size: 100%;
+  max-height: none;
+  object-fit: fill;
+}
+.article-content .figure-label {
+  display: block;
+  white-space: pre;
+}
+.article-content .positioned-figure .figure-label {
+  position: absolute;
+  margin-block-start: 1em;
+  color: black;
+  font-family: sans-serif;
+  font-weight: normal;
+  line-height: normal;
+}
 .article-content figcaption {
   font-size: 12px;
   color: var(--quiet);
@@ -726,6 +749,9 @@ select:enabled:hover {
   .article-content .figure-viewport[data-full-size] img {
     max-width: none;
     max-height: none;
+  }
+  .article-content .figure-viewport[data-full-size] .positioned-figure {
+    inline-size: var(--figure-width);
   }
 }
 .body-text {
@@ -1112,6 +1138,9 @@ footer {
   }
   .article-content img {
     max-height: 500px;
+  }
+  .article-content .positioned-figure {
+    inline-size: min(100%, var(--figure-width), calc(500px * var(--figure-ratio)));
   }
   h2,
   h3:not(.article-heading),

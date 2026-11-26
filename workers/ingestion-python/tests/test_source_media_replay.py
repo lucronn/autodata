@@ -266,6 +266,43 @@ def test_offline_media_replay_preserves_bankone_article_link_binding_evidence():
         replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects)
 
 
+def test_positioned_figure_replay_binds_the_labels_to_verified_body_and_raster():
+    from autodata_ingestion.positioned_figure_replay import (
+        preview_positioned_figure_replay, validate_positioned_figure_replay,
+    )
+    from autodata_ingestion.source_article_capture import WORKSHOP_CAPTURE_OPTIONS
+    from test_positioned_figure_labels import FRAME
+
+    client = _html_fixture("banktwo", "connector", embedded=False)
+    frame = FRAME.replace('src="/fixture.png"', 'data-resource-ref="figure"')
+    markup = "<p>Keep the inspection step.</p>" + frame + "<p>Keep the next step.</p>"
+    client.resources["body"] = client._resource(markup.encode(), "text/html")
+    options = {**WORKSHOP_CAPTURE_OPTIONS, "keep_positioned_figure_labels": False}
+    cursor, objects = _retained_fixture(client, move_image=False, capture_options=options)
+    saved = deepcopy(cursor.row)
+    writes = objects.writes
+    binding, result = preview_positioned_figure_replay(cursor, saved["source_revision_id"], object_store=objects)
+    before, figure, after = result.source_document["blocks"]
+    assert [before["text"], after["text"]] == ["Keep the inspection step.", "Keep the next step."]
+    assert figure["figure_layout"]["labels"][1]["lines"] == ["Cable marker", "Second line"]
+    assert result.resource_manifest[0]["sha256"] == saved["resource_manifest"][0]["sha256"]
+    assert result.resource_manifest[1:] == saved["resource_manifest"][1:]
+    assert result.source_fingerprint != saved["source_fingerprint"]
+    assert objects.writes == writes and cursor.row == saved
+    legacy_context = replace(binding.context, legacy_published_positioned_label_body=binding.body_sha256)
+    same_source = capture_source_article(legacy_context, registry={"banktwo": client}, object_store=_Objects(),
+                                         **WORKSHOP_CAPTURE_OPTIONS)
+    assert same_source.source_fingerprint == saved["source_fingerprint"]
+    assert not any("figure_layout" in block for block in same_source.source_document["blocks"])
+    tampered = deepcopy(result.source_document)
+    tampered["blocks"][1]["figure_layout"]["labels"][0]["left"] = 501
+    with pytest.raises(ValueError, match="SOURCE_FIGURE_LABEL_REPLAY_MISMATCH"):
+        validate_positioned_figure_replay(binding, replace(result, source_document=tampered))
+    cursor.row["source_document"]["blocks"][0]["text"] = "Unexpected changed text."
+    with pytest.raises(ValueError, match="SOURCE_FIGURE_LABEL_REPLAY_BASELINE_CHANGED"):
+        preview_positioned_figure_replay(cursor, saved["source_revision_id"], object_store=objects)
+
+
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 @pytest.mark.parametrize("svg", [False, True])
 def test_replay_and_published_repair_move_detached_figure_into_existing_item(provider, svg):

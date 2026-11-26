@@ -1967,6 +1967,7 @@ def adapt_bound_article(
     keep_html_headings: bool = False, keep_bound_pdf_iframes: bool = False,
     keep_html_section_titles: bool = False,
     keep_bankone_html_flow: bool = False,
+    keep_positioned_figure_labels: bool = False,
     keep_pdf_figure_order: bool = False, keep_multiple_pdf_figures: bool = False,
     keep_html_table_image_order: bool = False,
     keep_repeated_pdf_figures: bool = False, keep_pdf_figures_with_margins: bool = False,
@@ -1998,6 +1999,8 @@ def adapt_bound_article(
     from .article_lifecycle_types import ORDERED_STEP_IMAGE_ONLY_LAYOUT, ORDERED_STEP_INSTRUCTIONS_LAYOUT
 
     def project_html(html_resource, *, include_untyped_pdf_positions=False):
+        from .positioned_figure import read_positioned_figures
+
         html = html_resource.payload.decode("utf-8-sig")
         parser = ArticleParser(
             asset_bindings=html_resource.metadata.get("asset_bindings", []),
@@ -2024,6 +2027,8 @@ def adapt_bound_article(
             skip_noscript_images=skip_noscript_images,
             lazy_image_alts=lazy_image_alts,
             declared_image_refs=declared_image_refs,
+            positioned_figures=(read_positioned_figures(html)
+                                if keep_positioned_figure_labels and context.key.provider == "banktwo" else None),
         )
         parser.feed(html)
         parser.close()
@@ -2058,6 +2063,7 @@ def adapt_bound_article(
             "asset_resource_refs": [],
             **({"authored_html_headings": True} if keep_html_headings else {}),
             **({"html_section_titles": True} if parser.html_section_titles else {}),
+            **({"positioned_figure_labels": True} if parser.bound_positioned_images else {}),
             **({"bankone_html_flow": True} if parser.bankone_html_flow else {}),
             **({"handled_pdf_embeds": True} if parser.handled_pdf_embeds else {}),
             **({"untyped_pdf_embed_refs": tuple(parser.untyped_pdf_embed_refs)} if parser.untyped_pdf_embed_refs else {}),
@@ -2210,6 +2216,7 @@ def adapt_bound_article(
                         nested, context, keep_html_headings=keep_html_headings,
                         keep_html_section_titles=keep_html_section_titles,
                         keep_bankone_html_flow=keep_bankone_html_flow,
+                        keep_positioned_figure_labels=keep_positioned_figure_labels,
                         keep_bound_pdf_iframes=keep_bound_pdf_iframes,
                         resolved_pdf_refs=resolved_pdf_refs,
                         keep_pdf_figure_order=keep_pdf_figure_order,

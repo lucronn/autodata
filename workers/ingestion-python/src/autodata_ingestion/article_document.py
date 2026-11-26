@@ -14,6 +14,8 @@ from hashlib import sha256
 import re
 from typing import Any, Mapping
 
+from .positioned_figure import valid_figure_layout
+
 
 SCHEMA_VERSION = 1
 NORMALIZATION_VERSION = "ordered-article-v1"
@@ -668,6 +670,8 @@ def _validate_media_tree(value, *, image_container=False):
         for child in value:errors.extend(_validate_media_tree(child,image_container=image_container))
     elif isinstance(value,dict):
         if image_container or value.get("type")=="image":
+            if "figure_layout" in value and not valid_figure_layout(value["figure_layout"]):
+                errors.append("invalid figure layout")
             evidence=value.get("evidence_ids")
             if not isinstance(evidence,list) or not evidence:errors.append("missing image evidence")
             if value.get("status")=="unavailable":
@@ -807,6 +811,8 @@ def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
         fields["uri"] = uri
     if path:
         fields["path"] = path
+    if valid_figure_layout(layout := raw.get("figure_layout")):
+        fields["figure_layout"] = layout
     return _base_block(article, source_order, "image", evidence_ids=evidence_ids, **fields)
 
 
@@ -907,6 +913,8 @@ def _normalize_cell_image(raw: Mapping[str, Any]) -> dict[str, Any]:
         "alt": _clean_text(raw.get("alt") or raw.get("title") or raw.get("description") or raw.get("legend")) or "Article illustration",
         "status": "available" if is_available else "unavailable",
     }
+    if valid_figure_layout(layout := raw.get("figure_layout")):
+        out["figure_layout"] = layout
     reason = _clean_text(raw.get("unavailable_reason"))
     if not is_available and reason:
         out["unavailable_reason"] = reason
