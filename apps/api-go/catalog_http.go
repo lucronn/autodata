@@ -26,6 +26,7 @@ var catalogDiscoveryInstance = rand.Text()
 // database read so it can't keep otherwise usable data waiting indefinitely.
 const catalogStatusReadTimeout = 250 * time.Millisecond
 const ownedIndexStatusReadTimeout = 25 * time.Millisecond
+const catalogDemoReadableIndexPreference = "workshop-demo-readable-index"
 
 type CatalogYearsResponse struct {
 	Version string        `json:"version"`
@@ -61,6 +62,7 @@ type CatalogArticlesResponse struct {
 	Progress      *CatalogArticleProgress  `json:"progress,omitempty"`
 	Configuration *CatalogConfiguration    `json:"configuration,omitempty"`
 	Page          *CatalogArticleIndexPage `json:"page,omitempty"`
+	IndexedCount  *int                     `json:"indexed_count,omitempty"`
 }
 type CatalogArticleResponse struct {
 	Version       string                `json:"version"`
@@ -337,8 +339,16 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 	}
 	var configuration *CatalogConfiguration
 	var page *CatalogArticleIndexPage
+	var indexedCount *int
 	if scoped {
 		configuration = &scope.configuration
+		if paid && scope.openDemo && query == "" && title == "" &&
+			catalogReadPreferenceRequested(request, catalogDemoReadableIndexPreference) {
+			total := len(items)
+			indexedCount = &total
+			items = slices.DeleteFunc(items, func(article CatalogArticle) bool { return article.Availability != "available" })
+			response.Header().Add("Preference-Applied", catalogDemoReadableIndexPreference)
+		}
 		settled := progress != nil && (progress.Complete || (progress.Status == "failed" && !progress.Retryable))
 		if paid && !scope.openDemo && pagePreference != "" && !filters.Has("q") && !filters.Has("title") &&
 			len(items) > catalogIndexPageSize && (pagePreference == catalogIndexLivePagesPreference || settled) {
@@ -348,7 +358,7 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 	}
 	writeJSON(response, http.StatusOK, CatalogArticlesResponse{
 		Version: "v1", Items: items, Complete: progress != nil && progress.Complete,
-		Hydrating: hydrating, Progress: progress, Configuration: configuration, Page: page,
+		Hydrating: hydrating, Progress: progress, Configuration: configuration, Page: page, IndexedCount: indexedCount,
 	})
 }
 

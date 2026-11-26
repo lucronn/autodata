@@ -3569,7 +3569,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     names: ['year', 'make', 'model', 'configuration'],
     vehicle: { id: scope.configuration_id, region: scope.region }, quote,
     merchant: merchantFixture(), merchantRequest: null, access: 'missing', currentOrder: '', paidOrder: null, unconfirmedOrder: null,
-    articles: [], indexCatalogEmpty: false, searchItems: null, searchQuery: '', searchPending: false,
+    articles: [], demoIndexedCount: null, indexCatalogEmpty: false, searchItems: null, searchQuery: '', searchPending: false,
     searchComplete: false, searchError: false, searchTimer: null,
     sourceRevision: 0,
     clearTimeout() {},
@@ -4785,7 +4785,7 @@ function articleIndexHarness(responses, { wait = async () => {}, now = () => per
     demoPath: path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path,
     location: { href: `https://cars.example/workshop?vehicle=B${openDemo ? '&demo=1' : ''}` },
     document,
-    navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexLoaded: false, indexComplete: false, indexCatalogEmpty: false, indexHydrating: false, indexFailed: false, access: '', retryAction: null, filterArticles,
+    navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], demoIndexedCount: null, indexLoaded: false, indexComplete: false, indexCatalogEmpty: false, indexHydrating: false, indexFailed: false, access: '', retryAction: null, filterArticles,
     searchNavigation, searchItems: null, searchQuery: '', searchPending: false, searchComplete: false, searchError: false, searchTimer: null,
     currentArticle: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
     sourceDocumentRequest: null,
@@ -5288,14 +5288,24 @@ test('partial saved search displays matches while waiting for the full index', a
 });
 
 test('open demo requests the real index and shows only readable articles', async () => {
-  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [
-    { id: 'ready', title: 'Stored procedure', availability: 'available' },
-    { id: 'waiting', title: 'Index only', availability: 'unavailable' },
-  ] })], { openDemo: true });
-  await h.load();
-  assert.equal(h.requests[0].path, '/v1/catalog/vehicles/B/articles?region=US&demo=1');
-  assert.equal(h.$('articles').children[0].children.length, 1);
-  assert.match(h.$('catalog-count').textContent, /1 available articles · 2 indexed/);
+  const ready = { id: 'ready', title: 'Stored procedure', availability: 'available' };
+  const waiting = { id: 'waiting', title: 'Index only', availability: 'unavailable' };
+  for (const snapshot of [
+    { items: [ready, waiting] },
+    { items: [ready], indexed_count: 2 },
+    { items: [], indexed_count: 2 },
+  ]) {
+    const h = articleIndexHarness([{
+      ...indexResponse('completed', { complete: true }), ...snapshot,
+    }], { openDemo: true });
+    await h.load();
+    assert.equal(h.requests[0].path, '/v1/catalog/vehicles/B/articles?region=US&demo=1');
+    assert.equal(h.requests[0].prefer, 'workshop-demo-readable-index');
+    const available = snapshot.items.length > 0 ? 1 : 0;
+    assert.equal(h.$('articles').children[0]?.children.length ?? 0, available);
+    assert.equal(h.$('catalog-count').textContent, `${available} available articles · 2 indexed`);
+    if (!available) assert.match(h.$('no-results').textContent, /No articles are readable yet/);
+  }
 });
 
 test('open demo direct link to an indexed but unreadable article stays in the index', async () => {
@@ -5304,6 +5314,7 @@ test('open demo direct link to an indexed but unreadable article stays in the in
   ] })], { openDemo: true });
   await h.load('waiting');
   assert.equal(h.opened.length, 0);
+  assert.equal(h.requests[0].prefer, undefined);
   assert.match(h.$('activity-text').textContent, /indexed but not readable yet/);
 });
 
