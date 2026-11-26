@@ -3083,34 +3083,69 @@ test('saved vehicle restores the index only when the current verified session su
   }
 });
 
-test('returning to a retained reader starts its scoped GET during account restoration', async () => {
+for (const previouslyRead of [true, false]) {
+  test(`an exact saved article starts its scoped GET during account restoration (history: ${previouslyRead})`, async () => {
+    const h = loginRouteHarness(`?configuration=${routeConfiguration}&region=US&article=${routeArticle}`);
+    const account = deferredAuthOperation();
+    const detail = deferredAuthOperation();
+    h.context.history.state = previouslyRead ? { workshopArticleReadable: true } : null;
+    h.context.sessionRequest = account.promise;
+    h.context.AbortController = AbortController;
+    h.context.delay = delay;
+    h.context.articleRequestPath = id => `/v1/catalog/vehicles/${routeConfiguration}/articles/${id}?region=US`;
+    let signal;
+    h.context.requestArticleJSON = (path, options) => {
+      assert.equal(path, h.context.articleRequestPath(routeArticle));
+      assert.equal(options.retainedReaderSession, true);
+      signal = options.signal;
+      return detail.promise;
+    };
+    h.context.selectVehicle = async (_g, article, options) => {
+      assert.equal(article, routeArticle);
+      assert.equal(options.preferRetained, previouslyRead);
+      assert.equal(signal.aborted, false);
+      await h.context.sessionRequest;
+      assert.equal(await options.initialRetainedReader(), null);
+    };
+    const opening = h.context.restoreRoute();
+    assert.ok(signal);
+    detail.reject(new Error('transport failure'));
+    account.resolve();
+    await opening;
+    assert.equal(signal.aborted, true);
+  });
+}
+
+test('a slow speculative read on a new saved link is cancelled after account restoration', async () => {
   const h = loginRouteHarness(`?configuration=${routeConfiguration}&region=US&article=${routeArticle}`);
   const account = deferredAuthOperation();
-  const detail = deferredAuthOperation();
-  h.context.history.state = { workshopArticleReadable: true };
+  const grace = deferredAuthOperation();
   h.context.sessionRequest = account.promise;
   h.context.AbortController = AbortController;
-  h.context.articleRequestPath = id => `/v1/catalog/vehicles/${routeConfiguration}/articles/${id}?region=US`;
-  let signal;
-  h.context.requestArticleJSON = (path, options) => {
-    assert.equal(path, h.context.articleRequestPath(routeArticle));
-    assert.equal(options.retainedReaderSession, true);
+  let signal, startedGrace = false;
+  h.context.requestArticleJSON = (_path, options) => {
     signal = options.signal;
-    return detail.promise;
+    return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason)));
   };
-  h.context.selectVehicle = async (_g, article, options) => {
-    assert.equal(article, routeArticle);
-    assert.ok(signal);
-    assert.equal(signal.aborted, false);
-    await h.context.sessionRequest;
-    assert.equal(await options.initialRetainedReader, null);
+  h.context.delay = (ms, receivedSignal) => {
+    assert.equal(ms, 100);
+    assert.equal(receivedSignal, signal);
+    startedGrace = true;
+    return grace.promise;
+  };
+  h.context.selectVehicle = async (_g, _article, options) => {
+    await account.promise;
+    assert.equal(await options.initialRetainedReader(), null);
+    assert.equal(signal.aborted, true);
   };
   const opening = h.context.restoreRoute();
-  assert.ok(signal);
-  detail.reject(new Error('transport failure'));
+  assert.equal(startedGrace, false);
+  assert.equal(signal.aborted, false);
   account.resolve();
+  await account.promise;
+  assert.equal(startedGrace, true);
+  grace.resolve();
   await opening;
-  assert.equal(signal.aborted, true);
 });
 
 for (const query of ['?view=library', `?order=${routeOrder}`]) {
@@ -11024,7 +11059,7 @@ test('the saved reader uses the authorized configuration and can fall back on an
 test('a prefetched reader is accepted only with the restored session and exact article scope', async () => {
   const { createHash } = await import('node:crypto');
   const { matchesRetainedReaderSession } = await import('./workshop/catalog.mjs');
-  for (const change of ['none', 'session', 'configuration', 'article', 'legacy']) {
+  for (const change of ['none', 'session', 'configuration', 'article', 'legacy', 'preview', 'pending', 'absent']) {
     const retained = mediaArticle([{ type: 'paragraph', text: 'Overlapped procedure.' }], [],
       { id: routeArticle, availability: 'available' });
     const fresh = mediaArticle([{ type: 'paragraph', text: 'Current authorized procedure.' }], [],
@@ -11035,18 +11070,24 @@ test('a prefetched reader is accepted only with the restored session and exact a
     h.context.matchesRetainedReaderSession = matchesRetainedReaderSession;
     const readerSession = createHash('sha256').update(change === 'session' ? 'old' : 'csrf').digest('hex');
     const result = await h.context.loadArticle(routeArticle, h.g, {
-      savedLink: true, preferRetained: true,
-      initialRetainedReader: Promise.resolve({
-        status: 200, readerSession: change === 'legacy' ? null : readerSession,
+      savedLink: true,
+      initialRetainedReader: async () => change === 'absent' ? null : ({
+        status: change === 'pending' ? 202 : 200,
+        readerSession: change === 'legacy' ? null : readerSession,
         data: {
           configuration: change === 'configuration' ? { ...h.configuration, region: 'CA' } : h.configuration,
-          article: change === 'article' ? { ...retained, id: routeOrder } : retained,
+          article: {
+            ...retained,
+            id: change === 'article' ? routeOrder : routeArticle,
+            source_body_preview: change === 'preview',
+          },
         },
       }),
     });
     assert.equal(result, true, change);
-    assert.equal(h.calls.length, change === 'none' ? 0 : 1, change);
-    assert.equal(h.context.currentArticle, change === 'none' ? retained : fresh, change);
+    assert.deepEqual(h.calls.map(call => call.method), change === 'none' ? [] : ['POST'], change);
+    assert.equal(h.context.currentArticle.document.blocks[0].text,
+      change === 'none' ? 'Overlapped procedure.' : 'Current authorized procedure.', change);
   }
 });
 
@@ -11054,7 +11095,7 @@ test('a rate limit on the early reader GET does not start another GET', async ()
   const h = retainedReaderHarness(() => assert.fail('duplicate rate-limited request'));
   const throttled = Object.assign(new Error('Try again later.'), { status: 429, retryAfterSeconds: 5 });
   await assert.rejects(h.context.loadArticle(routeArticle, h.g, {
-    savedLink: true, preferRetained: true, initialRetainedReader: Promise.resolve({ retry: throttled }),
+    savedLink: true, initialRetainedReader: async () => ({ retry: throttled }),
   }), throttled);
   assert.equal(h.context.currentArticle, null);
 });
