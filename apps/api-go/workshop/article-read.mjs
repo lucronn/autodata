@@ -42,7 +42,8 @@ export function readableArticle(article) {
 }
 export function awaitingArticleRewrite(article) {
   return article?.content_origin === "source" && Boolean(article.source_revision_id) &&
-    article.processing?.state === "failed" && article.processing.error_code === "MODEL_NOT_CONFIGURED" &&
+    article.processing?.state === "failed" && article.processing.retryable === true &&
+    article.processing.error_code === "CATALOG_REWRITE_PENDING" &&
     readableArticle(article);
 }
 export function readyReprojectedSource(article) {
