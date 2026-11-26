@@ -6,11 +6,13 @@ import pytest
 from autodata_ingestion.article_lifecycle_types import digest_json
 from autodata_ingestion.procedure_rewrite_auto import build_auto_prompt, render_auto
 from autodata_ingestion.procedure_rewrite_cooling_recovery import recast_cooling_passage
+from autodata_ingestion.procedure_rewrite_maintenance_recovery import recast_maintenance_passage
 from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
     FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
+    FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD,
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
     FIRST_DRAFT_RECOVERY_METHOD,
     FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
@@ -18,9 +20,89 @@ from autodata_ingestion.procedure_rewrite_recovery import (
     _equivalent_directive,
     _equivalent_wording,
     _recast_compound_removal,
+    recover_archived_first_draft,
     recover_first_draft,
 )
 from test_procedure_rewrite_full import document, response
+
+
+def test_maintenance_recovery_rebuilds_the_original_procedure_from_its_saved_draft():
+    source = document(
+        "Document ID: 8723",
+        "Note: Ensure that the used reservoir seal has been removed.",
+        "Retainer Clip(18) » Remove [2x]",
+        "Install the access plug. (15) » Install",
+        "Remove and discard the reservoir seal. (14)",
+        "Lubricate the pump seal with clean machine oil.",
+        "Pre-fill the new hydraulic filter (34) with clean machine oil. Adhesives, Fluids, Lubricants, and Sealers",
+        "Approximate Fluid Capacities",
+        "Start the pump and inspect for leaks.",
+    )
+    raw = response(
+        "Guide number 8724 covers the service procedure.",
+        "Note: The used reservoir seal is already clear.",
+        "Retainer Clip(18) » Remove [2x]",
+        "Install the access plug. (15) » Install",
+        "Remove and discard the reservoir seal. (14)",
+        "Apply clean machine oil to the flange.",
+        "Pre-fill the new hydraulic filter (34) with clean machine oil. Adhesives, Fluids, Lubricants, and Sealers",
+        "Approximate Fluid Capacities",
+        "Inspect for leaks before starting the pump.",
+        introduction="This article describes the service procedure.",
+    )
+    saved = deepcopy(raw)
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    result = recover_first_draft(source, raw, prompt_version=version)
+
+    assert raw == saved
+    assert result.evidence["method"] == FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD
+    assert result.evidence["original_error_code"] == "REWRITE_TECHNICAL_MUTATION"
+    assert result.evidence["raw_response_hash"] == digest_json(saved)
+    assert [row["text"] for row in result.response["replacements"]] == [
+        "ID of this document: 8723",
+        "Note: Confirm the removal of the used reservoir seal.",
+        "Remove Retainer Clip(18) [2x]",
+        "The access plug must be installed. (15) » Install",
+        "The reservoir seal must be removed and discarded. (14)",
+        "The pump seal must be lubricated with clean machine oil.",
+        "With clean machine oil, pre-fill the new hydraulic filter (34). "
+        "Reference for fluids and lubricants, plus adhesives and sealers.",
+        "Estimated capacities for fluids",
+        "The pump must be started. Then inspect for leaks.",
+    ]
+    archived = recover_archived_first_draft(source, {
+        "guard_version": version, "response": saved, "error_code": "REWRITE_TECHNICAL_MUTATION",
+        "rewrite_attempt_id": "fixture-attempt", "prompt_hash": "fixture-prompt",
+    }, method=result.evidence["method"], expected_hash=result.evidence["output_hash"])
+    assert archived.evidence["first_draft_recovery"] == result.evidence
+    assert archived.response == result.response
+    assert recover_first_draft(
+        source, raw, prompt_version=version, method=FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
+    ) is None
+
+
+@pytest.mark.parametrize("instruction", [
+    "Lubricate the seal with clean machine oil only after fitting the cover.",
+    "Lubricate the seal with clean machine oil or service grease.",
+    "Start the pump and inspect for leaks before resetting the controller.",
+    "Remove and discard the seal only if damaged. (14)",
+    "Install the access plug. (15) » Remove",
+    "Retainer Clip(18) » Remove [2x] and inspect",
+])
+def test_maintenance_recovery_leaves_conditions_and_conflicting_actions_unedited(instruction):
+    assert recast_maintenance_passage(instruction) is None
+
+
+def test_maintenance_recovery_does_not_accept_another_changed_specification():
+    source = document("Lubricate the pump seal with clean machine oil.", "Tighten the clamp to 12 N·m.")
+    raw = response(
+        "Apply clean machine oil to the flange.", "Tighten the clamp to 13 N·m.",
+        introduction="This article describes the service procedure.",
+    )
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    assert recover_first_draft(
+        source, raw, prompt_version=version, method=FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD,
+    ) is None
 
 
 @pytest.mark.parametrize(("original", "expected"), [

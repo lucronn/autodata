@@ -21,6 +21,7 @@ from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
     FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
+    FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD,
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
     FIRST_DRAFT_RECOVERY_METHOD,
     FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
@@ -532,6 +533,13 @@ def test_echoed_draft_does_not_relax_other_rewrite_guards(runtime, variant, erro
         "This article covers the service sequence for the cover.",
         "The fixture valve must be closed.",
         FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
+    ),
+    (
+        "Lubricate the pump seal with clean machine oil.",
+        "Apply clean machine oil to the flange.",
+        "This article describes the service procedure.",
+        "The pump seal must be lubricated with clean machine oil.",
+        FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD,
     ),
 ])
 def test_worker_replays_recovery_with_its_original_response_and_media(
