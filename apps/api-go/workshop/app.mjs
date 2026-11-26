@@ -2413,7 +2413,7 @@ async function loadSource(value, g, blockID = null, { focusSource = false } = {}
     ]));
     // After a fresh authorized read, keep images already fetching for the same
     // source projection. Media URLs rotate even when the displayed view agrees.
-    const keep = blockID !== null && stable && mountedSource?.key === key &&
+    const keep = stable && mountedSource?.key === key &&
       mountedSource.signal === g.signal && mountedSource.articleRevision === renderedRevision &&
       mountedSource.revision === revision && mountedSource.assets === assets;
     let targets = mountedSource?.targets;

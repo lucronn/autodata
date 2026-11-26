@@ -8994,6 +8994,49 @@ test('fresh citation authorization keeps pending figures and focuses the new exa
   assert.match(frame.children[1].textContent, /Illustration unavailable/);
 });
 
+test('reopening Original checks access and keeps figures only for the same approved view', async () => {
+  const blocks = [{ type: 'image', block_id: 'diagram', asset_id: 'diagram', caption: 'Stored diagram' }];
+  const calls = [];
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, mode: 'firebase' } },
+    async requestJSON(path, options) {
+      calls.push({ path, signal: options.signal });
+      if (calls.length === 5) throw Object.assign(new Error('Source access revoked'), { status: 403 });
+      return {
+        source: { url: mediaSourceURL }, view_revision: calls.length <= 2 ? 'original-view' : 'changed-view',
+        document: { blocks }, images: [{ id: 'diagram', url: mediaURL(`diagram-${calls.length}`) }],
+      };
+    },
+  });
+  h.render(mediaArticle(blocks, [], {
+    content_origin: 'canonical', source_review: { available: true, url: mediaSourceURL },
+  }));
+  const reopen = () => h.context.loadSource(mediaSourceURL, h.g, null, { focusSource: true });
+  const frame = h.nodes.get('source-review-frame');
+  await reopen();
+  const [first] = mediaDescendants(frame, 'img');
+  assert.ok(first);
+  await reopen();
+  assert.equal(mediaDescendants(frame, 'img')[0], first);
+  assert.equal(first.src, 'https://cars.example/v1/catalog/images/v2.diagram-1');
+  assert.equal(h.nodes.get('source-review-title').focusCalls, 2);
+
+  await reopen();
+  const [changed] = mediaDescendants(frame, 'img');
+  assert.notEqual(changed, first);
+  assert.equal(changed.src, 'https://cars.example/v1/catalog/images/v2.diagram-3');
+  h.context.showUnavailableImage(changed);
+  await reopen();
+  assert.equal(mediaDescendants(frame, 'img')[0].src, 'https://cars.example/v1/catalog/images/v2.diagram-4');
+
+  await reopen().catch(error => h.context.handleSourceError(error, h.g));
+  assert.equal(frame.hidden, true);
+  assert.equal(frame.children.length, 0);
+  assert.deepEqual(h.shows, ['welcome']);
+  assert.equal(calls.length, 5);
+  assert.ok(calls.every(({ path, signal }) => path === mediaSourceURL && signal === h.g.signal));
+});
+
 for (const type of ['ordered_list', 'unordered_list', 'callout']) {
   test(`article block media ${type} source evidence handler and image error obey current generation`, async () => {
     const loads = [], renewals = [];
