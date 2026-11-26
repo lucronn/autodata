@@ -25,6 +25,7 @@ _LIST_TAGS = {"ol": "ordered_list", "ul": "unordered_list"}
 _HEADING_LEVELS = {f"h{level}": level for level in range(1, 7)}
 _SECTION_TITLE_PARAGRAPH = re.compile(r"<p>\s*<(b|strong)>\s*([^<>]{1,80}?)\s*</\1>\s*</p>", re.IGNORECASE)
 _SECTION_TITLE_LEVELS = {"removal": 2, "installation": 2, "all vehicles": 3}
+_LIST_NOTICE_LABEL = re.compile(r"\s*(?P<label>note|caution|warning)\s*:\s*", re.IGNORECASE)
 _BANKONE_GRAPHIC_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
 _MAX_LIST_DEPTH = 32
 _MAX_FIGURE_DEPTH = 32
@@ -195,7 +196,7 @@ class ArticleParser(HTMLParser):
         keep_html_nested_tables=False, keep_html_numeric_superscripts=False, resolved_pdf_refs=frozenset(),
         include_untyped_pdf_positions=False, keep_bound_html_images=False, skip_noscript_images=frozenset(),
         declared_image_refs=frozenset(), lazy_image_alts=None, keep_html_document_links=False,
-        keep_html_section_titles=False, keep_bankone_html_flow=False,
+        keep_html_section_titles=False, keep_bankone_html_flow=False, keep_banktwo_list_notices=False,
         positioned_figures=None,
     ):
         super().__init__(convert_charrefs=True)
@@ -228,6 +229,8 @@ class ArticleParser(HTMLParser):
         self.html_section_titles = False
         self._keep_bankone_html_flow = keep_bankone_html_flow
         self.bankone_html_flow = False
+        self._keep_banktwo_list_notices = keep_banktwo_list_notices
+        self.banktwo_list_notices = False
         self._keep_html_document_links = keep_html_document_links
         self.html_document_links = False
         # Bounds are indexes into _text. A new list item awaits both bounds.
@@ -288,6 +291,10 @@ class ArticleParser(HTMLParser):
     def _current_list_item(self):
         return self._lists[-1].item if self._lists else None
 
+    def _between_ordered_items(self):
+        return (self._keep_banktwo_list_notices and not self._in_table and self._lists
+                and self._lists[-1].tag == "ol" and self._lists[-1].item is None)
+
     def _finish_superscript(self, start):
         text = "".join(self._text[start:])
         token = text.strip()
@@ -331,6 +338,12 @@ class ArticleParser(HTMLParser):
             self._table_caption_blocks.append(block)
         elif self._table_cell is not None:
             self._table_cell.append(block)
+        elif (self._between_ordered_items() and (notice := _LIST_NOTICE_LABEL.match(value))
+              and (text := value[notice.end():])):
+            self.banktwo_list_notices = True
+            self._append_between_list_items(
+                {"kind": "callout", "label": notice["label"].title(), "text": text}, keep_continuation=True,
+            )
         elif item is None and self._keep_bankone_html_flow and self._lists and self._lists[-1].items:
             self.bankone_html_flow = True
             self._append_between_list_items(block, keep_continuation=True)
@@ -870,6 +883,8 @@ class ArticleParser(HTMLParser):
             self._list_continuation_pending = False
             return
         if tag == "li" and self._lists and not self._in_table:
+            if self._between_ordered_items() and self._text:
+                self.flush()
             self._finish_list_item()
             frame = self._lists[-1]
             number = _html_list_number(attrs.get("value")) if frame.tag == "ol" else None
@@ -878,6 +893,9 @@ class ArticleParser(HTMLParser):
                     and self._DOCUMENT_LINK_OPENING_TAG.fullmatch(self.get_starttag_text())):
                 self._document_link_bounds = (None, None)
                 self._document_link_target = None
+            return
+        if tag == "br" and self._between_ordered_items() and _LIST_NOTICE_LABEL.match("".join(self._text)):
+            self._text.append(" ")
             return
         if tag in {"br", "p", "div", "li", "tr", "h1", "h2", "h3"} or (
             tag in {"figure", "figcaption"} and self._current_list_item() is not None
@@ -1060,6 +1078,8 @@ class ArticleParser(HTMLParser):
                 return
             if tag in _LIST_TAGS:
                 if self._lists[-1].tag == tag:
+                    if self._between_ordered_items() and self._text:
+                        self.flush()
                     self._finish_list()
                 return
         if tag == "a":
