@@ -110,6 +110,7 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
 
 def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fixture_mode, lock, expected_profile=None):
     from .retained_bankone_order_reply import BANKONE_ORDER_METHOD
+    from .retained_banktwo_notice_reply import BANKTWO_NOTICE_METHOD
     from .retained_introduction_repair import (
         METHOD as INTRODUCTION_METHOD, PROFILE as INTRODUCTION_PROFILE, resolve_retained_introduction_repair,
     )
@@ -140,6 +141,7 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PRIOR_REPAIR_UNSUPPORTED")
 
     profile = row["rewrite_profile_version"]
+    method = row["model_metadata"].get("transformation_method")
     repaired = {
         NOTE_LABEL_REPAIR_PROFILE: (NOTE_LABEL_REPAIR_METHOD, resolve_retained_note_label_repair),
         REQUIRED_ACTION_PROFILE: (REQUIRED_ACTION_METHOD, resolve_retained_required_action_repair),
@@ -150,7 +152,7 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
         INTRODUCTION_PROFILE: (INTRODUCTION_METHOD, resolve_retained_introduction_repair),
     }
     if (profile not in (*AUTOMATIC_REWRITE_PROFILES, REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2, *repaired)
-        or (profile in repaired and row["model_metadata"].get("transformation_method") != repaired[profile][0])
+        or (profile in repaired and method not in (repaired[profile][0], BANKTWO_NOTICE_METHOD))
         or profile != (expected_profile or article["target_rewrite_profile_version"])
         or row["normalization_version"] != article["target_normalization_version"]):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PROFILE_UNSUPPORTED")
@@ -193,7 +195,12 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
 
         repaired, attempt, prompt_version = resolve_bankone_order_publication(cur, job, article, row, lock=lock)
         validation, response = repaired.validation, repaired.remapped_response
-    elif row["model_metadata"].get("transformation_method") == RETAINED_PROCEDURE_REPAIR_METHOD:
+    elif method == BANKTWO_NOTICE_METHOD:
+        from .retained_banktwo_notice_publication import resolve_banktwo_notice_publication
+
+        repaired, attempt, prompt_version = resolve_banktwo_notice_publication(cur, job, article, row, lock=lock)
+        validation, response = repaired.validation, repaired.remapped_response
+    elif method == RETAINED_PROCEDURE_REPAIR_METHOD:
         recovered = resolve_retained_procedure_repair(cur, job, article, row)
         validation, attempt, response, prompt_version = (
             recovered.validation, recovered.attempt, recovered.response, recovered.prompt_version,

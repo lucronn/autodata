@@ -1409,6 +1409,19 @@ def automatic_candidate_validation(cur, job, candidate, *, require_current=False
     profile = job["rewrite_profile_version"]
     if profile not in AUTOMATIC_REWRITE_PROFILES or candidate["rewrite_profile_version"] != profile:
         raise ValueError("automatic candidate profile binding mismatch")
+    from .retained_banktwo_notice_reply import BANKTWO_NOTICE_METHOD
+    if candidate["model_metadata"].get("transformation_method") == BANKTWO_NOTICE_METHOD:
+        from .retained_banktwo_notice_publication import resolve_banktwo_notice_publication
+
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (job["canonical_article_id"],)).fetchone()
+        if article is None or (require_current and (
+                article["current_canonical_revision_id"] != candidate["canonical_article_revision_id"]
+                or article["current_source_revision_id"] != candidate["source_revision_id"]
+                or article["current_job_id"] != job["source_fetch_job_id"])):
+            raise ValueError("automatic Banktwo notice binding mismatch")
+        repair, _, _ = resolve_banktwo_notice_publication(cur, job, article, candidate, lock=require_current)
+        return repair.validation
     source = candidate["normalized_source_document"]
     captured = cur.execute("""SELECT s.*,o.captured_context FROM canonical_article_source_revisions s
         JOIN LATERAL (SELECT captured_context FROM canonical_article_source_observations
