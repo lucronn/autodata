@@ -907,6 +907,7 @@ async function loadArticles(g, articleID = "", {
   const selected = { id: vehicle.id, region: vehicle.region };
   let offerPaging = !openDemo && !articleID && (!focusArticle || indexAnchor) &&
     !trimArticleSearch($("search").value);
+  let compactDemo = openDemo;
   let showedAvailable = false;
   const pageQuery = indexAnchor ? { anchor: indexAnchor } : offset !== null ? { offset } : undefined;
   const previousFocus = focusArticle ? document.activeElement : null;
@@ -918,15 +919,27 @@ async function loadArticles(g, articleID = "", {
     cancelable: true,
   });
   const requestIndex = (timeout) => {
+    const path = articleRequestPath(undefined, "", offerPaging ? pageQuery : undefined);
+    const options = { signal: g.signal, timeout };
     const prefer = [
       includePurchaseQuote && "workshop-purchase-quote",
       offerPaging && articleIndexPagePreferences,
-      openDemo && !articleID && "workshop-demo-readable-index",
+      compactDemo && "workshop-demo-readable-index",
     ].filter(Boolean).join(", ");
-    return requestJSON(articleRequestPath(undefined, "", offerPaging ? pageQuery : undefined), {
-      signal: g.signal,
+    const read = requestJSON(path, {
+      ...options,
       headers: prefer ? { Prefer: prefer } : undefined,
-      timeout,
+    });
+    if (!compactDemo || !articleID) return read;
+    return read.then((result) => {
+      // A filtered response can omit the requested descriptor while the body
+      // is unavailable. Read the full index to restore that article's status.
+      if (Array.isArray(result?.items) && Number.isSafeInteger(result.indexed_count) &&
+          result.indexed_count > result.items.length && !result.items.some((item) => item.id === articleID)) {
+        compactDemo = false;
+        return requestJSON(path, options);
+      }
+      return result;
     });
   };
   const indexRead = await readCollection(
