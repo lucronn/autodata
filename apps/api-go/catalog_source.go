@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	stdhtml "html"
 	"net/http"
 	"net/url"
@@ -461,11 +462,12 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 			placed[key] = true
 		}
 		const placeholder = "<span>Image unavailable</span>"
-		if !available && (!missing || ref.Caption == "") {
+		if !available && (!missing || ref.Caption == "") && ref.FigureLayout == nil {
 			output.WriteString(placeholder)
 			return
 		}
 		output.WriteString("<figure>")
+		layout := ref.FigureLayout
 		if available {
 			alt := ref.Alt
 			if alt == "" {
@@ -477,9 +479,28 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 			if alt == "" {
 				alt = "Article illustration"
 			}
-			output.WriteString("<img src=\"" + stdhtml.EscapeString(image.URL) + "\" alt=\"" + stdhtml.EscapeString(alt) + "\">")
+			imageStyle := ""
+			if layout != nil {
+				fmt.Fprintf(&output, `<div style="position:relative;container-type:inline-size;width:min(100%%,%.6fpx);aspect-ratio:%.6f / %.6f">`,
+					layout.Width, layout.Width, layout.Height)
+				imageStyle = ` style="display:block;width:100%;height:100%;object-fit:fill"`
+			}
+			output.WriteString("<img src=\"" + stdhtml.EscapeString(image.URL) + "\" alt=\"" + stdhtml.EscapeString(alt) + "\"" + imageStyle + ">")
 		} else {
 			output.WriteString(placeholder)
+		}
+		if layout != nil {
+			for _, label := range layout.Labels {
+				output.WriteString(`<span class="figure-label" style="display:block;white-space:pre`)
+				if available {
+					fmt.Fprintf(&output, ";position:absolute;left:%.6f%%;top:%.6f%%;font-size:%.6fcqw;margin-block-start:1em;color:black;font-family:sans-serif;line-height:normal",
+						100*label.Left/layout.Width, 100*label.Top/layout.Height, 100*label.FontSize/layout.Width)
+				}
+				output.WriteString(`">` + stdhtml.EscapeString(strings.Join(label.Lines, "\n")) + "</span>")
+			}
+			if available {
+				output.WriteString("</div>")
+			}
 		}
 		if ref.Caption != "" {
 			output.WriteString("<figcaption>" + stdhtml.EscapeString(ref.Caption) + "</figcaption>")
@@ -504,6 +525,7 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 				AssetID: field("asset_id"), ImageID: field("image_id"),
 				Alt: field("alt"), Caption: field("caption"), Status: field("status"),
 				UnavailableReason: field("unavailable_reason"),
+				FigureLayout:      parseCatalogFigureLayout(v["figure_layout"]),
 			}
 			if imageKey(ref) != "" || ref.Status == "unavailable" {
 				writeImage(ref, placed, false)
@@ -537,6 +559,7 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 				AssetID: block.AssetID, ImageID: block.ImageID, Alt: block.Alt,
 				Caption: block.Caption, Status: block.Status,
 				UnavailableReason: block.UnavailableReason,
+				FigureLayout:      block.FigureLayout,
 			}, placed, false)
 		case "table":
 			cellImages := map[figurePlacement]bool{}

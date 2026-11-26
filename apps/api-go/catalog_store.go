@@ -129,28 +129,29 @@ type CatalogDocument struct {
 }
 
 type CatalogDocumentBlock struct {
-	Images            []CatalogImage `json:"images,omitempty"`
-	Caption           string         `json:"caption,omitempty"`
-	BlockID           string         `json:"block_id,omitempty"`
-	SourceOrder       int            `json:"source_order,omitempty"`
-	Type              string         `json:"type"`
-	Level             int            `json:"level,omitempty"`
-	Number            int            `json:"number,omitempty"`
-	Start             *int32         `json:"start,omitempty"`
-	Text              string         `json:"text,omitempty"`
-	Label             string         `json:"label,omitempty"`
-	Href              string         `json:"href,omitempty"`
-	TargetArticleID   string         `json:"target_article_id,omitempty"`
-	Columns           []any          `json:"columns,omitempty"`
-	Rows              [][]any        `json:"rows,omitempty"`
-	Items             []any          `json:"items,omitempty"`
-	AssetID           string         `json:"asset_id,omitempty"`
-	ImageID           string         `json:"image_id,omitempty"`
-	Alt               string         `json:"alt,omitempty"`
-	Status            string         `json:"status,omitempty"`
-	UnavailableReason string         `json:"unavailable_reason,omitempty"`
-	EvidenceIDs       []string       `json:"evidence_ids,omitempty"`
-	SourceLocator     string         `json:"source_locator,omitempty"`
+	Images            []CatalogImage       `json:"images,omitempty"`
+	Caption           string               `json:"caption,omitempty"`
+	BlockID           string               `json:"block_id,omitempty"`
+	SourceOrder       int                  `json:"source_order,omitempty"`
+	Type              string               `json:"type"`
+	Level             int                  `json:"level,omitempty"`
+	Number            int                  `json:"number,omitempty"`
+	Start             *int32               `json:"start,omitempty"`
+	Text              string               `json:"text,omitempty"`
+	Label             string               `json:"label,omitempty"`
+	Href              string               `json:"href,omitempty"`
+	TargetArticleID   string               `json:"target_article_id,omitempty"`
+	Columns           []any                `json:"columns,omitempty"`
+	Rows              [][]any              `json:"rows,omitempty"`
+	Items             []any                `json:"items,omitempty"`
+	AssetID           string               `json:"asset_id,omitempty"`
+	ImageID           string               `json:"image_id,omitempty"`
+	Alt               string               `json:"alt,omitempty"`
+	Status            string               `json:"status,omitempty"`
+	UnavailableReason string               `json:"unavailable_reason,omitempty"`
+	EvidenceIDs       []string             `json:"evidence_ids,omitempty"`
+	SourceLocator     string               `json:"source_locator,omitempty"`
+	FigureLayout      *CatalogFigureLayout `json:"figure_layout,omitempty"`
 }
 
 // Table rows in stored documents may be arrays or objects containing cells.
@@ -162,12 +163,16 @@ func (block *CatalogDocumentBlock) UnmarshalJSON(data []byte) error {
 		Rows            []json.RawMessage `json:"rows"`
 		Start           any               `json:"start"`
 		TargetArticleID any               `json:"target_article_id"`
+		FigureLayout    any               `json:"figure_layout"`
 	}
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
 	if number, ok := catalogJSONListNumber(decoded.Start); ok && decoded.plain.Type == "ordered_list" {
 		decoded.plain.Start = &number
+	}
+	if decoded.plain.Type == "image" {
+		decoded.plain.FigureLayout = parseCatalogFigureLayout(decoded.FigureLayout)
 	}
 	if target, ok := decoded.TargetArticleID.(string); ok && decoded.plain.Type == "link" && commerceUUID(target) {
 		decoded.plain.TargetArticleID = target
@@ -304,16 +309,17 @@ type CatalogArticleProgress struct {
 }
 
 type CatalogImage struct {
-	AssetID           string `json:"asset_id,omitempty"`
-	Caption           string `json:"caption,omitempty"`
-	ID                string `json:"id,omitempty"`
-	URL               string `json:"url,omitempty"`
-	Alt               string `json:"alt,omitempty"`
-	StorageKey        string `json:"-"`
-	MediaType         string `json:"media_type,omitempty"`
-	ImageID           string `json:"image_id,omitempty"`
-	Status            string `json:"status,omitempty"`
-	UnavailableReason string `json:"unavailable_reason,omitempty"`
+	AssetID           string               `json:"asset_id,omitempty"`
+	Caption           string               `json:"caption,omitempty"`
+	ID                string               `json:"id,omitempty"`
+	URL               string               `json:"url,omitempty"`
+	Alt               string               `json:"alt,omitempty"`
+	StorageKey        string               `json:"-"`
+	MediaType         string               `json:"media_type,omitempty"`
+	ImageID           string               `json:"image_id,omitempty"`
+	Status            string               `json:"status,omitempty"`
+	UnavailableReason string               `json:"unavailable_reason,omitempty"`
+	FigureLayout      *CatalogFigureLayout `json:"figure_layout,omitempty"`
 }
 
 // UnmarshalJSON retains the private storage locator from persisted article
@@ -322,11 +328,13 @@ func (image *CatalogImage) UnmarshalJSON(data []byte) error {
 	type publicImage CatalogImage
 	var decoded struct {
 		publicImage
-		StorageKey string `json:"storage_key"`
+		StorageKey   string `json:"storage_key"`
+		FigureLayout any    `json:"figure_layout"`
 	}
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
+	decoded.publicImage.FigureLayout = parseCatalogFigureLayout(decoded.FigureLayout)
 	*image = CatalogImage(decoded.publicImage)
 	image.StorageKey = decoded.StorageKey
 	image.ImageID = publicCatalogAssetID(image.ImageID)

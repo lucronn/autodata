@@ -17,6 +17,7 @@ from .article_lifecycle_types import (
     PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT, SourceArticleContext,
     SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, SOURCE_PROJECTION_VERSIONS,
 )
+from .positioned_figure import FIGURE_LABEL_LAYOUT
 from .procedure_rewrite import (rewrite_ordered_document, validate_article_rewrite,
                                 build_rewrite_prompt, editable_slots)
 from .source_connector_client import SourceConnectorError
@@ -109,6 +110,7 @@ def _capture_context(repo,lease):
         legacy_document_link_body = previous_body
         legacy_section_title_body = previous_body
         legacy_bankone_flow_body = previous_body
+        legacy_positioned_label_body = previous_body
         previous_pdf_roots = {previous_body} if previous_body is not None else set()
         legacy_blank_pdf_roots = set()
         compact_layout_roots = set()
@@ -141,6 +143,8 @@ def _capture_context(repo,lease):
                     legacy_section_title_body = None
                 if resource.get("bankone_html_flow_layout") == BANKONE_HTML_FLOW_LAYOUT:
                     legacy_bankone_flow_body = None
+                if resource.get("html_positioned_figure_layout") == FIGURE_LABEL_LAYOUT:
+                    legacy_positioned_label_body = None
                 legacy_bankone_html = resource.get("media_type") == "text/html"
             is_pdf = resource.get("role") == "document_asset" and resource.get("media_type") == "application/pdf"
             if is_pdf:
@@ -175,6 +179,7 @@ def _capture_context(repo,lease):
             legacy_published_html_document_link_body=legacy_document_link_body,
             legacy_published_html_section_title_body=legacy_section_title_body,
             legacy_published_bankone_flow_body=legacy_bankone_flow_body,
+            legacy_published_positioned_label_body=legacy_positioned_label_body,
             legacy_published_bankone_svg_refs=(
                 frozenset(legacy_bankone_svg_refs)
                 if key.provider == "bankone" and legacy_bankone_html and row["prior_is_published"]

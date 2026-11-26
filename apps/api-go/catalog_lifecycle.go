@@ -729,6 +729,14 @@ func projectCatalogDocument(raw []byte, links catalogArticleLinkProjection) *Cat
 					if text, ok := child.(string); ok {
 						out[key] = publicCatalogAssetID(text)
 					}
+				case "figure_layout":
+					_, asset := node["asset_id"].(string)
+					_, image := node["image_id"].(string)
+					if node["type"] == "image" || asset || image {
+						if layout := parseCatalogFigureLayout(child); layout != nil {
+							out[key] = layout
+						}
+					}
 				case "href":
 					if text, ok := child.(string); ok {
 						parsed, err := url.Parse(text)

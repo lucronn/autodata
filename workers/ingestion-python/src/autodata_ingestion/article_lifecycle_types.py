@@ -197,6 +197,7 @@ class SourceArticleContext:
     legacy_published_bankone_svg_refs: frozenset[str] = frozenset()
     has_stored_source: bool = False
     fast_linked_pdf_png_roots: frozenset[str] = frozenset()
+    legacy_published_positioned_label_body: str | None = None
 
 
 @dataclass(frozen=True)

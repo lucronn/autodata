@@ -430,6 +430,71 @@ def media_preview_args(runtime, old_id):
     }
 
 
+def test_positioned_figure_reprojection_keeps_the_source_readable_and_is_idempotent(runtime, monkeypatch):
+    from io import BytesIO
+    from PIL import Image
+    from autodata_ingestion import source_article_capture as capture_module
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion.article_lifecycle_types import digest_json
+    from autodata_ingestion.positioned_figure_replay import preview_positioned_figure_replay
+    from autodata_ingestion.source_revision_reprojection import apply_media_reprojection
+    from test_first_draft_recovery_worker import scope_fixture_article
+    from test_positioned_figure_labels import FRAME
+
+    scope_fixture_article(runtime)
+    with runtime.repo.connect() as conn:
+        banktwo = conn.execute("""
+            SELECT b.canonical_article_id FROM canonical_articles a
+            JOIN canonical_articles b USING(vehicle_configuration_id)
+            WHERE a.canonical_article_id=%s AND b.provider_slug='banktwo'
+            """, (runtime.article_id,)).fetchone()["canonical_article_id"]
+        conn.execute("UPDATE canonical_articles SET target_rewrite_profile_version='technical-prose-v1' WHERE canonical_article_id=%s",
+                     (banktwo,))
+    runtime.articles["banktwo"] = runtime.article_id = banktwo
+    server = runtime.servers["banktwo"]
+    markup = "<p>Inspect the fixture.</p>" + FRAME.replace('src="/fixture.png"', 'data-resource-ref="figure"')
+    server.body(markup.encode(), "text/html", assets=["figure"])
+    image = BytesIO()
+    Image.new("RGB", (24, 12), "green").save(image, format="PNG")
+    server.body(image.getvalue(), "image/png", ref="figure", kind="asset")
+    capture = capture_module.capture_source_article
+    with monkeypatch.context() as old:
+        old.setattr(capture_module, "capture_source_article", lambda *args, **kwargs: capture(
+            *args, **{**kwargs, "keep_positioned_figure_labels": False},
+        ))
+        runtime.ensure()
+        assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+                                       object_store=runtime.objects, model_client=None)
+    source = runtime.read_current()
+    old_id = source["source_revision_id"]
+    assert source["content_origin"] == "source" and source["canonical_revision_id"] is None
+    binding, projected = preview_positioned_figure_replay(runtime.repo, old_id, object_store=runtime.objects)
+    arguments = dict(
+        object_store=runtime.objects, positioned_labels=True, expected_observation_id=binding.source_observation_id,
+        expected_fingerprint=binding.source_fingerprint, expected_body_sha256=binding.body_sha256,
+        expected_document_sha256=digest_json(projected.source_document), actor="fixture", reason="restore labels",
+    )
+    runtime.reset_counters()
+    before = all_rows(runtime.repo)
+    with pytest.raises(ValueError, match="PREVIEW_BINDING_MISMATCH"):
+        apply_media_reprojection(runtime.repo, banktwo, old_id, **{**arguments, "expected_document_sha256": "0" * 64})
+    assert all_rows(runtime.repo) == before
+    result = apply_media_reprojection(runtime.repo, banktwo, old_id, **arguments)
+    current = runtime.read_current()
+    assert current["content_origin"] == "source" and current["availability"] == "available"
+    assert str(current["source_revision_id"]) == result["source_revision_id"] != str(old_id)
+    assert current["document"] == projected.source_document
+    assert current["images"] == projected.source_images
+    image_digests = lambda state: [(image["storage_key"], image["content_sha256"]) for image in state["images"]]
+    assert image_digests(current) == image_digests(source)
+    after = all_rows(runtime.repo)
+    assert apply_media_reprojection(runtime.repo, banktwo, old_id, **arguments) == {**result, "status": "already_applied"}
+    assert all_rows(runtime.repo) == after
+    for table in ("source_snapshots", "source_artifacts", "canonical_article_revisions", "publication_events"):
+        assert before[table] == after[table]
+    assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}
+
+
 @pytest.mark.parametrize(("provider", "version"), [("bankone", "source-projection-v1"),
                                                 ("banktwo", "source-projection-v2")])
 def test_retained_figure_apply_and_next_refresh(runtime, monkeypatch, reprojection_cli, capsys, provider, version):
