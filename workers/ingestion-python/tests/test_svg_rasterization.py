@@ -169,6 +169,16 @@ def test_embedded_raster_and_inert_standard_doctype(format, media):
         assert red > 240 and green < 10 and blue < 10
 
 
+def test_legacy_w3c_svg_11_doctype_renders_without_loading_the_declaration():
+    doctype = (
+        b'<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" '
+        b'"http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg11.dtd"'
+    )
+    assert rasterize_svg(doctype + b">" + SVG) == rasterize_svg(SVG)
+    with pytest.raises(SVGUnavailable):
+        rasterize_svg(doctype + b" [ ]>" + SVG)
+
+
 @pytest.mark.parametrize("prefix", [
     '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" []>',
     '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [<!ENTITY test "red">]>',
