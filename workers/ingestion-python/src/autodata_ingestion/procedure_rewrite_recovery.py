@@ -26,12 +26,15 @@ FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD = "source-bound-first-draft-recovery
 FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD = "source-bound-first-draft-recovery-v6"
 FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v7"
 FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v8"
+FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD = "source-bound-first-draft-introduction-v1"
+NEUTRAL_INTRODUCTION = "This article describes the service information that follows."
 REQUIRED_ACTION_WEAKENED = "REWRITE_REQUIRED_ACTION_WEAKENED"
+_TECHNICAL_AMBIGUITY = "REWRITE_TECHNICAL_AMBIGUOUS"
 FIRST_DRAFT_RECOVERY_METHODS = (
     FIRST_DRAFT_RECOVERY_METHOD, FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD, FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD, FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD, FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
-    FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD,
+    FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
 )
 BANKONE_STRUCTURAL_RECOVERY_METHOD = "source-bound-bankone-first-draft-v1"
 BANKONE_LINKED_RECOVERY_METHOD = "source-bound-bankone-first-draft-v2"
@@ -48,7 +51,7 @@ _FIRST_DRAFT_RECASTABLE_ERRORS = frozenset({
 _LUBRICATION_MUTATION = "REWRITE_LUBRICATION_MUTATION"
 FIRST_DRAFT_RECOVERABLE_ERRORS = _FIRST_DRAFT_RECASTABLE_ERRORS | {
     "REWRITE_SPEC_SCOPE_MUTATION", REQUIRED_ACTION_WEAKENED,
-    _LUBRICATION_MUTATION,
+    _LUBRICATION_MUTATION, _TECHNICAL_AMBIGUITY,
 }
 _PART_WORD = r"[a-z]+(?:-[a-z]+)*"
 _PART = rf"{_PART_WORD}(?: {_PART_WORD}){{0,9}}"
@@ -242,6 +245,7 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
         )
         if method in (FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD, FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
                       FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD, FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD,
+                      FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
                       *BANKONE_ARCHIVE_STRUCTURE_VERSIONS):
             rewritten_paths = validation.report["changed_prose_slots"]
             auto.require_distinct_generated_introduction(source, document, rewritten_paths=rewritten_paths)
@@ -260,7 +264,7 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
         "corrected_paths": corrected_paths,
         **({"introduction_replaced": introduction_replaced}
            if method in (FIRST_DRAFT_COOLING_RECOVERY_METHOD, FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
-                         FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD) else {}),
+                         FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD) else {}),
         **({"bankone_structure_hash": digest_json(bankone_structure)} if bankone_structure is not None else {}),
     }, bankone_structure=bankone_structure)
 
@@ -459,6 +463,21 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
     if method == FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD:
         return None
     if original_error not in FIRST_DRAFT_RECOVERABLE_ERRORS:
+        return None
+    if original_error == _TECHNICAL_AMBIGUITY:
+        if method not in (None, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD):
+            return None
+        try:
+            auto.check_automatic_introduction(source, raw["introduction"])
+        except ValueError as intro_error:
+            if str(intro_error) == original_error:
+                return _validate_first_draft(
+                    source, raw, {**raw, "introduction": NEUTRAL_INTRODUCTION}, [],
+                    prompt_version=prompt_version, method=FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
+                    original_error=original_error,
+                )
+        return None
+    if method == FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD:
         return None
     action_methods = (FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD, FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD)
     if original_error in ("REWRITE_ACTION_MUTATION", "REWRITE_SPEC_SCOPE_MUTATION"):

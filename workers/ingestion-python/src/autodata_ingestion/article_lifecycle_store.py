@@ -1785,6 +1785,9 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
     from .article_lifecycle_types import digest_json
     from .article_document import project_ordered_document
     from .procedure_rewrite import validate_article_rewrite
+    from .retained_introduction_repair import (
+        METHOD as INTRODUCTION_METHOD, resolve_retained_introduction_repair,
+    )
     from .retained_note_label_repair import (
         CONDITIONAL_METHOD, METHOD as NOTE_LABEL_REPAIR_METHOD, OPTIONAL_OBSERVATION_METHOD, ROTATION_REMOVAL_METHOD,
         resolve_retained_conditional_note_repair, resolve_retained_note_label_repair,
@@ -1812,7 +1815,7 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
     method = row["model_metadata"].get("transformation_method")
     archived_reply_recovery = method in (
         METHOD, RETAINED_PROCEDURE_REPAIR_METHOD, NOTE_LABEL_REPAIR_METHOD, REQUIRED_ACTION_METHOD, CONDITIONAL_METHOD,
-        OPTIONAL_OBSERVATION_METHOD, ROTATION_REMOVAL_METHOD,
+        OPTIONAL_OBSERVATION_METHOD, ROTATION_REMOVAL_METHOD, INTRODUCTION_METHOD,
     )
     if method == METHOD:
         validation = verify_staged_media_reply_recovery(cur, job, article, row)
@@ -1828,6 +1831,8 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
         validation = resolve_retained_optional_observation_repair(cur, job, article, row, publishing=True).validation
     elif method == REQUIRED_ACTION_METHOD:
         validation = resolve_retained_required_action_repair(cur, job, article, row, publishing=True).validation
+    elif method == INTRODUCTION_METHOD:
+        validation = resolve_retained_introduction_repair(cur, job, article, row, publishing=True).validation
     elif profile in AUTOMATIC_REWRITE_PROFILES:
         validation = automatic_candidate_validation(cur, job, row, require_current=True)
     elif profile == "full-prose-review-v1":
@@ -1874,7 +1879,7 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
         _require_full_approval(cur,job,article,row)
     if profile in AUTOMATIC_REWRITE_PROFILES or method in (
         NOTE_LABEL_REPAIR_METHOD, REQUIRED_ACTION_METHOD, CONDITIONAL_METHOD, ROTATION_REMOVAL_METHOD,
-        OPTIONAL_OBSERVATION_METHOD,
+        OPTIONAL_OBSERVATION_METHOD, INTRODUCTION_METHOD,
     ):
         source, document = row["normalized_source_document"], row["canonical_document"]
         rewritten_paths = validation.report["changed_prose_slots"]
