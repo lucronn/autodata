@@ -15,7 +15,7 @@ const workshopEntryPath = "/workshop"
 
 var workshopAssetsHandler = buildWorkshopAssetsHandler()
 
-func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, bool) {
+func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, bool, bool) {
 	assets, err := fs.Sub(dashboardFiles, "workshop")
 	if err != nil {
 		panic("embedded Workshop assets unavailable: " + err.Error())
@@ -71,8 +71,14 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, bool)
 	}
 	publicEntry := bytes.Replace(entryPage, []byte(selectorMarker), []byte(`data-public-selectors="true"`), 1)
 	publicEntryTag := fmt.Sprintf(`W/"%x"`, sha256.Sum256(publicEntry))
+	const demoMarker = `data-workshop-open-demo="false"`
+	if bytes.Count(entryPage, []byte(demoMarker)) != 1 {
+		panic("Workshop entry page must mark public demo availability")
+	}
+	openDemoEntry := bytes.Replace(publicEntry, []byte(demoMarker), []byte(`data-workshop-open-demo="true"`), 1)
+	openDemoEntryTag := fmt.Sprintf(`W/"%x"`, sha256.Sum256(openDemoEntry))
 	files := http.StripPrefix(prefix, http.FileServer(http.FS(assets)))
-	return func(w http.ResponseWriter, r *http.Request, publicSelectors bool) {
+	return func(w http.ResponseWriter, r *http.Request, publicSelectors, openDemo bool) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -122,7 +128,10 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, bool)
 		}
 		if path == prefix {
 			document := entryPage
-			if publicSelectors {
+			if openDemo {
+				document = openDemoEntry
+				w.Header().Set("ETag", openDemoEntryTag)
+			} else if publicSelectors {
 				document = publicEntry
 				w.Header().Set("ETag", publicEntryTag)
 			}

@@ -230,7 +230,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics.handler)
 	workshopAssets := func(w http.ResponseWriter, r *http.Request) {
-		workshopAssetsHandler(w, r, s.paidCatalogEnabled())
+		workshopAssetsHandler(w, r, s.paidCatalogEnabled(), s.workshopOpenDemoAvailable(r))
 	}
 	mux.HandleFunc(workshopEntryPath, workshopAssets)
 	mux.HandleFunc("/workshop/purchase-config.json", s.workshopPurchaseConfig)

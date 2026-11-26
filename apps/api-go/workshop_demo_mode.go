@@ -72,6 +72,10 @@ func (s *Server) workshopOpenDemoRequest(r *http.Request) bool {
 		r.Host == s.workshopOpenDemoHost && len(values) == 1 && values[0] == "1"
 }
 
+func (s *Server) workshopOpenDemoAvailable(r *http.Request) bool {
+	return s.workshopOpenDemoHost != "" && r.Host == s.workshopOpenDemoHost && s.paidCatalogEnabled()
+}
+
 func workshopPrivateTestModeReady(body []byte) bool {
 	if len(body) > 256 {
 		return false
@@ -127,7 +131,7 @@ func (s *Server) workshopDemoMode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	if s.workshopOpenDemoHost != "" && r.Host == s.workshopOpenDemoHost && s.paidCatalogEnabled() {
+	if s.workshopOpenDemoAvailable(r) {
 		w.WriteHeader(http.StatusOK)
 		if r.Method != http.MethodHead {
 			_, _ = w.Write([]byte("{\"enabled\":true,\"access\":\"open\"}\n"))
