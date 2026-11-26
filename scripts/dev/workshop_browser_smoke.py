@@ -977,8 +977,8 @@ class APIObservations:
     async def _early_source_miss(self, request, response):
         if request.method != 'GET' or (response is not None and response.status != 503):
             return False
-        preferences = getattr(request, 'headers', {}).get('prefer', '').split(',')
-        if 'workshop-early-source-check' not in {value.strip().lower() for value in preferences}:
+        preferences = {value.strip().lower() for value in getattr(request, 'headers', {}).get('prefer', '').split(',')}
+        if not preferences.intersection({'workshop-early-source-check', 'workshop-retained-reader-session'}):
             return False
         target = urlsplit(request.url)
         configuration, article = self.scope.get('configuration'), self.scope.get('article')

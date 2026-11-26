@@ -2079,16 +2079,16 @@ async function loadArticleView(id, g, order, {
     throw error;
   };
   let retainedReadStartedAt;
-  if (preferRetained && !verifiedDetail && !refreshOnly && !openDemo &&
+  if ((preferRetained || initialRetainedReader) && !verifiedDetail && !refreshOnly && !openDemo &&
       session.state.mode === "firebase" && (savedLink || access === "owned") &&
       validScope({ configuration_id: selected.id, region: selected.region })) {
-    // The index or history entry advertises retained content. Read with current authorization.
+    // A saved route can already have a body authorized for the restored session.
     const startedAt = performance.now();
     try {
       let response;
       if (initialRetainedReader) {
         const csrf = session.state.csrf;
-        const early = await initialRetainedReader;
+        const early = await initialRetainedReader();
         if (!g.current() || !session.state.authenticated) return;
         if (early?.retry) throw early.retry;
         const sameSession = await matchesRetainedReaderSession(early, csrf);
@@ -2099,14 +2099,16 @@ async function loadArticleView(id, g, order, {
             readableArticle(early.data.article))
           response = { ...early, [articleDetailSequence]: ++order.issued };
       }
-      response ??= await requestArticleDetail(order, detailPath, readOptions);
-      const article = response.data?.article;
-      if (article?.id !== id || !matchesConfiguration(response.data?.configuration))
-        throw new Error("The article response does not match the selected vehicle.");
-      if (response.status === 200 && readableArticle(article) ||
-          response.status === 202 && processingArticle(article)) {
-        verifiedDetail = response;
-        retainedReadStartedAt = startedAt;
+      if (!response && preferRetained) response = await requestArticleDetail(order, detailPath, readOptions);
+      if (response) {
+        const article = response.data?.article;
+        if (article?.id !== id || !matchesConfiguration(response.data?.configuration))
+          throw new Error("The article response does not match the selected vehicle.");
+        if (response.status === 200 && readableArticle(article) ||
+            response.status === 202 && processingArticle(article)) {
+          verifiedDetail = response;
+          retainedReadStartedAt = startedAt;
+        }
       }
     } catch (error) {
       if (!g.current()) return;
@@ -3133,12 +3135,19 @@ async function restoreRoute(initialYears = null, {
             firstIndex = firstIndexPageForVehicle(result, vehicle);
         }
         const preferRetained = uuid(articleID) && history.state?.workshopArticleReadable === true;
-        const earlyReader = preferRetained && !openDemo && sessionRequest && validScope(exact)
+        const earlyReader = uuid(articleID) && !openDemo && sessionRequest && validScope(exact)
           ? new AbortController() : null;
-        const initialRetainedReader = earlyReader && requestArticleJSON(articleRequestPath(articleID), {
-          retainedReaderSession: true, preferShortPublicationCheck: true,
-          signal: AbortSignal.any([g.signal, earlyReader.signal]),
-        }).catch(error => error?.status === 429 || error?.retryAfterSeconds > 0 ? { retry: error } : null);
+        let initialRetainedReader = null;
+        if (earlyReader) {
+          const signal = AbortSignal.any([g.signal, earlyReader.signal]);
+          const response = requestArticleJSON(articleRequestPath(articleID), {
+            retainedReaderSession: true, preferShortPublicationCheck: true, signal,
+          }).catch(error => error?.status === 429 || error?.retryAfterSeconds > 0 ? { retry: error } : null);
+          // An unfamiliar link may need preparation. Give a slow probe only a
+          // short window after session restoration before using that path.
+          initialRetainedReader = () => preferRetained ? response
+            : Promise.race([response, delay(100, signal).then(() => null)]).finally(() => earlyReader.abort());
+        }
         try {
           await selectVehicle(g, articleID, {
             savedLink: true, preferRetained, initialDemoIndex, initialRetainedReader,
