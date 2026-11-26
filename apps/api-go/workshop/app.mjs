@@ -768,7 +768,7 @@ function purchaseConfigured() {
 }
 async function selectVehicle(g, articleID = "", {
   quoteMode = "eager", savedLink = false, reuseQuote = false, focusOnShow = false,
-  focusArticle = "", indexAnchor = "", firstIndex = null, preferRetained = false,
+  focusArticle = "", indexAnchor = "", firstIndex = null, preferRetained = false, initialDemoIndex = null,
 } = {}) {
   if (!g.current()) return;
   // Keep the exact public price visible while paid access and purchase
@@ -838,7 +838,9 @@ async function selectVehicle(g, articleID = "", {
     if (directArticle && await loadArticle(articleID, g, { savedLink: true, preferRetained })) return;
     if (savedQuery && await loadSavedSearch(g, savedQuery, focusArticle)) return;
     if (!g.current()) return;
-    await loadArticles(g, articleID, { focusOnShow, focusArticle, indexAnchor, includePurchaseQuote: Boolean(retainedQuote), firstIndex });
+    await loadArticles(g, articleID, {
+      focusOnShow, focusArticle, indexAnchor, includePurchaseQuote: Boolean(retainedQuote), firstIndex, initialDemoIndex,
+    });
   } catch (error) {
     // When a purchase is required, present the price or its unavailable state
     // with the access result so the UI does not announce a false checkout failure.
@@ -903,7 +905,7 @@ function indexResponsePage(result, requested, configuration, offset, anchor) {
 
 async function loadArticles(g, articleID = "", {
   focusOnShow = false, focusArticle = "", indexAnchor = "", offset = null,
-  includePurchaseQuote = false, firstIndex = null,
+  includePurchaseQuote = false, firstIndex = null, initialDemoIndex = null,
 } = {}) {
   if (!g.current()) return;
   const selected = { id: vehicle.id, region: vehicle.region };
@@ -928,8 +930,19 @@ async function loadArticles(g, articleID = "", {
       offerPaging && articleIndexPagePreferences,
       compactDemo && "workshop-demo-readable-index",
     ].filter(Boolean).join(", ");
+    const startup = initialDemoIndex;
+    initialDemoIndex = null;
+    const fetcher = startup?.path === path && prefer === "workshop-demo-readable-index"
+      ? async (_path, { signal }) => {
+        signal.throwIfAborted();
+        signal.addEventListener("abort", startup.abort, { once: true });
+        const response = await startup.response;
+        if (!response) throw new TypeError("The initial article index request did not return a response.");
+        return response;
+      } : undefined;
     const read = requestJSON(path, {
       ...options,
+      fetcher,
       headers: prefer ? { Prefer: prefer } : undefined,
     });
     if (!compactDemo || !articleID) return read;
@@ -2830,7 +2843,9 @@ async function signIn() {
   }
   await restoreRoute();
 }
-export async function bootstrap(initialYears, initialAccount, { preservePicker = false, initialSelectors = null, testCheckout } = {}) {
+export async function bootstrap(initialYears, initialAccount, {
+  preservePicker = false, initialSelectors = null, testCheckout, initialDemoIndex = null,
+} = {}) {
   if (testCheckout) checkoutModeReady = testCheckout.then(enabled => {
     testStripeMode = enabled;
     $("test-banner").hidden = !enabled;
@@ -2840,7 +2855,14 @@ export async function bootstrap(initialYears, initialAccount, { preservePicker =
   const early = openDemo || preservePicker ? null : initialSelectors;
   if (!early) initialSelectors?.abort();
   const years = preservePicker || early ? null : initialYears ?? requestInitialYears(params);
-  if (openDemo) return restoreRoute(years);
+  if (openDemo) {
+    const index = initialDemoIndex?.route === params.toString() ? initialDemoIndex : null;
+    try {
+      return await restoreRoute(years, { initialDemoIndex: index });
+    } finally {
+      initialDemoIndex?.abort();
+    }
+  }
   loadPurchaseConfiguration();
   const accountCheck = checkAccount(initialAccount);
   if (preservePicker) {
@@ -2920,7 +2942,7 @@ async function finishSavedYears(g, pending, confirmed) {
 }
 
 async function restoreRoute(initialYears = null, {
-  focusArticle = "", indexAnchor = "", initialSelectors = null, initialAccountCheck = null,
+  focusArticle = "", indexAnchor = "", initialSelectors = null, initialAccountCheck = null, initialDemoIndex = null,
 } = {}) {
   invalidate();
   show("welcome");
@@ -2975,7 +2997,7 @@ async function restoreRoute(initialYears = null, {
           (!hasHierarchy || scopedSearch || (uuid(articleID) && validScope(exact)))) {
         vehicle = { id: exact.configuration_id, region: exact.region };
         const preferRetained = uuid(articleID) && history.state?.workshopArticleReadable === true;
-        await selectVehicle(g, articleID, { savedLink: true, preferRetained, ...indexOptions });
+        await selectVehicle(g, articleID, { savedLink: true, preferRetained, initialDemoIndex, ...indexOptions });
         return;
       }
       const desired = Object.fromEntries(names.map((name) => [name, params.get(name) || ""]));
