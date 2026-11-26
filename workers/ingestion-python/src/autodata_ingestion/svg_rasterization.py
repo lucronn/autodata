@@ -13,7 +13,8 @@ MAX_INPUT_BYTES = 2_000_000
 MAX_OUTPUT_BYTES = 12 << 20
 MAX_EDGE = 4096
 MAX_PIXELS = 16_000_000
-RASTERIZER_VERSION = "cairosvg-2.9.1-bounded-v1"
+RASTERIZER_VERSION = "cairosvg-2.9.1-bounded-v2"
+SUPPORTED_RASTERIZER_VERSIONS = frozenset({"cairosvg-2.9.1-bounded-v1", RASTERIZER_VERSION})
 MAX_EMBEDDED_PIXELS = 8_000_000
 _FAILURES = frozenset({
     "SVG_EXTERNAL_REFERENCE", "INVALID_SVG", "SVG_INPUT_LIMIT",
@@ -78,15 +79,23 @@ def _prepare_svg(payload):
         root = ElementTree.fromstring(text, forbid_dtd=True, forbid_entities=True, forbid_external=True)
         if root.tag not in {"svg", "{http://www.w3.org/2000/svg}svg"}:
             raise SVGUnavailable("INVALID_SVG")
-        pending = [(root, 0)]
+        pending = [(root, 0, None, False)]
         count = 0
         embedded = {}
         embedded_pixels = 0
         while pending:
-            node, depth = pending.pop()
+            node, depth, parent, discarded = pending.pop()
             count += 1
             if depth > 64 or count > 20_000:
                 raise SVGUnavailable("SVG_COMPLEXITY_LIMIT")
+            # RDF and other source metadata do not draw. Remove the complete
+            # subtree before CairoSVG sees it, while still counting its nodes
+            # and depth against the parser bounds.
+            if discarded or node.tag in {"metadata", "{http://www.w3.org/2000/svg}metadata"}:
+                if not discarded:
+                    parent.remove(node)
+                pending.extend((child, depth + 1, node, True) for child in node)
+                continue
             tag = node.tag.rsplit("}", 1)[-1].lower()
             if tag in {"script", "foreignobject", "iframe", "audio", "video"}:
                 raise SVGUnavailable("UNSUPPORTED_SVG_CONTENT")
@@ -116,7 +125,7 @@ def _prepare_svg(payload):
                     _css_references(value)
             if tag == "style":
                 _css_references("".join(node.itertext()))
-            pending.extend((child, depth + 1) for child in node)
+            pending.extend((child, depth + 1, node, False) for child in node)
         viewbox = root.get("viewBox", "").replace(",", " ").split()
         if len(viewbox) == 4:
             _, _, width, height = map(float, viewbox)

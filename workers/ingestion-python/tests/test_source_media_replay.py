@@ -601,6 +601,20 @@ def test_retained_svg_requires_exact_png_rendition_and_preserves_figure(provider
     assert (cursor.row, cursor.snapshots, objects.data, objects.writes) == before
 
 
+def test_retained_svg_from_previous_rasterizer_remains_replayable():
+    cursor, objects = _retained_svg()
+    old_version = "cairosvg-2.9.1-bounded-v1"
+    cursor.row["resource_manifest"][-1]["derivation_version"] = old_version
+    cursor.row["resource_provenance"][-1]["derivation_version"] = old_version
+    cursor.row["source_fingerprint"] = replay._replay_fingerprint(
+        replay._context(cursor.row), cursor.row["resource_manifest"],
+    )
+    binding, captured = replay.preview_media_replay(
+        cursor, cursor.row["source_revision_id"], object_store=objects,
+    )
+    assert binding.source_fingerprint == captured.source_fingerprint
+
+
 @pytest.mark.parametrize(("mutation", "code"), [
     ("orphan_original", "UNSUPPORTED"),
     ("orphan_derivative", "UNSUPPORTED"),
