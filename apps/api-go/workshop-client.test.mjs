@@ -2179,6 +2179,21 @@ async function sessionPreparationHarness({
   return { session, calls, changes };
 }
 
+test('a session recheck disables sign-in until the account is ready again', async () => {
+  const { session, changes } = await sessionPreparationHarness();
+  await session.bootstrap();
+  assert.equal(changes.at(-1).ready, true);
+
+  const initial = deferredAuthOperation();
+  const recheck = session.bootstrap({ initial: initial.promise });
+  const readyDuringRecheck = changes.at(-1).ready;
+  initial.resolve(null);
+  await recheck;
+
+  assert.equal(readyDuringRecheck, false);
+  assert.equal(changes.at(-1).ready, true);
+});
+
 test('selected index checks the exchanged cookie after SDK sign-out', async () => {
   const cleanupStarted = deferredAuthOperation();
   const cleanup = deferredAuthOperation();

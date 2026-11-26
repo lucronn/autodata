@@ -156,12 +156,14 @@ export function createSession({
     },
     async bootstrap({ signal, initial } = {}) {
       const current = ++epoch;
+      const wasReady = state.ready;
       selectedIndexConfirmation?.abort();
       pendingLoginConfiguration = null;
       state.mode = null;
       state.authenticated = false;
       state.csrf = "";
       state.ready = false;
+      if (wasReady) changed();
       const initialResult = initial ? await initial : null;
       const [configuration, response] = initialResult ?? readSessionBootstrap(request, { signal });
       const session = await response;

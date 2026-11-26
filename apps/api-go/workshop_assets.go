@@ -117,11 +117,13 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 				http.Redirect(w, r, assetPath, http.StatusTemporaryRedirect)
 				return
 			}
-			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+			// Preserve the origin representation through the tunnel and shared cache.
+			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable, no-transform")
+			w.Header().Add("Vary", "Accept-Encoding")
 			if r.URL.RawQuery == "" && r.Header.Get("Range") == "" {
 				// The release digest identifies the exact embedded bytes. Keep
 				// request-specific tracing values out of the shared response.
-				w.Header().Set("Vercel-CDN-Cache-Control", "public, max-age=86400, immutable")
+				w.Header().Set("Vercel-CDN-Cache-Control", "public, max-age=86400, immutable, no-transform")
 				w.Header().Del("X-Request-ID")
 				w.Header().Del("Traceparent")
 			}
