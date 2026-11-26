@@ -6,11 +6,14 @@ import pytest
 from autodata_ingestion.article_lifecycle_types import digest_json
 from autodata_ingestion.procedure_rewrite_auto import build_auto_prompt, render_auto
 from autodata_ingestion.procedure_rewrite_cooling_recovery import recast_cooling_passage
+from autodata_ingestion.procedure_rewrite_diagnostic_recovery import recast_diagnostic_passage
+from autodata_ingestion.procedure_rewrite_full import prose_slots
 from autodata_ingestion.procedure_rewrite_maintenance_recovery import recast_maintenance_passage
 from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
+    FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD,
     FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
     FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
     FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD,
@@ -26,6 +29,68 @@ from autodata_ingestion.procedure_rewrite_recovery import (
     recover_first_draft,
 )
 from test_procedure_rewrite_full import document, response
+
+
+def test_diagnostic_recovery_preserves_conditions_readings_and_referrals():
+    source = document(
+        "If the unit is equipped with a cabin HVAC system, "
+        "go into the HVAC data with the scan tool and get the following readings:",
+        "Note: Technicians should always be prepared to provide Service Record 19 or Sheet A when calling into OEM TAC.",
+        "The protective cover prevents dirt from entering the sensor connector.",
+        "Tighten the bracket bolt to 12 Nm.",
+    )
+    readings = {
+        "block_id": "scanned-readings", "source_order": 2, "type": "ordered_list",
+        "items": ["A/C compressor duty cycle", "Humidity", "Outside temperature", "Inside temperature sensor reading"],
+        "evidence_ids": ["fixture-evidence"],
+    }
+    source["blocks"].insert(1, readings)
+    for order, block in enumerate(source["blocks"], start=1):
+        block["source_order"] = order
+    updates = {"/blocks/3/text": "Dirt stays out of the sensor connector because of the protective cover."}
+    raw = {
+        "introduction": "This article describes the service information.",
+        "replacements": [
+            {"block_id": slot["block_id"], "path": slot["path"], "action": "rewrite",
+             "text": updates.get(slot["path"], slot["text"]), "reason": ""}
+            for slot in prose_slots(source)
+        ],
+    }
+    raw["replacements"][-1].update(action="retain", reason="Preserve the torque specification.")
+    saved = deepcopy(raw)
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    method = FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD
+    result = recover_first_draft(source, raw, prompt_version=version, method=method)
+    assert result is not None
+    assert raw == saved and result.response["replacements"][-2:] == saved["replacements"][-2:]
+    assert result.evidence["corrected_paths"] == [row["path"] for row in saved["replacements"][:-2]]
+    assert result.evidence["original_error_code"] == "REWRITE_UNCHANGED"
+    assert [row["text"] for row in result.response["replacements"][:-2]] == [
+        "If the unit is equipped with a cabin HVAC system, use the scan tool to open the HVAC data "
+        "and collect the readings listed below:",
+        "Duty cycle of the A/C compressor", "Moisture in the air", "Temperature measured outside",
+        "Reading from the sensor for the inside temperature",
+        "Note: When calling into OEM TAC, technicians should always have Service Record 19 or Sheet A ready to provide.",
+    ]
+    archived = recover_archived_first_draft(source, {
+        "guard_version": version, "response": saved, "error_code": "REWRITE_UNCHANGED",
+        "rewrite_attempt_id": "fixture-attempt", "prompt_hash": "fixture-prompt",
+    }, method=method, expected_hash=result.evidence["output_hash"])
+    assert archived.evidence["first_draft_recovery"] == result.evidence
+
+    unsafe = deepcopy(saved)
+    unsafe["replacements"][-1].update(action="rewrite", text="Tighten the bracket bolt to 13 Nm.", reason="")
+    assert recover_first_draft(source, unsafe, prompt_version=version, method=method) is None
+
+
+@pytest.mark.parametrize(("text", "reading"), [
+    ("Humidity", False),
+    ("Outside temperature above 30 °C", True),
+    ("Note: Sam should always be prepared to provide Form 2 when calling into OEM TAC.", False),
+    ("If the vehicle is equipped with HVAC, go into the HVAC data with the scan tool and log errors.", False),
+])
+def test_diagnostic_recovery_leaves_other_source_forms_to_the_existing_checks(text, reading):
+    assert recast_diagnostic_passage(text, reading=reading) is None
 
 
 def test_ambiguous_introduction_can_be_recovered_without_changing_the_saved_body():

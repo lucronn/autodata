@@ -27,6 +27,7 @@ FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD = "source-bound-first-draft-recover
 FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v7"
 FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v8"
 FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD = "source-bound-first-draft-introduction-v1"
+FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD = "source-bound-first-draft-diagnostic-v1"
 NEUTRAL_INTRODUCTION = "This article describes the service information that follows."
 REQUIRED_ACTION_WEAKENED = "REWRITE_REQUIRED_ACTION_WEAKENED"
 _TECHNICAL_AMBIGUITY = "REWRITE_TECHNICAL_AMBIGUOUS"
@@ -35,6 +36,7 @@ FIRST_DRAFT_RECOVERY_METHODS = (
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD, FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD, FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
     FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
+    FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD,
 )
 BANKONE_STRUCTURAL_RECOVERY_METHOD = "source-bound-bankone-first-draft-v1"
 BANKONE_LINKED_RECOVERY_METHOD = "source-bound-bankone-first-draft-v2"
@@ -246,6 +248,7 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
         if method in (FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD, FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
                       FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD, FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD,
                       FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
+                      FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD,
                       *BANKONE_ARCHIVE_STRUCTURE_VERSIONS):
             rewritten_paths = validation.report["changed_prose_slots"]
             auto.require_distinct_generated_introduction(source, document, rewritten_paths=rewritten_paths)
@@ -264,7 +267,8 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
         "corrected_paths": corrected_paths,
         **({"introduction_replaced": introduction_replaced}
            if method in (FIRST_DRAFT_COOLING_RECOVERY_METHOD, FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
-                         FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD) else {}),
+                         FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
+                         FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD) else {}),
         **({"bankone_structure_hash": digest_json(bankone_structure)} if bankone_structure is not None else {}),
     }, bankone_structure=bankone_structure)
 
@@ -314,6 +318,36 @@ def _recover_required_action_draft(source, raw, slots, *, prompt_version):
     return _validate_first_draft(
         source, raw, draft, corrected, prompt_version=prompt_version,
         method=FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD, original_error=REQUIRED_ACTION_WEAKENED,
+    )
+
+
+def _recover_diagnostic_draft(source, raw, slots, *, prompt_version, original_error):
+    from .procedure_rewrite_diagnostic_recovery import recast_diagnostic_passage, scan_reading_instruction
+
+    if original_error not in {"REWRITE_UNCHANGED", "REWRITE_SPEC_SCOPE_MUTATION"}:
+        return None
+    if not any(scan_reading_instruction(slot["text"]) for slot in slots):
+        return None
+    failures = {item["path"] for item in auto.failed_rewrite_passages(source, raw, prompt_version=prompt_version)}
+    draft = deepcopy(raw)
+    corrected = []
+    for slot, row in zip(slots, draft["replacements"], strict=True):
+        path = slot["path"]
+        if path in failures and row["action"] == "rewrite":
+            if wording := recast_diagnostic_passage(slot["text"], reading="/items/" in path):
+                row["text"] = wording
+                corrected.append(path)
+    if not corrected:
+        return None
+    try:
+        auto.check_automatic_introduction(source, raw["introduction"])
+    except ValueError as error:
+        if str(error) != "REWRITE_SPEC_SCOPE_MUTATION":
+            return None
+        draft["introduction"] = NEUTRAL_INTRODUCTION
+    return _validate_first_draft(
+        source, raw, draft, corrected, prompt_version=prompt_version,
+        method=FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD, original_error=original_error,
     )
 
 
@@ -479,6 +513,10 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
         return None
     if method == FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD:
         return None
+    if method in (None, FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD):
+        diagnostic = _recover_diagnostic_draft(source, raw, slots, prompt_version=prompt_version, original_error=original_error)
+        if diagnostic is not None or method == FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD:
+            return diagnostic
     action_methods = (FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD, FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD)
     if original_error in ("REWRITE_ACTION_MUTATION", "REWRITE_SPEC_SCOPE_MUTATION"):
         for action_method in action_methods:
