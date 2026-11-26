@@ -173,9 +173,11 @@ def resolve_banktwo_notice_publication(cur, job, article, candidate, *, lock=Fal
 def _current_candidate(cur, article):
     return cur.execute("""SELECT r.* FROM canonical_article_revisions r JOIN catalog_article_current visible
         ON visible.canonical_article_id=r.canonical_article_id AND visible.canonical_revision_id=r.canonical_article_revision_id
-        WHERE r.canonical_article_revision_id=%s AND r.source_revision_id=%s AND r.status='published'
+        WHERE visible.canonical_article_id=%s
+          AND r.canonical_article_revision_id=%s AND r.source_revision_id=%s AND r.status='published'
           AND visible.availability='available' AND visible.takedown_status='active'""",
-        (article["current_canonical_revision_id"], article["current_source_revision_id"])).fetchone()
+        (article["canonical_article_id"], article["current_canonical_revision_id"],
+         article["current_source_revision_id"])).fetchone()
 
 
 def _already_published(cur, article, approval):
