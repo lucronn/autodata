@@ -90,6 +90,38 @@ test('entry preloads the app for confirmed public demos without starting regular
   assert.deepEqual(startHeadPicker(search, true, { entry }).hints, []);
   assert.deepEqual(startHeadPicker('?sample=1', true, { entry: { workshopOpenDemo: 'true' } }).hints, []);
 });
+test('entry starts one exact public demo index read before importing the app', async () => {
+  const entry = { workshopOpenDemo: 'true' };
+  const configuration = 'cf544dfd-4570-589f-b3b4-23487d14e591';
+  const search = `?demo=1&configuration=${configuration}&region=US`;
+  const { calls, context } = startHeadPicker(search, true, { entry });
+  const path = `/v1/catalog/vehicles/${configuration}/articles?region=US&demo=1`;
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, path);
+  assert.equal(calls[0].options.headers.Prefer, 'workshop-demo-readable-index');
+  assert.equal(calls[0].options.cache, 'no-store');
+  assert.equal(context.workshopPickerStartup, undefined);
+  const startup = context.workshopDemoIndex;
+  let restored;
+  context.loadModule = async module => {
+    assert.equal(module, './app.mjs');
+    return { bootstrap(_years, _account, { initialDemoIndex }) { restored = initialDemoIndex; } };
+  };
+  await runInNewContext(`(async () => { ${bootstrapCode} })()`, context);
+  assert.equal(context.workshopDemoIndex, undefined);
+  assert.equal(restored, startup);
+  assert.equal((await restored.response).ok, true);
+  assert.equal(calls.length, 1);
+  restored.abort();
+  assert.equal(calls[0].options.signal.aborted, true);
+  assert.deepEqual(startHeadPicker(search).calls, []);
+  assert.deepEqual(startHeadPicker(search + '&article=1cae3450-955a-5807-b72f-91010d396008', true, { entry })
+    .calls.map(({ path }) => path), [path]);
+  for (const skipped of [search + '&article=saved', search + '&year=2015', search + '&q=filter',
+    search.replace('region=US', 'region=us'), search.replace(configuration, 'invalid')]) {
+    assert.deepEqual(startHeadPicker(skipped, true, { entry }).calls, [], skipped);
+  }
+});
 test('sign-in is inert in initial HTML until async app readiness', () => {
   const button = source('index.html').match(/<button\b[^>]*\bid="signin"[^>]*>/)?.[0];
   assert.ok(button, 'the sign-in button must be present');

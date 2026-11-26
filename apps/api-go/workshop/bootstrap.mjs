@@ -2,7 +2,9 @@
 const params = new URLSearchParams(location.search);
 const wantsDemo = params.get('demo') === '1';
 const pickerStartup = globalThis.workshopPickerStartup;
+const demoIndex = globalThis.workshopDemoIndex;
 delete globalThis.workshopPickerStartup;
+delete globalThis.workshopDemoIndex;
 const pageReady = document.readyState === 'loading'
   ? new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }))
   : Promise.resolve();
@@ -78,6 +80,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
     await bootstrap(initial?.years, initialAccount, {
       initialSelectors: initial?.selectors,
       testCheckout: wantsDemo ? undefined : modeRequest.then(mode => mode.testCheckout === true),
+      initialDemoIndex: openDemo ? demoIndex : null,
     });
   }
 }

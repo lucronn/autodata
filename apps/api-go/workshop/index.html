@@ -25,7 +25,26 @@
           hint.href = new URL(`./${name}.mjs`, catalog.href).href;
           document.head.append(hint);
         }
-        if (wantsDemo) return;
+        if (wantsDemo) {
+          const configuration = params.get('configuration');
+          const region = params.get('region');
+          const uuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value || '');
+          if (!uuid(configuration) ||
+              !/^[A-Z]{2}$/.test(region || '') ||
+              (params.has('article') && !uuid(params.get('article'))) ||
+              ['year', 'order', 'q'].some(key => params.has(key))) return;
+          const path = `/v1/catalog/vehicles/${configuration}/articles?region=${region}&demo=1`;
+          const controller = new AbortController();
+          const response = fetch(path, {
+            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
+            credentials: 'same-origin', cache: 'no-store',
+            headers: { Accept: 'application/json', Prefer: 'workshop-demo-readable-index' },
+          }).catch(() => null);
+          globalThis.workshopDemoIndex = {
+            path, response, abort: () => controller.abort(), route: params.toString(),
+          };
+          return;
+        }
 
         const pending = new Map();
         globalThis.workshopPickerStartup = pending;
