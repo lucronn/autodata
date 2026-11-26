@@ -197,8 +197,7 @@ function clearProtected() {
   indexHydrating = false;
   indexFailed = false;
   resetReaderContent();
-  for (const id of ["articles", "reference-data"])
-    $(id).replaceChildren();
+  $("articles").replaceChildren();
   $("article-title").textContent = "";
   $("catalog-count").textContent = "";
   $("article-page-range").textContent = "";
@@ -251,6 +250,7 @@ function resetReaderContent() {
   deferredArticleFigures = null;
   resetSourceReview();
   $("article-content").replaceChildren();
+  $("reference-data").replaceChildren();
   $("article-reference").hidden = true;
   $("article-reference").open = false;
   $("article-kind").textContent = "";
@@ -1852,6 +1852,10 @@ function articleViewRevision(article) {
 function originalSourceReview(article) {
   return article?.original_source_review?.available ? article.original_source_review : article?.source_review;
 }
+function sourceFingerprint(review) {
+  const digest = review?.available ? review.content_sha256 : "";
+  return typeof digest === "string" && /^[a-f0-9]{64}$/.test(digest) ? digest : "";
+}
 function renderArticle(article, g, redraw = false) {
   if (!g.current() || Object.hasOwn($("reader").dataset, "rechecking")) return;
   const revision = articleViewRevision(article);
@@ -1892,6 +1896,16 @@ function renderArticle(article, g, redraw = false) {
       if (placeholder.textContent !== message) placeholder.textContent = message;
     }
   }
+  const sourceHash = sourceFingerprint(article.source_review);
+  const originalHash = sourceFingerprint(review);
+  if (sourceHash !== sourceFingerprint(currentArticle?.source_review) ||
+      originalHash !== sourceFingerprint(previousOriginal)) {
+    const references = [];
+    if (sourceHash) references.push(element("dt", "Source SHA-256"), element("dd", sourceHash));
+    if (originalHash && originalHash !== sourceHash)
+      references.push(element("dt", "Original SHA-256"), element("dd", originalHash));
+    $("reference-data").replaceChildren(...references);
+  }
   currentArticle = article;
   $("article-title").textContent = article.title || "Article";
   const articleKind =
@@ -1922,7 +1936,7 @@ function renderArticle(article, g, redraw = false) {
   $("article-note").textContent = notes.join(" ");
   $("print").disabled = !readable;
   document.body.dataset.printable = String(readable);
-  $("article-reference").hidden = false;
+  $("article-reference").hidden = !review?.available;
   $("source-review").hidden = !review?.available;
   $("open-original").hidden = !originalURL;
   if (review?.available) {
