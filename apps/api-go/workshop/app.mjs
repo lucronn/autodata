@@ -585,7 +585,8 @@ async function loadOptions(name, g, desired = "", initial = null) {
         if (requestedConfiguration) return readStoredPicker(picker, name, g.signal, timeout);
         requestedConfiguration = true;
       }
-      const response = await requestJSON(path, { signal: g.signal, timeout });
+      const cache = canCachePublicSelectors() ? "default" : "no-store";
+      const response = await requestJSON(path, { signal: g.signal, timeout, cache });
       return trackDiscovery(response);
     },
     {

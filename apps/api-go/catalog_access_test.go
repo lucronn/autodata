@@ -328,6 +328,49 @@ func TestPaidCatalogPublicSelectorsAndDeniedBeforeWork(t *testing.T) {
 		t.Fatal("unpaid request read content/progress")
 	}
 }
+func TestPaidCatalogCachesOnlyCompleteSelectorChoices(t *testing.T) {
+	s, store, _ := paidHTTPServer()
+	const years = "/v1/catalog/years"
+	const makes = years + "/2024/makes"
+	const models = makes + "/acme/models"
+	const configurations = models + "/roadster/configurations"
+	for _, tc := range []struct {
+		path, cache string
+		status      int
+	}{
+		{years, "private, max-age=30", 200},
+		{makes + "?region=CA", "private, max-age=30", 200},
+		{models + "?region=CA", "private, max-age=30", 200},
+		{configurations + "?region=CA", "private, max-age=30", 200},
+		{years + "?stored_only=1", "no-store", 200},
+		{models + "?region=CA&stored_only=1", "no-store", 200},
+		{makes + "?region=US", "no-store", 200},
+		{years + "/invalid/makes", "no-store", 422},
+	} {
+		response := catalogRequest(s, tc.path)
+		if response.Code != tc.status || response.Header().Get("Cache-Control") != tc.cache ||
+			response.Header().Get("Access-Control-Allow-Origin") != "*" {
+			t.Errorf("%s: HTTP %d, caching %q, CORS %q", tc.path, response.Code,
+				response.Header().Get("Cache-Control"), response.Header().Get("Access-Control-Allow-Origin"))
+		}
+	}
+
+	s.catalog = incompleteScopeCatalogStore{store.memoryCatalogStore}
+	response := catalogRequest(s, models+"?region=CA")
+	if response.Code != 200 || response.Header().Get("Cache-Control") != "no-store" ||
+		!strings.Contains(response.Body.String(), `"id":"roadster"`) ||
+		!strings.Contains(response.Body.String(), `"complete":false`) {
+		t.Fatalf("incomplete populated selector was not fresh: %d %s", response.Code, response.Body.String())
+	}
+
+	s.catalog = store
+	s.customerAuth = nil
+	private := catalogRequest(s, configurations+"?region=CA")
+	if private.Code != 200 || strings.Contains(private.Header().Get("Cache-Control"), "max-age") {
+		t.Fatalf("legacy authorized selector was made cacheable: %d %s", private.Code, private.Header().Get("Cache-Control"))
+	}
+}
+
 func TestPaidCatalogCustomerLegacyRoutesDenied(t *testing.T) {
 	s, _, _ := paidHTTPServer()
 	for _, route := range []string{"POST /dataset-requests", "GET /dataset-requests/x", "POST /vehicle-identities/resolve", "GET /vehicle-identities/selectors", "POST /knowledge-queries", "POST /job-plans", "GET /datasets/x", "GET /datasets/x/sections", "GET /datasets/x/revisions", "GET /datasets/x/evidence/x", "GET /datasets/x/search", "GET /datasets/x/knowledge", "POST /datasets/x/feedback"} {

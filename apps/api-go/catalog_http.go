@@ -84,6 +84,7 @@ func (s *Server) listCatalogYears(response http.ResponseWriter, request *http.Re
 	if hydrating && !catalogStoredSelector(request) {
 		s.scheduleCatalogHydration(request, map[string]any{"scope": "years"})
 	}
+	s.cacheCompleteCatalogSelector(response, request, complete && len(items) > 0)
 	writeJSON(response, http.StatusOK, CatalogYearsResponse{
 		Version: "v1", Items: items,
 		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete, Hydrating: hydrating},
@@ -114,6 +115,7 @@ func (s *Server) listCatalogMakes(response http.ResponseWriter, request *http.Re
 			"scope": "makes", "year": year, "region": catalogRegion(request),
 		})
 	}
+	s.cacheCompleteCatalogSelector(response, request, complete && len(items) > 0)
 	writeJSON(response, http.StatusOK, CatalogMakesResponse{
 		Version: "v1", Items: items,
 		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete, Hydrating: hydrating},
@@ -143,6 +145,7 @@ func (s *Server) listCatalogModels(response http.ResponseWriter, request *http.R
 			"scope": "models", "year": year, "make": makeName, "region": catalogRegion(request),
 		})
 	}
+	s.cacheCompleteCatalogSelector(response, request, complete && len(items) > 0)
 	writeJSON(response, http.StatusOK, CatalogModelsResponse{
 		Version: "v1", Items: items,
 		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete, Hydrating: hydrating},
@@ -194,6 +197,7 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 	if !scopeComplete && !storedOnly {
 		running = s.scheduleCatalogHydration(request, payload)
 	}
+	s.cacheCompleteCatalogSelector(response, request, scopeComplete && usable && !running)
 	writeJSON(response, http.StatusOK, CatalogConfigurationsResponse{
 		Version: "v1", Items: items,
 		Discovering:              usable && !scopeComplete && running,
