@@ -9288,20 +9288,26 @@ test('a prefetched selector miss is checked again after the parent was validated
   assert.equal(h.$('configuration').value, 'selected');
 });
 
-test('saved rows in incomplete prefetched lists restore while discovery continues', async () => {
-  const partial = { items: [{ id: 'selected' }], complete: false, hydrating: true };
-  for (const name of ['make', 'model', 'configuration']) {
-    const discovery = deferredAuthOperation();
-    const h = selectorOptionsHarness(() => discovery.promise);
-    const restored = h.load('selected', null, Promise.resolve(partial), name);
-    try {
-      await new Promise(setImmediate);
-      assert.equal(h.$(name).disabled, false);
-      assert.equal(h.$(name).value, 'selected');
-      assert.deepEqual(h.requests, ['/choices']);
-    } finally {
-      discovery.resolve(partial);
-      await restored;
+test('saved rows reuse active discovery and start idle discovery', async () => {
+  for (const [state, requests] of [
+    [{ hydrating: true }, []],
+    [{ discovering: true }, []],
+    [{}, ['/choices']],
+  ]) {
+    const partial = { items: [{ id: 'selected' }], complete: false, ...state };
+    for (const name of ['make', 'model', 'configuration']) {
+      const discovery = deferredAuthOperation();
+      const h = selectorOptionsHarness(() => discovery.promise);
+      const restored = h.load('selected', null, Promise.resolve(partial), name);
+      try {
+        await new Promise(setImmediate);
+        assert.equal(h.$(name).disabled, false);
+        assert.equal(h.$(name).value, 'selected');
+        assert.deepEqual(h.requests, requests);
+      } finally {
+        discovery.resolve(partial);
+        await restored;
+      }
     }
   }
 });
