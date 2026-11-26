@@ -4580,15 +4580,22 @@ test('a confirmed empty owned checkout offers one scoped availability check', as
   const h = await ownedCheckoutHarness([empty, checkoutReadyIndex]);
   await h.context.purchase();
   assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet]);
-  assert.equal(h.$('purchase-message').textContent, 'Owned. No articles are currently available for this vehicle.');
+  assert.equal(h.$('purchase-message').textContent, 'Owned.');
   assert.equal(h.$('purchase-action').textContent, 'Check article availability');
   assert.equal(h.$('purchase-action').disabled, false);
   assert.equal(h.$('catalog-count').textContent, '0 articles');
+  assert.equal(h.statuses.at(-1).options.announceOnly, true);
+  assert.equal(h.$('article-search').hidden, true);
+  assert.equal(h.$('article-list-heading').hidden, true);
+  assert.equal(h.$('no-results').hidden, false);
 
   await h.context.purchase();
   assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet, checkoutIndexGet]);
   assert.equal(h.$('purchase-action').textContent, 'Open articles');
   assert.equal(h.$('catalog-count').textContent, '1 article');
+  assert.equal(Boolean(h.statuses.at(-1).options.announceOnly), false);
+  assert.equal(h.$('article-search').hidden, false);
+  assert.equal(h.$('article-list-heading').hidden, false);
 });
 
 test('an owned checkout keeps the confirmed payment on scoped index failures and can recheck', async () => {
@@ -5253,6 +5260,8 @@ test('a saved search on a confirmed empty catalog shows availability without ano
   assert.equal(await h.context.loadSavedSearch(h.navigation.next(), 'alternator'), true);
   assert.equal(h.$('no-results').textContent, 'No articles are currently available for this vehicle.');
   assert.equal(h.$('completion-status').textContent, 'No articles are currently available for this vehicle.');
+  assert.equal(h.$('activity').hidden, true);
+  assert.equal(h.$('article-search').hidden, true);
   h.$('search').value = 'starter';
   h.$('search').events.input();
   await new Promise(setImmediate);
