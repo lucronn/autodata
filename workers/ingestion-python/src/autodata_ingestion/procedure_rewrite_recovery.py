@@ -28,6 +28,7 @@ FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD = "source-bound-first-draft-recover
 FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v8"
 FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD = "source-bound-first-draft-introduction-v1"
 FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD = "source-bound-first-draft-diagnostic-v1"
+FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD = "source-bound-positioned-figure-first-draft-v1"
 NEUTRAL_INTRODUCTION = "This article describes the service information that follows."
 REQUIRED_ACTION_WEAKENED = "REWRITE_REQUIRED_ACTION_WEAKENED"
 _TECHNICAL_AMBIGUITY = "REWRITE_TECHNICAL_AMBIGUOUS"
@@ -249,6 +250,7 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
                       FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD, FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD,
                       FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
                       FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD,
+                      FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD,
                       *BANKONE_ARCHIVE_STRUCTURE_VERSIONS):
             rewritten_paths = validation.report["changed_prose_slots"]
             auto.require_distinct_generated_introduction(source, document, rewritten_paths=rewritten_paths)
@@ -268,7 +270,7 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
         **({"introduction_replaced": introduction_replaced}
            if method in (FIRST_DRAFT_COOLING_RECOVERY_METHOD, FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
                          FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
-                         FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD) else {}),
+                         FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD, FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD) else {}),
         **({"bankone_structure_hash": digest_json(bankone_structure)} if bankone_structure is not None else {}),
     }, bankone_structure=bankone_structure)
 
@@ -443,10 +445,16 @@ def recover_structured_bankone_first_draft(
     )
 
 
-def recover_archived_first_draft(source, attempt, *, method, expected_hash, bankone_structure=None):
+def recover_archived_first_draft(source, attempt, *, method, expected_hash, bankone_structure=None, previous_source=None):
     """Check the recovered v1 digest and render the same reply under its new v3 owner."""
     guard = attempt["guard_version"]
-    if method in BANKONE_ARCHIVE_STRUCTURE_VERSIONS and bankone_structure is not None:
+    if method == FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD and previous_source is not None and bankone_structure is None:
+        from .positioned_figure_draft import recover_positioned_figure_draft
+
+        recovered = recover_positioned_figure_draft(previous_source, source, attempt)
+    elif previous_source is not None:
+        recovered = None
+    elif method in BANKONE_ARCHIVE_STRUCTURE_VERSIONS and bankone_structure is not None:
         recovered = recover_structured_bankone_first_draft(source, attempt, bankone_structure, method=method)
     elif method in FIRST_DRAFT_RECOVERY_METHODS and bankone_structure is None:
         recovered = recover_first_draft(source, attempt["response"], prompt_version=guard, method=method)
