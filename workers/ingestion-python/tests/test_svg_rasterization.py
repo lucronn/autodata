@@ -20,6 +20,37 @@ def test_actual_raster_has_original_aspect_and_pixels():
     assert rasterize_svg(SVG) == png
 
 
+def test_rdf_metadata_is_removed_without_changing_the_drawing():
+    from autodata_ingestion.svg_rasterization import _prepare_svg
+    metadata = (
+        b'<metadata><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"'
+        b' xmlns:dc="http://purl.org/dc/elements/1.1/">'
+        b'<rdf:Description rdf:about="file:///unavailable"><dc:format>image/svg+xml</dc:format>'
+        b'</rdf:Description></rdf:RDF></metadata>'
+    )
+    svg = SVG.replace(b'<rect', metadata + b'<rect')
+    normalized, _, _, _ = _prepare_svg(svg)
+    assert b'RDF' not in normalized
+    assert b'file:///unavailable' not in normalized
+    assert rasterize_svg(svg) == rasterize_svg(SVG)
+
+
+def test_removed_metadata_still_counts_toward_complexity_limit():
+    metadata = b'<metadata>' + b'<rdf:RDF xmlns:rdf="urn:metadata">' * 65 + b'</rdf:RDF>' * 65 + b'</metadata>'
+    svg = SVG.replace(b'<rect', metadata + b'<rect')
+    with pytest.raises(SVGUnavailable, match="^SVG_COMPLEXITY_LIMIT$"):
+        _validated_dimensions(svg)
+
+
+def test_foreign_nodes_outside_metadata_remain_unsupported():
+    svg = SVG.replace(
+        b'<rect',
+        b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/><rect',
+    )
+    with pytest.raises(SVGUnavailable, match="^UNSUPPORTED_SVG_CONTENT$"):
+        _validated_dimensions(svg)
+
+
 def test_large_viewbox_is_bounded_without_changing_aspect():
     svg = SVG.replace(b'width="40" height="20"', b'viewBox="0 0 10000 5000"', 1)
     png = rasterize_svg(svg)
