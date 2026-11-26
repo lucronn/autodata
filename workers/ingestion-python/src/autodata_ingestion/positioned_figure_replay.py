@@ -9,11 +9,12 @@ from psycopg.rows import dict_row
 
 from .article_document import validate_ordered_document
 from .article_lifecycle_store import _remap_snapshot_references
-from .article_lifecycle_types import LEADING_DECIMAL_LAYOUT
+from .article_lifecycle_types import CapturedSource, LEADING_DECIMAL_LAYOUT
 from .positioned_figure import FIGURE_LABEL_LAYOUT
 from .source_article_capture import WORKSHOP_CAPTURE_OPTIONS, capture_source_article, snapshot_id
 from .source_media_replay import (
-    _OfflineConnector, _VerifyOnlySink, _asset_inventory, _read_objects, _replay_fingerprint,
+    _OfflineConnector, _VerifyOnlySink, _asset_inventory, _context, _read_objects, _replay_fingerprint,
+    _source_replay_row,
     load_media_replay_binding, media_replay_document_hash,
 )
 
@@ -38,6 +39,23 @@ def validate_positioned_figure_replay(binding, captured):
             or _asset_inventory(captured.source_images, provenance) != binding._source_assets
             or validate_ordered_document(captured.source_document, strict=True)):
         raise ValueError("SOURCE_FIGURE_LABEL_REPLAY_MISMATCH")
+
+
+def verify_stored_positioned_figure_replay(cur, previous_id, source_id, *, lock):
+    binding = load_media_replay_binding(cur, previous_id, lock=lock, positioned_labels=True)
+    row = _source_replay_row(cur, source_id)
+    if (row is None or row["canonical_article_id"] != binding.canonical_article_id
+            or row["projection_version"] != "source-projection-v5"):
+        raise ValueError("SOURCE_FIGURE_LABEL_REPLAY_MISMATCH")
+    captured = CapturedSource(
+        _context(row), row["source_fingerprint"], row["body_source_snapshot_id"],
+        tuple(row["resource_provenance"]), row["resource_manifest"], row["resource_provenance"],
+        row["source_document"], row["source_images"], row["source_body"], row["source_steps"],
+        row["evidence_manifest"], row["projection_status"], row["captured_at"],
+        projection_version=row["projection_version"],
+    )
+    validate_positioned_figure_replay(binding, captured)
+    return binding, captured, (row["source_observation_id"], row["source_fetch_job_id"], row["request_generation"])
 
 
 def _replay(repo, source_revision_id, object_store, deadline):

@@ -794,7 +794,7 @@ _CORRECTION_EVIDENCE_INVALID = "REWRITE_CORRECTION_EVIDENCE_INVALID"
 _CORRECTION_SERVER = "server-source-bound-correction"
 
 
-def _bound_correction_draft(cur, job, document, *, lock_bankone_archive=False):
+def _bound_correction_draft(cur, job, document, *, lock_archive=False):
     from .procedure_rewrite_auto import _keeps_authored_note_labels
     from .procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
     from .source_job_persistence import source_bound_correction_prior_attempt
@@ -815,16 +815,23 @@ def _bound_correction_draft(cur, job, document, *, lock_bankone_archive=False):
     method = binding.get("correction_method")
     budget = binding["model_call_budget"]
     bankone_archive = None
+    projected_archive = False
     if method == ARCHIVED_FIRST_DRAFT_METHOD:
         from .procedure_rewrite_recovery import (
             ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_ARCHIVE_STRUCTURE_VERSIONS,
+            FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD,
         )
 
         replay = binding.get("archived_recovery")
         if (budget != 0 or not first_draft or not isinstance(replay, dict)
-            or replay.get("method") not in ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS):
+            or replay.get("method") not in (
+                *ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD,
+            )):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
         fields = {"method", "output_hash"}
+        projected_archive = replay["method"] == FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD
+        if projected_archive:
+            fields.add("projected_from_job_id")
         if structure_version := BANKONE_ARCHIVE_STRUCTURE_VERSIONS.get(replay["method"]):
             fields.add("bankone_structure")
             bankone_archive = replay.get("bankone_structure")
@@ -852,7 +859,7 @@ def _bound_correction_draft(cur, job, document, *, lock_bankone_archive=False):
         or any(prior[field] != job[field] for field in (
             "canonical_article_id", "canonical_vehicle_id", "source_vehicle_ref",
             "source_article_ref", "provider_slug", "source_revision_id", "normalization_version",
-        )) or prior["checkpoint"].get("normalized_document") != document):
+        )) or (not projected_archive and prior["checkpoint"].get("normalized_document") != document)):
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
     source = cur.execute("""SELECT source_fingerprint,projection_version
         FROM canonical_article_source_revisions WHERE source_revision_id=%s AND canonical_article_id=%s""",
@@ -860,28 +867,45 @@ def _bound_correction_draft(cur, job, document, *, lock_bankone_archive=False):
     if source is None:
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
     key_inputs = (job["canonical_article_id"], source["source_fingerprint"], job["normalization_version"])
-    for owner in (prior, job):
+    for owner in ((job,) if projected_archive else (prior, job)):
         if owner["transformation_key"] != transformation_key(
             *key_inputs, owner["rewrite_profile_version"], projection_version=source["projection_version"],
         ):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
-    attempt = source_bound_correction_prior_attempt(cur, prior, first_draft=first_draft)
+    previous_source = None
+    if projected_archive:
+        from .source_job_persistence import load_projected_first_draft
+
+        try:
+            archived_id = UUID(replay["projected_from_job_id"])
+        except (KeyError, AttributeError, TypeError, ValueError):
+            raise ValueError(_CORRECTION_EVIDENCE_INVALID) from None
+        projected, previous_source, attempt, observation = load_projected_first_draft(
+            cur, prior, archived_id, lock=lock_archive,
+        )
+        if projected != document:
+            raise ValueError(_CORRECTION_EVIDENCE_INVALID)
+        observation_id = observation[0]
+    else:
+        attempt = source_bound_correction_prior_attempt(cur, prior, first_draft=first_draft)
+        observation_id = attempt.get("observation_id")
     if (binding.get("prior_attempt_id") != str(attempt["rewrite_attempt_id"])
         or binding.get("prior_response_hash") != attempt["response_hash"]
-        or (first_draft and binding["first_draft_observation_id"] != str(attempt["observation_id"]))):
+        or (first_draft and binding["first_draft_observation_id"] != str(observation_id))):
         raise ValueError(_CORRECTION_EVIDENCE_INVALID)
     if bankone_archive is not None:
         from .bankone_first_draft_structure import validate_bankone_structure
         from .source_job_persistence import bankone_archive_body_binding
 
         original = bankone_archive_body_binding(
-            cur, job["source_revision_id"], attempt["observation_id"], lock=lock_bankone_archive,
+            cur, job["source_revision_id"], attempt["observation_id"], lock=lock_archive,
         )
         if (bankone_archive["observation_id"] != str(attempt["observation_id"])
             or bankone_archive["body_sha256"] != original.digest):
             raise ValueError(_CORRECTION_EVIDENCE_INVALID)
         validate_bankone_structure(document, bankone_archive["proof"], expected_version=structure_version)
-    return {**binding, "preserve_notes": _keeps_authored_note_labels(attempt["guard_version"])}, attempt
+    return {**binding, "preserve_notes": _keeps_authored_note_labels(attempt["guard_version"]),
+            "previous_source": previous_source}, attempt
 
 
 def _validate_correction_rounds(rounds, *, limit, model, token, input_hash, revision):
@@ -952,6 +976,7 @@ def resolve_source_bound_correction(cur, job, candidate, *, require_current=Fals
         result = recover_archived_first_draft(
             source, prior_attempt, method=archive["method"], expected_hash=archive["output_hash"],
             bankone_structure=archive.get("bankone_structure", {}).get("proof"),
+            previous_source=binding["previous_source"],
         )
     elif method == scheduled_method:
         result = replay_retained_correction(
@@ -1046,11 +1071,12 @@ def _publish_source_bound_first_draft(cur, job, document, *, hooks=None):
          job_id)).fetchone()
     if job is None:
         raise LeaseLost("archived first draft claim rejected")
-    binding, prior_attempt = _bound_correction_draft(cur, job, document, lock_bankone_archive=True)
+    binding, prior_attempt = _bound_correction_draft(cur, job, document, lock_archive=True)
     archive = binding["archived_recovery"]
     result = recover_archived_first_draft(
         document, prior_attempt, method=archive["method"], expected_hash=archive["output_hash"],
         bankone_structure=archive.get("bankone_structure", {}).get("proof"),
+        previous_source=binding["previous_source"],
     )
     revision, validation_hash = _stage_correction_candidate(
         cur, job, document, result, model=_CORRECTION_SERVER, token=job["lease_token"], attempts=[],

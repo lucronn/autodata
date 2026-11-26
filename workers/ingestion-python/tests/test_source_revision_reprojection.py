@@ -430,14 +430,13 @@ def media_preview_args(runtime, old_id):
     }
 
 
-def test_positioned_figure_reprojection_keeps_the_source_readable_and_is_idempotent(runtime, monkeypatch):
+def _store_legacy_positioned_figure_source(runtime, monkeypatch, prose, profile, model=None):
     from io import BytesIO
     from PIL import Image
     from autodata_ingestion import source_article_capture as capture_module
     from autodata_ingestion.article_lifecycle import run_article_worker_once
-    from autodata_ingestion.article_lifecycle_types import digest_json
-    from autodata_ingestion.positioned_figure_replay import preview_positioned_figure_replay
-    from autodata_ingestion.source_revision_reprojection import apply_media_reprojection
+    from autodata_ingestion.article_lifecycle_types import NORMALIZATION_VERSION
+    from autodata_ingestion.source_job_persistence import ensure_article_job
     from test_first_draft_recovery_worker import scope_fixture_article
     from test_positioned_figure_labels import FRAME
 
@@ -448,11 +447,11 @@ def test_positioned_figure_reprojection_keeps_the_source_readable_and_is_idempot
             JOIN canonical_articles b USING(vehicle_configuration_id)
             WHERE a.canonical_article_id=%s AND b.provider_slug='banktwo'
             """, (runtime.article_id,)).fetchone()["canonical_article_id"]
-        conn.execute("UPDATE canonical_articles SET target_rewrite_profile_version='technical-prose-v1' WHERE canonical_article_id=%s",
-                     (banktwo,))
+        conn.execute("UPDATE canonical_articles SET target_rewrite_profile_version=%s WHERE canonical_article_id=%s",
+                     (profile, banktwo))
     runtime.articles["banktwo"] = runtime.article_id = banktwo
     server = runtime.servers["banktwo"]
-    markup = "<p>Inspect the fixture.</p>" + FRAME.replace('src="/fixture.png"', 'data-resource-ref="figure"')
+    markup = prose.replace("{figure}", FRAME.replace('src="/fixture.png"', 'data-resource-ref="figure"'))
     server.body(markup.encode(), "text/html", assets=["figure"])
     image = BytesIO()
     Image.new("RGB", (24, 12), "green").save(image, format="PNG")
@@ -462,18 +461,34 @@ def test_positioned_figure_reprojection_keeps_the_source_readable_and_is_idempot
         old.setattr(capture_module, "capture_source_article", lambda *args, **kwargs: capture(
             *args, **{**kwargs, "keep_positioned_figure_labels": False},
         ))
-        runtime.ensure()
+        ensure_article_job(runtime.repo, banktwo, normalization_version=NORMALIZATION_VERSION,
+                           rewrite_profile_version=profile)
         assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
-                                       object_store=runtime.objects, model_client=None)
-    source = runtime.read_current()
-    old_id = source["source_revision_id"]
-    assert source["content_origin"] == "source" and source["canonical_revision_id"] is None
+                                       object_store=runtime.objects, model_client=model)
+    return banktwo, runtime.read_current()
+
+
+def _positioned_figure_reprojection(runtime, old_id):
+    from autodata_ingestion.article_lifecycle_types import digest_json
+    from autodata_ingestion.positioned_figure_replay import preview_positioned_figure_replay
+
     binding, projected = preview_positioned_figure_replay(runtime.repo, old_id, object_store=runtime.objects)
-    arguments = dict(
+    return projected, dict(
         object_store=runtime.objects, positioned_labels=True, expected_observation_id=binding.source_observation_id,
         expected_fingerprint=binding.source_fingerprint, expected_body_sha256=binding.body_sha256,
         expected_document_sha256=digest_json(projected.source_document), actor="fixture", reason="restore labels",
     )
+
+
+def test_positioned_figure_reprojection_keeps_the_source_readable_and_is_idempotent(runtime, monkeypatch):
+    from autodata_ingestion.source_revision_reprojection import apply_media_reprojection
+
+    banktwo, source = _store_legacy_positioned_figure_source(
+        runtime, monkeypatch, "<p>Inspect the fixture.</p>{figure}", "technical-prose-v1",
+    )
+    old_id = source["source_revision_id"]
+    assert source["content_origin"] == "source" and source["canonical_revision_id"] is None
+    projected, arguments = _positioned_figure_reprojection(runtime, old_id)
     runtime.reset_counters()
     before = all_rows(runtime.repo)
     with pytest.raises(ValueError, match="PREVIEW_BINDING_MISMATCH"):
@@ -493,6 +508,97 @@ def test_positioned_figure_reprojection_keeps_the_source_readable_and_is_idempot
     for table in ("source_snapshots", "source_artifacts", "canonical_article_revisions", "publication_events"):
         assert before[table] == after[table]
     assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}
+
+
+def test_archived_rewrite_publishes_against_the_reprojected_figure_source(runtime, monkeypatch):
+    from uuid import UUID
+
+    from autodata_ingestion.article_lifecycle_store import automatic_candidate_validation
+    from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE
+    from autodata_ingestion.positioned_figure_draft import METHOD, recover_positioned_figure_draft
+    from autodata_ingestion.source_job_persistence import load_projected_first_draft, publish_source_bound_first_draft
+    from autodata_ingestion.source_revision_reprojection import apply_media_reprojection
+    from test_source_bound_correction_worker import attempt_rows
+
+    instruction = (
+        "Install the inlet tube, and install the front access shield; refer to the appropriate Example Service Manual."
+    )
+    measurement = "Tube length: 18 mm."
+    description = "The protective cover prevents dirt from entering the connector."
+
+    class Model:
+        _model = "fixture"
+
+        def complete_json(self, prompt):
+            edits = {
+                instruction: "Put the inlet tube and front access shield in place, consulting the appropriate Example Service Manual.",
+                description: "Dirt stays out of the connector because of the protective cover.",
+            }
+            return {"introduction": "The tube has a length of 18 mm.", "replacements": [
+                {"block_id": slot["block_id"], "path": slot["path"], "text": edits.get(slot["text"], slot["text"]),
+                 "action": slot["required_action"], "reason": "Preserve the exact measurement." if slot["text"] == measurement else ""}
+                for slot in json.loads(prompt)["slots"]
+            ]}
+
+    banktwo, source = _store_legacy_positioned_figure_source(
+        runtime, monkeypatch,
+        f"<p>{description}</p>{{figure}}<ol><li>{instruction}</li></ol><p>{measurement}</p>",
+        AUTOMATIC_REWRITE_PROFILE, model=Model(),
+    )
+    assert source["content_origin"] == "source" and source["processing_error_code"] == "REWRITE_UNCHANGED"
+    old_job, old_source = source["job_id"], source["source_revision_id"]
+    [archived] = attempt_rows(runtime, old_job)
+    assert archived["status"] == "failed"
+    projected, reprojection = _positioned_figure_reprojection(runtime, old_source)
+    current = apply_media_reprojection(runtime.repo, banktwo, old_source, **reprojection)
+    source_only = runtime.read_current()
+    assert source_only["content_origin"] == "source" and source_only["document"] == projected.source_document
+    with runtime.repo.connect() as conn, conn.cursor() as cursor:
+        job = cursor.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",
+                             (UUID(current["job_id"]),)).fetchone()
+        document, previous, attempt, _ = load_projected_first_draft(cursor, job, old_job)
+    candidate = recover_positioned_figure_draft(previous, document, attempt)
+    assert candidate.evidence["removed_label_slots"] == 3
+    assert len(candidate.evidence["corrected_paths"]) == 1
+    assert "The front access shield must also be installed." in candidate.response["replacements"][1]["text"]
+    arguments = dict(
+        expected_job_id=current["job_id"], expected_source_revision_id=current["source_revision_id"],
+        recovery_method=METHOD, expected_recovery_hash=candidate.evidence["output_hash"],
+        projected_from_job_id=old_job, actor="fixture", reason="Restore archived prose for the repositioned diagrams.",
+    )
+    runtime.reset_counters()
+    before = all_rows(runtime.repo)
+    for override in ({"projected_from_job_id": uuid4()}, {"expected_recovery_hash": "0" * 64}):
+        with pytest.raises(ValueError, match="FIRST_DRAFT_ARCHIVE_RECOVERY_MISMATCH"):
+            publish_source_bound_first_draft(runtime.repo, banktwo, **{**arguments, **override})
+    assert all_rows(runtime.repo) == before
+
+    def interrupt(phase):
+        assert phase == "inside_publication"
+        raise RuntimeError("fixture publication interrupted")
+
+    with pytest.raises(RuntimeError, match="fixture publication interrupted"):
+        publish_source_bound_first_draft(runtime.repo, banktwo, **arguments, hooks=interrupt)
+    assert all_rows(runtime.repo) == before
+    assert runtime.read_current() == source_only
+
+    result = publish_source_bound_first_draft(runtime.repo, banktwo, **arguments)
+    after = all_rows(runtime.repo)
+    replay = publish_source_bound_first_draft(runtime.repo, banktwo, **arguments)
+    assert result.created and not replay.created and replay.published_revision_id == result.published_revision_id
+    assert all_rows(runtime.repo) == after
+    assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}
+    assert attempt_rows(runtime, old_job) == [archived] and attempt_rows(runtime, result.job_id) == []
+    canonical = runtime.read_current()
+    assert canonical["content_origin"] == "canonical" and str(canonical["source_revision_id"]) == current["source_revision_id"]
+    assert "The front access shield must also be installed." in canonical["body"]
+    layouts = lambda state: [block["figure_layout"] for block in state["document"]["blocks"] if block.get("figure_layout")]
+    assert layouts(canonical) == layouts(source_only) and layouts(source_only)
+    with runtime.repo.connect() as conn, conn.cursor() as cursor:
+        published = cursor.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s",
+                                   (result.published_revision_id,)).fetchone()
+        job = cursor.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (result.job_id,)).fetchone()
+        assert automatic_candidate_validation(cursor, job, published, require_current=True).report == published["validation_report"]
 
 
 @pytest.mark.parametrize(("provider", "version"), [("bankone", "source-projection-v1"),

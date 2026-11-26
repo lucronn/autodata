@@ -534,18 +534,73 @@ def read_bankone_archive_structure(repo, canonical_id, prior_id, source_id, *, o
     )
 
 
+def load_projected_first_draft(cur, reprojection, archived_job_id, *, lock=False):
+    """Find the exact older draft and both observations of the retained body."""
+    from .positioned_figure_replay import verify_stored_positioned_figure_replay
+
+    mismatch = "FIRST_DRAFT_ARCHIVE_RECOVERY_MISMATCH"
+    checkpoint = reprojection["checkpoint"]
+    if (reprojection["provider_slug"] != "banktwo" or reprojection["job_kind"] != "article"
+            or reprojection["rewrite_profile_version"] != AUTOMATIC_REWRITE_PROFILE
+            or reprojection["status"] != "needs_review" or reprojection["phase"] != "completed"
+            or reprojection["error_code"] != "SOURCE_ONLY_REPROJECTION" or reprojection["retryable"]
+            or reprojection["lease_owner"] is not None or reprojection["next_attempt_at"] is not None
+            or reprojection["transformation_key"] is not None
+            or checkpoint.get("source_only_reprojection") is not True
+            or checkpoint.get("positioned_figure_reprojection") is not True):
+        raise ValueError(mismatch)
+    archived = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",
+                           (archived_job_id,)).fetchone()
+    if (archived is None or not archived["source_revision_id"]
+            or archived["source_revision_id"] == reprojection["source_revision_id"]
+            or checkpoint.get("original_source_revision_id") != str(archived["source_revision_id"])
+            or archived["request_generation"] + 1 != reprojection["request_generation"]
+            or any(archived[field] != reprojection[field] for field in (
+                "canonical_article_id", "canonical_vehicle_id", "source_article_ref",
+                "source_vehicle_ref", "provider_slug", "normalization_version", "rewrite_profile_version",
+            ))):
+        raise ValueError(mismatch)
+    attempt = source_bound_correction_prior_attempt(cur, archived, first_draft=True)
+    old, projected, observation = verify_stored_positioned_figure_replay(
+        cur, archived["source_revision_id"], reprojection["source_revision_id"], lock=lock,
+    )
+    if (old.canonical_article_id != reprojection["canonical_article_id"]
+            or old.source_observation_id != attempt["observation_id"]
+            or checkpoint.get("original_source_observation_id") != str(old.source_observation_id)
+            or checkpoint.get("expected_fingerprint") != old.source_fingerprint
+            or checkpoint.get("expected_body_sha256") != old.body_sha256
+            or checkpoint.get("projection_document_hash") != digest_json(projected.source_document)
+            or archived["checkpoint"].get("normalized_document") != old.source_document
+            or archived["transformation_key"] != transformation_key(
+                archived["canonical_article_id"], old.source_fingerprint, archived["normalization_version"],
+                archived["rewrite_profile_version"], projection_version=old.projection_version,
+            )
+            or observation[1:] != (reprojection["source_fetch_job_id"], reprojection["request_generation"])
+            or cur.execute("SELECT 1 FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s LIMIT 1",
+                           (reprojection["source_fetch_job_id"],)).fetchone()):
+        raise ValueError(mismatch)
+    return projected.source_document, old.source_document, attempt, observation
+
+
 def publish_source_bound_first_draft(
     repo, canonical_article_id, *, expected_job_id, expected_source_revision_id, recovery_method,
-    expected_recovery_hash, actor, reason, hooks=None, object_store=None,
+    expected_recovery_hash, actor, reason, hooks=None, object_store=None, projected_from_job_id=None,
 ):
     """Publish a checked first-draft recovery from its saved response in one transaction."""
-    from .procedure_rewrite_recovery import ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_ARCHIVE_STRUCTURE_VERSIONS
+    from .procedure_rewrite_recovery import (
+        ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS, BANKONE_ARCHIVE_STRUCTURE_VERSIONS,
+        FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD,
+    )
 
-    if (recovery_method not in ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS
+    projected = recovery_method == FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD
+    if ((projected != (projected_from_job_id is not None))
+        or (not projected and recovery_method not in ARCHIVED_FIRST_DRAFT_RECOVERY_METHODS)
         or not isinstance(expected_recovery_hash, str)
         or not re.fullmatch(r"[a-f0-9]{64}", expected_recovery_hash)):
         raise ValueError("FIRST_DRAFT_ARCHIVE_RECOVERY_MISMATCH")
     archive = {"method": recovery_method, "output_hash": expected_recovery_hash}
+    if projected:
+        archive["projected_from_job_id"] = str(UUID(str(projected_from_job_id)))
     if structure_version := BANKONE_ARCHIVE_STRUCTURE_VERSIONS.get(recovery_method):
         if object_store is None:
             raise ValueError("FIRST_DRAFT_ARCHIVE_BODY_UNAVAILABLE")
@@ -600,10 +655,14 @@ def _schedule_source_bound_job(
             raise ValueError("SOURCE_BOUND_REWRITE_PRIOR_JOB_CHANGED")
         source_only = ("source_only_reprojection" in prior["checkpoint"]
                        or prior["error_code"] == "SOURCE_ONLY_REPROJECTION")
+        projected_archive = archived_recovery and archived_recovery.get("projected_from_job_id")
+        if projected_archive and not source_only:
+            raise ValueError("SOURCE_BOUND_REWRITE_PRIOR_JOB_CHANGED")
         predecessor_observation = None
         if source_only:
             # A source-only job owns an observation but never a transformation.
-            if (prior_profile != AUTOMATIC_REWRITE_PROFILE or next_profile != SOURCE_BOUND_REWRITE_PROFILE
+            expected_next_profile = SOURCE_BOUND_CORRECTION_PROFILE if projected_archive else SOURCE_BOUND_REWRITE_PROFILE
+            if (prior_profile != AUTOMATIC_REWRITE_PROFILE or next_profile != expected_next_profile
                 or prior["checkpoint"].get("source_only_reprojection") is not True
                 or prior["status"] != "needs_review" or prior["phase"] != "completed"
                 or prior["error_code"] != "SOURCE_ONLY_REPROJECTION"
@@ -621,7 +680,8 @@ def _schedule_source_bound_job(
             if observation is None:
                 raise ValueError("SOURCE_BOUND_REWRITE_PRIOR_JOB_CHANGED")
             observation_id = observation["source_observation_id"]
-            binding["prior_source_observation_id"] = str(observation_id)
+            if not projected_archive:
+                binding["prior_source_observation_id"] = str(observation_id)
             predecessor_observation = (observation_id, expected_job_id, prior["request_generation"])
         if not source_bound_rewrite_source_allowed(
             cur, article, expected_source_revision_id, predecessor_observation=predecessor_observation,
@@ -637,6 +697,7 @@ def _schedule_source_bound_job(
             *key_inputs, prior_profile, projection_version=projection,
         ):
             raise ValueError("SOURCE_BOUND_REWRITE_PRIOR_JOB_CHANGED")
+        projected_document = None
         if model_call_budget is not None:
             if by_sentence:
                 from .article_lifecycle_store import _require_source_bound_rewrite_rights
@@ -648,13 +709,20 @@ def _schedule_source_bound_job(
 
                 binding["correction_method"] = ARCHIVED_FIRST_DRAFT_METHOD
                 binding["archived_recovery"] = archived_recovery
-            attempt = source_bound_correction_prior_attempt(cur, prior, first_draft=first_draft)
+            if projected_archive:
+                projected_document, _, attempt, observation = load_projected_first_draft(
+                    cur, prior, UUID(projected_archive), lock=True,
+                )
+                if observation != predecessor_observation:
+                    raise ValueError("FIRST_DRAFT_ARCHIVE_RECOVERY_MISMATCH")
+            else:
+                attempt = source_bound_correction_prior_attempt(cur, prior, first_draft=first_draft)
             binding.update(
                 version=2, prior_attempt_id=str(attempt["rewrite_attempt_id"]),
                 prior_response_hash=attempt["response_hash"], model_call_budget=model_call_budget,
             )
             if first_draft:
-                observation_id = attempt["observation_id"]
+                observation_id = observation[0] if projected_archive else attempt["observation_id"]
                 predecessor_observation = (observation_id, expected_job_id, prior["request_generation"])
                 binding["first_draft_observation_id"] = str(observation_id)
         key = transformation_key(*key_inputs, next_profile, projection_version=projection)
@@ -719,7 +787,8 @@ def _schedule_source_bound_job(
             from .article_lifecycle_store import _publish_source_bound_first_draft
 
             completed = _publish_source_bound_first_draft(
-                cur, job, prior["checkpoint"]["normalized_document"], hooks=hooks,
+                cur, job, projected_document if projected_archive else prior["checkpoint"]["normalized_document"],
+                hooks=hooks,
             )
             return _result(cur, article, completed, True)
         cur.execute("SELECT pg_notify(%s, '')", (ARTICLE_JOB_CHANNEL,))
