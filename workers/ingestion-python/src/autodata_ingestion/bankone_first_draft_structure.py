@@ -24,12 +24,23 @@ _SINGLE_LINK_DIRECTIVE = re.compile(
     rf"(?P<part>{_PART}) ?(?P<marker>{_REFERENCE})\s*»\s*(?P<verb>Remove|Install)"
     rf"—\s*(?P<title>{_PART} Replacement)", re.I,
 )
+_REFER_TO_DIRECTIVE = re.compile(
+    r"(?P<verb>Install|Fill) the (?P<part>[A-Za-z][A-Za-z -]{1,95})\. Refer to "
+    r"(?P<title>[A-Z][A-Za-z -]{1,125})\.",
+)
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _VOID_TAGS = frozenset("area base br col embed hr img input link meta param source track wbr".split())
 _NONDISPLAY_TAGS = frozenset({"iframe", "noscript", "object", "script", "style", "template"})
 _HIDDEN_STYLE = re.compile(r"(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse))\b", re.I)
 LINKED_STRUCTURE_VERSION = 2
 LINKED_STRUCTURE_KINDS = frozenset({"procedure_section", "single_link_directive"})
+REFERENCED_STRUCTURE_VERSION = 3
+REFERENCED_DIRECTIVE = "referenced_directive"
+STRUCTURE_LINK_KINDS = {
+    1: frozenset(),
+    LINKED_STRUCTURE_VERSION: LINKED_STRUCTURE_KINDS,
+    REFERENCED_STRUCTURE_VERSION: LINKED_STRUCTURE_KINDS | {REFERENCED_DIRECTIVE},
+}
 
 
 @dataclass(frozen=True)
@@ -51,6 +62,10 @@ def bankone_linked_directive(text):
             and match["title"].casefold() == f'{match["part"]} Replacement'.casefold()):
         return match
     return None
+
+
+def bankone_referenced_directive(text):
+    return _REFER_TO_DIRECTIVE.fullmatch(text)
 
 
 def bankone_alternatives(text: str) -> BankoneAlternatives | None:
@@ -292,18 +307,39 @@ def _authored_procedure_section(markup, text):
     return bool(following and following[0].tag == "dd" and not following[0].hidden and markup.label(following[0]))
 
 
-def _single_link_reference_hash(markup, text, directive):
+def _single_list_link(markup, text):
     item = markup.unique_span("li", text)
     if item is None or item.parent.tag != "ol" or len(item.children) != 1:
         return None
     [link] = item.children
-    if (link.hidden or link.tag != "mtr-doc-link" or link.children or not link.reference
-            or markup.label(link) != directive["title"] or markup.text[link.end:item.end].strip()):
+    if link.hidden or link.tag != "mtr-doc-link" or link.children or not link.reference:
+        return None
+    return item, link
+
+
+def _single_link_reference_hash(markup, text, directive):
+    if not (authored := _single_list_link(markup, text)):
+        return None
+    item, link = authored
+    if markup.label(link) != directive["title"] or markup.text[link.end:item.end].strip():
         return None
     return sha256(link.reference.encode()).hexdigest()
 
 
-def _linked_slots(source, prose, markup):
+def _referenced_directive_hash(markup, text, directive):
+    if not (authored := _single_list_link(markup, text)):
+        return None
+    item, link = authored
+    if _compact(markup.text[item.start:link.start]) != text[:directive.start("title")].rstrip():
+        return None
+    label = markup.label(link)
+    suffix = _compact(markup.text[link.end:item.end])
+    if (label, suffix) not in ((directive["title"], "."), (directive["title"] + ".", "")):
+        return None
+    return sha256(link.reference.encode()).hexdigest()
+
+
+def _linked_slots(source, prose, markup, version):
     duplicates = Counter(_compact(slot["text"]) for slot in prose.values())
     for path, slot in prose.items():
         text = slot["text"]
@@ -316,12 +352,17 @@ def _linked_slots(source, prose, markup):
             if reference_hash := _single_link_reference_hash(markup, text, directive):
                 yield path, {"block_id": slot["block_id"], "kind": "single_link_directive",
                              "reference_hash": reference_hash}
+        elif (version == REFERENCED_STRUCTURE_VERSION and _ordered_list_item(source, path)
+              and (reference := bankone_referenced_directive(text))):
+            if reference_hash := _referenced_directive_hash(markup, text, reference):
+                yield path, {"block_id": slot["block_id"], "kind": REFERENCED_DIRECTIVE,
+                             "reference_hash": reference_hash}
 
 
 def extract_bankone_structure(source: dict, html: bytes, *, version: int = 1) -> dict:
     """Build an exact, JSON-safe proof from a caller-verified retained body."""
     prose = _prose_slots(source)
-    if not isinstance(html, bytes) or type(version) is not int or version not in (1, LINKED_STRUCTURE_VERSION):
+    if not isinstance(html, bytes) or type(version) is not int or version not in STRUCTURE_LINK_KINDS:
         raise ValueError(_INVALID)
     try:
         markup = _Markup(html.decode("utf-8-sig"))
@@ -344,9 +385,9 @@ def extract_bankone_structure(source: dict, html: bytes, *, version: int = 1) ->
             if _authored_tool_label(markup, value, identifier):
                 slots[path] = {"block_id": block_id, "kind": "tool_label"}
     proof = {"source_hash": digest_json(source), "slots": slots}
-    if version == LINKED_STRUCTURE_VERSION:
+    if STRUCTURE_LINK_KINDS[version]:
         proof["version"] = version
-        slots.update(_linked_slots(source, prose, markup))
+        slots.update(_linked_slots(source, prose, markup, version))
     return proof
 
 
@@ -356,13 +397,16 @@ def validate_bankone_structure(source, proof, *, expected_version=None) -> None:
     if not isinstance(proof, dict):
         raise ValueError(_INVALID)
     version = proof.get("version", 1)
-    fields = {"source_hash", "slots", "version"} if version == LINKED_STRUCTURE_VERSION else {"source_hash", "slots"}
-    if (type(version) is not int or version not in (1, LINKED_STRUCTURE_VERSION)
-            or (expected_version is not None and version != expected_version)
-            or set(proof) != fields or proof["source_hash"] != digest_json(source)
+    if (type(version) is not int or version not in STRUCTURE_LINK_KINDS
+            or (expected_version is not None and version != expected_version)):
+        raise ValueError(_INVALID)
+    linked_kinds = STRUCTURE_LINK_KINDS[version]
+    fields = {"source_hash", "slots", "version"} if linked_kinds else {"source_hash", "slots"}
+    if (
+            set(proof) != fields or proof["source_hash"] != digest_json(source)
             or not isinstance(proof["slots"], dict)):
         raise ValueError(_INVALID)
-    counts = Counter(_compact(slot["text"]) for slot in prose.values()) if version == LINKED_STRUCTURE_VERSION else {}
+    counts = Counter(_compact(slot["text"]) for slot in prose.values()) if linked_kinds else {}
     for path, entry in proof["slots"].items():
         slot = prose.get(path)
         if slot is None or not isinstance(entry, dict) or entry.get("block_id") != slot["block_id"]:
@@ -379,7 +423,7 @@ def validate_bankone_structure(source, proof, *, expected_version=None) -> None:
                     or not all(isinstance(digest, str) and _SHA256.fullmatch(digest) for digest in hashes)
                     or len(set(hashes)) != len(hashes)):
                 raise ValueError(_INVALID)
-        elif version == LINKED_STRUCTURE_VERSION and kind in LINKED_STRUCTURE_KINDS:
+        elif kind in linked_kinds:
             if counts[_compact(value)] != 1:
                 raise ValueError(_INVALID)
             if kind == "procedure_section":
@@ -388,8 +432,9 @@ def validate_bankone_structure(source, proof, *, expected_version=None) -> None:
                     raise ValueError(_INVALID)
             else:
                 reference_hash = entry.get("reference_hash")
+                directive = bankone_referenced_directive if kind == REFERENCED_DIRECTIVE else bankone_linked_directive
                 if (set(entry) != {"block_id", "kind", "reference_hash"} or not _ordered_list_item(source, path)
-                        or bankone_linked_directive(value) is None or not isinstance(reference_hash, str)
+                        or directive(value) is None or not isinstance(reference_hash, str)
                         or not _SHA256.fullmatch(reference_hash)):
                     raise ValueError(_INVALID)
         elif (set(entry) != {"block_id", "kind"} or not _standalone_paragraph(source, path)

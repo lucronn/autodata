@@ -1556,7 +1556,7 @@ def store_source_preserving_candidate(repo,lease):
 
 
 def _read_automatic_bankone_structure(repo, lease, result, read_retained_object):
-    from .bankone_first_draft_structure import LINKED_STRUCTURE_VERSION
+    from .bankone_first_draft_structure import REFERENCED_STRUCTURE_VERSION
     from .source_job_persistence import bankone_first_draft_body_binding, load_bankone_structure
 
     try:
@@ -1576,16 +1576,19 @@ def _read_automatic_bankone_structure(repo, lease, result, read_retained_object)
                 cur, job, job["dispatched_at"], require_current=True,
             )
         return load_bankone_structure(
-            read_retained_object, body, result.document, observation_id, structure_version=LINKED_STRUCTURE_VERSION,
+            read_retained_object, body, result.document, observation_id, structure_version=REFERENCED_STRUCTURE_VERSION,
         )
     except ValueError:
         return None
 
 
 def _recover_automatic_bankone_draft(cur, job, attempt, result, prompt_version, binding):
-    from .bankone_first_draft_structure import LINKED_STRUCTURE_KINDS
+    from .bankone_first_draft_structure import (
+        LINKED_STRUCTURE_KINDS, LINKED_STRUCTURE_VERSION, REFERENCED_DIRECTIVE,
+    )
     from .procedure_rewrite_recovery import (
-        BANKONE_LINKED_RECOVERY_METHOD, BANKONE_STRUCTURAL_RECOVERY_METHOD, recover_structured_bankone_first_draft,
+        BANKONE_LINKED_RECOVERY_METHOD, BANKONE_REFERENCED_RECOVERY_METHOD, BANKONE_STRUCTURAL_RECOVERY_METHOD,
+        recover_structured_bankone_first_draft,
     )
     from .source_job_persistence import bankone_first_draft_body_binding
 
@@ -1597,8 +1600,17 @@ def _recover_automatic_bankone_draft(cur, job, attempt, result, prompt_version, 
         return None
     if binding["observation_id"] != str(observation_id) or binding["body_sha256"] != body.digest:
         return None
-    linked = binding["proof"]
+    proof = binding["proof"]
     original = {"guard_version": prompt_version, "response": result.raw_response, "error_code": result.error_code}
+    if any(slot["kind"] == REFERENCED_DIRECTIVE for slot in proof["slots"].values()):
+        recovered = recover_structured_bankone_first_draft(
+            result.document, original, proof, method=BANKONE_REFERENCED_RECOVERY_METHOD,
+        )
+        if recovered is not None:
+            return recovered
+    linked = {"source_hash": proof["source_hash"], "version": LINKED_STRUCTURE_VERSION, "slots": {
+        path: slot for path, slot in proof["slots"].items() if slot["kind"] != REFERENCED_DIRECTIVE
+    }}
     if any(slot["kind"] in LINKED_STRUCTURE_KINDS for slot in linked["slots"].values()):
         recovered = recover_structured_bankone_first_draft(
             result.document, original, linked, method=BANKONE_LINKED_RECOVERY_METHOD,
@@ -1618,7 +1630,8 @@ def store_rewrite_result(repo,lease,result, *, read_retained_bankone_object=None
 
     structure_binding = None
     if (read_retained_bankone_object is not None and result.profile_version == AUTOMATIC_REWRITE_PROFILE
-        and result.error_code in FIRST_DRAFT_RECOVERABLE_ERRORS and STAGED_MEDIA_REFRESH not in lease.checkpoint):
+        and (result.error_code in FIRST_DRAFT_RECOVERABLE_ERRORS or result.error_code == "REWRITE_DIRECTION_MUTATION")
+        and STAGED_MEDIA_REFRESH not in lease.checkpoint):
         structure_binding = _read_automatic_bankone_structure(repo, lease, result, read_retained_bankone_object)
     try:
         return _store_rewrite_result(repo,lease,result, structure_binding=structure_binding)
@@ -1669,7 +1682,8 @@ def _store_rewrite_result(repo,lease,result, *, structure_binding=None):
         staged_media_technical_failure = (
             STAGED_MEDIA_REFRESH in job["checkpoint"] and result.error_code == "REWRITE_TECHNICAL_MUTATION"
         )
-        if (result.profile_version == AUTOMATIC_REWRITE_PROFILE and result.error_code in FIRST_DRAFT_RECOVERABLE_ERRORS
+        if (result.profile_version == AUTOMATIC_REWRITE_PROFILE
+                and (result.error_code in FIRST_DRAFT_RECOVERABLE_ERRORS or structure_binding is not None)
                 and not staged_media_technical_failure):
             from .procedure_rewrite_auto import _auto_prompt_version
 
