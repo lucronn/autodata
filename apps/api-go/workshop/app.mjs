@@ -76,6 +76,7 @@ let testStripeMode = $("test-banner").hidden === false;
 let checkoutModeReady = null;
 let vehicle = null,
   articles = [],
+  demoIndexedCount = null,
   articlePage = 0,
   indexPage = null,
   pendingIndexPage = null,
@@ -184,6 +185,7 @@ function clearProtected() {
   searchError = false;
   searchTimer = null;
   articles = [];
+  demoIndexedCount = null;
   articlePage = 0;
   indexPage = null;
   pendingIndexPage = null;
@@ -919,6 +921,7 @@ async function loadArticles(g, articleID = "", {
     const prefer = [
       includePurchaseQuote && "workshop-purchase-quote",
       offerPaging && articleIndexPagePreferences,
+      openDemo && !articleID && "workshop-demo-readable-index",
     ].filter(Boolean).join(", ");
     return requestJSON(articleRequestPath(undefined, "", offerPaging ? pageQuery : undefined), {
       signal: g.signal,
@@ -972,9 +975,11 @@ async function loadArticles(g, articleID = "", {
         if (wasPaged && !page) articlePage = (offset ?? indexPage.offset) / articlePageSize;
         indexPage = page;
         articles = result.items;
+        demoIndexedCount = openDemo && Number.isSafeInteger(result.indexed_count) &&
+          result.indexed_count >= articles.length ? result.indexed_count : null;
         indexLoaded = true;
         indexComplete = result.complete === true;
-        indexCatalogEmpty = indexComplete && articles.length === 0;
+        indexCatalogEmpty = indexComplete && (demoIndexedCount ?? articles.length) === 0;
         indexHydrating = !indexComplete && result.hydrating === true;
         indexFailed =
           result.progress?.status === "failed" &&
@@ -1244,6 +1249,7 @@ function renderArticles({ keepFocus = true } = {}) {
   if ($("article-page-range").textContent !== range) $("article-page-range").textContent = range;
   const articleCount = `${total} ${total === 1 ? "article" : "articles"}`;
   const resultsComplete = indexComplete && (indexCatalogEmpty || !searching || searchComplete);
+  const indexedCount = demoIndexedCount ?? articles.length;
   const indexUnavailable = indexFailed && !articles.length;
   const noPartialMatches = searching && indexFailed && !indexUnavailable && !items.length;
   let countText = searching && searchPending
@@ -1255,7 +1261,7 @@ function renderArticles({ keepFocus = true } = {}) {
         : !resultsComplete
           ? `${total} articles so far. Article index is still being prepared.`
           : openDemo
-            ? `${items.length} available articles · ${articles.length} indexed`
+            ? `${items.length} available articles · ${indexedCount} indexed`
             : articleCount;
   const localSearchSource = indexPage ? "loaded page" : "loaded index";
   if (items.length && searching && searchPending)
@@ -1274,7 +1280,7 @@ function renderArticles({ keepFocus = true } = {}) {
       ? "Article search is unavailable. Try again."
       : searching && searchPending
         ? "Searching articles…"
-        : openDemo && articles.length > 0 && !articles.some((item) => item.availability === "available")
+        : openDemo && indexedCount > 0 && !articles.some((item) => item.availability === "available")
           ? "No articles are readable yet for this vehicle. Choose another vehicle or check back later."
           : indexUnavailable
             ? "This article index could not be prepared. Check the status above."

@@ -82,6 +82,8 @@ paths:
           are requested, workshop-index-live-pages takes precedence.
           workshop-confirm-session and workshop-purchase-quote apply on the exact
           selected configuration and region.
+          workshop-demo-readable-index limits an unfiltered open demo index to
+          readable articles and returns the total indexed count.
       - name: X-CSRF-Token
         in: header
         schema:
@@ -106,7 +108,8 @@ paths:
                 type: string
               description: Acknowledges workshop-confirm-session after checking the
                 exchanged cookie and current Firebase account. When page metadata
-                is returned, acknowledges the paging preference used.
+                is returned, acknowledges the paging preference used. Acknowledges
+                workshop-demo-readable-index when the demo index was filtered.
             Workshop-Session-Expires:
               schema:
                 type: string
@@ -2325,6 +2328,11 @@ components:
           $ref: '#/components/schemas/CatalogConfiguration'
         page:
           $ref: '#/components/schemas/CatalogArticleIndexPage'
+        indexed_count:
+          type: integer
+          minimum: 0
+          description: Total indexed articles in the same snapshot before the
+            workshop-demo-readable-index filter.
     CatalogArticleIndexPage:
       type: object
       description: Coordinates and revision of the current ordered, authorized

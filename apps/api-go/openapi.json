@@ -96,7 +96,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Workshop can request workshop-index-live-pages to page a large unfiltered paid index even while sources are still loading or progress is unavailable. workshop-index-pages pages only settled indexes. When both are requested, workshop-index-live-pages takes precedence. workshop-confirm-session and workshop-purchase-quote apply on the exact selected configuration and region."
+            "description": "Workshop can request workshop-index-live-pages to page a large unfiltered paid index even while sources are still loading or progress is unavailable. workshop-index-pages pages only settled indexes. When both are requested, workshop-index-live-pages takes precedence. workshop-confirm-session and workshop-purchase-quote apply on the exact selected configuration and region. workshop-demo-readable-index limits an unfiltered open demo index to readable articles and returns the total indexed count."
           },
           {
             "name": "X-CSRF-Token",
@@ -128,7 +128,7 @@
                 "schema": {
                   "type": "string"
                 },
-                "description": "Acknowledges workshop-confirm-session after checking the exchanged cookie and current Firebase account. When page metadata is returned, acknowledges the paging preference used."
+                "description": "Acknowledges workshop-confirm-session after checking the exchanged cookie and current Firebase account. When page metadata is returned, acknowledges the paging preference used. Acknowledges workshop-demo-readable-index when the demo index was filtered."
               },
               "Workshop-Session-Expires": {
                 "schema": {
@@ -3340,6 +3340,11 @@
           },
           "page": {
             "$ref": "#/components/schemas/CatalogArticleIndexPage"
+          },
+          "indexed_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total indexed articles in the same snapshot before the workshop-demo-readable-index filter."
           }
         }
       },

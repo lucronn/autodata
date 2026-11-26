@@ -205,9 +205,12 @@ func TestOpenDemoReadsExactCatalogWithoutLoginOrGrant(t *testing.T) {
 	c.view = &CatalogArticleView{Article: CatalogArticle{ID: id, CanonicalArticleID: &id, Title: "Stored procedure", Availability: "available", Body: "private body", Images: []CatalogImage{{ID: "asset", URL: "https://provider.example/secret"}}}}
 	c.progress = &CatalogArticleProgress{Status: "completed", Complete: true}
 	root := "/v1/catalog/vehicles/" + paidTestConfiguration + "/articles"
-	request := func(path, host string) *httptest.ResponseRecorder {
+	request := func(path, host string, preferences ...string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodGet, path, nil)
 		r.Host = host
+		for _, preference := range preferences {
+			r.Header.Add("Prefer", preference)
+		}
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		return w
@@ -227,6 +230,23 @@ func TestOpenDemoReadsExactCatalogWithoutLoginOrGrant(t *testing.T) {
 		if path == root+"/"+id+"?demo=1" && strings.Contains(w.Body.String(), `"configuration":`) {
 			t.Fatal("open demo article returned paid configuration metadata")
 		}
+	}
+	compact := request(root+"?demo=1", "localhost:3013", catalogDemoReadableIndexPreference)
+	var compactIndex CatalogArticlesResponse
+	if compact.Code != 200 || compact.Header().Get("Preference-Applied") != catalogDemoReadableIndexPreference ||
+		json.Unmarshal(compact.Body.Bytes(), &compactIndex) != nil || len(compactIndex.Items) != 1 ||
+		compactIndex.Items[0].ID != id || compactIndex.IndexedCount == nil || *compactIndex.IndexedCount != 2 ||
+		!compactIndex.Complete || compactIndex.Configuration == nil || compactIndex.Configuration.ID != paidTestConfiguration ||
+		strings.Contains(compact.Body.String(), "private body") {
+		t.Fatalf("unexpected compact demo index: %d %s", compact.Code, compact.Body)
+	}
+	legacy := request(root+"?demo=1", "localhost:3013")
+	if !strings.Contains(legacy.Body.String(), unavailableID) || strings.Contains(legacy.Body.String(), "indexed_count") {
+		t.Fatalf("unrequested compact response: %d %s", legacy.Code, legacy.Body)
+	}
+	unauthorized := request(root, "localhost:3013", catalogDemoReadableIndexPreference)
+	if unauthorized.Code != http.StatusUnauthorized || unauthorized.Header().Get("Preference-Applied") != "" {
+		t.Fatalf("preference granted demo access: %d %s", unauthorized.Code, unauthorized.Body)
 	}
 	search := request(root+"?demo=1&q=private", "localhost:3013")
 	if search.Code != 200 || !strings.Contains(search.Body.String(), id) || strings.Contains(search.Body.String(), unavailableID) || strings.Contains(search.Body.String(), "private body") {
