@@ -1419,7 +1419,16 @@ class ArticleObjectStore:
 
     def get_object(self, key, *, max_bytes):
         """Read at most the approved body limit and always release the SDK response."""
-        if not isinstance(max_bytes, int) or not 0 < max_bytes <= 1024 * 1024:
+        return self._read_object(key, max_bytes, 1024 * 1024)
+
+    def get_replay_asset(self, key, *, max_bytes):
+        """Read retained media within the article replay budget."""
+        from .article_lifecycle_types import RETAINED_MEDIA_REPLAY_MAX_BYTES
+
+        return self._read_object(key, max_bytes, RETAINED_MEDIA_REPLAY_MAX_BYTES)
+
+    def _read_object(self, key, max_bytes, allowed_bytes):
+        if not isinstance(max_bytes, int) or not 0 < max_bytes <= allowed_bytes:
             raise ValueError("SOURCE_BODY_LIMIT_INVALID")
         response = self.client.get_object(self.bucket, key)
         try:
