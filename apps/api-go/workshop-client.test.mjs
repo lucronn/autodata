@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, awaitingArticleRewrite, processingArticle, readableArticle, readyReprojectedSource } from './workshop/article-read.mjs';
 import { pollOrder, purchaseConfiguration, quoteConfigurationLabel, readOrder, resumableCheckoutURL, sameScope, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
-import { articlePresentation, articleSearchParams, CatalogRequestError, configurationLabel, delay, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, trimArticleSearch, vehicleSelectorPath } from './workshop/catalog.mjs';
+import { articlePresentation, articleSearchParams, CatalogRequestError, configurationLabel, delay, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestArticleJSON, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, trimArticleSearch, vehicleSelectorPath } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 const paidPagePreferences = 'workshop-index-pages, workshop-index-live-pages';
@@ -5385,6 +5385,34 @@ test('a demo link to an unreadable article stays in the index', async () => {
     assert.deepEqual(h.requests.map(({ prefer }) => prefer),
       responses.length === 2 ? ['workshop-demo-readable-index', undefined] : ['workshop-demo-readable-index']);
     assert.match(h.$('activity-text').textContent, /indexed but not readable yet/);
+  }
+});
+
+test('a prefetched demo detail waits for the matching available index row', async () => {
+  for (const outcome of ['available', 'unavailable', 'canceled']) {
+    const pendingIndex = deferredAuthOperation();
+    const h = articleIndexHarness([() => pendingIndex.promise], { openDemo: true });
+    const detail = { path: '/v1/catalog/vehicles/B/articles/saved?region=US&demo=1', response: Promise.resolve({ ok: true }) };
+    const request = new AbortController();
+    const generation = h.navigation.next();
+    const opened = [];
+    h.context.loadArticle = async (...args) => opened.push(args);
+    const opening = h.context.loadArticles(generation, 'saved', {
+      initialDemoIndex: { detail, abort: () => request.abort() },
+    });
+    assert.equal(opened.length, 0);
+    if (outcome === 'canceled') h.navigation.next();
+    const row = { id: 'saved', title: 'Stored procedure', availability: outcome === 'unavailable' ? outcome : 'available' };
+    pendingIndex.resolve(indexResponse('completed', { complete: true, items: [row] }));
+    if (outcome === 'canceled') {
+      await assert.rejects(opening, error => error.name === 'AbortError');
+      assert.equal(request.signal.aborted, true);
+    } else await opening;
+    assert.equal(opened.length, Number(outcome === 'available'));
+    if (opened.length) {
+      assert.equal(opened[0][2].initialDemoDetail, detail);
+      assert.equal(opened[0][2].indexedArticle, row);
+    }
   }
 });
 
@@ -10956,6 +10984,40 @@ test('open demo reads an article with GET and no session or checkout', async () 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a?region=US&demo=1');
   assert.equal(calls[0].options.method, undefined);
+});
+
+test('the demo reader consumes a matching detail once and rereads a stale or failed prefetch', async () => {
+  const path = '/v1/catalog/vehicles/v/articles/a?region=US&demo=1';
+  const current = mediaArticle([{ type: 'paragraph', text: 'Current procedure.' }], [], {
+    source_revision_id: 'current-source', canonical_revision_id: 'current-draft',
+  });
+  for (const scenario of ['current', 'old-source', 'old-draft', 'wrong-id', 'missing', 'truncated']) {
+    const prefetched = {
+      ...current,
+      ...(scenario === 'old-source' ? { source_revision_id: 'older-source' } : {}),
+      ...(scenario === 'old-draft' ? { canonical_revision_id: null } : {}),
+      ...(scenario === 'wrong-id' ? { id: 'other' } : {}),
+    };
+    const reply = scenario === 'missing' ? null : new Response(
+      scenario === 'truncated' ? '{' : JSON.stringify({ article: prefetched }),
+    );
+    const freshReads = [];
+    const h = articleRouteHarness('firebase', (path, options) => requestArticleJSON(path, {
+      ...options,
+      fetcher: options.fetcher ?? (async (_path, request) => {
+        freshReads.push(request.method);
+        return new Response(JSON.stringify({ article: current }));
+      }),
+    }), false, true);
+    await h.context.loadArticle('a', h.g, {
+      initialDemoDetail: { path, response: Promise.resolve(reply) },
+      indexedArticle: current,
+    });
+    assert.deepEqual(freshReads, scenario === 'current' ? [] : ['GET'], scenario);
+    assert.equal(h.context.currentArticle.id, current.id);
+    assert.equal(h.context.currentArticle.source_revision_id, current.source_revision_id);
+    assert.equal(h.context.currentArticle.canonical_revision_id, current.canonical_revision_id);
+  }
 });
 
 for (const mode of ['local', 'firebase', undefined, null, 'LOCAL', 'other']) {

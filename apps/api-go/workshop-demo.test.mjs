@@ -115,11 +115,28 @@ test('entry starts one exact public demo index read before importing the app', a
   restored.abort();
   assert.equal(calls[0].options.signal.aborted, true);
   assert.deepEqual(startHeadPicker(search).calls, []);
-  assert.deepEqual(startHeadPicker(search + '&article=1cae3450-955a-5807-b72f-91010d396008', true, { entry })
-    .calls.map(({ path }) => path), [path]);
   for (const skipped of [search + '&article=saved', search + '&year=2015', search + '&q=filter',
     search.replace('region=US', 'region=us'), search.replace(configuration, 'invalid')]) {
     assert.deepEqual(startHeadPicker(skipped, true, { entry }).calls, [], skipped);
+  }
+});
+test('a confirmed public demo link starts the exact detail alongside its index', () => {
+  const configuration = 'cf544dfd-4570-589f-b3b4-23487d14e591';
+  const article = '1cae3450-955a-5807-b72f-91010d396008';
+  const base = `/v1/catalog/vehicles/${configuration}/articles`;
+  const search = `?demo=1&configuration=${configuration}&region=US&article=${article}`;
+  const options = { entry: { workshopOpenDemo: 'true' } };
+  const { calls, context } = startHeadPicker(search, true, options);
+  const detailPath = `${base}/${article}?region=US&demo=1`;
+  assert.deepEqual(calls.map(({ path }) => path), [`${base}?region=US&demo=1`, detailPath]);
+  assert.equal(context.workshopDemoIndex.detail.path, detailPath);
+  assert.equal(calls[1].options.headers.Prefer, 'workshop-short-publication-check');
+  assert.equal(calls[1].options.cache, 'no-store');
+  context.workshopDemoIndex.abort();
+  assert.ok(calls.every(({ options }) => options.signal.aborted));
+  assert.deepEqual(startHeadPicker(search).calls, []);
+  for (const suffix of ['&demo=0', '&region=CA', `&configuration=${configuration}`, `&article=${article}`]) {
+    assert.deepEqual(startHeadPicker(search + suffix, true, options).calls, []);
   }
 });
 test('sign-in is inert in initial HTML until async app readiness', () => {
