@@ -18,14 +18,15 @@ from .article_lifecycle_types import (
     RETAINED_NOTE_LABEL_REPAIR_PROFILE as PROFILE,
     RETAINED_OPTIONAL_OBSERVATION_REPAIR_PROFILE as OPTIONAL_OBSERVATION_PROFILE,
     RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE as ROTATION_REMOVAL_PROFILE,
+    RETAINED_SPACED_ROTATION_REPAIR_PROFILE as SPACED_ROTATION_PROFILE,
     SOURCE_BOUND_CORRECTION_PROFILE, ValidationResult,
     digest_json, transformation_key,
 )
 from .authored_procedure_scope import correct_authored_procedure_step
 from .procedure_rewrite_auto import (
-    _OPTIONAL_OBSERVATION_PROMPT_VERSION, _ROTATION_REMOVAL_PROMPT_VERSION, authored_note_prefix,
-    recast_authored_rotation_removal, recast_optional_observation, render_auto, require_current_publication_checks,
-    validate_auto,
+    _OPTIONAL_OBSERVATION_PROMPT_VERSION, _ROTATION_REMOVAL_PROMPT_VERSION, _SPACED_ROTATION_PROMPT_VERSION,
+    authored_note_prefix, recast_authored_rotation_removal, recast_optional_observation,
+    recast_spaced_rotation_removal, render_auto, require_current_publication_checks, validate_auto,
 )
 from .procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
 from .procedure_rewrite_fidelity import recast_conditional_color_note
@@ -52,6 +53,9 @@ _CONDITIONAL_INVALID = "RETAINED_CONDITIONAL_NOTE_REPAIR_INVALID"
 ROTATION_REMOVAL_METHOD = "retained-rotation-removal-archived-reply-repair-v1"
 ROTATION_REMOVAL_CHECKPOINT = "retained_rotation_removal_repair"
 _ROTATION_REMOVAL_INVALID = "RETAINED_ROTATION_REMOVAL_REPAIR_INVALID"
+SPACED_ROTATION_METHOD = "retained-spaced-rotation-archived-reply-repair-v1"
+SPACED_ROTATION_CHECKPOINT = "retained_spaced_rotation_repair"
+_SPACED_ROTATION_INVALID = "RETAINED_SPACED_ROTATION_REPAIR_INVALID"
 OPTIONAL_OBSERVATION_METHOD = "retained-optional-observation-archived-reply-repair-v1"
 OPTIONAL_OBSERVATION_CHECKPOINT = "retained_optional_observation_repair"
 _OPTIONAL_OBSERVATION_INVALID = "RETAINED_OPTIONAL_OBSERVATION_REPAIR_INVALID"
@@ -135,7 +139,8 @@ def _recast_reply(source, retained, old_document, old_reply, *, prompt_version, 
 
 
 def _restore_authored_procedure_reply(
-    source, retained, old_document, old_reply, *, prompt_version, verified_color_notes,
+    source, retained, old_document, old_reply, *, prompt_version, verified_color_notes=False,
+    recast=correct_authored_procedure_step, invalid=_AUTHORED_PROCEDURE_INVALID,
 ):
     reply = deepcopy(old_reply)
     old_leaves = {"blocks": old_document["blocks"][1:]}
@@ -146,15 +151,15 @@ def _restore_authored_procedure_reply(
         path = row["path"]
         original = _get(source, path)
         published = row["text"]
-        wording = correct_authored_procedure_step(original, published)
+        wording = recast(original, published)
         if wording is None:
             continue
         if original != _get(retained, path) or published != _get(old_leaves, path):
-            raise ValueError(_AUTHORED_PROCEDURE_INVALID)
+            raise ValueError(invalid)
         row["text"] = wording
         changed[path] = published
     if not changed:
-        raise ValueError(_AUTHORED_PROCEDURE_INVALID)
+        raise ValueError(invalid)
     options = dict(prompt_version=prompt_version, profile_version=SOURCE_BOUND_CORRECTION_PROFILE,
                    verified_color_notes=verified_color_notes)
     document = render_auto(source, reply, **options)
@@ -163,8 +168,15 @@ def _restore_authored_procedure_reply(
     for path, text in changed.items():
         _set({"blocks": reverted["blocks"][1:]}, path, text)
     if not validation.passed or reverted != old_document:
-        raise ValueError(_AUTHORED_PROCEDURE_INVALID)
+        raise ValueError(invalid)
     return document, validation, reply, sorted(changed)
+
+
+def _correct_spaced_rotation(original, published):
+    replacement = recast_spaced_rotation_removal(original)
+    if replacement and published == recast_authored_rotation_removal(original) and published != replacement:
+        return replacement
+    return None
 
 
 @dataclass(frozen=True)
@@ -192,6 +204,12 @@ _ROTATION_REMOVAL = _Repair(
     _ROTATION_REMOVAL_INVALID, "RETAINED_ROTATION_REMOVAL_REPAIR_STALE",
     partial(_recast_reply, recast=recast_authored_rotation_removal, invalid=_ROTATION_REMOVAL_INVALID),
     successor_guard=_ROTATION_REMOVAL_PROMPT_VERSION,
+)
+_SPACED_ROTATION = _Repair(
+    SPACED_ROTATION_PROFILE, SPACED_ROTATION_METHOD, SPACED_ROTATION_CHECKPOINT, (ROTATION_REMOVAL_METHOD,),
+    _SPACED_ROTATION_INVALID, "RETAINED_SPACED_ROTATION_REPAIR_STALE",
+    partial(_restore_authored_procedure_reply, recast=_correct_spaced_rotation, invalid=_SPACED_ROTATION_INVALID),
+    successor_guard=_SPACED_ROTATION_PROMPT_VERSION, prior_profiles=(ROTATION_REMOVAL_PROFILE,),
 )
 _OPTIONAL_OBSERVATION = _Repair(
     OPTIONAL_OBSERVATION_PROFILE, OPTIONAL_OBSERVATION_METHOD, OPTIONAL_OBSERVATION_CHECKPOINT, (BANKONE_ORDER_METHOD,),
@@ -267,7 +285,7 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
         or prior["rewrite_result_hash"] != old_hash):
         raise ValueError(repair.stale)
     bound_source = _source_evidence(cur, article, source_id, descriptor_id, lock=lock)
-    if lock and repair in (_ROTATION_REMOVAL, _AUTHORED_PROCEDURE):
+    if lock and repair in (_ROTATION_REMOVAL, _AUTHORED_PROCEDURE, _SPACED_ROTATION):
         _require_source_bound_rewrite_rights(cur, prior_job, article)
     prior_profile = prior_job["rewrite_profile_version"]
     prior, review, decision, attempt, archived_reply, version, _ = _publication_evidence_for_revision(
@@ -290,7 +308,7 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
             WHERE canonical_article_revision_id=%s LIMIT 1""", (prior_revision_id,)).fetchone():
             raise ValueError(repair.invalid)
         archive = {"archived_order_evidence_hash": digest_json(prior["model_metadata"])}
-    elif repair is _AUTHORED_PROCEDURE:
+    elif repair in (_AUTHORED_PROCEDURE, _SPACED_ROTATION):
         if cur.execute("""SELECT 1 FROM canonical_article_link_bindings WHERE canonical_article_revision_id=%s
             UNION ALL SELECT 1 FROM canonical_article_inline_link_bindings WHERE canonical_article_revision_id=%s LIMIT 1""",
             (prior_revision_id, prior_revision_id)).fetchone():
@@ -350,6 +368,10 @@ def resolve_retained_rotation_removal_repair(cur, job, article, candidate, *, pu
     return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_ROTATION_REMOVAL)
 
 
+def resolve_retained_spaced_rotation_repair(cur, job, article, candidate, *, publishing=False):
+    return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_SPACED_ROTATION)
+
+
 def resolve_retained_optional_observation_repair(cur, job, article, candidate, *, publishing=False):
     """Rebuild the exact optional observation from the Bankone order publication."""
     return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_OPTIONAL_OBSERVATION)
@@ -386,8 +408,9 @@ def _resolve_repair(cur, job, article, candidate, *, publishing, repair):
         ))
     except (AttributeError, KeyError, TypeError, ValueError):
         raise ValueError(repair.invalid) from None
+    expected_visible_revision = None if repair is _SPACED_ROTATION else prior_revision_id
     if publishing and (
-        article["current_canonical_revision_id"] != prior_revision_id
+        article["current_canonical_revision_id"] != expected_visible_revision
         or article["current_source_revision_id"] != job["source_revision_id"]
         or article["descriptor_source_snapshot_id"] != descriptor_id
     ):
@@ -442,6 +465,19 @@ def repair_retained_rotation_removal(
     )
 
 
+def repair_retained_spaced_rotation(
+    repo, article_id, *, expected_job_id, expected_source_revision_id, expected_descriptor_snapshot_id,
+    expected_published_revision_id, expected_published_hash, expected_repaired_hash, actor, reason, hooks=None,
+):
+    """Publish the corrected direction after the ambiguous revision is held."""
+    return _repair_retained_note(
+        repo, article_id, expected_job_id=expected_job_id, expected_source_revision_id=expected_source_revision_id,
+        expected_descriptor_snapshot_id=expected_descriptor_snapshot_id,
+        expected_published_revision_id=expected_published_revision_id, expected_published_hash=expected_published_hash,
+        expected_repaired_hash=expected_repaired_hash, actor=actor, reason=reason, hooks=hooks, repair=_SPACED_ROTATION,
+    )
+
+
 def repair_retained_optional_observation(
     repo, article_id, *, expected_job_id, expected_source_revision_id, expected_descriptor_snapshot_id,
     expected_published_revision_id, expected_published_hash, expected_repaired_hash, actor, reason, hooks=None,
@@ -485,8 +521,9 @@ def _repair_retained_note(
                                 (prior_job_id,)).fetchone()
         article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE",
                               (article_id,)).fetchone()
+        expected_visible_revision = None if repair is _SPACED_ROTATION else prior_revision_id
         if (prior_job is None or article is None or article["current_job_id"] != prior_job_id
-            or article["current_source_revision_id"] != source_id or article["current_canonical_revision_id"] != prior_revision_id
+            or article["current_source_revision_id"] != source_id or article["current_canonical_revision_id"] != expected_visible_revision
             or article["descriptor_source_snapshot_id"] != descriptor_id
             or article["request_generation"] != prior_job["request_generation"]
             or article["target_rewrite_profile_version"] != prior_job["rewrite_profile_version"]

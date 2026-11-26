@@ -119,8 +119,10 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
         AUTHORED_PROCEDURE_METHOD, AUTHORED_PROCEDURE_PROFILE,
         CONDITIONAL_METHOD, CONDITIONAL_PROFILE, METHOD as NOTE_LABEL_REPAIR_METHOD, PROFILE as NOTE_LABEL_REPAIR_PROFILE,
         OPTIONAL_OBSERVATION_METHOD, OPTIONAL_OBSERVATION_PROFILE, ROTATION_REMOVAL_METHOD, ROTATION_REMOVAL_PROFILE,
+        SPACED_ROTATION_METHOD, SPACED_ROTATION_PROFILE,
         resolve_retained_authored_procedure_repair, resolve_retained_conditional_note_repair, resolve_retained_note_label_repair,
         resolve_retained_optional_observation_repair, resolve_retained_rotation_removal_repair,
+        resolve_retained_spaced_rotation_repair,
     )
     from .retained_procedure_repair import METHOD as RETAINED_PROCEDURE_REPAIR_METHOD, resolve_retained_procedure_repair
     from .retained_required_action_repair import (
@@ -148,6 +150,7 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
         REQUIRED_ACTION_PROFILE: (REQUIRED_ACTION_METHOD, resolve_retained_required_action_repair),
         CONDITIONAL_PROFILE: (CONDITIONAL_METHOD, resolve_retained_conditional_note_repair),
         ROTATION_REMOVAL_PROFILE: (ROTATION_REMOVAL_METHOD, resolve_retained_rotation_removal_repair),
+        SPACED_ROTATION_PROFILE: (SPACED_ROTATION_METHOD, resolve_retained_spaced_rotation_repair),
         OPTIONAL_OBSERVATION_PROFILE: (OPTIONAL_OBSERVATION_METHOD, resolve_retained_optional_observation_repair),
         AUTHORED_PROCEDURE_PROFILE: (AUTHORED_PROCEDURE_METHOD, resolve_retained_authored_procedure_repair),
         INTRODUCTION_PROFILE: (INTRODUCTION_METHOD, resolve_retained_introduction_repair),

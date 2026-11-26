@@ -79,9 +79,10 @@ _PROCEDURE_FIDELITY_PROMPT_VERSION = "full-prose-auto-prompt-v62"
 _DRAIN_SUBJECT_PROMPT_VERSION = "full-prose-auto-prompt-v63"
 _ROTATION_REMOVAL_PROMPT_VERSION = "full-prose-auto-prompt-v64"
 _OPTIONAL_OBSERVATION_PROMPT_VERSION = "full-prose-auto-prompt-v65"
+_SPACED_ROTATION_PROMPT_VERSION = "full-prose-auto-prompt-v66"
 _PROCEDURE_FIDELITY_PROMPT_VERSIONS = (
     _PROCEDURE_FIDELITY_PROMPT_VERSION, _DRAIN_SUBJECT_PROMPT_VERSION, _ROTATION_REMOVAL_PROMPT_VERSION,
-    _OPTIONAL_OBSERVATION_PROMPT_VERSION,
+    _OPTIONAL_OBSERVATION_PROMPT_VERSION, _SPACED_ROTATION_PROMPT_VERSION,
 )
 _AUTHORED_NOTE_PREFIX = re.compile(r"^\s*note\s*:\s*", re.IGNORECASE)
 _NUMERIC_SUPERSCRIPT = re.compile(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]|\^\([+−-]?(?:[0-9]*\.[0-9]+|[0-9]+/[0-9]+)\)")
@@ -577,6 +578,11 @@ _ROTATION_REMOVAL_AUTHORED = re.compile(
 _ROTATION_REMOVAL_RECAST = re.compile(
     rf"turn the (?P<rotation>{_ROTATION_REMOVAL_TARGET}) in a (?P<direction>(?:counter)?clockwise)"
     rf" direction and take the (?P<removal>{_ROTATION_REMOVAL_TARGET}) off\.", re.IGNORECASE,
+)
+_SPACED_ROTATION_REMOVAL = re.compile(
+    rf"rotate the (?P<rotation>{_ROTATION_REMOVAL_TARGET}?)\s+"
+    r"(?:anti|counter)(?:\s*[-‐‑‒–—−\u00ad]\s*|\s+)clockwise"
+    rf" and remove the (?P<removal>{_ROTATION_REMOVAL_TARGET})\.", re.IGNORECASE,
 )
 _LUBRICANT_CLAUSE_SEPARATOR = re.compile(rf"{_SENTENCES.pattern}|;")
 _LUBRICANT_SEQUENCE_MARKER = re.compile(r"^(first|next|then)[,\s]+")
@@ -2052,13 +2058,13 @@ def build_auto_prompt(document, *, context, profile_version=PROFILE):
     return _build_source_bound_prompt(
         document, preserve_notes=True, procedure_fidelity=True,
         allow_drain_subject=True, allow_rotation_removal=True, allow_optional_observation=True,
-        include_technical_tokens=True,
+        allow_spaced_rotation=True, include_technical_tokens=True,
     )
 
 
 def _build_source_bound_prompt(
     document, *, preserve_notes, procedure_fidelity=False, allow_drain_subject=False, allow_rotation_removal=False,
-    allow_optional_observation=False, include_technical_tokens=False,
+    allow_optional_observation=False, allow_spaced_rotation=False, include_technical_tokens=False,
 ):
     builder = _auto_prompt_payload_v61 if preserve_notes else _auto_prompt_payload_v60
     if procedure_fidelity:
@@ -2067,6 +2073,8 @@ def _build_source_bound_prompt(
         builder = _auto_prompt_payload_v64
     if allow_optional_observation:
         builder = _auto_prompt_payload_v65
+    if allow_spaced_rotation:
+        builder = _auto_prompt_payload_v66
     payload = builder(document, context={})
     payload.pop("context", None)
     payload["profile_version"] = SOURCE_BOUND_REWRITE_PROFILE
@@ -2213,6 +2221,20 @@ def _build_auto_prompt_v65(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
+def _auto_prompt_payload_v66(document, *, context):
+    payload = _auto_prompt_payload_v65(document, context=context)
+    for slot in payload["slots"]:
+        if recast := recast_spaced_rotation_removal(slot["text"]):
+            slot.update(required_action="rewrite", required_text=recast)
+            payload["prompt_version"] = _SPACED_ROTATION_PROMPT_VERSION
+    if payload["prompt_version"] == _SPACED_ROTATION_PROMPT_VERSION:
+        payload["rules"].append(
+            "Copy required_text exactly for a rotation and removal with a split counterclockwise spelling. "
+            "Both named components and their order are fixed. Do not return the required_text key."
+        )
+    return payload
+
+
 def _encode_prompt_with_technical_tokens(payload):
     tokens_by_path = {}
     for slot in payload["slots"]:
@@ -2247,6 +2269,10 @@ def _encode_prompt_with_technical_tokens(payload):
 
 
 def _build_auto_prompt_with_technical_tokens(document, *, context):
+    return _encode_prompt_with_technical_tokens(_auto_prompt_payload_v66(document, context=context))
+
+
+def _build_auto_prompt_v65_with_technical_tokens(document, *, context):
     return _encode_prompt_with_technical_tokens(_auto_prompt_payload_v65(document, context=context))
 
 
@@ -2256,12 +2282,14 @@ def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROF
         current = build_auto_prompt(document, context=context, profile_version=profile_version)
         if sha256(current.encode()).hexdigest() == prompt_hash:
             return json.loads(current)["prompt_version"]
-        current = _build_source_bound_prompt(
-            document, preserve_notes=True, procedure_fidelity=True, allow_drain_subject=True,
-            allow_rotation_removal=True, allow_optional_observation=True,
-        )
-        if sha256(current.encode()).hexdigest() == prompt_hash:
-            return json.loads(current)["prompt_version"]
+        for include_technical_tokens in (True, False):
+            prior = _build_source_bound_prompt(
+                document, preserve_notes=True, procedure_fidelity=True, allow_drain_subject=True,
+                allow_rotation_removal=True, allow_optional_observation=True,
+                include_technical_tokens=include_technical_tokens,
+            )
+            if sha256(prior.encode()).hexdigest() == prompt_hash:
+                return json.loads(prior)["prompt_version"]
         for preserve_notes, procedure_fidelity, allow_drain_subject, allow_rotation_removal in (
             (True, True, True, True), (True, True, True, False), (True, True, False, False),
             (True, False, False, False), (False, False, False, False),
@@ -2277,6 +2305,7 @@ def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROF
         return None
     for builder in (
         _build_auto_prompt_with_technical_tokens,
+        _build_auto_prompt_v65_with_technical_tokens,
         _build_auto_prompt_v65,
         _build_auto_prompt_v64,
         _build_auto_prompt_v63,
@@ -2517,6 +2546,17 @@ def recast_authored_rotation_removal(text):
         return None
     _, rotation, direction, removal = binding
     return f"Turn the {rotation} in a {direction} direction and take the {removal} off."
+
+
+def recast_spaced_rotation_removal(text):
+    match = _SPACED_ROTATION_REMOVAL.fullmatch(text)
+    if match is None or _ROTARY_UNCERTAIN.search(text):
+        return None
+    rotation, removal = match.group("rotation", "removal")
+    targets = _WORDS.findall(rotation.casefold()) + _WORDS.findall(removal.casefold())
+    if not _TARGET_DELIMITERS.isdisjoint(targets) or _ROTARY_DIRECTION.search(rotation + " " + removal):
+        return None
+    return f"Turn the {rotation} counterclockwise, then take off the {removal}."
 
 
 def _qualitative_rotations(text, *, allow_removal=False):
@@ -3825,11 +3865,15 @@ def _include_cell_blocks(prompt_version):
 def _require_changes(
     source, candidate, *, prompt_version, include_cell_blocks=None, slot_errors=None, introduction_only=False,
     bankone_structure=None, verified_color_notes=False, allow_rotation_removal=False, allow_optional_observation=False,
+    enforce_spaced_rotation=False,
 ):
     # The introduced first block is the only offset in source paths.
     restored = {"blocks": candidate["blocks"][1:]}
     if include_cell_blocks is None:
         include_cell_blocks = _include_cell_blocks(prompt_version)
+    if prompt_version == _SPACED_ROTATION_PROMPT_VERSION:
+        enforce_spaced_rotation = True
+        prompt_version = _auto_prompt_payload_v65(source, context={})["prompt_version"]
     if prompt_version == _OPTIONAL_OBSERVATION_PROMPT_VERSION:
         allow_optional_observation = True
         prompt_version = _auto_prompt_payload_v64(source, context={})["prompt_version"]
@@ -4030,6 +4074,10 @@ def _require_changes(
                 raise ValueError("REWRITE_OPTIONAL_OBSERVATION_MUTATION")
             # The exact recast preserves the preceding instructions and the observation's scope.
             replacement = original
+        if enforce_spaced_rotation and (recast := recast_spaced_rotation_removal(original)):
+            if replacement != recast:
+                raise ValueError("REWRITE_ROTATION_DIRECTION_MUTATION")
+            return
         if guard_note_labels:
             original_label = authored_note_prefix(original)
             replacement_label = authored_note_prefix(replacement)
@@ -4249,8 +4297,17 @@ def _require_changes(
 
 def require_current_publication_checks(source, candidate, *, saved_prompt_version, bankone_structure=None):
     """Apply current prose rules to the saved prompt's editable slots."""
-    allow_optional_observation = saved_prompt_version == _OPTIONAL_OBSERVATION_PROMPT_VERSION
-    allow_rotation_removal = saved_prompt_version == _ROTATION_REMOVAL_PROMPT_VERSION or (
+    restored = {"blocks": candidate["blocks"][1:]}
+    for slot in full.prose_slots(source, include_cell_blocks=True):
+        original = slot["text"]
+        if (recast := recast_spaced_rotation_removal(original)) and full._get(restored, slot["path"]) not in (original, recast):
+            raise ValueError("REWRITE_ROTATION_DIRECTION_MUTATION")
+    enforce_spaced_rotation = saved_prompt_version == _SPACED_ROTATION_PROMPT_VERSION
+    prior_version = saved_prompt_version
+    if enforce_spaced_rotation:
+        prior_version = _auto_prompt_payload_v65(source, context={})["prompt_version"]
+    allow_optional_observation = prior_version == _OPTIONAL_OBSERVATION_PROMPT_VERSION
+    allow_rotation_removal = prior_version == _ROTATION_REMOVAL_PROMPT_VERSION or (
         allow_optional_observation
         and _auto_prompt_payload_v64(source, context={})["prompt_version"] == _ROTATION_REMOVAL_PROMPT_VERSION
     )
@@ -4292,6 +4349,7 @@ def require_current_publication_checks(source, candidate, *, saved_prompt_versio
         include_cell_blocks=_include_cell_blocks(saved_prompt_version),
         bankone_structure=bankone_structure, allow_rotation_removal=allow_rotation_removal,
         allow_optional_observation=allow_optional_observation,
+        enforce_spaced_rotation=enforce_spaced_rotation,
     )
 
 
@@ -4461,6 +4519,7 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None, prof
             _DRAIN_SUBJECT_PROMPT_VERSION: "full-prose-auto-validator-v61",
             _ROTATION_REMOVAL_PROMPT_VERSION: "full-prose-auto-validator-v62",
             _OPTIONAL_OBSERVATION_PROMPT_VERSION: "full-prose-auto-validator-v63",
+            _SPACED_ROTATION_PROMPT_VERSION: "full-prose-auto-validator-v64",
         }.get(prompt_version, "full-prose-auto-validator-v53")
     if verified_color_notes:
         validator_version = "full-prose-color-note-replay-validator-v1"
