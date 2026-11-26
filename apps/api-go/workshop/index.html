@@ -27,11 +27,11 @@
           hint.href = new URL(`./${name}.mjs`, catalog.href).href;
           document.head.append(hint);
         }
+        const configuration = params.get('configuration');
+        const region = params.get('region');
+        const article = params.get('article');
+        const uuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value || '');
         if (wantsDemo) {
-          const configuration = params.get('configuration');
-          const region = params.get('region');
-          const article = params.get('article');
-          const uuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value || '');
           if (!uuid(configuration) ||
               !/^[A-Z]{2}$/.test(region || '') ||
               (article !== null && !uuid(article)) ||
@@ -58,8 +58,37 @@
 
         const pending = new Map();
         globalThis.workshopPickerStartup = pending;
+        function start(path, cache, headers = {}, redirect = 'follow') {
+          const controller = new AbortController();
+          const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]);
+          const response = fetch(path, { signal, credentials: 'same-origin', cache, redirect,
+            headers: { Accept: 'application/json', ...headers } }).catch(() => null);
+          return { controller, response };
+        }
+        function startAccount() {
+          // Let the app handle the original response, including a signed-out status.
+          for (const [path, headers] of [
+            ['/auth/config'], ['/auth/session', { Prefer: 'workshop-session-mode' }],
+            ['/workshop/purchase-config.json'],
+          ]) {
+            pending.set(path, { ...start(path, 'no-store', headers), rawResponse: true });
+          }
+        }
+        if (uuid(configuration) && uuid(article) && /^[A-Z]{2}$/.test(region || '') &&
+            !params.has('order') && params.get('view') !== 'library' &&
+            ['configuration', 'region', 'article'].every(key => params.getAll(key).length === 1)) {
+          const path = `/v1/catalog/vehicles/${configuration}/articles/${article}?region=${region}`;
+          startAccount();
+          // The app checks the scoped response against the restored session before rendering.
+          pending.retainedReader = {
+            path, route: params.toString(),
+            ...start(path, 'no-store', {
+              Prefer: 'workshop-short-publication-check, workshop-retained-reader-session',
+            }, 'error'),
+          };
+          return;
+        }
         // Use the address bar because the entry proxy may omit its query.
-        const region = params.get('region');
         if (catalog.dataset.publicSelectors !== 'true' ||
             ['article', 'configuration', 'order'].some(key => params.has(key)) ||
             params.get('view') === 'library' || (region && region !== 'US')) return;
@@ -73,13 +102,6 @@
         }
 
         const years = '/v1/catalog/years';
-        function start(path, cache, headers = {}) {
-          const controller = new AbortController();
-          const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]);
-          const response = fetch(path, { signal, credentials: 'same-origin', cache,
-            headers: { Accept: 'application/json', ...headers } }).catch(() => null);
-          return { controller, response };
-        }
         function read(path, cache = path === years ? 'default' : 'no-store') {
           const { controller, response } = start(path, cache);
           const request = { controller, response: response.then(reply => reply?.ok ? reply.json() : null).catch(() => null) };
@@ -88,15 +110,7 @@
         }
 
         const newSelection = !['year', 'make', 'model', 'view', 'q'].some(key => params.has(key));
-        if (newSelection) {
-          // Let the app handle the original response, including a signed-out status.
-          for (const [path, headers] of [
-            ['/auth/config'], ['/auth/session', { Prefer: 'workshop-session-mode' }],
-            ['/workshop/purchase-config.json'],
-          ]) {
-            pending.set(path, { ...start(path, 'no-store', headers), rawResponse: true });
-          }
-        }
+        if (newSelection) startAccount();
 
         function showYears(snapshot) {
           if (!newSelection ||

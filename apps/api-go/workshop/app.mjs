@@ -3006,7 +3006,7 @@ async function signIn() {
 }
 export async function bootstrap(initialYears, initialAccount, {
   preservePicker = false, initialSelectors = null, testCheckout, initialDemoIndex = null, initialYearPicker = null,
-  initialPurchaseConfig = null,
+  initialPurchaseConfig = null, initialReaderRequest = null,
 } = {}) {
   if (testCheckout) checkoutModeReady = testCheckout.then(enabled => {
     testStripeMode = enabled;
@@ -3035,7 +3035,7 @@ export async function bootstrap(initialYears, initialAccount, {
   // Account actions wait for that same check and use the current navigation.
   if (sessionEstablished) await accountCheck;
   await Promise.all([accountCheck, restoreRoute(years, {
-    initialSelectors: early, initialAccountCheck: accountCheck, initialYearPicker,
+    initialSelectors: early, initialAccountCheck: accountCheck, initialYearPicker, initialReaderRequest,
   })]);
 }
 function loadPurchaseConfiguration(initial = null) {
@@ -3107,13 +3107,15 @@ async function finishSavedYears(g, pending, confirmed) {
 
 async function restoreRoute(initialYears = null, {
   focusArticle = "", indexAnchor = "", initialSelectors = null, initialAccountCheck = null, initialDemoIndex = null,
-  initialYearPicker = null,
+  initialYearPicker = null, initialReaderRequest = null,
 } = {}) {
   invalidate();
   show("welcome");
   const params = new URLSearchParams(location.search);
   const early = initialSelectors?.route === params.toString() ? initialSelectors : null;
   if (!early) initialSelectors?.abort();
+  const readerStartup = initialReaderRequest?.route === params.toString() ? initialReaderRequest : null;
+  if (!readerStartup) initialReaderRequest?.controller.abort();
   // URL state is authoritative on history, sign-in, and direct-link restores.
   // A prior vehicle must not leave usable descendants or filter another index.
   for (const name of names) {
@@ -3190,13 +3192,22 @@ async function restoreRoute(initialYears = null, {
             firstIndex = firstIndexPageForVehicle(result, vehicle);
         }
         const preferRetained = uuid(articleID) && history.state?.workshopArticleReadable === true;
-        const earlyReader = uuid(articleID) && !openDemo && sessionRequest && validScope(exact)
-          ? new AbortController() : null;
+        const detailPath = uuid(articleID) && !openDemo && sessionRequest && validScope(exact)
+          ? articleRequestPath(articleID) : "";
+        const startup = detailPath && readerStartup?.path === detailPath ? readerStartup : null;
+        const earlyReader = detailPath ? startup?.controller ?? new AbortController() : null;
         let initialRetainedReader = null;
         if (earlyReader) {
           const signal = AbortSignal.any([g.signal, earlyReader.signal]);
-          const response = requestArticleJSON(articleRequestPath(articleID), {
+          const response = requestArticleJSON(detailPath, {
             retainedReaderSession: true, preferShortPublicationCheck: true, signal,
+            ...(startup && { fetcher: async (_path, request) => {
+              request.signal.addEventListener("abort", () => earlyReader.abort(), { once: true });
+              const reply = await startup.response;
+              request.signal.throwIfAborted();
+              if (!reply) throw new TypeError("The initial article request did not return a response.");
+              return reply;
+            } }),
           }).catch(error => error?.status === 429 || error?.retryAfterSeconds > 0 ? { retry: error } : null);
           // An unfamiliar link may need preparation. Give a slow probe only a
           // short window after session restoration before using that path.
@@ -3258,7 +3269,10 @@ async function restoreRoute(initialYears = null, {
     },
     () => restoreRoute(),
   );
-  return early ? restore.finally(early.abort) : restore;
+  return early || readerStartup ? restore.finally(() => {
+    early?.abort();
+    readerStartup?.controller.abort();
+  }) : restore;
 }
 for (const [index, name] of names.entries()) {
   const select = $(name);

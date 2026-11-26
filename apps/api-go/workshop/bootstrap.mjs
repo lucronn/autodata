@@ -94,6 +94,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
       initialSelectors: initial?.selectors,
       initialYearPicker: pickerStartup?.takeYearPicker?.(),
       initialPurchaseConfig,
+      initialReaderRequest: pickerStartup?.retainedReader,
       testCheckout: wantsDemo ? undefined : modeRequest.then(mode => mode.testCheckout === true),
       initialDemoIndex: openDemo ? demoIndex : null,
     });
