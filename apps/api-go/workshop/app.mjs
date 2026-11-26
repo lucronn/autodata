@@ -1223,7 +1223,9 @@ function renderArticleLinks(items) {
       row = element("li");
       row.dataset.articleId = item.id;
       const link = element("a");
-      link.append(element("span"), element("span", undefined, "article-type"));
+      const metadata = element("span", undefined, "article-metadata");
+      metadata.append(element("span", undefined, "article-type"), element("span", "Ready to read", "article-ready"));
+      link.append(element("span"), metadata);
       link.addEventListener("click", (event) => {
         if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
@@ -1233,6 +1235,7 @@ function renderArticleLinks(items) {
     }
     previous.delete(item.id);
     const link = row.firstElementChild;
+    const [type, ready] = link.children[1].children;
     link.dataset.retained = String(hasRetainedArticleRevision(item));
     const kind = typeof item.kind === "string"
       ? item.kind.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ")
@@ -1240,7 +1243,8 @@ function renderArticleLinks(items) {
     const title = item.title || "Untitled article";
     const label = item.service_schedule || (kind ? kind[0].toUpperCase() + kind.slice(1) : "Article");
     if (link.children[0].textContent !== title) link.children[0].textContent = title;
-    if (link.children[1].textContent !== label) link.children[1].textContent = label;
+    if (type.textContent !== label) type.textContent = label;
+    ready.hidden = openDemo || item.availability !== "available";
     url.searchParams.set("article", item.id);
     const href = url.pathname + url.search;
     if (link.getAttribute("href") !== href) link.href = href;
@@ -1367,8 +1371,10 @@ const articlePageSize = 100;
 const articleIndexPagePreferences = "workshop-index-pages, workshop-index-live-pages";
 function articleIndexItems(query) {
   const visible = openDemo ? articles.filter((item) => item.availability === "available") : articles;
-  if (query && query === searchQuery && searchItems !== null)
-    return openDemo ? searchItems.filter((item) => item.availability === "available") : searchItems;
+  if (query && query === searchQuery && searchItems !== null) {
+    const ready = searchItems.filter((item) => item.availability === "available");
+    return openDemo ? ready : [...ready, ...searchItems.filter((item) => item.availability !== "available")];
+  }
   return query ? filterArticles(visible, query) : visible;
 }
 function moveArticlePage(direction) {

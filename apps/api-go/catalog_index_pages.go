@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 )
 
@@ -26,6 +27,20 @@ type catalogIndexPageRequest struct {
 	anchor string
 }
 
+// Keep the authored descriptor order within each group.
+func readableArticlesFirst(items []CatalogArticle) {
+	slices.SortStableFunc(items, func(a, b CatalogArticle) int {
+		aReady, bReady := a.Availability == "available", b.Availability == "available"
+		if aReady == bReady {
+			return 0
+		}
+		if aReady {
+			return -1
+		}
+		return 1
+	})
+}
+
 func parseCatalogIndexPageRequest(filters url.Values) (catalogIndexPageRequest, bool) {
 	offsets, anchors := filters["offset"], filters["anchor"]
 	switch len(offsets) + len(anchors) {
@@ -44,7 +59,7 @@ func parseCatalogIndexPageRequest(filters url.Values) (catalogIndexPageRequest, 
 	}
 }
 
-// Hash the current authorized index snapshot, in repository order. The projection
+// Hash the current authorized index snapshot in the order used for paging. The projection
 // uses only index metadata so retained body bytes and processing timers
 // never affect a page revision.
 func catalogIndexRevision(items []CatalogArticle) string {

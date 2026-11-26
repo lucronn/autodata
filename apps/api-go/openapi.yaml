@@ -78,8 +78,10 @@ paths:
           type: string
         description: Workshop can request workshop-index-live-pages to page a large
           unfiltered paid index even while sources are still loading or progress is
-          unavailable. workshop-index-pages pages only settled indexes. When both
-          are requested, workshop-index-live-pages takes precedence.
+          unavailable. The live index lists readable articles first, preserving
+          the catalog order within each group. workshop-index-pages pages only
+          settled indexes. When both are requested, workshop-index-live-pages
+          takes precedence.
           workshop-confirm-session and workshop-purchase-quote apply on the exact
           selected configuration and region.
           workshop-demo-readable-index limits an unfiltered open demo index to

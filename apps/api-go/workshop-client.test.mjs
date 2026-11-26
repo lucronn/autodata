@@ -5559,8 +5559,13 @@ test('the index and search distinguish authored service schedules with a shared 
   const severe = { ...common, id: 'severe', service_schedule: 'Severe Service' };
   const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [normal, severe] })]);
   await h.load();
-  assert.deepEqual(h.$('articles').firstElementChild.children.map(row => row.firstElementChild.children.map(node => node.textContent)), [
-    [common.title, 'Normal Service'], [common.title, 'Severe Service'],
+  assert.deepEqual(h.$('articles').firstElementChild.children.map(row => {
+    const [title, metadata] = row.firstElementChild.children;
+    const [type, ready] = metadata.children;
+    return [title.textContent, type.textContent, ready.hidden, ready.textContent];
+  }), [
+    [common.title, 'Normal Service', false, 'Ready to read'],
+    [common.title, 'Severe Service', false, 'Ready to read'],
   ]);
   assert.deepEqual(filterArticles([normal, severe], 'severe service'), [severe]);
 });
@@ -5849,22 +5854,37 @@ test('hydration reuses article rows and keeps keyboard focus on the same article
   assert.equal(h.$('articles').firstElementChild.children[0], oldRows[0]);
 });
 
-test('article index type labels show readable kinds beside titles without changing links', async () => {
+test('article index shows article types and marks only readable rows as ready', async () => {
   const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [
-    { id: 'source/procedure', title: 'Replace oil pump', kind: 'procedure' },
-    { id: 'source/bulletin', title: 'Oil pressure notice', kind: 'technical_service_bulletin' },
+    { id: 'source/procedure', title: 'Replace oil pump', kind: 'procedure', availability: 'available' },
+    { id: 'source/bulletin', title: 'Oil pressure notice', kind: 'technical_service_bulletin', availability: 'pending' },
     { id: 'source/other', title: 'Legacy entry', kind: 'legacy-content' },
   ] })]);
   await h.load();
   const list = h.$('articles').children[0];
   assert.equal(list.tag, 'ul');
   assert.equal(list.attributes.role, 'list');
-  assert.deepEqual(list.children.map(row => row.children[0].children.map(span => span.textContent)), [
-    ['Replace oil pump', 'Procedure'],
-    ['Oil pressure notice', 'Technical service bulletin'],
-    ['Legacy entry', 'Legacy content'],
+  assert.deepEqual(list.children.map(row => {
+    const [title, metadata] = row.firstElementChild.children;
+    const [type, ready] = metadata.children;
+    return [title.textContent, type.textContent, ready.hidden];
+  }), [
+    ['Replace oil pump', 'Procedure', false],
+    ['Oil pressure notice', 'Technical service bulletin', true],
+    ['Legacy entry', 'Legacy content', true],
   ]);
   assert.equal(new URL(list.children[0].children[0].href, 'https://cars.example').searchParams.get('article'), 'source/procedure');
+});
+
+test('owned search keeps stored articles above entries that still need a body', () => {
+  const h = articleIndexHarness([]);
+  const indexed = { id: 'index', title: 'Pump repair', availability: 'unavailable' };
+  const source = { id: 'source', title: 'Pump seal inspection', availability: 'available' };
+  const published = { id: 'publication', title: 'Pump installation', availability: 'available' };
+  h.context.searchQuery = 'pump';
+  h.context.searchItems = [indexed, source, published];
+  assert.deepEqual(Array.from(h.context.articleIndexItems('pump'), row => row.id), ['source', 'publication', 'index']);
+  assert.deepEqual(h.context.searchItems.map(row => row.id), ['index', 'source', 'publication']);
 });
 
 test('large article indexes page stored descriptors and search beyond the visible page', async () => {

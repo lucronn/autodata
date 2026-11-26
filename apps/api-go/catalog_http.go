@@ -360,10 +360,14 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 			response.Header().Add("Preference-Applied", catalogDemoReadableIndexPreference)
 		}
 		settled := progress != nil && (progress.Complete || (progress.Status == "failed" && !progress.Retryable))
-		if paid && !scope.openDemo && pagePreference != "" && !filters.Has("q") && !filters.Has("title") &&
-			len(items) > catalogIndexPageSize && (pagePreference == catalogIndexLivePagesPreference || settled) {
-			items, page = pageRequest.selectPage(items)
-			response.Header().Add("Preference-Applied", pagePreference)
+		if paid && !scope.openDemo && pagePreference != "" && !filters.Has("q") && !filters.Has("title") {
+			if pagePreference == catalogIndexLivePagesPreference {
+				readableArticlesFirst(items)
+			}
+			if len(items) > catalogIndexPageSize && (pagePreference == catalogIndexLivePagesPreference || settled) {
+				items, page = pageRequest.selectPage(items)
+				response.Header().Add("Preference-Applied", pagePreference)
+			}
 		}
 	}
 	writeJSON(response, http.StatusOK, CatalogArticlesResponse{

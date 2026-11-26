@@ -135,6 +135,69 @@ func TestPaidCatalogIndexPagesUseCompleteDescriptorOrder(t *testing.T) {
 	}
 }
 
+func TestWorkshopIndexOpensWithStoredArticlesBeforeLaterPages(t *testing.T) {
+	server, store, grants := paidHTTPServer()
+	grants.err = nil
+	store.progress = &CatalogArticleProgress{Status: "completed", Complete: true}
+	ids := fillPaidIndexPageFixture(store, 205)
+	readyIDs := []string{ids[119], ids[202]}
+	for _, id := range ids {
+		item := store.articles[id]
+		item.Availability = "pending"
+		if slices.Contains(readyIDs, id) {
+			item.Availability = "available"
+			item.ContentOrigin = stringPointer("source")
+		}
+		store.articles[id] = item
+	}
+	handler := server.Handler()
+	read := func(tail, prefer string) CatalogArticlesResponse {
+		t.Helper()
+		response := callCatalogIndexPage(handler, tail, prefer, "")
+		var body CatalogArticlesResponse
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &body) != nil {
+			t.Fatalf("could not read index for %s %s: %d", prefer, tail, response.Code)
+		}
+		return body
+	}
+	first := read("", catalogIndexLivePagesPreference)
+	if first.Page == nil || first.Page.Total != len(ids) || len(first.Items) != 100 ||
+		first.Items[0].ID != readyIDs[0] || first.Items[1].ID != readyIDs[1] || first.Items[2].ID != ids[0] {
+		t.Fatal("stored articles should appear first, preserving relative order")
+	}
+	embedded, ok := server.firstWorkshopArticleIndex(context.Background(),
+		server.auth.(*fakeAuthenticator).principal, paidTestConfiguration, "CA")
+	if !ok || !reflect.DeepEqual(embedded.Page, first.Page) || !reflect.DeepEqual(embedded.Items, first.Items) {
+		t.Fatal("checkout and session should embed the same first page")
+	}
+	anchor := read("&anchor="+readyIDs[1], catalogIndexLivePagesPreference)
+	if anchor.Page == nil || anchor.Page.Offset != 0 || anchor.Page.Revision != first.Page.Revision {
+		t.Fatal("the stored article anchor should resolve to its new page")
+	}
+	var combined []string
+	for _, page := range []CatalogArticlesResponse{
+		first, read("&offset=100", catalogIndexLivePagesPreference), read("&offset=200", catalogIndexLivePagesPreference),
+	} {
+		if page.Page == nil || page.Page.Revision != first.Page.Revision {
+			t.Fatal("later pages of the same order should share their revision")
+		}
+		for _, item := range page.Items {
+			combined = append(combined, item.ID)
+		}
+	}
+	want := append(slices.Clone(readyIDs), slices.DeleteFunc(slices.Clone(ids), func(id string) bool {
+		return slices.Contains(readyIDs, id)
+	})...)
+	if !slices.Equal(combined, want) {
+		t.Fatal("the index lost or reordered descriptors within either group")
+	}
+	for _, prefer := range []string{"", catalogIndexPagesPreference} {
+		if legacy := read("", prefer); len(legacy.Items) == 0 || legacy.Items[0].ID != ids[0] {
+			t.Fatal("legacy index requests should retain their existing order")
+		}
+	}
+}
+
 func TestCatalogIndexPagesValidateOnlyOptedInBoundaries(t *testing.T) {
 	server, store, grants := paidHTTPServer()
 	grants.err = nil

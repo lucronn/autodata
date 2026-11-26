@@ -494,6 +494,15 @@ select:enabled:hover {
   white-space: nowrap;
   text-decoration: none;
 }
+.article-list .article-metadata {
+  display: grid;
+  text-align: right;
+}
+.article-list .article-ready {
+  color: var(--quiet);
+  font-size: 11px;
+  white-space: nowrap;
+}
 .empty-results {
   padding: 35px 14px;
   font-size: 15px;
