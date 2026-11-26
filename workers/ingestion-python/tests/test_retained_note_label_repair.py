@@ -18,8 +18,9 @@ from autodata_ingestion.procedure_rewrite_full import _get, _set
 from autodata_ingestion.published_media_publication import _publication_evidence
 from autodata_ingestion.procedure_rewrite_sentence_correction import SENTENCE_CORRECTION_METHOD
 from autodata_ingestion.retained_note_label_repair import (
+    AUTHORED_PROCEDURE_CHECKPOINT, AUTHORED_PROCEDURE_PROFILE, _restore_authored_procedure_reply,
     CHECKPOINT, PROFILE, ROTATION_REMOVAL_CHECKPOINT, ROTATION_REMOVAL_METHOD, ROTATION_REMOVAL_PROFILE,
-    _restore_reply, repair_retained_note_labels, repair_retained_rotation_removal,
+    _restore_reply, repair_retained_authored_procedure, repair_retained_note_labels, repair_retained_rotation_removal,
 )
 from autodata_ingestion.source_job_persistence import ProfileRefreshRequired, ensure_article_job, refresh_article_job, schedule_source_bound_rewrite
 from lifecycle_support import fresh_database, runtime, seed_configuration, seed_snapshot
@@ -144,6 +145,59 @@ def archived_notes(runtime):
 
 def _state(runtime):
     return all_rows(runtime.repo)
+
+
+def test_authored_procedure_repair_publishes_the_same_source_atomically(runtime, monkeypatch):
+    from autodata_ingestion import authored_procedure_scope
+
+    original = "Panel Clip » Install — Panel Clip Service Procedure"
+    draft = "Fit the panel clip."
+    with monkeypatch.context() as historical_worker:
+        historical_worker.setattr(authored_procedure_scope, "require_authored_procedure_scope", lambda *a, **kw: None)
+        pins, prior, source, _, _ = seed_archived_note_publication(runtime, additional={original: draft})
+
+    binding = SimpleNamespace(source_revision_id=source["source_revision_id"])
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (runtime.article_id,)).fetchone()
+        _, _, _, _, reply, guard, _ = _publication_evidence(cur, article, binding, fixture_mode=False, lock=False)
+    proposal, validation, _, paths = _restore_authored_procedure_reply(
+        prior["normalized_source_document"], source["source_document"], prior["canonical_document"], reply,
+        prompt_version=guard, verified_color_notes=False,
+    )
+    assert validation.passed
+    [path] = paths
+    assert _get({"blocks": proposal["blocks"][1:]}, path) == "Install the Panel Clip as described in Panel Clip Service Procedure."
+    pins.update(expected_repaired_hash=digest_json(proposal), reason="Restore the authored procedure referral.")
+    before = _state(runtime)
+    with pytest.raises(ValueError, match="^RETAINED_AUTHORED_PROCEDURE_REPAIR_STALE$"):
+        repair_retained_authored_procedure(runtime.repo, runtime.article_id, **(pins | {"expected_repaired_hash": "0" * 64}))
+    assert _state(runtime) == before
+
+    def interrupt(point):
+        assert point == "inside_publication"
+        assert runtime.read_current()["canonical_revision_id"] == pins["expected_published_revision_id"]
+        raise RuntimeError("interrupt the procedure publication")
+
+    with pytest.raises(RuntimeError, match="interrupt the procedure publication"):
+        repair_retained_authored_procedure(runtime.repo, runtime.article_id, **pins, hooks=interrupt)
+    assert _state(runtime) == before
+
+    revision = repair_retained_authored_procedure(runtime.repo, runtime.article_id, **pins)
+    assert runtime.read_current()["canonical_revision_id"] == revision != pins["expected_published_revision_id"]
+    assert runtime.read_current()["source_revision_id"] == pins["expected_source_revision_id"]
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (runtime.article_id,)).fetchone()
+        row, _, _, _, _, _, _ = _publication_evidence(cur, article, binding, fixture_mode=False, lock=False)
+    assert row["rewrite_profile_version"] == AUTHORED_PROCEDURE_PROFILE
+    assert row["canonical_document"] == proposal
+    assert row["canonical_images"] == prior["canonical_images"]
+    assert row["model_metadata"][AUTHORED_PROCEDURE_CHECKPOINT]["evidence"]["restored_paths"] == paths
+    after = _state(runtime)
+    assert after["canonical_article_rewrite_attempts"] == before["canonical_article_rewrite_attempts"]
+    assert len(after["publication_events"]) == len(before["publication_events"]) + 1
+    assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}
 
 
 def test_retained_required_action_repair_publishes_same_source_and_rolls_back_atomically(runtime, monkeypatch):

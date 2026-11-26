@@ -1829,7 +1829,8 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
         METHOD as INTRODUCTION_METHOD, resolve_retained_introduction_repair,
     )
     from .retained_note_label_repair import (
-        CONDITIONAL_METHOD, METHOD as NOTE_LABEL_REPAIR_METHOD, OPTIONAL_OBSERVATION_METHOD, ROTATION_REMOVAL_METHOD,
+        AUTHORED_PROCEDURE_METHOD, CONDITIONAL_METHOD, METHOD as NOTE_LABEL_REPAIR_METHOD,
+        OPTIONAL_OBSERVATION_METHOD, ROTATION_REMOVAL_METHOD, resolve_retained_authored_procedure_repair,
         resolve_retained_conditional_note_repair, resolve_retained_note_label_repair,
         resolve_retained_optional_observation_repair, resolve_retained_rotation_removal_repair,
     )
@@ -1855,7 +1856,7 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
     method = row["model_metadata"].get("transformation_method")
     archived_reply_recovery = method in (
         METHOD, RETAINED_PROCEDURE_REPAIR_METHOD, NOTE_LABEL_REPAIR_METHOD, REQUIRED_ACTION_METHOD, CONDITIONAL_METHOD,
-        OPTIONAL_OBSERVATION_METHOD, ROTATION_REMOVAL_METHOD, INTRODUCTION_METHOD,
+        OPTIONAL_OBSERVATION_METHOD, ROTATION_REMOVAL_METHOD, INTRODUCTION_METHOD, AUTHORED_PROCEDURE_METHOD,
     )
     if method == METHOD:
         validation = verify_staged_media_reply_recovery(cur, job, article, row)
@@ -1873,6 +1874,8 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
         validation = resolve_retained_required_action_repair(cur, job, article, row, publishing=True).validation
     elif method == INTRODUCTION_METHOD:
         validation = resolve_retained_introduction_repair(cur, job, article, row, publishing=True).validation
+    elif method == AUTHORED_PROCEDURE_METHOD:
+        validation = resolve_retained_authored_procedure_repair(cur, job, article, row, publishing=True).validation
     elif profile in AUTOMATIC_REWRITE_PROFILES:
         validation = automatic_candidate_validation(cur, job, row, require_current=True)
     elif profile == "full-prose-review-v1":
@@ -1919,13 +1922,16 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
         _require_full_approval(cur,job,article,row)
     if profile in AUTOMATIC_REWRITE_PROFILES or method in (
         NOTE_LABEL_REPAIR_METHOD, REQUIRED_ACTION_METHOD, CONDITIONAL_METHOD, ROTATION_REMOVAL_METHOD,
-        OPTIONAL_OBSERVATION_METHOD, INTRODUCTION_METHOD,
+        OPTIONAL_OBSERVATION_METHOD, INTRODUCTION_METHOD, AUTHORED_PROCEDURE_METHOD,
     ):
+        from .authored_procedure_scope import require_authored_procedure_scope
+
         source, document = row["normalized_source_document"], row["canonical_document"]
         rewritten_paths = validation.report["changed_prose_slots"]
         require_distinct_generated_introduction(source, document, rewritten_paths=rewritten_paths)
         require_preserved_display_quotations(source, document, rewritten_paths=rewritten_paths)
         require_required_procedure_actions(source, document, rewritten_paths=rewritten_paths)
+        require_authored_procedure_scope(source, document, rewritten_paths=rewritten_paths)
     cur.execute("UPDATE canonical_article_revisions SET status='published',published_at=clock_timestamp() WHERE canonical_article_revision_id=%s",(revision_id,))
     if hooks is not None:hooks("inside_publication")
     cur.execute("""UPDATE canonical_articles SET current_source_revision_id=%s,
