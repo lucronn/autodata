@@ -3156,6 +3156,77 @@ test('saved vehicle restores the index only when the current verified session su
   }
 });
 
+test('the entry starts an exact saved article and session while app assets load', async () => {
+  const html = readFileSync(new URL('./workshop/index.html', import.meta.url), 'utf8');
+  const script = html.match(/<!-- Workshop initial years -->\s*<script>([\s\S]*?)<\/script>/)[1];
+  const query = new URLSearchParams({ configuration: routeConfiguration, region: 'US', article: routeArticle });
+  const detail = `/v1/catalog/vehicles/${routeConfiguration}/articles/${routeArticle}?region=US`;
+  for (const suffix of ['', '&region=CA', '&view=library', `&order=${routeOrder}`]) {
+    const fetches = [];
+    const context = {
+      URL, URLSearchParams, AbortController, AbortSignal,
+      location: new URL(`https://autodata.cars.tk/workshop?${query}${suffix}`),
+      document: {
+        getElementById: () => ({ href: 'https://autodata.cars.tk/workshop/catalog.mjs', dataset: {} }),
+        createElement: () => ({}), head: { append() {} },
+      },
+      async fetch(path, options) {
+        fetches.push({ path, options });
+        return new Response('{}', { status: 401 });
+      },
+    };
+    runVM(script, context);
+    if (suffix) {
+      assert.deepEqual(fetches, []);
+      continue;
+    }
+    assert.deepEqual(fetches.map(({ path }) => path),
+      ['/auth/config', '/auth/session', '/workshop/purchase-config.json', detail]);
+    assert.equal(fetches[3].options.headers.Prefer,
+      'workshop-short-publication-check, workshop-retained-reader-session');
+    assert.equal(fetches[3].options.credentials, 'same-origin');
+    assert.equal(fetches[3].options.cache, 'no-store');
+    assert.equal(fetches[3].options.redirect, 'error');
+    const startup = context.workshopPickerStartup.retainedReader;
+    assert.equal(startup.path, detail);
+    assert.equal((await startup.response).status, 401);
+  }
+});
+
+test('a saved route consumes its matching startup response and discards an old route', async () => {
+  const search = `?configuration=${routeConfiguration}&region=US&article=${routeArticle}`;
+  const detail = `/v1/catalog/vehicles/${routeConfiguration}/articles/${routeArticle}?region=US`;
+  for (const sameRoute of [true, false]) {
+    const h = loginRouteHarness(search);
+    const account = deferredAuthOperation();
+    const old = new AbortController();
+    const body = { article: { id: routeArticle } };
+    h.context.sessionRequest = account.promise;
+    h.context.AbortController = AbortController;
+    h.context.articleRequestPath = () => detail;
+    let networkCalls = 0;
+    h.context.requestArticleJSON = (path, options) => requestArticleJSON(path, {
+      ...options,
+      fetcher: options.fetcher ?? (async () => {
+        networkCalls++;
+        return new Response(JSON.stringify(body));
+      }),
+    });
+    h.context.selectVehicle = async (_g, _article, options) => {
+      await account.promise;
+      assert.deepEqual((await options.initialRetainedReader()).data, body);
+    };
+    const opening = h.context.restoreRoute(null, { initialReaderRequest: {
+      route: sameRoute ? search.slice(1) : '', path: detail,
+      response: Promise.resolve(new Response(JSON.stringify(body))), controller: old,
+    } });
+    account.resolve();
+    await opening;
+    assert.equal(old.signal.aborted, true);
+    assert.equal(networkCalls, sameRoute ? 0 : 1);
+  }
+});
+
 for (const previouslyRead of [true, false]) {
   test(`an exact saved article starts its scoped GET during account restoration (history: ${previouslyRead})`, async () => {
     const h = loginRouteHarness(`?configuration=${routeConfiguration}&region=US&article=${routeArticle}`);
