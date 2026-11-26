@@ -597,6 +597,47 @@ class _VerifyOnlySink:
             raise ValueError("SOURCE_MEDIA_REPLAY_OBJECT_MISMATCH")
 
 
+def _validate_retained_layout_binding(binding, captured, layout):
+    manifest = ({**binding.resource_manifest[0], **layout}, *binding.resource_manifest[1:])
+    provenance = ({**binding.resource_provenance[0], **layout}, *binding.resource_provenance[1:])
+    if (captured.context != binding.context or captured.captured_at != binding.captured_at
+            or captured.projection_version != "source-projection-v5" or captured.projection_status != "readable"
+            or captured.body_source_snapshot_id != binding.body_source_snapshot_id
+            or tuple(captured.resource_manifest) != manifest or tuple(captured.resource_provenance) != provenance
+            or captured.resources != provenance or tuple(captured.evidence_manifest) != binding.evidence_manifest
+            or captured.source_fingerprint != _replay_fingerprint(binding.context, manifest, provenance[0].get("asset_bindings"))
+            or captured.source_fingerprint == binding.source_fingerprint):
+        raise ValueError("SOURCE_LAYOUT_REPLAY_BINDING_MISMATCH")
+
+def _capture_retained_layout(binding, objects, remaining, **options):
+    """Project the archived bytes with the chosen layout and reuse verified object receipts."""
+    provider = binding.context.key.provider
+    connector = _OfflineConnector(provider, binding.resource_provenance, objects)
+    parsed = capture_source_article(
+        binding.context, registry={provider: connector}, object_store=_VerifyOnlySink(objects),
+        deadline_seconds=remaining(), **options,
+    )
+    snapshots = {str(snapshot_id(row["sha256"])): row["source_snapshot_id"] for row in binding.resource_provenance}
+    manifest = [dict(row) for row in parsed.resource_manifest]
+    provenance = _remap_snapshot_references(parsed.resource_provenance, snapshots)
+    resources = [_remap_snapshot_references(row, snapshots) for row in parsed.resources]
+    for index, (saved, refreshed) in enumerate(zip(binding.resource_manifest, manifest, strict=True)):
+        if (saved.get("derivation_version") in SUPPORTED_RASTERIZER_VERSIONS
+                and refreshed.get("derivation_version") == RASTERIZER_VERSION and refreshed["sha256"] == saved["sha256"]):
+            # The original converter label remains accurate for these identical bytes.
+            for row in (manifest[index], provenance[index], resources[index]):
+                row["derivation_version"] = saved["derivation_version"]
+    document = _remap_snapshot_references(parsed.source_document, snapshots)
+    body, steps, images = project_document(document)
+    return replace(
+        parsed, captured_at=binding.captured_at, body_source_snapshot_id=binding.body_source_snapshot_id,
+        source_fingerprint=_replay_fingerprint(binding.context, manifest, provenance[0].get("asset_bindings")),
+        resources=tuple(resources), resource_manifest=manifest, resource_provenance=provenance,
+        evidence_manifest=_remap_snapshot_references(parsed.evidence_manifest, snapshots),
+        source_document=document, source_body=body, source_steps=steps, source_images=images,
+    )
+
+
 def _replay(repo, source_revision_id, object_store, deadline, *, ordinals):
     def remaining():
         seconds = deadline - monotonic()

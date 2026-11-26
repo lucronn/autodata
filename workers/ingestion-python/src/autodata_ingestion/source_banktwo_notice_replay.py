@@ -1,20 +1,17 @@
 """Rebuild an older Banktwo source with notices in their authored list positions."""
 
-from dataclasses import replace
 from time import monotonic
 
 from psycopg.rows import dict_row
 
 from .article_document import validate_ordered_document, walk_ordered_list_items
-from .article_lifecycle_store import _remap_snapshot_references
 from .article_lifecycle_types import BANKTWO_LIST_NOTICE_LAYOUT, digest_json
-from .source_article_capture import capture_source_article, project_document, snapshot_id
+from .source_article_capture import project_document
 from .source_job_persistence import source_bound_rewrite_source_allowed
 from .source_media_replay import (
-    _OfflineConnector, _VerifyOnlySink, _asset_inventory, _read_objects, _replay_fingerprint,
+    _asset_inventory, _capture_retained_layout, _read_objects, _validate_retained_layout_binding,
     load_media_replay_binding,
 )
-from .svg_rasterization import RASTERIZER_VERSION, SUPPORTED_RASTERIZER_VERSIONS
 
 
 _LAYOUT = "banktwo_list_notice_layout"
@@ -49,17 +46,12 @@ def _numbered_items(document):
 
 
 def validate_banktwo_notice_capture(binding, captured):
-    manifest = ({**binding.resource_manifest[0], **_DECLARED_LAYOUT}, *binding.resource_manifest[1:])
-    provenance = ({**binding.resource_provenance[0], **_DECLARED_LAYOUT}, *binding.resource_provenance[1:])
-    if (captured.context != binding.context or captured.captured_at != binding.captured_at
-            or captured.projection_version != "source-projection-v5" or captured.projection_status != "readable"
-            or captured.body_source_snapshot_id != binding.body_source_snapshot_id
-            or tuple(captured.resource_manifest) != manifest or tuple(captured.resource_provenance) != provenance
-            or captured.resources != provenance or tuple(captured.evidence_manifest) != binding.evidence_manifest
-            or captured.source_fingerprint != _replay_fingerprint(binding.context, manifest, provenance[0].get("asset_bindings"))
-            or captured.source_fingerprint == binding.source_fingerprint):
-        raise ValueError(_INVALID)
+    try:
+        _validate_retained_layout_binding(binding, captured, _DECLARED_LAYOUT)
+    except ValueError:
+        raise ValueError(_INVALID) from None
     before, after = binding.source_document, captured.source_document
+    provenance = tuple(captured.resource_provenance)
     if (validate_ordered_document(after, strict=True)
             or {key: item for key, item in before.items() if key != "blocks"}
             != {key: item for key, item in after.items() if key != "blocks"}
@@ -68,34 +60,6 @@ def validate_banktwo_notice_capture(binding, captured):
             or _asset_inventory(captured.source_images, provenance) != binding._source_assets
             or project_document(after) != (captured.source_body, captured.source_steps, captured.source_images)):
         raise ValueError(_DRIFT)
-
-
-def _parse(binding, objects, remaining, *, preserve_notices):
-    connector = _OfflineConnector("banktwo", binding.resource_provenance, objects)
-    parsed = capture_source_article(
-        binding.context, registry={"banktwo": connector}, object_store=_VerifyOnlySink(objects),
-        deadline_seconds=remaining(), keep_banktwo_list_notices=preserve_notices,
-        keep_html_headings=binding.projection_version == "source-projection-v5",
-    )
-    snapshots = {str(snapshot_id(row["sha256"])): row["source_snapshot_id"] for row in binding.resource_provenance}
-    manifest = [dict(row) for row in parsed.resource_manifest]
-    provenance = _remap_snapshot_references(parsed.resource_provenance, snapshots)
-    resources = [_remap_snapshot_references(row, snapshots) for row in parsed.resources]
-    for index, (saved, refreshed) in enumerate(zip(binding.resource_manifest, manifest, strict=True)):
-        if (saved.get("derivation_version") in SUPPORTED_RASTERIZER_VERSIONS
-                and refreshed.get("derivation_version") == RASTERIZER_VERSION and refreshed["sha256"] == saved["sha256"]):
-            # The original converter label remains accurate for these identical bytes.
-            for row in (manifest[index], provenance[index], resources[index]):
-                row["derivation_version"] = saved["derivation_version"]
-    document = _remap_snapshot_references(parsed.source_document, snapshots)
-    body, steps, images = project_document(document)
-    return replace(
-        parsed, captured_at=binding.captured_at, body_source_snapshot_id=binding.body_source_snapshot_id,
-        source_fingerprint=_replay_fingerprint(binding.context, manifest, provenance[0].get("asset_bindings")),
-        resources=tuple(resources), resource_manifest=manifest, resource_provenance=provenance,
-        evidence_manifest=_remap_snapshot_references(parsed.evidence_manifest, snapshots),
-        source_document=document, source_body=body, source_steps=steps, source_images=images,
-    )
 
 
 def preview_banktwo_notice_replay(repo, source_revision_id, *, object_store):
@@ -120,14 +84,15 @@ def preview_banktwo_notice_replay(repo, source_revision_id, *, object_store):
             raise ValueError("SOURCE_BANKTWO_NOTICE_REPLAY_STALE")
 
     verified = _read_objects(binding, object_store, remaining)
-    previous = _parse(binding, verified, remaining, preserve_notices=False)
+    options = {"keep_html_headings": binding.projection_version == "source-projection-v5"}
+    previous = _capture_retained_layout(binding, verified, remaining, **options)
     if (digest_json(previous.source_document) != binding.source_document_hash
             or previous.source_fingerprint != binding.source_fingerprint
             or tuple(previous.resource_manifest) != binding.resource_manifest
             or tuple(previous.resource_provenance) != binding.resource_provenance
             or tuple(previous.evidence_manifest) != binding.evidence_manifest):
         raise ValueError(_DRIFT)
-    corrected = _parse(binding, verified, remaining, preserve_notices=True)
+    corrected = _capture_retained_layout(binding, verified, remaining, **options, keep_banktwo_list_notices=True)
     validate_banktwo_notice_capture(binding, corrected)
     remaining()
     return binding, corrected

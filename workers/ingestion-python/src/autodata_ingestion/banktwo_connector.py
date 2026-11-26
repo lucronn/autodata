@@ -26,6 +26,11 @@ _HEADING_LEVELS = {f"h{level}": level for level in range(1, 7)}
 _SECTION_TITLE_PARAGRAPH = re.compile(r"<p>\s*<(b|strong)>\s*([^<>]{1,80}?)\s*</\1>\s*</p>", re.IGNORECASE)
 _SECTION_TITLE_LEVELS = {"removal": 2, "installation": 2, "all vehicles": 3}
 _LIST_NOTICE_LABEL = re.compile(r"\s*(?P<label>note|caution|warning)\s*:\s*", re.IGNORECASE)
+_BANKONE_DEFINITION_HEADINGS = re.compile(
+    r"""<dt\s+class=(?P<dt_quote>["'])document-subheader(?P=dt_quote)\s*>(?P<term>[^<>]{1,120})</dt>\s*"""
+    r"""<dd>\s*<span\s+class=(?P<span_quote>["'])satitle(?P=span_quote)\s*>(?P<title>[^<>]{1,120})</span>""",
+    re.IGNORECASE,
+)
 _BANKONE_GRAPHIC_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
 _MAX_LIST_DEPTH = 32
 _MAX_FIGURE_DEPTH = 32
@@ -197,6 +202,7 @@ class ArticleParser(HTMLParser):
         include_untyped_pdf_positions=False, keep_bound_html_images=False, skip_noscript_images=frozenset(),
         declared_image_refs=frozenset(), lazy_image_alts=None, keep_html_document_links=False,
         keep_html_section_titles=False, keep_bankone_html_flow=False, keep_banktwo_list_notices=False,
+        keep_bankone_definition_headings=False,
         positioned_figures=None,
     ):
         super().__init__(convert_charrefs=True)
@@ -229,6 +235,8 @@ class ArticleParser(HTMLParser):
         self.html_section_titles = False
         self._keep_bankone_html_flow = keep_bankone_html_flow
         self.bankone_html_flow = False
+        self._keep_bankone_definition_headings = keep_bankone_definition_headings
+        self.bankone_definition_headings = False
         self._keep_banktwo_list_notices = keep_banktwo_list_notices
         self.banktwo_list_notices = False
         self._keep_html_document_links = keep_html_document_links
@@ -968,14 +976,17 @@ class ArticleParser(HTMLParser):
 
     def parse_starttag(self, offset):
         if (
-            self._keep_html_section_titles and not self._in_table and not self._lists and not self._figures
+            (self._keep_html_section_titles or self._keep_bankone_definition_headings)
+            and not self._in_table and not self._lists and not self._figures
             and not self._skip and not self._image_link and not self._hidden_embed_tags
             and self._hidden_html_tag is None and self._hidden_image_scope is None
             and self._heading is None and self._document_link_scope is None
         ):
             # A supplier can use an isolated bold paragraph as a section title.
             # The closed shape preserves bold instructions and mixed paragraphs.
-            section = _SECTION_TITLE_PARAGRAPH.match(self.rawdata, offset)
+            section = (
+                _SECTION_TITLE_PARAGRAPH.match(self.rawdata, offset) if self._keep_html_section_titles else None
+            )
             if section:
                 title = " ".join(unescape(section[2]).split())
                 level = _SECTION_TITLE_LEVELS.get(title.casefold())
@@ -984,6 +995,17 @@ class ArticleParser(HTMLParser):
                     self._append_block({"kind": "heading", "level": level, "text": title})
                     self.html_section_titles = True
                     return section.end()
+            if self._keep_bankone_definition_headings:
+                headings = _BANKONE_DEFINITION_HEADINGS.match(self.rawdata, offset)
+                if headings:
+                    term = " ".join(unescape(headings["term"]).split())
+                    title = " ".join(unescape(headings["title"]).split())
+                    if term and title:
+                        self.flush()
+                        self._append_block({"kind": "heading", "level": 2, "text": term})
+                        self._append_block({"kind": "heading", "level": 3, "text": title})
+                        self.bankone_definition_headings = True
+                        return headings.end()
         return super().parse_starttag(offset)
 
     def parse_endtag(self, offset):

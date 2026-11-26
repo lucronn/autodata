@@ -39,6 +39,7 @@ HTML_SECTION_TITLE_LAYOUT = "html-section-titles-v1"
 HTML_TABLE_SPAN_LAYOUT = "html-table-spans-v1"
 HTML_BOUND_IMAGE_LAYOUT = "html-bound-image-v1"
 BANKONE_HTML_FLOW_LAYOUT = "bankone-html-flow-v1"
+BANKONE_DEFINITION_HEADING_LAYOUT = "bankone-definition-headings-v1"
 BANKTWO_LIST_NOTICE_LAYOUT = "banktwo-list-notices-v1"
 MIXED_HTML_PDF_LAYOUT = "mixed-html-pdf-v1"
 PDF_BLANK_PAGE_LAYOUT = "blank-pdf-pages-v1"
@@ -204,6 +205,7 @@ class SourceArticleContext:
     legacy_published_positioned_label_body: str | None = None
     legacy_published_inline_article_link_body: str | None = None
     legacy_published_banktwo_list_notice_body: str | None = None
+    legacy_published_bankone_definition_heading_body: str | None = None
 
 
 @dataclass(frozen=True)
