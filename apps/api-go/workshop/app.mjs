@@ -1678,7 +1678,13 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = nul
     } else if (type === "callout") {
       const aside = element("aside", undefined, "article-callout");
       const content = element("div");
-      content.append(element("span", block.text ?? ""));
+      // A supplier schedule can carry its footnote line breaks as literal markup.
+      const lines = block.label === "Footnote" && typeof block.text === "string"
+        ? block.text.split(/<br\s*\/?>/i)
+        : [block.text ?? ""];
+      const labelText = element("span", lines[0]);
+      for (const line of lines.slice(1)) labelText.append(element("br"), element("span", line));
+      content.append(labelText);
       for (const ref of block.images || []) addReference(content, ref);
       aside.append(element("strong", block.label ?? "Note"), content);
       parent.append(aside);

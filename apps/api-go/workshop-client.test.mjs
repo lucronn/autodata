@@ -8788,6 +8788,34 @@ test('Original loads the verified capture and existing article citations keep th
   assert.equal(mediaDescendants(content, 'a')[0], citation);
 });
 
+test('schedule footnote breaks stay readable in the article and its stored source', async () => {
+  const first = '(S) Service warranty requirement.';
+  const second = '(E) Emissions warranty requirement.';
+  const last = '(B) Both requirements. <em>Preserve other markup as text.</em>';
+  const text = `${first}<br/>${second}<br />${last}`;
+  const blocks = [
+    { type: 'callout', label: 'Footnote', text },
+    { type: 'callout', label: 'Note', text: 'Keep this literal <br/> in a regular note.' },
+  ];
+  const h = articleMediaHarness({ requestJSON: async () => ({
+    source: { url: mediaSourceURL }, document: { blocks },
+  }) });
+  const content = h.render(mediaArticle(blocks, [], {
+    content_origin: 'canonical',
+    service_schedule: 'Severe Service',
+    source_review: { available: true, url: mediaSourceURL },
+  }));
+  await h.context.loadSource(mediaSourceURL, h.g, null);
+  for (const root of [content, h.nodes.get('source-review-frame')]) {
+    const [footnote, note] = mediaDescendants(root, 'aside');
+    assert.equal(mediaDescendants(footnote, 'br').length, 2);
+    assert.equal(mediaDescendants(footnote, 'em').length, 0);
+    assert.equal(mediaDescendants(footnote, 'div')[0].textContent, first + second + last);
+    assert.equal(mediaDescendants(note, 'br').length, 0);
+    assert.match(note.textContent, /literal <br\/>/);
+  }
+});
+
 test('the Original shortcut shows a failed read beside the button and can retry', async () => {
   const request = deferredAuthOperation();
   let reads = 0;
