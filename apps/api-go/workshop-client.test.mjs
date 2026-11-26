@@ -6875,6 +6875,29 @@ function articleMediaHarness(overrides = {}) {
   };
 }
 
+test('the article shows the exact source fingerprint and distinguishes a separately pinned Original', () => {
+  const h = articleMediaHarness();
+  const shown = 'a'.repeat(64), stored = 'b'.repeat(64);
+  const source = { available: true, url: mediaSourceURL, content_sha256: shown };
+  const original = {
+    available: true, content_sha256: stored,
+    url: mediaSourceURL.replace('11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'),
+  };
+  const rows = () => h.nodes.get('reference-data').children.map(node => [node.tagName, node.textContent]);
+  const article = mediaArticle([{ type: 'paragraph', text: 'Use the stored procedure.' }], [], { source_review: source });
+  h.render(article);
+  assert.deepEqual(rows(), [['dt', 'Source SHA-256'], ['dd', shown]]);
+  h.render({ ...article, original_source_review: original });
+  assert.deepEqual(rows(), [['dt', 'Source SHA-256'], ['dd', shown], ['dt', 'Original SHA-256'], ['dd', stored]]);
+  h.render({ ...article, original_source_review: { ...original, content_sha256: shown } });
+  assert.deepEqual(rows(), [['dt', 'Source SHA-256'], ['dd', shown]]);
+  h.context.resetReaderContent();
+  assert.deepEqual(rows(), []);
+  h.render({ ...article, source_review: null });
+  assert.equal(h.nodes.get('article-reference').hidden, true);
+  assert.deepEqual(rows(), []);
+});
+
 test('authored article links use the protected reader even when the target is off the index page', () => {
   const target = '11111111-1111-4111-8111-111111111111';
   const selected = { id: routeConfiguration, region: 'US' };
