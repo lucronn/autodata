@@ -5142,7 +5142,7 @@ function articleIndexHarness(responses, { wait = async () => {}, now = () => per
     appSection('async function loadSavedSearch(', 'const assetID =') +
     appSection('function clearReader()', 'async function checkOrder(') +
     appSection('$("search").addEventListener("input"', '$("retry").addEventListener') +
-    appSection('function rememberRetainedIndexArticle(', '$("print").addEventListener') +
+    appSection('function rememberIndexArticleReadiness(', '$("print").addEventListener') +
     '\nconst actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',
     context,
   );
@@ -5336,7 +5336,7 @@ test('Back reuses exact readiness from the first readable source or publication'
         canonical_revision_id: origin === 'canonical' ? routeArticle : null };
       h.context.currentArticle = article;
       h.context.searchItems = [{ id: 'first', title: 'Search result title' }];
-      h.context.rememberRetainedIndexArticle(
+      h.context.rememberIndexArticleReadiness(
         { status: 200, data: { configuration: h.context.vehicle, article } }, h.context.viewGeneration,
       );
       h.$('back').events.click();
@@ -5357,12 +5357,48 @@ test('Back reuses exact readiness from the first readable source or publication'
   }
 });
 
-test('Back does not remember a preview, mismatched scope, or obsolete index response', async t => {
-  for (const scenario of ['preview', 'wrong vehicle', 'wrong article', 'wrong account', 'old navigation']) {
+test('Back updates only the originating rows after a pending article shows its supplier preview', async () => {
+  const h = await openedIndexHistory();
+  const other = { id: 'other', title: 'First procedure', availability: 'pending' };
+  h.context.articles.push(other);
+  h.context.searchItems = [{ id: 'first', title: 'Exact search hit', availability: 'pending' }];
+  const badge = h.link.children[1].children[1];
+  assert.equal(badge.hidden, true);
+  const article = { id: 'first', availability: 'available', content_origin: 'source',
+    content_status: 'content_partial', source_body_preview: true, source_revision_id: null,
+    canonical_revision_id: null, document: { blocks: [{ type: 'paragraph', text: 'Licensed fixture body.' }] },
+    images: [{ url: '/v1/catalog/images/fixture' }],
+  };
+  h.context.currentArticle = article;
+  h.context.rememberIndexArticleReadiness(
+    { status: 200, data: { configuration: h.context.vehicle, article } }, h.context.viewGeneration,
+  );
+  h.$('back').events.click();
+  h.returnToIndex();
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.context.document.activeElement, h.link);
+  assert.equal(h.context.currentArticle, null);
+  assert.equal(badge.hidden, false);
+  assert.equal(badge.textContent, 'Supplier preview ready');
+  assert.equal(h.link.dataset.retained, 'false');
+  for (const item of [h.context.articles[0], h.context.searchItems[0]]) {
+    assert.equal(item.availability, 'available');
+    assert.equal(item.source_body_preview, true);
+    assert.equal(item.document, undefined);
+    assert.equal(item.images, undefined);
+  }
+  assert.equal(h.context.searchItems[0].title, 'Exact search hit');
+  assert.equal(other.availability, 'pending');
+  assert.equal(other.source_body_preview, undefined);
+});
+
+test('Back ignores an invalid preview, mismatched scope, or obsolete index response', async t => {
+  for (const scenario of ['preview with a revision', 'wrong vehicle', 'wrong article', 'wrong account', 'old navigation']) {
     await t.test(scenario, async () => {
       const h = await openedIndexHistory();
       const article = { id: 'first', availability: 'available', content_origin: 'source',
-        source_revision_id: routeConfiguration, source_body_preview: scenario === 'preview', body: 'Protected source.' };
+        source_revision_id: scenario === 'preview with a revision' ? routeConfiguration : null,
+        source_body_preview: true, body: 'Protected source.' };
       h.context.currentArticle = article;
       const configuration = { ...h.context.vehicle };
       const generation = scenario === 'old navigation' ? new NavigationGeneration().next() : h.context.viewGeneration;
@@ -5370,11 +5406,12 @@ test('Back does not remember a preview, mismatched scope, or obsolete index resp
       if (scenario === 'wrong article') article.id = 'different';
       const stamp = h.context.session.state.csrf;
       if (scenario === 'wrong account') h.context.session.state.csrf = 'replaced';
-      h.context.rememberRetainedIndexArticle({ status: 200, data: { configuration, article } }, generation);
+      h.context.rememberIndexArticleReadiness({ status: 200, data: { configuration, article } }, generation);
       h.context.session.state.csrf = stamp;
       h.$('back').events.click();
       h.returnToIndex();
       assert.equal(h.link.dataset.retained, 'false');
+      assert.equal(h.link.children[1].children[1].hidden, true);
       assert.equal(h.requests.length, 1);
     });
   }
@@ -5390,7 +5427,7 @@ test('a captured supplier preview has its own index label until the article is s
   const article = { ...preview, source_body_preview: undefined, source_revision_id: routeConfiguration,
     body: 'Stored source' };
   h.context.currentArticle = article;
-  h.context.rememberRetainedIndexArticle(
+  h.context.rememberIndexArticleReadiness(
     { status: 200, data: { configuration: h.context.vehicle, article } }, h.context.viewGeneration,
   );
   h.$('back').events.click();
@@ -7101,7 +7138,7 @@ function articleMediaHarness(overrides = {}) {
     appSection('function vehicleIdentityLabel(', 'function purchaseConfigured('),
     appSection('function hasRetainedArticleRevision(', 'function renderArticleLinks('),
     appSection('const assetID =', 'async function loadArticle('),
-    appSection('function rememberRetainedIndexArticle(', 'function returnToArticleIndex('),
+    appSection('function rememberIndexArticleReadiness(', 'function returnToArticleIndex('),
     appSection('function validSourceURL(', 'async function library('),
   ].join('\n'), context);
   return { context, g, nodes, navigation, shows, statuses,
@@ -10741,7 +10778,8 @@ test('a supplier preview row starts with an authorized scoped GET', async () => 
     status: 200, data: { article: preview, configuration: h.configuration },
   }));
   h.context.access = 'owned';
-  const indexedArticle = { id: 'a', availability: 'available', source_body_preview: true };
+  const indexedArticle = { id: 'a', availability: 'available', content_origin: 'source',
+    source_body_preview: true, source_revision_id: null, canonical_revision_id: null };
   assert.equal(await h.context.loadArticle('a', h.g, { indexedArticle }), true);
   assert.deepEqual(h.calls.map(({ method, path }) => [method || 'GET', path]),
     [['GET', `/v1/catalog/vehicles/${h.configuration.id}/articles/a?region=US`]]);
