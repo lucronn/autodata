@@ -148,10 +148,12 @@ function articleRequestPath(id, suffix = "", query) {
 }
 function status(
   text,
-  { error = false, busy = false, retry = null, retryText = "Try again", complete = false, cancelable = busy } = {},
+  { error = false, busy = false, retry = null, retryText = "Try again", complete = false, cancelable = busy,
+    announceOnly = false } = {},
 ) {
   $("activity-text").textContent = text;
   $("activity").dataset.tone = error ? "error" : busy ? "loading" : "ready";
+  $("activity").hidden = announceOnly;
   $("critical-error").textContent = error ? text : "";
   if (complete) $("completion-status").textContent = text;
   $("cancel").hidden = !cancelable;
@@ -677,7 +679,7 @@ function renderPurchase() {
       ? "Access revoked. Contact the published support address."
       : access === "owned"
         ? indexCatalogEmpty
-          ? "Owned. No articles are currently available for this vehicle."
+          ? "Owned."
           : "Owned. Open your articles without another purchase."
         : paymentReceived
           ? simulation
@@ -1053,7 +1055,7 @@ function showArticleIndexStatus(articleID = "", refreshFailed = false) {
   if (indexComplete) {
     const ready = indexCatalogEmpty ? "No articles are currently available for this vehicle." :
       !indexLoaded && searchItems ? "Article search ready." : "Article index ready.";
-    status(ready, { complete: true });
+    status(ready, { complete: true, announceOnly: indexCatalogEmpty });
   } else if (indexFailed) {
     status(articles.length
       ? "You can open the articles below. Some sources could not be reached."
@@ -1229,7 +1231,11 @@ function renderArticleLinks(items) {
 function renderArticles({ keepFocus = true } = {}) {
   $("vehicle-caption").textContent =
     quote?.configuration_label || $("purchase-selection").textContent;
-  const query = trimArticleSearch($("search").value);
+  const search = $("search");
+  const query = trimArticleSearch(search.value);
+  const focusedSearch = document.activeElement === search;
+  $("article-search").hidden = indexCatalogEmpty;
+  if (indexCatalogEmpty && focusedSearch) focusArticleIndex();
   const searching = Boolean(query && searchQuery === query);
   const localSearch = searching && searchItems === null;
   const page = query ? null : indexPage;
@@ -1305,6 +1311,7 @@ function renderArticles({ keepFocus = true } = {}) {
                   ? "No articles match this search. Try a component name or a shorter phrase."
                   : "No articles are currently available for this vehicle.";
   $("no-results").hidden = items.length > 0;
+  $("article-list-heading").hidden = items.length === 0;
 }
 
 function focusArticleIndex(id) {
