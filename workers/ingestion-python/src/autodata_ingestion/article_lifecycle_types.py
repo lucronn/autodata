@@ -18,6 +18,7 @@ RETAINED_OPTIONAL_OBSERVATION_REPAIR_PROFILE = "full-prose-optional-observation-
 RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE = "full-prose-conditional-note-repair-v1"
 RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE = "full-prose-rotation-removal-repair-v1"
 RETAINED_REQUIRED_ACTION_REPAIR_PROFILE = "full-prose-required-action-repair-v1"
+RETAINED_INTRODUCTION_REPAIR_PROFILE = "full-prose-introduction-repair-v1"
 MAX_CORRECTION_CALLS = 12
 MAX_LINKED_PDFS = 4
 AUTOMATIC_REWRITE_PROFILES = (

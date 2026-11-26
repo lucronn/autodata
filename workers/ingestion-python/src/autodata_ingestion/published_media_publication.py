@@ -110,6 +110,9 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
 
 def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fixture_mode, lock, expected_profile=None):
     from .retained_bankone_order_reply import BANKONE_ORDER_METHOD
+    from .retained_introduction_repair import (
+        METHOD as INTRODUCTION_METHOD, PROFILE as INTRODUCTION_PROFILE, resolve_retained_introduction_repair,
+    )
     from .retained_note_label_repair import (
         CONDITIONAL_METHOD, CONDITIONAL_PROFILE, METHOD as NOTE_LABEL_REPAIR_METHOD, PROFILE as NOTE_LABEL_REPAIR_PROFILE,
         OPTIONAL_OBSERVATION_METHOD, OPTIONAL_OBSERVATION_PROFILE, ROTATION_REMOVAL_METHOD, ROTATION_REMOVAL_PROFILE,
@@ -142,6 +145,7 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
         CONDITIONAL_PROFILE: (CONDITIONAL_METHOD, resolve_retained_conditional_note_repair),
         ROTATION_REMOVAL_PROFILE: (ROTATION_REMOVAL_METHOD, resolve_retained_rotation_removal_repair),
         OPTIONAL_OBSERVATION_PROFILE: (OPTIONAL_OBSERVATION_METHOD, resolve_retained_optional_observation_repair),
+        INTRODUCTION_PROFILE: (INTRODUCTION_METHOD, resolve_retained_introduction_repair),
     }
     if (profile not in (*AUTOMATIC_REWRITE_PROFILES, REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2, *repaired)
         or (profile in repaired and row["model_metadata"].get("transformation_method") != repaired[profile][0])
