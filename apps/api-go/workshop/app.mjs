@@ -1073,7 +1073,7 @@ function showArticleIndexStatus(articleID = "", refreshFailed = false) {
 }
 
 const articleDescriptorFields = [
-  "id", "title", "kind", "component", "availability", "content_status",
+  "id", "title", "kind", "component", "service_schedule", "availability", "content_status",
   "source_revision_id", "canonical_revision_id", "view_revision", "review_status",
 ];
 
@@ -1205,7 +1205,7 @@ function renderArticleLinks(items) {
       ? item.kind.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ")
       : "";
     const title = item.title || "Untitled article";
-    const label = kind ? kind[0].toUpperCase() + kind.slice(1) : "Article";
+    const label = item.service_schedule || (kind ? kind[0].toUpperCase() + kind.slice(1) : "Article");
     if (link.children[0].textContent !== title) link.children[0].textContent = title;
     if (link.children[1].textContent !== label) link.children[1].textContent = label;
     url.searchParams.set("article", item.id);
@@ -1820,7 +1820,7 @@ function renderArticle(article, g, redraw = false) {
   }
   currentArticle = article;
   $("article-title").textContent = article.title || "Article";
-  $("article-kind").textContent =
+  const articleKind =
     article.source_body_preview
       ? "Supplier source"
       : article.content_origin === "canonical"
@@ -1828,6 +1828,7 @@ function renderArticle(article, g, redraw = false) {
       : article.content_origin === "source"
         ? "Stored source"
         : "Article";
+  $("article-kind").textContent = [articleKind, article.service_schedule].filter(Boolean).join(" · ");
   $("reader-vehicle").textContent = vehicleIdentityLabel();
   $("reader-engine").textContent = vehicle.region;
   const readable = readableArticle(article);

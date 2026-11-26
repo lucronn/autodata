@@ -2115,6 +2115,12 @@ components:
           type: string
         component:
           type: string
+        service_schedule:
+          type: string
+          enum:
+          - Normal Service
+          - Severe Service
+          description: Authored maintenance schedule from the retained source.
         body:
           type: string
         canonical_article_id:

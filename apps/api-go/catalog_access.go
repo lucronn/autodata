@@ -115,6 +115,18 @@ const paidArticleAvailabilitySQL = `COALESCE(c.availability,
 	CASE WHEN j.status IN ('pending','processing') OR (j.status='failed' AND j.retryable)
 	THEN 'pending' ELSE 'unavailable' END)`
 
+func catalogServiceScheduleSQL(sourceRevision string) string {
+	return `CASE WHEN a.provider_slug='banktwo' AND ` + sourceRevision + ` IS NOT NULL THEN COALESCE((
+		SELECT artifact.metadata->>'banktwo_service_schedule'
+		FROM canonical_article_source_revisions source
+		JOIN source_snapshots body ON body.source_snapshot_id=source.body_source_snapshot_id
+		JOIN source_artifacts artifact ON artifact.source_snapshot_id=body.source_snapshot_id
+		WHERE source.source_revision_id=` + sourceRevision + `
+		  AND body.takedown_status='active' AND artifact.extraction_status<>'quarantined'
+		  AND artifact.metadata->>'banktwo_service_schedule' IN ('Normal Service','Severe Service')
+	), '') ELSE '' END`
+}
+
 // Paid descriptors use a single metadata-only query, including descriptor rights.
 func (s *postgresCatalogStore) PaidArticleDescriptors(ctx context.Context, _ Principal, configurationID string) ([]CatalogArticle, error) {
 	if !commerceUUID(configurationID) {
@@ -132,7 +144,7 @@ func (s *postgresCatalogStore) PaidArticleDescriptors(ctx context.Context, _ Pri
 	}
 	rows, err := tx.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),
 		c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,
-		`+paidArticleAvailabilitySQL+`,COALESCE(c.review_status,'UNREVIEWED')
+		`+paidArticleAvailabilitySQL+`,COALESCE(c.review_status,'UNREVIEWED'),`+catalogServiceScheduleSQL("c.source_revision_id")+`
 		FROM canonical_articles a
 		LEFT JOIN LATERAL (
 		    SELECT source_revision_id,canonical_revision_id,content_origin,availability,review_status,takedown_status
@@ -151,7 +163,7 @@ func (s *postgresCatalogStore) PaidArticleDescriptors(ctx context.Context, _ Pri
 	result := []CatalogArticle{}
 	for rows.Next() {
 		var article CatalogArticle
-		if err = rows.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus); err != nil {
+		if err = rows.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &article.ServiceSchedule); err != nil {
 			return nil, err
 		}
 		article.CanonicalArticleID = stringPointer(article.ID)
@@ -194,7 +206,8 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 		COALESCE(c.review_status,'UNREVIEWED'),
 		COALESCE(c.document,early.document),COALESCE(c.body,''),c.steps,c.images,sr.source_images,early.linked_document,
 		CASE WHEN $2::boolean AND c.canonical_revision_id IS NOT NULL
-		  AND sr.canonical_article_id=a.canonical_article_id THEN sr.source_document END
+		  AND sr.canonical_article_id=a.canonical_article_id THEN sr.source_document END,
+		`+catalogServiceScheduleSQL("c.source_revision_id")+`
 		FROM canonical_articles a
 		LEFT JOIN LATERAL (
 			SELECT * FROM catalog_article_current
@@ -234,10 +247,10 @@ func scanPaidArticleSearchRow(row interface{ Scan(...any) error }, configuration
 	var article CatalogArticle
 	var projection paidSearchProjection
 	var original []byte
-	if err := row.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &projection.document, &projection.body, &projection.steps, &projection.images, &projection.sourceImages, &projection.linkedPreview, &original); err != nil {
+	if err := row.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &projection.document, &projection.body, &projection.steps, &projection.images, &projection.sourceImages, &projection.linkedPreview, &original, &article.ServiceSchedule); err != nil {
 		return CatalogArticle{}, false, err
 	}
-	if !catalogSearchWordsMatch(strings.Join([]string{article.Title, article.Component, article.Kind}, " "), words) {
+	if !catalogSearchWordsMatch(strings.Join([]string{article.Title, article.Component, article.Kind, article.ServiceSchedule}, " "), words) {
 		matched, err := projection.matchesContent(article, words)
 		if err != nil {
 			return CatalogArticle{}, false, err

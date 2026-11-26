@@ -12,11 +12,12 @@ type paidSearchProjectionRow struct {
 	images       []byte
 	sourceImages []byte
 	original     []byte
+	schedule     string
 }
 
 func (row paidSearchProjectionRow) Scan(dest ...any) error {
-	if len(dest) != 16 {
-		return fmt.Errorf("paid search projection scanned %d columns, want 16", len(dest))
+	if len(dest) != 17 {
+		return fmt.Errorf("paid search projection scanned %d columns, want 17", len(dest))
 	}
 	*dest[0].(*string) = "00000000-0000-0000-0000-000000000111"
 	*dest[1].(*string) = "Torque guide"
@@ -26,7 +27,17 @@ func (row paidSearchProjectionRow) Scan(dest ...any) error {
 	*dest[12].(*[]byte) = row.images
 	*dest[13].(*[]byte) = row.sourceImages
 	*dest[15].(*[]byte) = row.original
+	*dest[16].(*string) = row.schedule
 	return nil
+}
+
+func TestPaidSearchMatchesTheAuthoredServiceSchedule(t *testing.T) {
+	const configurationID = "00000000-0000-0000-0000-000000000222"
+	row := paidSearchProjectionRow{schedule: "Severe Service"}
+	article, matched, err := scanPaidArticleSearchRow(row, configurationID, []string{"severe", "service"})
+	if err != nil || !matched || article.ServiceSchedule != "Severe Service" || article.Body != "" {
+		t.Fatalf("service schedule result = %#v, matched=%v, err=%v", article, matched, err)
+	}
 }
 
 func TestPaidSearchCurrentOriginalMatchesWithoutReturningItsContent(t *testing.T) {

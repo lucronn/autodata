@@ -5317,6 +5317,18 @@ test('open demo requests the real index and shows only readable articles', async
   }
 });
 
+test('the index and search distinguish authored service schedules with a shared title', async () => {
+  const common = { title: '105000 Miles or 168000 Kilometers', availability: 'available' };
+  const normal = { ...common, id: 'normal', service_schedule: 'Normal Service' };
+  const severe = { ...common, id: 'severe', service_schedule: 'Severe Service' };
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [normal, severe] })]);
+  await h.load();
+  assert.deepEqual(h.$('articles').firstElementChild.children.map(row => row.firstElementChild.children.map(node => node.textContent)), [
+    [common.title, 'Normal Service'], [common.title, 'Severe Service'],
+  ]);
+  assert.deepEqual(filterArticles([normal, severe], 'severe service'), [severe]);
+});
+
 test('a readable demo link uses the compact index to open the exact article', async () => {
   const ready = { id: 'ready', title: 'Stored source', availability: 'available' };
   const h = articleIndexHarness([{

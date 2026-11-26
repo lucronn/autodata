@@ -405,6 +405,20 @@ def _store_captured_source(cur, lease, captured):
     return revision_id
 
 
+def persist_banktwo_service_schedule(cur, body_snapshot, label):
+    """Project the label on the immutable source object's artifact."""
+    from .banktwo_service_schedule import SCHEDULES
+
+    if label not in SCHEDULES:
+        raise ValueError("invalid Banktwo service schedule")
+    cur.execute("""
+        UPDATE source_artifacts SET metadata=jsonb_set(metadata, '{banktwo_service_schedule}', to_jsonb(%s::text))
+        WHERE source_snapshot_id=%s AND extraction_status<>'quarantined'
+          AND jsonb_typeof(metadata)='object'
+          AND metadata->>'banktwo_service_schedule' IS DISTINCT FROM %s
+    """, (label, body_snapshot, label))
+
+
 def _persist_article_capture(cur, canonical_article_id, job_id, generation, captured, *, verify_existing=False):
     """Append immutable source and observation inside an article owner's transaction."""
     context = captured.context
@@ -414,6 +428,8 @@ def _persist_article_capture(cur, canonical_article_id, job_id, generation, capt
             cur, resource
         )
     body_snapshot = snapshots[str(captured.body_source_snapshot_id)]
+    if context.key.provider == "banktwo" and captured.service_schedule is not None:
+        persist_banktwo_service_schedule(cur, body_snapshot, captured.service_schedule)
     revision_id = uuid4()
     row = cur.execute(
         """INSERT INTO canonical_article_source_revisions(source_revision_id,canonical_article_id,source_fingerprint,body_source_snapshot_id,resource_manifest,source_document,source_images,source_body,source_steps,projection_status,evidence_manifest,captured_at,projection_version)
