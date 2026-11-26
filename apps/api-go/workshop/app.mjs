@@ -1074,8 +1074,7 @@ async function loadArticles(g, articleID = "", {
   if (openDemo && requestedArticle && requestedArticle.availability !== 'available') {
     status('This article is indexed but not readable yet. Choose an available article.', { error: true });
   } else if (articleID && requestedArticle) {
-    await loadArticle(articleID, g, demoDetail
-      ? { initialDemoDetail: demoDetail, indexedArticle: requestedArticle } : undefined);
+    await loadArticle(articleID, g, { initialDemoDetail: demoDetail, indexedArticle: requestedArticle });
   } else if (articleID && indexComplete) {
     throw new Error("This article is unavailable for the selected vehicle.");
   } else {
@@ -2023,8 +2022,12 @@ async function loadArticleView(id, g, order, {
   const heading = $("article-title");
   if (!refreshVisibleArticle) resetReaderContent();
   if (!sameArticle) {
-    heading.textContent = "Opening article…";
-    document.title = "AutoData — The workshop reference";
+    const title = indexedArticle?.id === id && typeof indexedArticle.title === "string"
+      ? indexedArticle.title.trim() : "";
+    heading.textContent = title || "Opening article…";
+    document.title = title ? `${title} | AutoData` : "AutoData — The workshop reference";
+    $("reader-vehicle").textContent = vehicleIdentityLabel();
+    $("reader-engine").textContent = vehicle.region;
   }
   show("reader");
   stage("article");
@@ -2129,7 +2132,7 @@ async function loadArticleView(id, g, order, {
     if (!g.current()) return;
   }
   const prepare = !verifiedDetail && !refreshOnly && !openDemo && session.state.mode !== "local";
-  let readingStatus = "";
+  let readingStatus = "Opening article…";
   const updateReader = (response, early = false) => {
     if (!g.current() || Object.hasOwn($("reader").dataset, "rechecking")) return;
     const article = response.data.article;
@@ -2160,10 +2163,13 @@ async function loadArticleView(id, g, order, {
       else if (article.content_origin === "source") ready = "Stored source is ready.";
       else ready = "Article is readable.";
     }
-    if (ready === readingStatus) return;
-    readingStatus = ready;
-    if (ready) status(ready, { complete: true, cancelable: true });
-    else status("Opening article…", { busy: true });
+    const phase = article.processing?.state;
+    const message = ready || (phase === "queued" ? "Waiting for the supplier article…"
+      : phase === "fetching_source" ? "Fetching the supplier article…"
+      : phase === "failed" ? "Waiting to retry article preparation…" : "Preparing the article…");
+    if (message === readingStatus) return;
+    readingStatus = message;
+    status(message, ready ? { complete: true, cancelable: true } : { busy: true });
   };
   const canCheckRetained = prepare && session.state.mode === "firebase" &&
     validScope({ configuration_id: selected.id, region: selected.region });
@@ -2317,6 +2323,8 @@ async function loadArticleView(id, g, order, {
 function openArticle(id, indexLink = null, { refreshOnly = false, preferRetained = false } = {}) {
   const indexURL = location.href;
   const params = indexLink && new URL(indexURL).searchParams;
+  const indexedArticle = indexLink && (searchItems?.find((item) => item.id === id) ||
+    articles.find((item) => item.id === id));
   updateURL({ article: id });
   if (indexURL !== location.href) {
     articleIndexOrigin = params && !params.has("article") && !params.has("order") &&
@@ -2330,7 +2338,7 @@ function openArticle(id, indexLink = null, { refreshOnly = false, preferRetained
     (g) => {
       if (articleIndexOrigin && articleIndexOrigin.readerURL === location.href)
         articleIndexOrigin.generation = g;
-      return loadArticle(id, g, { refreshOnly, preferRetained });
+      return loadArticle(id, g, { refreshOnly, preferRetained, indexedArticle });
     },
     () => openArticle(id, null, { refreshOnly, preferRetained }),
   );

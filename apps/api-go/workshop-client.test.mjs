@@ -7835,6 +7835,7 @@ test('article navigation focuses its visible heading once before preparation and
   const article = mediaArticle([{ type: 'paragraph', text: 'Ready content.' }]);
   const h = articleMediaHarness({
     session: { state: { authenticated: true, csrf: 'csrf' } },
+    vehicle: { year: 2023, make: 'Buick Truck', model: 'Encore GX FWD', engine: '1.2 L', region: 'US' },
     stage: () => {},
     requestArticleJSON: () => new Promise(resolve => { resolvePrepare = resolve; }),
     readArticle: async (read, { onUpdate }) => {
@@ -7849,11 +7850,16 @@ test('article navigation focuses its visible heading once before preparation and
     appSection('function show(', 'function clearProtected('),
     appSection('async function loadArticle(', 'function openArticle('),
   ].join('\n'), h.context);
-  const pending = h.context.loadArticle('a', h.g);
+  const pending = h.context.loadArticle('a', h.g, { indexedArticle: { id: 'a', title: 'Indexed pump service' } });
   const title = h.nodes.get('article-title');
   assert.equal(h.nodes.get('reader').hidden, false);
   assert.equal(h.nodes.get('catalog').hidden, true);
-  assert.equal(title.textContent, 'Opening article…');
+  assert.equal(title.textContent, 'Indexed pump service');
+  assert.equal(h.context.document.title, 'Indexed pump service | AutoData');
+  assert.equal(h.nodes.get('reader-vehicle').textContent, '2023 / Buick Truck / Encore GX FWD / 1.2 L');
+  assert.equal(h.nodes.get('reader-engine').textContent, 'US');
+  assert.equal(h.nodes.get('article-content').textContent, '');
+  assert.equal(h.nodes.get('print').disabled, true);
   assert.equal(title.focusCalls, 1, 'focus must enter the reader while preparation is pending');
   resolvePrepare({ data: { article } });
   await pending;
@@ -7949,6 +7955,13 @@ test('the reader displays supplier text before the original figures finish', asy
     session: { state: { authenticated: true, csrf: 'csrf' } }, stage() {}, openDemo: false,
     requestArticleJSON: async () => ({ status: 200, data: { article: first } }),
     async readArticle(read, { onUpdate }) {
+      for (const state of ['queued', 'fetching_source']) {
+        const pending = mediaArticle([], [], {
+          source_revision_id: null, view_revision: 'pending-source',
+          processing: { job_id: 'capture', state },
+        });
+        onUpdate({ status: 202, data: { article: pending } });
+      }
       onUpdate(await read());
       seen.resolve();
       await release.promise;
@@ -7963,6 +7976,9 @@ test('the reader displays supplier text before the original figures finish', asy
   assert.equal(h.nodes.get('article-kind').textContent, 'Supplier source');
   assert.match(h.nodes.get('article-content').textContent, /Remove the retaining bolts/);
   assert.match(h.nodes.get('article-content').textContent, /Preparing illustration…Retaining bolt locations/);
+  assert.deepEqual(h.statuses.map(({ message }) => message), [
+    'Opening article…', 'Waiting for the supplier article…', 'Fetching the supplier article…', 'Source text is ready.',
+  ]);
   assert.equal(h.statuses.at(-1).message, 'Source text is ready.');
   release.resolve();
   await opening;
