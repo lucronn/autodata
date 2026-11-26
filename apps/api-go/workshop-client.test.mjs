@@ -9180,7 +9180,7 @@ test('usable prefetched engine choices appear while the verified-parent scheduli
 test('stored make and model choices are selectable before normal discovery replies', async () => {
   for (const [name, id] of [['make', 'buick-truck'], ['model', 'envision-awd']]) {
     const first = { id };
-    const stored = { items: [first], complete: false, hydrating: true };
+    const stored = { items: [first], complete: false, hydrating: false };
     const discovery = deferredAuthOperation();
     const h = selectorOptionsHarness(() => discovery.promise);
     const loading = h.load('', null, Promise.resolve(stored), name);
@@ -9191,7 +9191,7 @@ test('stored make and model choices are selectable before normal discovery repli
       assert.equal(h.$(name).disabled, false);
       assert.equal(h.context.document.body.dataset.busy, 'false');
     } finally {
-      discovery.resolve({ ...stored, items: [first, { id: 'another' }] });
+      discovery.resolve({ ...stored, hydrating: true, items: [first, { id: 'another' }] });
       await loading;
     }
     assert.deepEqual(h.requests, ['/choices']);
@@ -9308,6 +9308,19 @@ test('saved rows reuse active discovery and start idle discovery', async () => {
         discovery.resolve(partial);
         await restored;
       }
+    }
+  }
+});
+
+test('a saved partial route uses stored make and model choices while discovery is active', async () => {
+  for (const state of [{ hydrating: true }, { discovering: true }]) {
+    const stored = { items: [{ id: 'available' }], complete: false, ...state };
+    for (const name of ['make', 'model']) {
+      const h = selectorOptionsHarness(stored);
+      await h.load('', null, Promise.resolve(stored), name);
+      assert.equal(h.$(name).disabled, false);
+      assert.deepEqual(h.displayed.at(-1), stored.items);
+      assert.deepEqual(h.requests, [], name);
     }
   }
 });

@@ -560,9 +560,13 @@ async function loadOptions(name, g, desired = "", initial = null) {
         initial = null;
         g.signal.throwIfAborted();
         if (Array.isArray(response?.items)) {
-          if (name === "year" || (desired ? response.items.some(choice) : response.complete === true)) {
+          const discoveryActive = response.hydrating || response.discovering;
+          const storedChoicesReady = desired
+            ? response.items.some(choice)
+            : response.complete === true || (stopWithChoices && discoveryActive && response.items.length > 0);
+          if (name === "year" || storedChoicesReady) {
             // A stored read can only report discovery that has already started.
-            if (name !== "year" && response.complete !== true && !response.hydrating && !response.discovering)
+            if (name !== "year" && response.complete !== true && !discoveryActive)
               void requestJSON(path, { signal: g.signal }).then(trackDiscovery).catch(() => null);
             return trackDiscovery(response);
           }
