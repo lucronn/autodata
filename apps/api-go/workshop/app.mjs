@@ -2372,6 +2372,28 @@ function validSourceURL(value) {
   }
 }
 const sourceDocumentHeaders = { Prefer: "workshop-source-document" };
+function recentMediaURLs(issuedAt, now) {
+  return issuedAt <= now && now - issuedAt < 30_000;
+}
+
+function refreshPendingSourceFigures(images, selected) {
+  const now = Date.now();
+  if (recentMediaURLs(mountedSource.imagesRefreshedAt, now)) return;
+  const pending = mountedSource.figures.filter(({ img }) => "figurePending" in img.dataset);
+  if (!pending.length) return;
+  // Lazy figures may make their first request after the earlier signed URLs
+  // have expired. Leave downloaded figures in place and use the fresh read.
+  mountedSource.imagesRefreshedAt = now;
+  displayedSourceRevision = selected;
+  sourceImageRefresh = null;
+  for (const { img } of pending) {
+    const url = localImageURL(images.get(img.dataset.assetId)?.url, location.origin, { authMode: session.state.mode });
+    if (!url || img.src === url) continue;
+    delete img.dataset.replacement;
+    img.src = url;
+  }
+}
+
 async function loadSource(value, g, blockID = null, { focusSource = false } = {}) {
   const requested = validSourceURL(value);
   if (!requested) throw new Error("This source reference is unavailable.");
@@ -2428,10 +2450,13 @@ async function loadSource(value, g, blockID = null, { focusSource = false } = {}
       else fragment.append(element("p", "Stored source is unavailable."));
       $("source-review-frame").replaceChildren(fragment);
       if (figures) startArticleFigures(figures);
-      mountedSource = stable ? { key, signal: g.signal, articleRevision: renderedRevision, revision, assets, targets } : null;
+      mountedSource = stable ? {
+        key, signal: g.signal, articleRevision: renderedRevision, revision, assets, targets, figures,
+        imagesRefreshedAt: Date.now(),
+      } : null;
       sourceImageRefresh = null;
       displayedSourceRevision = selected;
-    }
+    } else refreshPendingSourceFigures(images, selected);
     $("source-review-frame").hidden = false;
     $("back-to-article").hidden = false;
     sourceURL = demoPath(requested.href);
@@ -2464,7 +2489,7 @@ function handleSourceError(error, g) {
 function recentImageRefresh(previous, refresh) {
   const startedAt = Date.now();
   // Offscreen figures may first load long after the previous renewal's signed URLs have expired.
-  return previous && startedAt >= previous.startedAt && startedAt - previous.startedAt < 30_000
+  return previous && recentMediaURLs(previous.startedAt, startedAt)
     ? previous : { startedAt, images: refresh() };
 }
 async function renewMedia(g, failed) {
