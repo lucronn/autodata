@@ -2052,7 +2052,11 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_paid_re
                 await expect(page.locator('#account-status')).to_have_text('Signed out.')
                 assert (await api21_get(context,image_url,phase='logout-image-denial',actor='logged-out')).status==401
                 await page.evaluate('window.dispatchEvent(new PageTransitionEvent("pageshow",{persisted:true}))');await expect(page.locator('#article-content')).to_be_empty()
-                await api_signin(page);await page.goto(route+'&article='+article_id);await expect(page.locator('#article-kind')).to_have_text('Workshop article')
+                # Sign-in restores the saved reader in place.
+                assert parse_qs(urlsplit(page.url).query).get('article') == [article_id]
+                await api_signin(page)
+                await expect(page.locator('#article-kind')).to_have_text('Workshop article')
+                await expect(page.locator('#article-content')).to_contain_text('Take off the pump.')
                 await api_control(context,origin,'disable','disable-control')
                 assert (await api21_get(context,image_url,phase='disabled-image-denial',actor='disabled')).status==401
                 await page.reload();await expect(page.locator('#article-content')).to_be_empty()

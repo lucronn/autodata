@@ -237,13 +237,13 @@ func TestWorkshopPublicAssetsRevalidateByContent(t *testing.T) {
 				t.Fatalf("Workshop entry page is missing the versioned %s", name)
 			}
 		}
-		const immutable = "private, max-age=31536000, immutable"
-		const edgeCache = "public, max-age=86400, immutable"
+		const immutable = "private, max-age=31536000, immutable, no-transform"
+		const edgeCache = "public, max-age=86400, immutable, no-transform"
 		for _, name := range []string{"bootstrap.mjs", "app.mjs", "auth.mjs", "article-read.mjs", "progress.mjs",
 			"catalog.mjs", "commerce.mjs", "firebase-web.mjs", "demo.mjs", "styles.css", "fonts/InstrumentSans.woff2"} {
 			fresh := request(http.MethodGet, match[1]+name, "")
 			legacy := request(http.MethodGet, "/workshop/"+name, "")
-			if fresh.Code != http.StatusOK || fresh.Header().Get("Cache-Control") != immutable ||
+			if fresh.Code != http.StatusOK || fresh.Header().Get("Cache-Control") != immutable || fresh.Header().Get("Vary") != "Accept-Encoding" ||
 				fresh.Header().Get("Vercel-CDN-Cache-Control") != edgeCache || fresh.Header().Get("X-Request-ID") != "" ||
 				fresh.Header().Get("Traceparent") != "" ||
 				fresh.Header().Get("ETag") != legacy.Header().Get("ETag") ||
