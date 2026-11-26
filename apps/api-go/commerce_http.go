@@ -137,6 +137,7 @@ func (s *Server) firstWorkshopArticleIndex(ctx context.Context, p Principal, con
 	if err != nil {
 		return CatalogArticlesResponse{}, false
 	}
+	ctx = context.WithValue(ctx, paidCatalogContextKey{}, paidCatalogContext{configuration: configuration})
 	progressCtx, stopProgress := context.WithTimeout(ctx, ownedIndexStatusReadTimeout)
 	progress, progressErr := s.catalog.CatalogArticleProgress(progressCtx, p, configuration.ID)
 	stopProgress()

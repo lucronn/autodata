@@ -5380,6 +5380,26 @@ test('Back does not remember a preview, mismatched scope, or obsolete index resp
   }
 });
 
+test('a captured supplier preview has its own index label until the article is stored', async () => {
+  const preview = { id: 'first', title: 'First procedure', availability: 'available',
+    content_origin: 'source', content_status: 'content_partial', source_body_preview: true };
+  const h = await openedIndexHistory([indexResponse('completed', { complete: true, items: [preview] })]);
+  const badge = h.link.children[1].children[1];
+  assert.equal(badge.hidden, false);
+  assert.equal(badge.textContent, 'Supplier preview ready');
+  const article = { ...preview, source_body_preview: undefined, source_revision_id: routeConfiguration,
+    body: 'Stored source' };
+  h.context.currentArticle = article;
+  h.context.rememberRetainedIndexArticle(
+    { status: 200, data: { configuration: h.context.vehicle, article } }, h.context.viewGeneration,
+  );
+  h.$('back').events.click();
+  h.returnToIndex();
+  assert.equal(badge.textContent, 'Ready to read');
+  assert.equal(h.link.dataset.retained, 'true');
+  assert.equal(h.context.articles[0].body, undefined);
+});
+
 test('in-app Back falls back to its index heading when the prior link is gone', async () => {
   const h = await openedIndexHistory();
   h.$('articles').replaceChildren();
@@ -10710,6 +10730,22 @@ test('a retained paid index entry opens through one fresh scoped GET', async () 
   assert.equal(await opening, true);
   assert.equal(h.calls.length, 1);
   assert.equal(h.nodes.get('article-content').textContent, 'Checked Ford procedure.');
+});
+
+test('a supplier preview row starts with an authorized scoped GET', async () => {
+  const preview = mediaArticle([{ type: 'paragraph', text: 'Available supplier preview.' }], [], {
+    content_origin: 'source', availability: 'available', source_revision_id: null,
+    source_body_preview: true,
+  });
+  const h = retainedReaderHarness(() => ({
+    status: 200, data: { article: preview, configuration: h.configuration },
+  }));
+  h.context.access = 'owned';
+  const indexedArticle = { id: 'a', availability: 'available', source_body_preview: true };
+  assert.equal(await h.context.loadArticle('a', h.g, { indexedArticle }), true);
+  assert.deepEqual(h.calls.map(({ method, path }) => [method || 'GET', path]),
+    [['GET', `/v1/catalog/vehicles/${h.configuration.id}/articles/a?region=US`]]);
+  assert.equal(h.nodes.get('article-content').textContent, 'Available supplier preview.');
 });
 
 test('a readable history entry stores only readiness and has to open again with current access', async t => {
