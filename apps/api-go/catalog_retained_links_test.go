@@ -108,6 +108,71 @@ func TestCatalogRetainedInlineLinksKeepExactTextAndListPositions(t *testing.T) {
 	}
 }
 
+func TestCatalogCapturedInlineLinksResolveForStoredSource(t *testing.T) {
+	const title = "Cover Service"
+	const target = "11111111-1111-4111-8111-111111111111"
+	identity := authoredLinkTestHash("target")
+	raw := []byte(fmt.Sprintf(`{"schema_version":1,"normalization_version":"ordered-article-v1",
+		"blocks":[{"block_id":"p","type":"paragraph","text":"Consult Cover Service first."}],
+		"authored_inline_article_links":[
+			{"block_id":"p","item_index":-1,"label":%[1]q,"label_sha256":%[2]q,"authored_id_sha256":%[3]q,"target_ref_sha256":%[4]q},
+			{"block_id":"p","item_index":-1,"label":"Consult","label_sha256":"wrong","authored_id_sha256":%[3]q,"target_ref_sha256":%[4]q}
+		]}`, title, authoredLinkTestHash(title), authoredLinkTestHash("authored id"), identity))
+	var stored CatalogDocument
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		t.Fatal(err)
+	}
+	authorized := projectStoredCatalogDocument(&stored, raw, catalogArticleLinkProjection{
+		resolve: func(hashes []string) map[string]string {
+			if !reflect.DeepEqual(hashes, []string{identity}) {
+				t.Fatalf("wrong scope binding: %v", hashes)
+			}
+			return map[string]string{identity: target}
+		},
+	})
+	assertRetainedPublicLinks(t, authorized, target, 1, 1)
+	links := authorized.Blocks[0].ArticleLinks
+	if links[0].Label != title || authorized.Blocks[0].Text != stored.Blocks[0].Text {
+		t.Fatal("reader failed to preserve the authored title and surrounding text")
+	}
+	assertRetainedPublicLinks(t, projectStoredCatalogDocument(&stored, raw, catalogArticleLinkProjection{}), target, 0, 0)
+}
+
+func TestPostgresPaidCatalogCapturedInlineArticleLinks(t *testing.T) {
+	f := paidSetup(t)
+	if f.provider != "bankone" {
+		t.Skip("Bankone inline links fixture")
+	}
+	f.grant(0, f.configuration, "US")
+	const title = "Cover Service"
+	const ref = "fixture:captured-cover-service"
+	target := f.seedAuthoredLinkArticle(f.configuration, "bankone", "", ref)
+	f.seedAuthoredLinkSource(target, `{"schema_version":1,"normalization_version":"ordered-article-v1",
+		"blocks":[{"type":"paragraph","text":"Stored cover procedure."}]}`)
+	source, _ := f.seedAuthoredLinkSource(f.article, fmt.Sprintf(`{"schema_version":1,"normalization_version":"ordered-article-v1",
+		"blocks":[{"block_id":"p","type":"paragraph","text":"Consult Cover Service first."}],
+		"authored_inline_article_links":[
+			{"block_id":"p","item_index":-1,"label":%q,"label_sha256":%q,"authored_id_sha256":%q,"target_ref_sha256":%q}
+		]}`, title, authoredLinkTestHash(title), authoredLinkTestHash("authored"), authoredLinkTestHash(ref)))
+	path := f.path("/" + f.article)
+	raw := f.expect(0, "GET", path, "", 200)
+	var view CatalogArticleResponse
+	if err := json.Unmarshal(raw, &view); err != nil || view.Article.Document == nil ||
+		view.Article.SourceRevisionID == nil || *view.Article.SourceRevisionID != source || view.Article.Complete {
+		t.Fatal("expected readable stored source before publication", err)
+	}
+	assertRetainedPublicLinks(t, view.Article.Document, target, 1, 1)
+	if !strings.Contains(string(f.expect(0, "GET", f.path("/"+target), "", 200)), "Stored cover procedure.") {
+		t.Fatal("the authorized link did not open stored content")
+	}
+	f.expect(-1, "GET", path, "", 401)
+	f.expect(1, "GET", path, "", 403)
+	f.exec(`UPDATE canonical_articles SET takedown_status='takedown' WHERE canonical_article_id=$1::uuid`, target)
+	if links := readMainInlineLinks(t, f.expect(0, "GET", path, "", 200)); len(links) != 0 {
+		t.Fatal("withdrawn target survived in the readable source document")
+	}
+}
+
 func TestPostgresPaidCatalogRetainedArticleLinks(t *testing.T) {
 	f := paidSetup(t)
 	if f.provider != "bankone" {

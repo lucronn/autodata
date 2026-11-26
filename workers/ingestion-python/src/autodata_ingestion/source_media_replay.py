@@ -19,6 +19,7 @@ from .article_lifecycle_store import _remap_snapshot_references
 from .article_lifecycle_types import (
     ArticleKey,
     CapturedSource,
+    HTML_INLINE_ARTICLE_LINK_LAYOUT,
     LEADING_DECIMAL_LAYOUT,
     SourceArticleContext,
     article_id,
@@ -190,6 +191,10 @@ def _resource_binding(row, context, manifest, provenance, *, ordinals, table_spa
                     supported and mime == "text/html" and context.key.provider == "bankone"
                     and _valid_article_link_bindings(entry["article_link_bindings"])
                 )
+            if entry.get("html_inline_article_link_layout") == HTML_INLINE_ARTICLE_LINK_LAYOUT:
+                entry_fields |= {"html_inline_article_link_layout"}
+                expected_fields |= {"html_inline_article_link_layout"}
+                supported = supported and bool(entry.get("article_link_bindings"))
         elif original is not None:
             supported = (
                 role == "asset" and mime == "image/png"
@@ -609,6 +614,9 @@ def _replay(repo, source_revision_id, object_store, deadline, *, ordinals):
         replayed = capture_source_article(
             binding.context, registry={client.provider: client},
             object_store=_VerifyOnlySink(verified), deadline_seconds=remaining(),
+            keep_inline_article_links=(
+                binding.resource_manifest[0].get("html_inline_article_link_layout") == HTML_INLINE_ARTICLE_LINK_LAYOUT
+            ),
         )
     except SourceConnectorError as error:
         code = "DEADLINE" if error.code in ("CAPTURE_DEADLINE", "UPSTREAM_UNAVAILABLE") else "CAPTURE_MISMATCH"

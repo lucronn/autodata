@@ -2,16 +2,16 @@
 
 from collections import Counter
 from hashlib import sha256
+import re
 
 from .article_lifecycle_types import digest_json
-from .bankone_first_draft_structure import _Markup, _compact
 from .procedure_rewrite_full import _get, prose_slots
 from .source_connector_client import _valid_article_link_bindings
-from .source_job_persistence import bankone_archive_body_binding, source_bound_rewrite_source_allowed
-from .source_media_replay import _MAX_OBJECT_BYTES
 
 
 _MAX_LINKS = 128
+_DIGEST = re.compile(r"[a-f0-9]{64}")
+INLINE_LINKS_FIELD = "authored_inline_article_links"
 
 
 def _sha(text):
@@ -30,7 +30,7 @@ def _slots(document):
             location, tag = (block, -1), "p"
         else:
             continue
-        by_location[location] = None if location in by_location else (tag, text)
+        by_location[location] = None if location in by_location else (tag, text, path)
     return {location: value for location, value in by_location.items() if value is not None}
 
 
@@ -42,14 +42,16 @@ def _exact_label(text, label):
 
 
 def authored_inline_article_links(html, connector_bindings, source_document, canonical_document):
+    from .bankone_first_draft_structure import _Markup, _compact
+
     if not _valid_article_link_bindings(connector_bindings):
         return []
     targets = {link["source_id_sha256"]: link["target_ref_sha256"] for link in connector_bindings}
     source_slots, canonical_slots = _slots(source_document), _slots(canonical_document)
-    spans = Counter((tag, _compact(text)) for tag, text in source_slots.values())
+    spans = Counter((tag, _compact(text)) for tag, text, _ in source_slots.values())
     markup = _Markup(html)
     links = []
-    for (block, index), (tag, text) in source_slots.items():
+    for (block, index), (tag, text, _) in source_slots.items():
         rendered = canonical_slots.get((block, index))
         if not rendered or rendered[0] != tag or spans[tag, _compact(text)] != 1:
             continue
@@ -73,9 +75,60 @@ def authored_inline_article_links(html, connector_bindings, source_document, can
     return sorted(links, key=lambda link: (link["block_id"], link["item_index"], link["label_sha256"]))
 
 
+def inline_article_link_labels(document):
+    """Return each protected authored label at its current prose slot path."""
+    if INLINE_LINKS_FIELD not in document:
+        return {}
+    bindings = document[INLINE_LINKS_FIELD]
+    invalid = "REWRITE_INLINE_ARTICLE_LINK_MUTATION"
+    if not isinstance(bindings, list) or not 0 < len(bindings) <= _MAX_LINKS:
+        raise ValueError(invalid)
+    slots = _slots(document)
+    labels = {}
+    for binding in bindings:
+        if not isinstance(binding, dict) or set(binding) != {
+            "block_id", "item_index", "label", "label_sha256", "authored_id_sha256", "target_ref_sha256",
+        }:
+            raise ValueError(invalid)
+        block, index, label = (binding[key] for key in ("block_id", "item_index", "label"))
+        if (not isinstance(block, str) or type(index) is not int or not isinstance(label, str)
+            or not label.strip() or len(label.encode()) > 384 or binding["label_sha256"] != _sha(label)
+            or any(not isinstance(binding[key], str) or not _DIGEST.fullmatch(binding[key])
+                   for key in ("authored_id_sha256", "target_ref_sha256"))):
+            raise ValueError(invalid)
+        placement = slots.get((block, index))
+        if not placement or not _exact_label(placement[1], label):
+            raise ValueError(invalid)
+        slot_labels = labels.setdefault(placement[2], [])
+        if label in slot_labels:
+            raise ValueError(invalid)
+        slot_labels.append(label)
+    return labels
+
+
+def protect_inline_article_link_labels(payload):
+    document = payload["document"]
+    if not isinstance(document, dict) or INLINE_LINKS_FIELD not in document:
+        return payload
+    return {
+        **payload,
+        "document": {key: value for key, value in document.items() if key != INLINE_LINKS_FIELD},
+        "authored_link_labels_by_path": inline_article_link_labels(document),
+        "rules": [
+            "Keep every authored_link_labels_by_path title verbatim in its matching replacement. "
+            "Rewrite the surrounding prose while keeping the operation the title refers to. "
+            "Do not return authored_link_labels_by_path.",
+            *payload["rules"],
+        ],
+    }
+
+
 def retain_inline_article_links(repo, article_id, source_id, canonical_id, observation_id, *,
                                 object_store, expected_digest=None):
     """Inspect the archived body and optionally publish its exact inline bindings."""
+    from .source_job_persistence import bankone_archive_body_binding, source_bound_rewrite_source_allowed
+    from .source_media_replay import _MAX_OBJECT_BYTES
+
     apply = expected_digest is not None
     with repo.connect() as conn, conn.cursor() as cur:
         if not apply:

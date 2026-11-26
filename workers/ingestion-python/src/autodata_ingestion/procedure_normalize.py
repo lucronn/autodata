@@ -17,6 +17,7 @@ from .article_lifecycle_types import (
     BANKONE_HTML_FLOW_LAYOUT,
     HTML_BOUND_IMAGE_LAYOUT,
     HTML_DOCUMENT_LINK_LAYOUT,
+    HTML_INLINE_ARTICLE_LINK_LAYOUT,
     HTML_MEDIA_TABLE_HEADER_LAYOUT,
     HTML_NESTED_TABLE_LAYOUT,
     HTML_NUMERIC_SUPERSCRIPT_LAYOUT,
@@ -67,6 +68,7 @@ def normalize_procedure_article(
             or entry.get("html_nested_table_layout") == HTML_NESTED_TABLE_LAYOUT
             or entry.get("html_numeric_superscript_layout") == HTML_NUMERIC_SUPERSCRIPT_LAYOUT
             or entry.get("html_document_link_layout") == HTML_DOCUMENT_LINK_LAYOUT
+            or entry.get("html_inline_article_link_layout") == HTML_INLINE_ARTICLE_LINK_LAYOUT
             or entry.get("html_section_title_layout") == HTML_SECTION_TITLE_LAYOUT
             or entry.get("bankone_html_flow_layout") == BANKONE_HTML_FLOW_LAYOUT
             or entry.get("html_bound_image_layout") == HTML_BOUND_IMAGE_LAYOUT

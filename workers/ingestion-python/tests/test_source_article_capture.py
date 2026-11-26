@@ -146,6 +146,81 @@ def test_bankone_capture_preserves_only_connector_bound_authored_link_identity(c
     assert "target_ref_sha256" not in untrusted["blocks"][0]
 
 
+def test_bankone_inline_links_survive_capture_and_rewording(capture_fixture):
+    import json
+
+    from autodata_ingestion.article_lifecycle_types import HTML_INLINE_ARTICLE_LINK_LAYOUT
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite import rewrite_ordered_document
+    from autodata_ingestion.procedure_rewrite_auto import _auto_prompt_version, build_auto_prompt, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots, render_full, validate_full
+    from autodata_ingestion.retained_inline_article_links import INLINE_LINKS_FIELD
+    from autodata_ingestion.source_article_capture import WORKSHOP_CAPTURE_OPTIONS, capture_source_article
+    from test_procedure_rewrite_full import Draft
+
+    title = "Seal Replacement"
+    html = (
+        '<p>Consult <mtr-doc-link id="fixture-seal">Seal Replacement</mtr-doc-link> before fitting the cover.</p>'
+        '<ol><li>Finish with <mtr-doc-link id="fixture-cover">Cover Setup</mtr-doc-link>.</li></ol>'
+    ).encode()
+    capture_fixture.body("bankone", html)
+    connector = capture_fixture.registry["bankone"]
+    bindings = [
+        {"source_id_sha256": sha256(identifier.encode()).hexdigest(), "target_ref_sha256": target * 64}
+        for identifier, target in (("fixture-seal", "a"), ("fixture-cover", "b"))
+    ]
+
+    class BoundConnector:
+        provider = "bankone"
+
+        def read_resource(self, ref, *, timeout):
+            envelope = connector.read_resource(ref, timeout=timeout)
+            return replace(envelope, body={**envelope.body, "article_link_bindings": bindings})
+
+    context = capture_fixture.context("bankone")
+    options = {"registry": {"bankone": BoundConnector()}, "object_store": capture_fixture.objects,
+               **WORKSHOP_CAPTURE_OPTIONS}
+    captured = capture_source_article(context, **options)
+    doc = captured.source_document
+    assert captured.resource_manifest[0]["html_inline_article_link_layout"] == HTML_INLINE_ARTICLE_LINK_LAYOUT
+    assert captured.resource_provenance[0]["html_inline_article_link_layout"] == HTML_INLINE_ARTICLE_LINK_LAYOUT
+    assert [link["label"] for link in doc[INLINE_LINKS_FIELD]] == [title, "Cover Setup"]
+    assert [link["item_index"] for link in doc[INLINE_LINKS_FIELD]] == [-1, 0]
+    normalized = normalize_procedure_article({"body": captured.source_body, "normalized_document": doc},
+                                             resource_manifest=captured.resource_manifest)["normalized_document"]
+    assert normalized == doc
+    prompt = json.loads(build_auto_prompt(normalized, context={}))
+    assert INLINE_LINKS_FIELD not in prompt["document"]
+    assert list(prompt["authored_link_labels_by_path"].values()) == [[title], ["Cover Setup"]]
+    assert not any(row["target_ref_sha256"] in json.dumps(prompt) for row in bindings)
+
+    rows = prose_slots(normalized)
+    draft = {"introduction": "This article describes the service information that follows.", "replacements": [
+        {"block_id": row["block_id"], "path": row["path"], "text": text, "action": "rewrite", "reason": ""}
+        for row, text in zip(rows, ("Before fitting the cover, consult Seal Replacement.",
+                                   "Use Cover Setup to complete the procedure."), strict=True)
+    ]}
+    rewritten = render_full(normalized, draft)
+    assert rewritten[INLINE_LINKS_FIELD] == captured.source_document[INLINE_LINKS_FIELD]
+    assert validate_full(normalized, rewritten, response=draft).passed
+    profile = "full-prose-auto-v1"
+    result = rewrite_ordered_document(normalized, client=Draft(draft), context={}, profile_version=profile)
+    assert result.error_code is None
+    version = _auto_prompt_version(normalized, context={}, prompt_hash=result.prompt_hash, profile_version=profile)
+    assert version == prompt["prompt_version"]
+    assert validate_auto(normalized, result.document, response=draft, prompt_version=version).passed
+    draft["replacements"][0]["text"] = "Before fitting the cover, consult the seal renewal procedure."
+    with pytest.raises(ValueError, match="REWRITE_INLINE_ARTICLE_LINK_MUTATION"):
+        render_full(normalized, draft)
+
+    legacy = capture_source_article(
+        replace(context, legacy_published_inline_article_link_body=sha256(html).hexdigest()), **options,
+    )
+    assert INLINE_LINKS_FIELD not in legacy.source_document
+    assert legacy.source_body == captured.source_body
+    assert legacy.source_fingerprint != captured.source_fingerprint
+
+
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 def test_captured_rotation_retains_the_component_and_direction_when_rewritten(capture_fixture, provider):
     import json

@@ -661,6 +661,12 @@ def validate_ordered_document(document: Any, *, strict: bool = False) -> list[st
     if strict:
         errors.extend(_validate_recursive_blocks(blocks))
         errors.extend(_validate_media_tree(document))
+        if not errors and "authored_inline_article_links" in document:
+            from .retained_inline_article_links import inline_article_link_labels
+            try:
+                inline_article_link_labels(document)
+            except (TypeError, ValueError, KeyError, IndexError, AttributeError):
+                errors.append("invalid authored inline article link")
     return errors
 
 
