@@ -231,11 +231,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /metrics", s.metrics.handler)
 	workshopAssets := func(w http.ResponseWriter, r *http.Request) {
 		publicSelectors := s.paidCatalogEnabled()
-		workshopAssetsHandler(w, r, workshopEntryOptions{
+		entry := workshopEntryOptions{
 			publicSelectors: publicSelectors,
 			openDemo:        s.workshopOpenDemoAvailable(r),
 			publicDemo:      publicSelectors && s.workshopOpenDemoHost == workshopPublicDemoTunnelHost,
-		})
+		}
+		if publicSelectors {
+			entry.initialYears = s.workshopInitialYears(r)
+		}
+		workshopAssetsHandler(w, r, entry)
 	}
 	mux.HandleFunc(workshopEntryPath, workshopAssets)
 	mux.HandleFunc("/workshop/purchase-config.json", s.workshopPurchaseConfig)

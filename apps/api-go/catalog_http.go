@@ -70,25 +70,32 @@ type CatalogArticleResponse struct {
 	Configuration *CatalogConfiguration `json:"configuration,omitempty"`
 }
 
-func (s *Server) listCatalogYears(response http.ResponseWriter, request *http.Request, principal Principal) {
-	items, coverage, err := s.catalog.Years(request.Context(), principal)
+func (s *Server) readCatalogYears(ctx context.Context, principal Principal) (CatalogYearsResponse, error) {
+	items, coverage, err := s.catalog.Years(ctx, principal)
 	if err != nil {
-		s.writeCatalogError(response, request, err)
-		return
+		return CatalogYearsResponse{}, err
 	}
 	complete := len(items) != 0 || s.ingestionClient == nil
 	if coverage != nil {
 		complete = *coverage
 	}
-	hydrating := !complete && s.ingestionClient != nil
-	if hydrating && !catalogStoredSelector(request) {
+	return CatalogYearsResponse{
+		Version: "v1", Items: items,
+		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete, Hydrating: !complete && s.ingestionClient != nil},
+	}, nil
+}
+
+func (s *Server) listCatalogYears(response http.ResponseWriter, request *http.Request, principal Principal) {
+	years, err := s.readCatalogYears(request.Context(), principal)
+	if err != nil {
+		s.writeCatalogError(response, request, err)
+		return
+	}
+	if years.Hydrating && !catalogStoredSelector(request) {
 		s.scheduleCatalogHydration(request, map[string]any{"scope": "years"})
 	}
-	s.cacheCompleteCatalogSelector(response, request, complete && len(items) > 0)
-	writeJSON(response, http.StatusOK, CatalogYearsResponse{
-		Version: "v1", Items: items,
-		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete, Hydrating: hydrating},
-	})
+	s.cacheCompleteCatalogSelector(response, request, years.Complete && len(years.Items) > 0)
+	writeJSON(response, http.StatusOK, years)
 }
 
 func (s *Server) listCatalogMakes(response http.ResponseWriter, request *http.Request, principal Principal) {

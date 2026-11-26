@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#f8f9f5" />
     <title>AutoData — The workshop reference</title>
     <link rel="modulepreload" href="/workshop/catalog.mjs" id="workshop-catalog-module" data-public-selectors="false" />
+    <!-- Workshop initial years -->
     <script>
       (() => {
         const params = new URLSearchParams(location.search);
@@ -73,7 +74,19 @@
           pending.set(path, { controller, response });
         }
 
-        read(years);
+        const initialYears = document.getElementById('workshop-initial-years');
+        if (initialYears) {
+          try {
+            const snapshot = JSON.parse(initialYears.textContent);
+            if (snapshot?.version === 'v1' && snapshot.complete === true &&
+                Array.isArray(snapshot.items) && snapshot.items.length) {
+              pending.set(years, { controller: new AbortController(), response: Promise.resolve(snapshot) });
+            }
+          } catch {
+            // Fall back to the regular year read if the embedded data is unavailable.
+          }
+        }
+        if (!pending.has(years)) read(years);
         const year = params.get('year') || '';
         if (!/^\d{4}$/.test(year) || Number(year) < 1886 || Number(year) > 2100) return;
         const stored = '?region=US&stored_only=1';
