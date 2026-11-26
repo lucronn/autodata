@@ -2896,7 +2896,7 @@ test('sign-in rechecks paid access for the displayed selection without reloading
 });
 
 test('sign-in refreshes unknown purchase config without letting a guest reply replace it', async t => {
-  for (const guestStatus of ['pending', 'failed']) {
+  for (const guestStatus of ['pending', 'failed', 'from entry']) {
     await t.test(guestStatus, async () => {
       const h = selectedCheckoutHarness();
       const guest = deferredAuthOperation(), owner = deferredAuthOperation();
@@ -2907,7 +2907,7 @@ test('sign-in refreshes unknown purchase config without letting a guest reply re
         reads.push(signedIn ? 'owner' : 'guest');
         return signedIn ? owner.promise : guest.promise;
       };
-      h.context.loadPurchaseConfiguration();
+      h.context.loadPurchaseConfiguration(guestStatus === 'from entry' ? guest.promise : undefined);
       const guestRequest = h.context.merchantRequest;
       if (guestStatus === 'failed') {
         guest.reject(new Error('Purchase configuration unavailable'));
@@ -2916,11 +2916,11 @@ test('sign-in refreshes unknown purchase config without letting a guest reply re
       assert.equal(h.context.merchant, null);
 
       await h.context.signIn();
-      assert.deepEqual(reads, ['guest', 'owner']);
+      assert.deepEqual(reads, guestStatus === 'from entry' ? ['owner'] : ['guest', 'owner']);
       const ownerConfig = { enabled: true, checkout_mode: 'simulation' };
       owner.resolve(ownerConfig);
       await h.context.merchantRequest;
-      if (guestStatus === 'pending') {
+      if (guestStatus !== 'failed') {
         guest.resolve({ enabled: false, checkout_mode: 'simulation' });
         await guestRequest;
       }

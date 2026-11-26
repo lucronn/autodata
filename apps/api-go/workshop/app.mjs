@@ -2976,6 +2976,7 @@ async function signIn() {
 }
 export async function bootstrap(initialYears, initialAccount, {
   preservePicker = false, initialSelectors = null, testCheckout, initialDemoIndex = null, initialYearPicker = null,
+  initialPurchaseConfig = null,
 } = {}) {
   if (testCheckout) checkoutModeReady = testCheckout.then(enabled => {
     testStripeMode = enabled;
@@ -2994,7 +2995,7 @@ export async function bootstrap(initialYears, initialAccount, {
       initialDemoIndex?.abort();
     }
   }
-  loadPurchaseConfiguration();
+  loadPurchaseConfiguration(initialPurchaseConfig);
   const accountCheck = checkAccount(initialAccount);
   if (preservePicker) {
     await Promise.all([accountCheck, operation((g) => selectVehicle(g), () => restoreRoute())]);
@@ -3007,8 +3008,8 @@ export async function bootstrap(initialYears, initialAccount, {
     initialSelectors: early, initialAccountCheck: accountCheck, initialYearPicker,
   })]);
 }
-function loadPurchaseConfiguration() {
-  const configRequest = requestJSON("/workshop/purchase-config.json").catch(() => null)
+function loadPurchaseConfiguration(initial = null) {
+  const configRequest = (initial ?? requestJSON("/workshop/purchase-config.json")).catch(() => null)
     .then(async (config) => {
       if (config?.checkout_mode !== "simulation") await checkoutModeReady;
       if (merchantRequest !== configRequest) return;

@@ -50,17 +50,26 @@ if (params.get('sample') === '1' && !wantsDemo) {
         const pending = pickerStartup?.get(path);
         if (!pending) return requestJSON(path, options);
         pickerStartup.delete(path);
-        const signal = options?.signal;
-        if (signal?.aborted) pending.controller.abort(signal.reason);
-        else signal?.addEventListener('abort', () => pending.controller.abort(signal.reason), { once: true });
+        function forwardAbort(signal) {
+          if (signal?.aborted) pending.controller.abort(signal.reason);
+          else signal?.addEventListener('abort', () => pending.controller.abort(signal.reason), { once: true });
+        }
+        if (pending.rawResponse) return requestJSON(path, {
+          ...options,
+          async fetcher(resource, init) {
+            forwardAbort(init.signal);
+            return (await pending.response) ?? fetch(resource, init);
+          },
+        });
+        forwardAbort(options?.signal);
         return pending.response;
       };
       const selectors = startSavedSelectorReads(params, request);
-      return { selectors, years: selectors ? null : requestInitialYears(params, request) };
+      return { request, selectors, years: selectors ? null : requestInitialYears(params, request) };
     })
     .catch(() => null);
-  const initialAccount = wantsDemo ? undefined : import('./auth.mjs')
-    .then(({ readSessionBootstrap }) => readSessionBootstrap(undefined, {
+  const initialAccount = wantsDemo ? undefined : Promise.all([import('./auth.mjs'), preview])
+    .then(([{ readSessionBootstrap }, initial]) => readSessionBootstrap(initial?.request, {
       includeLibrary: params.get('view') === 'library' && !params.has('order'),
       route: params,
     }))
@@ -78,9 +87,13 @@ if (params.get('sample') === '1' && !wantsDemo) {
     document.documentElement.dataset.workshopMode = openDemo ? 'open-demo' : 'regular';
     const initial = await preview;
     const { bootstrap } = await import('./app.mjs');
+    const purchasePath = '/workshop/purchase-config.json';
+    const initialPurchaseConfig = pickerStartup?.has(purchasePath)
+      ? initial?.request(purchasePath) : null;
     await bootstrap(initial?.years, initialAccount, {
       initialSelectors: initial?.selectors,
       initialYearPicker: pickerStartup?.takeYearPicker?.(),
+      initialPurchaseConfig,
       testCheckout: wantsDemo ? undefined : modeRequest.then(mode => mode.testCheckout === true),
       initialDemoIndex: openDemo ? demoIndex : null,
     });

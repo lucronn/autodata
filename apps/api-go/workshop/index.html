@@ -73,19 +73,33 @@
         }
 
         const years = '/v1/catalog/years';
-        function read(path, cache = path === years ? 'default' : 'no-store') {
+        function start(path, cache, headers = {}) {
           const controller = new AbortController();
           const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]);
           const response = fetch(path, { signal, credentials: 'same-origin', cache,
-            headers: { Accept: 'application/json' } })
-            .then(reply => reply.ok ? reply.json() : null).catch(() => null);
-          const request = { controller, response };
+            headers: { Accept: 'application/json', ...headers } }).catch(() => null);
+          return { controller, response };
+        }
+        function read(path, cache = path === years ? 'default' : 'no-store') {
+          const { controller, response } = start(path, cache);
+          const request = { controller, response: response.then(reply => reply?.ok ? reply.json() : null).catch(() => null) };
           pending.set(path, request);
           return request;
         }
 
+        const newSelection = !['year', 'make', 'model', 'view', 'q'].some(key => params.has(key));
+        if (newSelection) {
+          // Let the app handle the original response, including a signed-out status.
+          for (const [path, headers] of [
+            ['/auth/config'], ['/auth/session', { Prefer: 'workshop-session-mode' }],
+            ['/workshop/purchase-config.json'],
+          ]) {
+            pending.set(path, { ...start(path, 'no-store', headers), rawResponse: true });
+          }
+        }
+
         function showYears(snapshot) {
-          if (['year', 'make', 'model', 'view', 'q'].some(key => params.has(key)) ||
+          if (!newSelection ||
               !snapshot.items.every(item => Number.isInteger(item?.year) && item.year >= 1886 && item.year <= 2100))
             return;
           const values = snapshot.items.map(item => item.year).sort((a, b) => b - a);
