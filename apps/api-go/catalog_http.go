@@ -330,9 +330,6 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 	if statusErr != nil {
 		progress = nil
 	}
-	hydrating := progress != nil && !progress.Complete &&
-		(progress.Status == "pending" || progress.Status == "running" ||
-			(progress.Status == "failed" && progress.Retryable))
 	if !paid && (progress == nil || !progress.Complete) && s.ingestionClient != nil {
 		ctx, cancel := context.WithTimeout(request.Context(), catalogStatusReadTimeout)
 		configuration, configurationErr := s.catalog.ConfigurationByVehicle(ctx, principal, vehicleID)
@@ -371,8 +368,13 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 	}
 	writeJSON(response, http.StatusOK, CatalogArticlesResponse{
 		Version: "v1", Items: items, Complete: progress != nil && progress.Complete,
-		Hydrating: hydrating, Progress: progress, Configuration: configuration, Page: page, IndexedCount: indexedCount,
+		Hydrating: catalogIndexHydrating(progress), Progress: progress, Configuration: configuration, Page: page, IndexedCount: indexedCount,
 	})
+}
+
+func catalogIndexHydrating(progress *CatalogArticleProgress) bool {
+	return progress != nil && !progress.Complete &&
+		(progress.Status == "pending" || progress.Status == "running" || progress.Status == "failed" && progress.Retryable)
 }
 
 func (s *Server) catalogIndexRows(ctx context.Context, principal Principal, vehicleID, query, title string) ([]CatalogArticle, error) {
