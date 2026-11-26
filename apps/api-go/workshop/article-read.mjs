@@ -121,6 +121,7 @@ export async function readArticle(
     let retryAfter = 0, fastPendingJob, fastSource = false, sourcePreview = false, readable = false;
     let shortSourceCheck = false, sourceProbeFailed = false;
     let previewSourceCheck = false;
+    let publicationStatusConfirmed = false;
     let shortPublicationJob;
     const startedAt = now();
     const advancedProbeLimit = advancedSourceProbeUntil > startedAt ? advancedSourceProbeUntil : 0;
@@ -180,7 +181,10 @@ export async function readArticle(
         const pending = matchingPublicationStatus(response, publicationCheck);
         retryAfter = Math.max(articleRetryAfter(response), Number(pending?.retry_after_seconds) || 0);
         if (pending) {
-          if (retryAfter === 0) shortPublicationJob = pending.job_id;
+          if (retryAfter === 0) {
+            shortPublicationJob = pending.job_id;
+            publicationStatusConfirmed = true;
+          }
           const scheduled = statusProbe && publicationStatusProbes.get(pending.job_id);
           if (scheduled?.attempts === 1 && retryAfter <= publicationStatusProbeDelayMs / 1000) {
             scheduled.confirmedPending = true;
@@ -374,9 +378,16 @@ export async function readArticle(
     // Check once for the rewrite shortly after stored source appears.
     // A miss rejoins the normal backoff and still honors Retry-After.
     if (sourceConfirmationAt) {
-      backoff = Math.max(0, sourceConfirmationAt - now());
+      const regularReadAt = sourceConfirmationAt;
+      backoff = Math.max(0, regularReadAt - now());
       sourceConfirmationAt = 0;
       attempt--;
+      if (publicationStatusConfirmed && backoff >= publicationProbeIntervalMs) {
+        // A compact reply confirmed the same rewrite. Check the remaining
+        // interval once without moving the ordinary full read.
+        scheduledPublicationCheck = { anchor: publicationCheck, regularReadAt, late: false };
+        backoff /= 2;
+      }
     } else if ((fastSource || shortPublicationJob) && !sawFastSource) {
       sawFastSource = true;
       if (backoff > sourceConfirmationDelayMs) {
