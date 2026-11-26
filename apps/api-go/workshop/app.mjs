@@ -341,7 +341,7 @@ async function operation(work, retry = null) {
     }
   }
 }
-function updateURL({ article = "", replace = false, library = false } = {}) {
+function updateURL({ article = "", replace = false, library = false, previousArticle = "" } = {}) {
   const p = new URLSearchParams();
   if (openDemo) p.set('demo', '1');
   for (const name of names) if ($(name).value) p.set(name, $(name).value);
@@ -355,8 +355,10 @@ function updateURL({ article = "", replace = false, library = false } = {}) {
   if (!article && currentOrder && new URLSearchParams(location.search).get("order") === currentOrder)
     p.set("order", currentOrder);
   const url = `${location.pathname}${p.size ? `?${p}` : ""}`;
-  if (url !== location.pathname + location.search)
-    history[replace ? "replaceState" : "pushState"](null, "", url);
+  if (url !== location.pathname + location.search) {
+    const state = previousArticle ? { workshopRelatedFrom: previousArticle } : null;
+    history[replace ? "replaceState" : "pushState"](state, "", url);
+  }
 }
 function rememberOrderRoute(id) {
   const params = new URLSearchParams(location.search);
@@ -1599,7 +1601,7 @@ function articleReferenceLink(text, target, g) {
     event.preventDefault();
     if (g.current() && sameScope(selected, scope()) &&
         (openDemo || session.state.authenticated && session.state.csrf === csrf))
-      openArticle(target);
+      openArticle(target, null, { referenceTitle: typeof text === "string" ? text : "" });
   });
   return link;
 }
@@ -2028,22 +2030,34 @@ async function loadArticle(id, g, options) {
     order.loading = false;
   }
 }
+function canReturnToRelatedArticle(id) {
+  if (!uuid(id) || !uuid(history.state?.workshopRelatedFrom) || history.state.workshopRelatedFrom === id ||
+      (!openDemo && !session.state.authenticated)) return false;
+  const params = new URLSearchParams(location.search);
+  return params.get("article") === id && params.get("configuration") === vehicle?.id &&
+    params.get("region") === vehicle?.region;
+}
 async function loadArticleView(id, g, order, {
   savedLink = false, refreshOnly = false, preferRetained = false, verifiedDetail = null,
   initialDemoDetail = null, indexedArticle = null, initialRetainedReader = null,
+  referenceTitle = "",
 } = {}) {
   const sameArticle = currentArticle?.id === id;
   let refreshVisibleArticle = sameArticle && !$("reader").hidden && readableArticle(currentArticle);
   const heading = $("article-title");
   if (!refreshVisibleArticle) resetReaderContent();
   if (!sameArticle) {
-    const title = indexedArticle?.id === id && typeof indexedArticle.title === "string"
+    const indexedTitle = indexedArticle?.id === id && typeof indexedArticle.title === "string"
       ? indexedArticle.title.trim() : "";
+    const title = indexedTitle || referenceTitle.trim();
     heading.textContent = title || "Opening article…";
     document.title = title ? `${title} | AutoData` : "AutoData — The workshop reference";
     $("reader-vehicle").textContent = vehicleIdentityLabel();
     $("reader-engine").textContent = vehicle.region;
   }
+  const backRelated = $("back-related");
+  backRelated.hidden = !canReturnToRelatedArticle(id);
+  backRelated.disabled = false;
   show("reader");
   stage("article");
   if (!verifiedDetail) {
@@ -2336,15 +2350,17 @@ async function loadArticleView(id, g, order, {
     showArticleReadStatus(id, retained ? currentArticle : result.data?.article, result.timedOut);
   return true;
 }
-function openArticle(id, indexLink = null, { refreshOnly = false, preferRetained = false } = {}) {
+function openArticle(id, indexLink = null, { refreshOnly = false, preferRetained = false, referenceTitle = "" } = {}) {
   const indexURL = location.href;
-  const params = indexLink && new URL(indexURL).searchParams;
+  const params = (indexLink || referenceTitle) && new URL(indexURL).searchParams;
+  const sameVehicle = params && params.get("configuration") === vehicle?.id && params.get("region") === vehicle?.region;
+  const previousArticle = referenceTitle && sameVehicle && uuid(currentArticle?.id) &&
+    currentArticle.id !== id && params.get("article") === currentArticle.id ? currentArticle.id : "";
   const indexedArticle = indexLink && (searchItems?.find((item) => item.id === id) ||
     articles.find((item) => item.id === id));
-  updateURL({ article: id });
+  updateURL({ article: id, previousArticle });
   if (indexURL !== location.href) {
-    articleIndexOrigin = params && !params.has("article") && !params.has("order") &&
-      params.get("configuration") === vehicle?.id && params.get("region") === vehicle?.region &&
+    articleIndexOrigin = indexLink && sameVehicle && !params.has("article") && !params.has("order") &&
       access === "owned" && session.state.authenticated && session.state.csrf
       ? { indexURL, readerURL: location.href, indexLink, articleID: id, configuration: scope(), csrf: session.state.csrf,
           paged: Boolean(indexPage && !params.has("q")) }
@@ -2354,9 +2370,9 @@ function openArticle(id, indexLink = null, { refreshOnly = false, preferRetained
     (g) => {
       if (articleIndexOrigin && articleIndexOrigin.readerURL === location.href)
         articleIndexOrigin.generation = g;
-      return loadArticle(id, g, { refreshOnly, preferRetained, indexedArticle });
+      return loadArticle(id, g, { refreshOnly, preferRetained, indexedArticle, referenceTitle });
     },
-    () => openArticle(id, null, { refreshOnly, preferRetained }),
+    () => openArticle(id, null, { refreshOnly, preferRetained, referenceTitle }),
   );
 }
 function validSourceURL(value) {
@@ -3494,6 +3510,14 @@ function showReturnedArticleIndex(indexLink = null) {
   showArticleIndexStatus();
 }
 $("back").addEventListener("click", returnToArticleIndex);
+$("back-related").addEventListener("click", () => {
+  const back = $("back-related");
+  const id = new URLSearchParams(location.search).get("article");
+  if (back.hidden || back.disabled || !canReturnToRelatedArticle(id)) return;
+  back.disabled = true;
+  navigation.clear();
+  history.back();
+});
 async function printArticle() {
   if (!readableArticle(currentArticle) || (!openDemo && !session.state.authenticated)) return;
   const deferred = deferredArticleFigures;

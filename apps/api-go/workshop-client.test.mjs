@@ -7175,12 +7175,12 @@ function articleMediaHarness(overrides = {}) {
     'article-note', 'source-review-meta', 'source-review', 'source-review-title', 'print', 'print-status',
     'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase', 'purchase-selection',
     'article-kind', 'article-reference', 'source-review-load', 'open-original', 'original-error', 'back-to-article', 'check-order',
-    'library-more', 'library-message', 'library-title'];
+    'library-more', 'library-message', 'library-title', 'back-related'];
   for (const id of ids) { const node = new ArticleMediaNode('div'); nodes.set(id, node); body.append(node); }
   const navigation = new NavigationGeneration(), searchNavigation = new NavigationGeneration(), g = navigation.next();
   const shows = [], statuses = [];
   const context = {
-    URL, AbortController, AbortSignal, uuid, articlePresentation, configurationLabel, localImageURL, sourceReferenceURL,
+    URL, URLSearchParams, AbortController, AbortSignal, uuid, articlePresentation, configurationLabel, localImageURL, sourceReferenceURL,
     awaitingArticleRewrite, processingArticle, readableArticle, readyReprojectedSource,
     session: { state: { mode: null } }, sessionRequest: null,
     document: { body, title: '', createElement: tag => new ArticleMediaNode(tag),
@@ -7188,6 +7188,7 @@ function articleMediaHarness(overrides = {}) {
     window: new EventTarget(),
     requestAnimationFrame() {},
     location: { origin: 'https://cars.example' },
+    history: {},
     $: id => { assert.ok(nodes.has(id), `known DOM node ${id}`); return nodes.get(id); },
     navigation, searchNavigation, searchItems: null, searchQuery: '', searchPending: false,
     searchComplete: false, searchError: false, searchTimer: null, clearTimeout() {},
@@ -7243,23 +7244,36 @@ test('the article shows the exact source fingerprint and distinguishes a separat
 
 test('authored article links use the protected reader even when the target is off the index page', () => {
   const target = '11111111-1111-4111-8111-111111111111';
+  const parent = routeArticle;
   const selected = { id: routeConfiguration, region: 'US' };
   const calls = [];
-  const hrefs = [];
+  const route = new URL(`https://cars.example/workshop?configuration=${selected.id}&region=US&article=${parent}`);
+  let traversals = 0;
   const h = articleMediaHarness({
     session: { state: { authenticated: true, mode: 'firebase', csrf: 'fixture' } },
     vehicle: selected,
-    location: { origin: 'https://cars.example', href: 'https://cars.example/workshop?article=origin' },
-    scope: () => ({ configuration_id: h.context.vehicle.id, region: h.context.vehicle.region }),
-    updateURL({ article }) {
-      hrefs.push(article);
-      h.context.location.href = 'https://cars.example/workshop?article=' + article;
+    location: route, names: [],
+    history: {
+      state: null,
+      pushState(state, _, path) {
+        this.state = state;
+        h.context.location = new URL(path, route);
+      },
+      back() { traversals++; },
     },
+    scope: () => ({ configuration_id: h.context.vehicle.id, region: h.context.vehicle.region }),
     operation(work) { return work(h.navigation.next()); },
-    loadArticle(id, generation) { calls.push([id, generation.current()]); },
+    loadArticle(id, generation, { referenceTitle }) { calls.push([id, generation.current(), referenceTitle]); },
   });
-  runInNewContext(appSection('function openArticle(', 'function validSourceURL('), h.context);
-  h.context.articles = [{ id: 'origin' }];
+  h.nodes.set('search', { value: '' });
+  runInNewContext([
+    appSection('function updateURL(', 'function rememberOrderRoute('),
+    appSection('function openArticle(', 'function validSourceURL('),
+    appSection('function canReturnToRelatedArticle(', 'async function loadArticleView('),
+    appSection('$("back-related").addEventListener', 'async function printArticle('),
+  ].join('\n'), h.context);
+  h.context.currentArticle = { id: parent };
+  h.context.articles = [{ id: parent }];
   const source = h.content(mediaArticle([
     { type: 'link', text: 'Supplier reference', href: 'https://provider.invalid/private' },
     { type: 'link', text: 'Pump cover', target_article_id: target },
@@ -7286,12 +7300,25 @@ test('authored article links use the protected reader even when the target is of
   assert.equal(prevented, 0);
   assert.deepEqual(calls, []);
   links[1].dispatch('click', click);
-  assert.deepEqual(calls, [[target, true]]);
-  assert.deepEqual(hrefs, [target]);
+  assert.deepEqual(calls, [[target, true, 'Nested reference']]);
+  assert.equal(h.context.location.searchParams.get('article'), target);
+  assert.equal(h.context.history.state.workshopRelatedFrom, parent);
   assert.equal(h.context.articleIndexOrigin, null);
   assert.equal(h.g.current(), false);
   links[0].dispatch('click', click);
-  assert.deepEqual(calls, [[target, true]], 'stale DOM cannot open another reader');
+  assert.deepEqual(calls, [[target, true, 'Nested reference']], 'stale DOM cannot open another reader');
+  const back = h.nodes.get('back-related');
+  assert.equal(h.context.canReturnToRelatedArticle(target), true);
+  h.context.vehicle.region = 'CA';
+  back.dispatch('click');
+  h.context.vehicle.region = 'US';
+  h.context.session.state.authenticated = false;
+  back.dispatch('click');
+  assert.equal(traversals, 0);
+  h.context.session.state.authenticated = true;
+  back.dispatch('click');
+  back.dispatch('click');
+  assert.equal(traversals, 1);
 });
 
 test('an authored link is inert after its vehicle or session changes', () => {
@@ -8061,6 +8088,7 @@ test('article navigation focuses its visible heading once before preparation and
   assert.equal(h.nodes.get('reader-engine').textContent, 'US');
   assert.equal(h.nodes.get('article-content').textContent, '');
   assert.equal(h.nodes.get('print').disabled, true);
+  assert.equal(h.nodes.get('back-related').hidden, true);
   assert.equal(title.focusCalls, 1, 'focus must enter the reader while preparation is pending');
   resolvePrepare({ data: { article } });
   await pending;

@@ -580,11 +580,14 @@ select:enabled:hover {
 }
 .reader-nav {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 20px;
   border-bottom: 1px solid var(--rule);
   padding: 15px 0 23px;
   font-size: 14px;
+}
+.reader-nav #print {
+  margin-inline-start: auto;
 }
 .document {
   display: grid;
