@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"log"
 	"net/http"
@@ -479,6 +481,7 @@ const (
 	previewSourceCheckPreference    = "workshop-preview-source-check"
 	shortPublicationCheckPreference = "workshop-short-publication-check"
 	finishPublishedBodyPreference   = "workshop-finish-published-body"
+	retainedReaderSessionPreference = "workshop-retained-reader-session"
 )
 
 func catalogReadPreferenceRequested(request *http.Request, preference string) bool {
@@ -585,6 +588,15 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 	}
 	if configuration != nil && status == http.StatusOK && s.canCheckCatalogPublication(article) {
 		response.Header().Set(publicationCheckHeader, "supported")
+	}
+	if configuration != nil && status == http.StatusOK &&
+		article.SourceRevisionID != nil && !article.SourceBodyPreview && s.selectedIndexAuth() != nil &&
+		wantsRetainedReaderSession(request) {
+		// Bind the authorized body to the cookie checked by /auth/session.
+		if token, _, err := customerRequestToken(request); err == nil {
+			digest := sha256.Sum256([]byte(customerCSRF(token)))
+			response.Header().Set("Workshop-Reader-Session", hex.EncodeToString(digest[:]))
+		}
 	}
 	article.SourceReview = sourceReviewForArticle(article, vehicleID, article.ID)
 	if paid && !scope.openDemo {

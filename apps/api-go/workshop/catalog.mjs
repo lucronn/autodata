@@ -374,13 +374,25 @@ const earlySourceCheckPreference = 'workshop-early-source-check';
 const shortPublicationCheckPreference = 'workshop-short-publication-check';
 const finishPublishedBodyPreference = 'workshop-finish-published-body';
 const publicationStatusPreference = 'workshop-publication-status';
+const retainedReaderSessionPreference = 'workshop-retained-reader-session';
 export const selectedIndexSessionPreference = 'workshop-confirm-session';
+
+export async function matchesRetainedReaderSession(response, csrf) {
+  if (response?.status !== 200 || !/^[a-f0-9]{64}$/.test(response.readerSession ?? '') ||
+      !csrf || !globalThis.crypto?.subtle) return false;
+  try {
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(csrf));
+    return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('') === response.readerSession;
+  } catch {
+    return false;
+  }
+}
 
 export async function requestArticleJSON(path, {
   signal, timeout = 10000, readableBodyTimeout = 0, fetcher = fetch, method = 'GET', body, headers = {}, cache = 'no-store',
   preferShortSourceCheck = false, preferPreviewSourceCheck = false, preferEarlySourceCheck = false,
   preferShortPublicationCheck = false,
-  finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck,
+  finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck, retainedReaderSession = false,
   onResponseStatus, onResponseDate, onSelectedIndexSession,
 } = {}) {
   const preferences = [];
@@ -389,6 +401,7 @@ export async function requestArticleJSON(path, {
   if (preferEarlySourceCheck && method === 'GET') preferences.push(earlySourceCheckPreference);
   if (preferShortPublicationCheck) preferences.push(shortPublicationCheckPreference);
   if (finishPublishedBody) preferences.push(finishPublishedBodyPreference);
+  if (retainedReaderSession) preferences.push(retainedReaderSessionPreference);
   if (publicationCheck) {
     preferences.push(publicationStatusPreference);
     headers = {
@@ -412,7 +425,7 @@ export async function requestArticleJSON(path, {
   try {
     const response = await fetcher(path, {
       method, signal: combined, credentials: 'same-origin', cache,
-      ...(onSelectedIndexSession ? { redirect: 'error' } : {}),
+      ...(onSelectedIndexSession || retainedReaderSession ? { redirect: 'error' } : {}),
       headers: {
         Accept: 'application/json',
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
@@ -468,6 +481,7 @@ export async function requestArticleJSON(path, {
     const publicationCheckSupported = response.headers.get('Workshop-Publication-Check') === 'supported';
     onResponseDate?.(response.headers.get('Date'));
     return { status: response.status, data, retryAfterSeconds, shortSourceCheck, shortPublicationCheck,
+      ...(retainedReaderSession ? { readerSession: response.headers.get('Workshop-Reader-Session') } : {}),
       ...(previewSourceCheck ? { previewSourceCheck } : {}),
       ...(publicationStatus ? { publicationStatus } : {}),
       ...(publicationCheckSupported ? { publicationCheckSupported } : {}),
