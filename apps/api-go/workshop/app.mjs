@@ -127,8 +127,10 @@ const element = (tag, text, className) => {
 const session = createSession({
   onChange(state) {
     $("signin").hidden = state.authenticated;
-    $("signin").disabled = !state.ready;
-    $("signin").textContent = state.confirm
+    $("signin").disabled = !state.ready && !state.popupPending;
+    $("signin").textContent = state.popupPending
+      ? "Reopen Google sign-in"
+      : state.confirm
       ? "Confirm Google sign-in"
       : "Sign in with Google";
     $("signout").hidden = !state.authenticated && !state.csrf;
@@ -711,7 +713,7 @@ function renderPurchase() {
   action.hidden = session.state.authenticated && access !== "owned" &&
     !paymentReceived && !canResume && !confirming && !canPurchase;
   action.textContent = action.hidden ? "" : !session.state.authenticated
-    ? "Sign in with Google"
+    ? session.state.popupPending ? "Reopen Google sign-in" : "Sign in with Google"
     : access === "owned"
       ? (indexCatalogEmpty ? "Check article availability" : "Open articles")
       : paymentReceived
@@ -722,7 +724,7 @@ function renderPurchase() {
             ? ({ open: "Checkout open", unavailable: "Checkout status unavailable" }[unconfirmedOrder.state] || "Payment pending")
             : (simulation ? "Simulate purchase" : "Buy for $20 USD");
   action.disabled = !session.state.authenticated
-    ? !session.state.ready
+    ? !session.state.ready && !session.state.popupPending
     : access === "owned"
       ? false
       : !canPurchase && !canResume;
@@ -2987,8 +2989,9 @@ async function purchase() {
 }
 async function signIn() {
   if (openDemo) return;
-  if (signingIn) return;
-  signingIn = true;
+  if (signingIn && !session.state.popupPending) return;
+  const attempt = Symbol();
+  signingIn = attempt;
   checkout.clear();
   const pathname = location.pathname;
   const route = location.search;
@@ -3005,7 +3008,7 @@ async function signIn() {
   const canConfirmIndex = () => generation?.current() && !sessionRequest &&
     typeof selectedIndexSessionPreference === "string" && session.state.mode === "firebase" &&
     !params.has("q") && matchesSelection();
-  let firstIndex;
+  let firstIndex, currentAttempt;
   try {
     firstIndex = await session.signIn(canConfirmIndex() ? {
       async confirmSelectedIndex(exchangeCSRF, signal) {
@@ -3031,10 +3034,11 @@ async function signIn() {
         return { expiresAt, firstIndex };
       },
     } : undefined);
+    currentAttempt = signingIn === attempt;
   } finally {
-    signingIn = false;
+    if (signingIn === attempt) signingIn = false;
   }
-  if (!session.state.authenticated) return;
+  if (!currentAttempt || !session.state.authenticated) return;
   if (!merchant || merchant.checkout_mode === "simulation") loadPurchaseConfiguration();
   if (matchesSelection()) {
     // Apply access only for the public selection retained through sign-in.
@@ -3351,7 +3355,10 @@ for (const [index, name] of names.entries()) {
     }
   });
 }
-$("signin").addEventListener("click", () => void signIn());
+$("signin").addEventListener("click", (event) => {
+  if (event?.detail > 1 && session.state.popupPending) return;
+  void signIn();
+});
 $("signout").addEventListener("click", async () => {
   invalidate();
   checkout.clear();
@@ -3379,7 +3386,10 @@ $("my-vehicles").addEventListener("click", () => {
   operation(openLibrary, () => operation(openLibrary));
 });
 $("library-more").addEventListener("click", loadMoreLibrary);
-$("purchase-action").addEventListener("click", () => void purchase());
+$("purchase-action").addEventListener("click", (event) => {
+  if (event?.detail > 1 && session.state.popupPending) return;
+  void purchase();
+});
 $("check-order").addEventListener("click", checkPaymentStatus);
 $("article-prev").addEventListener("click", () => moveArticlePage(-1));
 $("article-next").addEventListener("click", () => moveArticlePage(1));
