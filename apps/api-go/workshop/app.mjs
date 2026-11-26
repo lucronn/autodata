@@ -1194,6 +1194,11 @@ function hasRetainedArticleRevision(article) {
       article.content_origin === "source" && uuid(article.source_revision_id));
 }
 
+function hasSupplierPreview(article) {
+  return article.availability === "available" && article.content_origin === "source" &&
+    article.source_body_preview === true && article.source_revision_id == null && article.canonical_revision_id == null;
+}
+
 function rememberRetainedReader(response) {
   const { article, configuration } = response.data;
   if (openDemo || session.state.mode !== "firebase" || !session.state.authenticated ||
@@ -2091,8 +2096,7 @@ async function loadArticleView(id, g, order, {
     throw error;
   };
   let retainedReadStartedAt;
-  const readFirst = preferRetained || (indexedArticle?.id === id &&
-    indexedArticle.source_body_preview === true && indexedArticle.availability === "available");
+  const readFirst = preferRetained || (indexedArticle?.id === id && hasSupplierPreview(indexedArticle));
   if ((readFirst || initialRetainedReader) && !verifiedDetail && !refreshOnly && !openDemo &&
       session.state.mode === "firebase" && (savedLink || access === "owned") &&
       validScope({ configuration_id: selected.id, region: selected.region })) {
@@ -2143,7 +2147,7 @@ async function loadArticleView(id, g, order, {
     const readable = readableArticle(article);
     if (retained && (!readable || olderThanRetained(response))) return;
     renderArticle(article, g, refreshVisibleArticle && !verifiedDetail);
-    rememberRetainedIndexArticle(response, g);
+    rememberIndexArticleReadiness(response, g);
     rememberRetainedReader(response);
     refreshVisibleArticle = false;
     if (readerAlignment && readable) {
@@ -3368,18 +3372,19 @@ $("back-to-article").addEventListener("click", () => {
 $("article-reference").addEventListener("toggle", () => {
   if (!$("article-reference").open) delete $("reader").dataset.readingOriginal;
 });
-function rememberRetainedIndexArticle(response, g) {
+function rememberIndexArticleReadiness(response, g) {
   const origin = articleIndexOrigin;
   if (origin?.generation !== g || !canReuseArticleIndex(origin) || !g.current()) return;
   const { article, configuration } = response.data;
   if (article?.id !== origin.articleID || configuration?.id !== origin.configuration.configuration_id ||
       configuration?.region !== origin.configuration.region) return;
-  origin.retained = response.status === 200 && !article.source_body_preview &&
-    readableArticle(article) && hasRetainedArticleRevision(article) ? {
+  const preview = hasSupplierPreview(article);
+  origin.readiness = response.status === 200 && readableArticle(article) &&
+    (preview || !article.source_body_preview && hasRetainedArticleRevision(article)) ? {
       availability: article.availability,
       content_origin: article.content_origin,
       content_status: article.content_status,
-      source_body_preview: undefined,
+      source_body_preview: preview || undefined,
       source_revision_id: article.source_revision_id,
       canonical_revision_id: article.canonical_revision_id,
     } : null;
@@ -3408,11 +3413,11 @@ function restoreHistoryEntry() {
   articleIndexOrigin = null;
   const sameIndex = origin && origin.indexURL === location.href && canReuseArticleIndex(origin);
   if (sameIndex && origin.returning) {
-    if (origin.retained && currentArticle?.id === origin.articleID) {
-      // Keep the readiness of the exact article the reader verified.
+    if (origin.readiness && currentArticle?.id === origin.articleID) {
+      // Copy only the authorized article's index metadata.
       for (const items of [articles, searchItems]) {
         const item = items?.find((article) => article.id === origin.articleID);
-        if (item) Object.assign(item, origin.retained);
+        if (item) Object.assign(item, origin.readiness);
       }
     }
     return showReturnedArticleIndex(origin.indexLink);
@@ -3577,7 +3582,7 @@ async function recheckReader(g) {
     delete reader.dataset.rechecking;
     show("reader");
     renderArticle(article, g);
-    rememberRetainedIndexArticle(checked, g);
+    rememberIndexArticleReadiness(checked, g);
     if (!processingArticle(article) && (articleViewRevision(opened) !== articleViewRevision(article) ||
         opened.processing?.state !== article.processing?.state))
       showArticleReadStatus(opened.id, article);
