@@ -23,7 +23,7 @@ _FAILURES = frozenset({
 })
 # Discard inert, recognized legacy declarations; never resolve a DTD.
 _W3C_DOCTYPE = re.compile(
-    r'''<!DOCTYPE\s+svg\s+PUBLIC\s+(["'])-//W3C//DTD SVG 1\.[01]//EN\1\s+(["'])https?://www\.w3\.org/(?:Graphics/SVG/1\.1/DTD/svg11\.dtd|TR/2001/REC-SVG-20010904/DTD/svg10\.dtd|TR/SVG/DTD/svg10\.dtd)\2\s*>'''
+    r'''<!DOCTYPE\s+svg\s+PUBLIC\s+(["'])-//W3C//DTD SVG 1\.[01]//EN\1\s+(["'])https?://www\.w3\.org/(?:Graphics/SVG/1\.1/DTD/svg11\.dtd|TR/2001/REC-SVG-20010904/DTD/svg1[01]\.dtd|TR/SVG/DTD/svg10\.dtd)\2\s*>'''
 )
 
 
