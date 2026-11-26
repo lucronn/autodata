@@ -13,6 +13,7 @@ import base64
 from uuid import NAMESPACE_URL, uuid5
 from .article_lifecycle_types import (
     BANKONE_HTML_FLOW_LAYOUT,
+    BANKTWO_LIST_NOTICE_LAYOUT,
     CapturedSource,
     HTML_BOUND_IMAGE_LAYOUT,
     HTML_DOCUMENT_LINK_LAYOUT,
@@ -490,6 +491,7 @@ WORKSHOP_CAPTURE_OPTIONS = {
     "keep_inline_article_links": True,
     "keep_html_section_titles": True,
     "keep_bankone_html_flow": True,
+    "keep_banktwo_list_notices": True,
     "keep_mixed_html_pdf_embeds": True,
     "keep_bound_html_images": True,
     "keep_positioned_figure_labels": True,
@@ -521,6 +523,7 @@ def capture_source_article(
     keep_inline_article_links=False,
     keep_html_section_titles=False,
     keep_bankone_html_flow=False,
+    keep_banktwo_list_notices=False,
     keep_mixed_html_pdf_embeds=False,
     keep_bound_html_images=False,
     keep_positioned_figure_labels=False,
@@ -841,6 +844,9 @@ def capture_source_article(
                 keep_bankone_html_flow
                 and (recover_legacy_bankone_svg or body_digest != context.legacy_published_bankone_flow_body)
             ),
+            keep_banktwo_list_notices=(
+                keep_banktwo_list_notices and body_digest != context.legacy_published_banktwo_list_notice_body
+            ),
             keep_mixed_html_pdf_embeds=keep_mixed_html_pdf_embeds,
             keep_structured_table_cell_order=keep_structured_table_cell_order or (
                 keep_structured_table_columns and keep_structured_table_column_order
@@ -1030,6 +1036,7 @@ def capture_source_article(
     mixed_html_pdf_embeds = article.get("mixed_html_pdf_embeds") is True
     html_section_titles = article.get("html_section_titles") is True
     bankone_html_flow = article.get("bankone_html_flow") is True
+    banktwo_list_notices = article.get("banktwo_list_notices") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
     retained_pdf_repeats = article.get("retained_repeated_pdf_figures") is True
@@ -1051,7 +1058,8 @@ def capture_source_article(
     new_structure = (
         structured_table_columns or structured_table_cell_order or step_layout or html_table_captions or html_flow_figure_captions
         or html_table_spans or html_media_table_headers or html_nested_tables or html_numeric_superscripts or image_only_headings
-        or html_bound_images or html_document_links or html_section_titles or bankone_html_flow or positioned_figure_labels
+        or html_bound_images or html_document_links or html_section_titles or bankone_html_flow or banktwo_list_notices
+        or positioned_figure_labels
         or article.get("embedded_pdf")
         or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
     )
@@ -1097,6 +1105,8 @@ def capture_source_article(
         resources[0]["html_document_link_layout"] = manifest[0]["html_document_link_layout"] = HTML_DOCUMENT_LINK_LAYOUT
     if html_section_titles:
         resources[0]["html_section_title_layout"] = manifest[0]["html_section_title_layout"] = HTML_SECTION_TITLE_LAYOUT
+    if banktwo_list_notices:
+        resources[0]["banktwo_list_notice_layout"] = manifest[0]["banktwo_list_notice_layout"] = BANKTWO_LIST_NOTICE_LAYOUT
     if html_bound_images:
         resources[0]["html_bound_image_layout"] = manifest[0]["html_bound_image_layout"] = HTML_BOUND_IMAGE_LAYOUT
     if positioned_figure_labels:
