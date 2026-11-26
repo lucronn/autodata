@@ -446,10 +446,15 @@ def test_retained_article_link_bindings_upgrade_from_populated_052(fresh_databas
 
     before, old_ledger, old_read = lifecycle_history(repo), versions(repo), legacy_read()
     assert old_read["canonical_revision_id"] == revision
-    assert applied(run_driver(repo)) == ["053_canonical_article_link_bindings.sql"]
+    assert applied(run_driver(repo)) == [
+        "053_canonical_article_link_bindings.sql",
+        "054_canonical_article_inline_link_bindings.sql",
+    ]
     ledger = versions(repo)
-    assert ledger[:-1] == old_ledger
-    assert ledger[-1]["version"] == "053_canonical_article_link_bindings"
+    assert ledger[:-2] == old_ledger
+    assert [entry["version"] for entry in ledger[-2:]] == [
+        "053_canonical_article_link_bindings", "054_canonical_article_inline_link_bindings",
+    ]
     assert snapshot(repo) == snapshot(fresh_database())
 
     binding = {

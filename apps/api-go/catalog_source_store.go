@@ -85,12 +85,10 @@ func (s *postgresCatalogStore) paidCatalogSourceView(ctx context.Context, config
 	view.Article.ID = identity.CanonicalArticleID
 	view.Article.CanonicalArticleID = &identity.CanonicalArticleID
 	var links catalogArticleLinkProjection
-	if allowStagedOriginal {
-		links.resolve = s.authoredArticleLinkResolver(ctx, identity)
-		if links.resolve != nil && view.Article.SourceRevisionID != nil && *view.Article.SourceRevisionID == *source.SourceRevisionID {
-			links.retained = s.retainedArticleLinkBindings(ctx, article, source.SourceRevisionID,
-				view.Article.CanonicalRevisionID, source.ContentSHA256, doc)
-		}
+	links.resolve = s.authoredArticleLinkResolver(ctx, identity, !allowStagedOriginal)
+	if links.resolve != nil && view.Article.SourceRevisionID != nil && *view.Article.SourceRevisionID == *source.SourceRevisionID {
+		links.retained, links.inline = s.retainedArticleLinkBindings(ctx, article, source.SourceRevisionID,
+			view.Article.CanonicalRevisionID, source.ContentSHA256)
 	}
 	source, err = decodeCatalogSourceProjection(source, doc, images, body, steps, links)
 	return identity, view, source, err

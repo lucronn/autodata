@@ -31,6 +31,18 @@
         "REJECTED"
       ]
     },
+    "inline_article_link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "target_article_id"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "maxLength": 384 },
+        "target_article_id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+        }
+      }
+    },
     "document": {
       "type": "object",
       "additionalProperties": false,
@@ -68,6 +80,11 @@
               "target_article_id": {
                 "type": "string",
                 "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "article_links": {
+                "type": "array",
+                "maxItems": 128,
+                "items": { "$ref": "#/$defs/inline_article_link" }
               },
               "label": {
                 "type": "string"
@@ -129,6 +146,11 @@
                           "type": "integer",
                           "minimum": -2147483648,
                           "maximum": 2147483647
+                        },
+                        "article_links": {
+                          "type": "array",
+                          "maxItems": 128,
+                          "items": { "$ref": "#/$defs/inline_article_link" }
                         },
                         "blocks": {
                           "type": "array",

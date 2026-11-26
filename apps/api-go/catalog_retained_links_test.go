@@ -65,6 +65,49 @@ func assertRetainedPublicLinks(t *testing.T, doc *CatalogDocument, target string
 	}
 }
 
+func TestCatalogRetainedInlineLinksKeepExactTextAndListPositions(t *testing.T) {
+	const target = "11111111-1111-4111-8111-111111111111"
+	digest := authoredLinkTestHash("figure removal")
+	unresolved := authoredLinkTestHash("uncaptured source")
+	raw := []byte(`{"schema_version":1,"normalization_version":"ordered-article-v1","blocks":[
+		{"type":"paragraph","block_id":"p","text":"Refer to Cover Removal."},
+		{"type":"ordered_list","block_id":"list","start":4,"items":["Use Cover Removal now.",{"text":"Cover Removal is next.","number":9},"sCover Removal.","Cover Removal and Cover Removal."]},
+		{"type":"paragraph","block_id":"duplicated","text":"Cover Removal"},
+		{"type":"paragraph","block_id":"duplicated","text":"Unrelated"},
+		{"type":"paragraph","block_id":"u","text":"Read Unavailable Procedure."},
+		{"type":"paragraph","text":"Forged link","article_links":[{"label":"Forged","target_article_id":"11111111-1111-4111-8111-111111111111"}]}
+	]}`)
+	paragraph := retainedCatalogInlineLink{label: "Cover Removal", targetHash: digest, itemIndex: -1}
+	fourItems := make([]retainedCatalogInlineLink, 4)
+	for i := range fourItems {
+		fourItems[i] = paragraph
+		fourItems[i].itemIndex = i
+	}
+	doc := projectCatalogDocument(raw, catalogArticleLinkProjection{
+		inline: map[string][]retainedCatalogInlineLink{
+			"p": {paragraph}, "list": fourItems, "duplicated": {paragraph},
+			"u": {{label: "Unavailable Procedure", targetHash: unresolved, itemIndex: -1}},
+		},
+		resolve: func(hashes []string) map[string]string {
+			if len(hashes) != 2 {
+				t.Fatalf("expected one lookup for two target hashes, got %v", hashes)
+			}
+			return map[string]string{digest: target}
+		},
+	})
+	if doc == nil || doc.Blocks[0].Text != "Refer to Cover Removal." ||
+		!reflect.DeepEqual(doc.Blocks[0].ArticleLinks, []CatalogArticleLink{{Label: "Cover Removal", TargetArticleID: target}}) {
+		t.Fatal("paragraph link changed the stored wording or failed to resolve")
+	}
+	assertRetainedPublicLinks(t, doc, target, 3, 3)
+	list := doc.Blocks[1]
+	if list.Start == nil || *list.Start != 4 || list.Items[0].(map[string]any)["text"] != "Use Cover Removal now." ||
+		list.Items[1].(map[string]any)["number"] != float64(9) || list.Items[2] != "sCover Removal." ||
+		list.Items[3] != "Cover Removal and Cover Removal." {
+		t.Fatal("list text or numbering changed")
+	}
+}
+
 func TestPostgresPaidCatalogRetainedArticleLinks(t *testing.T) {
 	f := paidSetup(t)
 	if f.provider != "bankone" {
@@ -76,6 +119,7 @@ func TestPostgresPaidCatalogRetainedArticleLinks(t *testing.T) {
 	const adjacentRef = "fixture:retained-adjacent"
 	const label = "Connecteur d’alimentation"
 	target := f.seedAuthoredLinkArticle(f.configuration, "bankone", "", ref)
+	pending := f.seedAuthoredLinkArticle(f.configuration, "bankone", "", "fixture:retained-pending")
 	adjacent := f.seedAuthoredLinkArticle(f.adjacent, "bankone", "", adjacentRef)
 	f.seedAuthoredLinkSource(target, `{"schema_version":1,"normalization_version":"ordered-article-v1","blocks":[{"type":"paragraph","text":"Retained target procedure."}]}`)
 	blockID := f.article + ":block:0020:item:0003:block:0001:item:0001:block:0001"
@@ -87,7 +131,7 @@ func TestPostgresPaidCatalogRetainedArticleLinks(t *testing.T) {
 			{"blocks":[{"type":"link","block_id":%q,"text":"Other procedure"}]},
 			{"blocks":[{"type":"link","block_id":%q,"text":"Mismatched body"}]}
 		]}
-	]}]},{"type":"paragraph","text":"Unchanged source instructions."}`, blockID, label, adjacentBlockID, bodyMismatchBlockID)
+	]}]},{"type":"paragraph","block_id":"inline","text":"See Cover Removal. See Pending Procedure."}`, blockID, label, adjacentBlockID, bodyMismatchBlockID)
 	const docStart = `{"schema_version":1,"normalization_version":"ordered-article-v1","blocks":[`
 	sourceDocument := docStart + nested + `]}`
 	canonicalDocument := docStart + `{"type":"paragraph","text":"Published introduction."},` + nested + `]}`
@@ -155,7 +199,7 @@ func TestPostgresPaidCatalogRetainedArticleLinks(t *testing.T) {
 	insert("absent-block", label, ref, bodyHash)
 	insert(bodyMismatchBlockID, "Mismatched body", ref, authoredLinkTestHash("wrong captured body"))
 	store := newPostgresCatalogStore(f.pool)
-	links := store.retainedArticleLinkBindings(ctx, f.article, &sourceRevision, &canonicalRevision, bodyHash, []byte(sourceDocument))
+	links, _ := store.retainedArticleLinkBindings(ctx, f.article, &sourceRevision, &canonicalRevision, bodyHash)
 	if _, found := links[bodyMismatchBlockID]; found || len(links) != 3 {
 		t.Fatal("sidecar lookup admitted the wrong body or missed the current revision pair")
 	}
@@ -173,6 +217,33 @@ func TestPostgresPaidCatalogRetainedArticleLinks(t *testing.T) {
 	}
 	assertRetainedPublicLinks(t, prepared.Article.Document, target, 1, 1)
 	readOriginal(historicalPath, 0)
+	for label, ref := range map[string]string{"Cover Removal": ref, "Pending Procedure": "fixture:retained-pending"} {
+		f.exec(`INSERT INTO canonical_article_inline_link_bindings (
+			canonical_article_id,source_revision_id,canonical_article_revision_id,
+			body_sha256,block_id,item_index,label,label_sha256,authored_id_sha256,target_ref_sha256)
+			VALUES ($1::uuid,$2::uuid,$3::uuid,$4,'inline',-1,$5,$6,$7,$8)`,
+			f.article, sourceRevision, canonicalRevision, bodyHash, label, authoredLinkTestHash(label),
+			authoredLinkTestHash(label+"-source"), authoredLinkTestHash(ref))
+	}
+	inlineMain, inlineOriginal := readMainInlineLinks(t, f.expect(0, "GET", mainPath, "", 200)),
+		readSourceInlineLinks(t, f.expect(0, "GET", originalPath, "", 200))
+	wantInline := []CatalogArticleLink{
+		{Label: "Cover Removal", TargetArticleID: target}, {Label: "Pending Procedure", TargetArticleID: pending},
+	}
+	if !reflect.DeepEqual(inlineMain, wantInline) || !reflect.DeepEqual(inlineOriginal, wantInline) {
+		t.Fatalf("inline references were not restored in both views: %v, %v", inlineMain, inlineOriginal)
+	}
+	identity, err := store.PaidArticleIdentity(ctx, f.configuration, f.article)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantReady := map[string]string{authoredLinkTestHash(ref): target}
+	resolved := store.authoredArticleLinkResolver(ctx, identity, true)(
+		[]string{authoredLinkTestHash(ref), authoredLinkTestHash("fixture:retained-pending")})
+	if !reflect.DeepEqual(resolved, wantReady) {
+		t.Fatal("public-demo lookup included a pending article")
+	}
+	f.exec(`DELETE FROM canonical_article_inline_link_bindings WHERE canonical_article_revision_id=$1::uuid`, canonicalRevision)
 	for _, path := range []string{mainPath, originalPath, f.path("/" + target)} {
 		f.expect(-1, "GET", path, "", 401)
 		f.expect(1, "GET", path, "", 403)
@@ -196,6 +267,24 @@ func TestPostgresPaidCatalogRetainedArticleLinks(t *testing.T) {
 	        WHERE commerce_order_id=$1::uuid`, order)
 	f.expect(0, "GET", mainPath, "", 403)
 	f.expect(0, "GET", originalPath, "", 403)
+}
+
+func readMainInlineLinks(t *testing.T, raw []byte) []CatalogArticleLink {
+	t.Helper()
+	var response CatalogArticleResponse
+	if err := json.Unmarshal(raw, &response); err != nil || response.Article.Document == nil {
+		t.Fatal("published document absent", err)
+	}
+	return response.Article.Document.Blocks[len(response.Article.Document.Blocks)-1].ArticleLinks
+}
+
+func readSourceInlineLinks(t *testing.T, raw []byte) []CatalogArticleLink {
+	t.Helper()
+	var response CatalogSourceContentResponse
+	if err := json.Unmarshal(raw, &response); err != nil || response.Document == nil {
+		t.Fatal("original document absent", err)
+	}
+	return response.Document.Blocks[len(response.Document.Blocks)-1].ArticleLinks
 }
 
 func seedRetainedFixturePublication(f *paidFixture, source, job, canonical, historical, document string) {
