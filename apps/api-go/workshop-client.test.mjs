@@ -9539,6 +9539,37 @@ test('an incomplete model reopen reads storage once when hydration only describe
   assert.deepEqual(h.$('model').options.map(choice => choice.value), [first.id, sibling.id]);
 });
 
+test('a refreshed make or model displays the current market label in place', async () => {
+  for (const [name, id, label] of [
+    ['make', 'buick-truck', 'Buick Truck'],
+    ['model', 'encore-gx-fwd', 'Encore GX FWD'],
+  ]) {
+    const choice = { id, name: label };
+    const pending = deferredAuthOperation();
+    const h = selectorOptionsHarness(path => path.includes('stored_only') ? pending.promise
+      : { items: [{ ...choice, market_unverified: true }], complete: false });
+    await h.load('', null, null, name);
+    const select = h.$(name);
+    select.value = id;
+    const option = select.options[0];
+    assert.equal(option.text, `${label} · market unverified`);
+
+    const reopening = h.context.refreshPicker(name);
+    assert.equal(select.disabled, false);
+    pending.resolve({ items: [choice, { id: 'other', name: 'Other' }], complete: true });
+    await reopening;
+
+    assert.equal(select.value, id);
+    assert.equal(select.options[0], option);
+    assert.equal(option.text, label);
+    assert.equal(option.disabled, false);
+    assert.deepEqual(select.options.map(item => item.value), [id, 'other']);
+    assert.equal(h.context.rows[name][0], choice);
+    await h.context.refreshPicker(name);
+    assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
+  }
+});
+
 test('reselecting a make or model scope renders its incomplete choices before stored refresh finishes', async () => {
   for (const name of ['make', 'model']) {
     const first = { id: 'first' };

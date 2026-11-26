@@ -491,18 +491,20 @@ async function refreshPicker(name) {
         if (!data.items.length) return;
         picker.incomplete = data.complete !== true;
         rememberSelector(picker.path, name, data);
-        if (name === "configuration" && rows[name].some(configurationChoiceDisabled)) {
+        const refreshMarketLabels = name === "make" || name === "model";
+        if (refreshMarketLabels || (name === "configuration" && rows[name].some(configurationChoiceDisabled))) {
           const refreshed = new Map(data.items.map((item) => [String(item.id), item]));
           const options = new Map(Array.from(select.options, (option) => [option.value, option]));
           rows[name] = rows[name].map((item) => {
             const current = refreshed.get(String(item.id));
-            if (!configurationChoiceDisabled(item) || !current || current.engine_variant !== item.engine_variant)
-              return item;
+            if (!current) return item;
+            if (!refreshMarketLabels &&
+                (!configurationChoiceDisabled(item) || current.engine_variant !== item.engine_variant)) return item;
             const choice = pickerChoice(name, current);
             const option = options.get(choice.value);
             if (option) {
-              option.text = choice.label;
-              option.disabled = choice.disabled;
+              if (option.text !== choice.label) option.text = choice.label;
+              if (option.disabled !== choice.disabled) option.disabled = choice.disabled;
             }
             return current;
           });
