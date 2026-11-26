@@ -320,6 +320,34 @@ def schedule_source_bound_rewrite(
     )
 
 
+RETAINED_NOTICE_REPROJECTION = "retained_notice_reprojection"
+RETAINED_NOTICE_SUPERSEDED = "SOURCE_NOTICE_REPROJECTED"
+
+
+def _rollout_admission(job):
+    # A retained notice repair inherits one unspent admission. Keep the
+    # original job in the ledger and bind the successor to its exact source.
+    return f"""JOIN source_fetch_jobs admission ON admission.canonical_article_id={job}.canonical_article_id
+        AND admission.job_kind='article' AND admission.request_generation=0 AND (
+            admission.source_fetch_job_id={job}.source_fetch_job_id OR (
+                {job}.request_generation=1 AND admission.provider_slug='banktwo'
+                AND admission.status='needs_review' AND admission.error_code='{RETAINED_NOTICE_SUPERSEDED}'
+                AND admission.checkpoint->>'notice_successor_job_id'={job}.source_fetch_job_id::text
+                AND {job}.checkpoint->'{RETAINED_NOTICE_REPROJECTION}'->>'job_id'=admission.source_fetch_job_id::text
+                AND {job}.checkpoint->'{RETAINED_NOTICE_REPROJECTION}'->>'source_revision_id'=admission.source_revision_id::text
+                AND admission.checkpoint->'new_article_rollout'={job}.checkpoint->'new_article_rollout'
+                AND EXISTS (SELECT 1 FROM canonical_article_source_observations original
+                            WHERE original.source_fetch_job_id=admission.source_fetch_job_id
+                              AND original.source_revision_id=admission.source_revision_id
+                              AND original.request_generation=admission.request_generation
+                              AND original.source_observation_id::text=
+                                  {job}.checkpoint->'{RETAINED_NOTICE_REPROJECTION}'->>'source_observation_id')
+                AND NOT EXISTS (SELECT 1 FROM canonical_article_rewrite_attempts t
+                                WHERE t.source_fetch_job_id=admission.source_fetch_job_id)
+            )
+        )"""
+
+
 def source_bound_correction_prior_attempt(cur, prior_job, *, first_draft=False):
     """Rebuild immutable draft evidence independently of today's catalog pointers."""
     rejected = "SOURCE_BOUND_CORRECTION_PRIOR_DRAFT_INVALID"
@@ -351,8 +379,19 @@ def source_bound_correction_prior_attempt(cur, prior_job, *, first_draft=False):
               AND o.request_generation=%s
             """, (prior_job["source_fetch_job_id"], prior_job["canonical_article_id"], prior_job["source_revision_id"],
                   prior_job["request_generation"])).fetchone()
+        admission_time = prior_job["created_at"]
+        if RETAINED_NOTICE_REPROJECTION in checkpoint:
+            admission = cur.execute(f"""
+                SELECT admission.created_at FROM source_fetch_jobs j
+                {_rollout_admission("j")}
+                WHERE j.source_fetch_job_id=%s AND admission.source_fetch_job_id<>j.source_fetch_job_id
+                """, (prior_job["source_fetch_job_id"],)).fetchone()
+            if admission is None:
+                raise ValueError(rejected)
+            # The replay keeps the original capture timestamp and raw bytes.
+            admission_time = admission["created_at"]
         if (observed is None or not isinstance(observed["vehicle"], dict)
-            or observed["captured_at"] < prior_job["created_at"]):
+            or observed["captured_at"] < admission_time):
             raise ValueError(rejected)
         context = observed["vehicle"]
     attempts = cur.execute("""SELECT r.* FROM canonical_article_rewrite_attempts r
