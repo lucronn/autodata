@@ -46,7 +46,7 @@ test('entry starts matching stored reads and the saved selector consumes them on
     root + '/2024/makes/buick-truck/models/envision-awd/configurations?region=US&stored_only=1'];
   assert.deepEqual(calls.map(({ path }) => path), savedPaths);
   assert.deepEqual(hints, ['app', 'auth', 'commerce', 'article-read'].map(name => `${assetBase}${name}.mjs`));
-  for (const { options } of calls) assert.equal(options.cache, 'no-store');
+  for (const { path, options } of calls) assert.equal(options.cache, path === root ? 'default' : 'no-store');
   let restored;
   context.loadModule = async path => {
     if (path === './catalog.mjs') {

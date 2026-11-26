@@ -9406,6 +9406,25 @@ test('explicitly public picker rows are reusable while sign-in settings are pend
   }
 });
 
+test('only public live selector reads can reuse the HTTP cache', async () => {
+  const cacheModes = [];
+  const h = selectorOptionsHarness((path, options) => {
+    cacheModes.push([path, options?.cache]);
+    return { items: [{ id: 'engine', complete: true }], complete: true };
+  });
+  await h.load();
+  h.context.session.state.mode = 'local';
+  await h.load();
+  h.context.session.state.mode = 'firebase';
+  h.$('workshop-catalog-module').dataset.publicSelectors = 'false';
+  await h.load();
+  await h.context.readStoredSelector('/choices', new AbortController().signal, 1000);
+  assert.deepEqual(cacheModes, [
+    ['/choices', 'default'], ['/choices', 'no-store'], ['/choices', 'no-store'],
+    ['/choices?stored_only=1', undefined],
+  ]);
+});
+
 test('local mode and a private picker shell never use cached selector rows', async () => {
   const h = selectorOptionsHarness({ items: [{ id: 'engine' }], complete: true });
   await h.load();

@@ -454,8 +454,18 @@ func (s *Server) mountCatalogSelector(mux *http.ServeMux, path string, next auth
 		mux.Handle("GET "+path, s.requireRole("dataset_viewer", next))
 		return
 	}
-	mountPublicRead(mux, path, func(w http.ResponseWriter, r *http.Request) { next(w, r, Principal{}) })
+	mountPublicRead(mux, path, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		next(w, r, Principal{})
+	})
 }
+
+func (s *Server) cacheCompleteCatalogSelector(w http.ResponseWriter, r *http.Request, ready bool) {
+	if ready && s.paidCatalogEnabled() && !catalogStoredSelector(r) {
+		w.Header().Set("Cache-Control", "private, max-age=30")
+	}
+}
+
 func (s *Server) catalogProtected(next authenticatedHandler, article bool) http.Handler {
 	if !s.paidCatalogEnabled() {
 		return s.requireRole("dataset_viewer", next)

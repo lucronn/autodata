@@ -377,7 +377,7 @@ const publicationStatusPreference = 'workshop-publication-status';
 export const selectedIndexSessionPreference = 'workshop-confirm-session';
 
 export async function requestArticleJSON(path, {
-  signal, timeout = 10000, readableBodyTimeout = 0, fetcher = fetch, method = 'GET', body, headers = {},
+  signal, timeout = 10000, readableBodyTimeout = 0, fetcher = fetch, method = 'GET', body, headers = {}, cache = 'no-store',
   preferShortSourceCheck = false, preferPreviewSourceCheck = false, preferEarlySourceCheck = false,
   preferShortPublicationCheck = false,
   finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck,
@@ -411,7 +411,7 @@ export async function requestArticleJSON(path, {
   let retryAfterSeconds = 0;
   try {
     const response = await fetcher(path, {
-      method, signal: combined, credentials: 'same-origin', cache: 'no-store',
+      method, signal: combined, credentials: 'same-origin', cache,
       ...(onSelectedIndexSession ? { redirect: 'error' } : {}),
       headers: {
         Accept: 'application/json',
