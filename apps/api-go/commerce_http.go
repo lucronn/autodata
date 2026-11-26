@@ -16,7 +16,7 @@ import (
 const libraryCatalogEmptyPreference = "workshop-library-catalog-empty"
 const checkoutArticleIndexPreference = "workshop-checkout-article-index"
 const libraryDefaultLimit = 20
-const checkoutArticleIndexTimeout = 80 * time.Millisecond
+const firstWorkshopArticleIndexTimeout = 80 * time.Millisecond
 
 type commerceCheckoutWithIndex struct {
 	commerceCheckout
@@ -128,12 +128,12 @@ func (s *Server) commerceCheckoutHTTP(w http.ResponseWriter, r *http.Request) {
 	s.commerceCall(w, r, "checkouts", input, nil, "", &p)
 }
 
-// Read after checkout commits and use the same exact grant as the index route.
-// A slow or empty index leaves the successful checkout response usable.
-func (s *Server) firstCheckoutArticleIndex(ctx context.Context, p Principal, checkout commerceCheckout) (CatalogArticlesResponse, bool) {
-	ctx, cancel := context.WithTimeout(ctx, checkoutArticleIndexTimeout)
+// An optional first page uses the same exact grant as the index route.
+// A slow or empty index leaves the primary response usable.
+func (s *Server) firstWorkshopArticleIndex(ctx context.Context, p Principal, configurationID, region string) (CatalogArticlesResponse, bool) {
+	ctx, cancel := context.WithTimeout(ctx, firstWorkshopArticleIndexTimeout)
 	defer cancel()
-	configuration, err := s.resolvePaidCatalogScope(ctx, p, checkout.ConfigurationID, checkout.Region)
+	configuration, err := s.resolvePaidCatalogScope(ctx, p, configurationID, region)
 	if err != nil {
 		return CatalogArticlesResponse{}, false
 	}
@@ -327,7 +327,7 @@ func (s *Server) commerceCall(w http.ResponseWriter, r *http.Request, operation 
 	if checkout, isCheckout := public.(commerceCheckout); isCheckout && checkout.State == "owned" &&
 		checkoutPrincipal != nil && input["expected_mode"] == workshopSimulationMode && s.paidCatalogEnabled() &&
 		catalogReadPreferenceRequested(r, checkoutArticleIndexPreference) {
-		if index, ready := s.firstCheckoutArticleIndex(r.Context(), *checkoutPrincipal, checkout); ready {
+		if index, ready := s.firstWorkshopArticleIndex(r.Context(), *checkoutPrincipal, checkout.ConfigurationID, checkout.Region); ready {
 			public = commerceCheckoutWithIndex{commerceCheckout: checkout, ArticleIndex: index}
 			w.Header().Set("Preference-Applied", checkoutArticleIndexPreference)
 		}

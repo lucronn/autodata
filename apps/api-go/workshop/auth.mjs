@@ -1,4 +1,5 @@
 import * as catalog from "./catalog.mjs";
+import { validScope } from "./commerce.mjs";
 
 const { requestJSON, selectedIndexSessionPreference } = catalog;
 export function validLoginConfig(config) {
@@ -45,7 +46,7 @@ export function authMessage(error) {
   if (error?.status === 401) return "Your session has expired. Sign in again.";
   return "Google sign-in is unavailable. You can keep browsing.";
 }
-export function readSessionBootstrap(request = requestJSON, { signal, includeLibrary = false } = {}) {
+export function readSessionBootstrap(request = requestJSON, { signal, includeLibrary = false, route } = {}) {
   const read = async (path, headers) => {
     try {
       return { status: "fulfilled", value: await request(path, { signal, timeout: 10000, headers }) };
@@ -53,11 +54,18 @@ export function readSessionBootstrap(request = requestJSON, { signal, includeLib
       return { status: "rejected", reason };
     }
   };
-  return [
-    read("/auth/config"),
-    read("/auth/session", { Prefer: includeLibrary
-      ? "workshop-session-mode, workshop-session-library" : "workshop-session-mode" }),
-  ];
+  let path = "/auth/session";
+  let prefer = "workshop-session-mode";
+  if (includeLibrary) {
+    prefer += ", workshop-session-library";
+  } else if (route && !["year", "view", "order", "article", "q"].some(key => route.has(key))) {
+    const scope = { configuration_id: route.get("configuration"), region: route.get("region") };
+    if (validScope(scope) && route.getAll("configuration").length === 1 && route.getAll("region").length === 1) {
+      path += "?" + new URLSearchParams(scope);
+      prefer += ", workshop-session-article-index";
+    }
+  }
+  return [read("/auth/config"), read(path, { Prefer: prefer })];
 }
 export function createSession({
   request = requestJSON,
@@ -185,7 +193,7 @@ export function createSession({
         state.csrf = data.csrf_token;
         state.message = "Signed in.";
         changed();
-        return confirmedMode ? data.workshop_library : undefined;
+        return confirmedMode ? data.workshop_library ?? data.workshop_article_index : undefined;
       }
       const error = session.status === "rejected" ? session.reason : null;
       const guest = error?.status === 401;
