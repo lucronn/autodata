@@ -19,10 +19,13 @@ test('the entry page preloads the catalog helper before starting bootstrap', () 
 const headPickerCode = source('index.html').match(/<script>([\s\S]+?)<\/script>/)[1];
 
 function startHeadPicker(search, publicSelectors = true, {
-  entry = {}, origin = 'https://workshop.example', initialYears = null,
+  entry = {}, origin = 'https://workshop.example', initialYears = null, directSelectorOrigin,
 } = {}) {
   const calls = [], hints = [];
-  const catalogLink = { href: assetBase + 'catalog.mjs', dataset: { publicSelectors: String(publicSelectors) } };
+  const catalogLink = {
+    href: assetBase + 'catalog.mjs',
+    dataset: { publicSelectors: String(publicSelectors), directSelectorOrigin },
+  };
   const context = {
     URL, URLSearchParams, AbortSignal, AbortController, location: { search, origin },
     document: {
@@ -101,6 +104,18 @@ test('entry keeps independent, private and unconfirmed paths on their ordinary r
   assert.deepEqual(startHeadPicker('').calls.map(({ path }) => path), ['/v1/catalog/years']);
   assert.deepEqual(startHeadPicker('?year=2024&make=%3Efoo&model=envision-awd').calls.map(({ path }) => path),
     ['/v1/catalog/years', '/v1/catalog/years/2024/makes?region=US&stored_only=1']);
+});
+test('the public picker starts one early connection for public model and engine reads', () => {
+  const directSelectorOrigin = 'https://autodata.curtis.click';
+  const options = { origin: 'https://autodata.cars.tk', directSelectorOrigin };
+  const { hints, calls } = startHeadPicker('', true, options);
+  assert.deepEqual(hints.filter(href => href === directSelectorOrigin), [directSelectorOrigin]);
+  assert.deepEqual(calls.map(({ path }) => path), ['/v1/catalog/years']);
+  assert.ok(!startHeadPicker('', false, options).hints.includes(directSelectorOrigin));
+  for (const search of ['?view=library', '?sample=1', '?demo=1', '?article=chosen', '?order=returning']) {
+    assert.ok(!startHeadPicker(search, true, options).hints.includes(directSelectorOrigin), search);
+  }
+  assert.ok(!startHeadPicker('', true, { directSelectorOrigin }).hints.includes(directSelectorOrigin));
 });
 test('entry preloads the app for confirmed public demos without starting regular picker reads', () => {
   const entry = { workshopDemoOrigins: 'https://autodata.cars.tk https://autodata.curtis.click' };

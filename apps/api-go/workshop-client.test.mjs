@@ -237,6 +237,85 @@ test('transport errors, malformed payloads and authentication failures remain fa
   await assert.rejects(requestJSON('/x', { fetcher: async () => new Response('invalid') }), /unreadable response/);
 });
 
+const selectorOrigin = 'https://autodata.curtis.click';
+const modelPath = '/v1/catalog/years/2024/makes/buick-truck/models?region=US';
+const enginePath = '/v1/catalog/years/2024/makes/buick-truck/models/envision-awd/configurations?region=US';
+
+function usePublicSelectorEntry(t) {
+  const original = Object.getOwnPropertyDescriptors(globalThis);
+  const entry = { dataset: { publicSelectors: 'true', directSelectorOrigin: selectorOrigin } };
+  Object.defineProperties(globalThis, {
+    location: { configurable: true, value: { origin: 'https://autodata.cars.tk' } },
+    document: { configurable: true, value: { getElementById: () => entry } },
+  });
+  t.after(() => {
+    for (const name of ['location', 'document']) {
+      if (original[name]) Object.defineProperty(globalThis, name, original[name]);
+      else Reflect.deleteProperty(globalThis, name);
+    }
+  });
+  return entry;
+}
+
+test('the direct connection sends only public US model and engine reads without credentials', async t => {
+  const entry = usePublicSelectorEntry(t);
+  const payload = { items: [{ id: 'envision-awd' }], complete: false, hydrating: true };
+  for (const path of [modelPath, enginePath, modelPath + '&stored_only=1']) {
+    const data = await requestJSON(path, { cache: 'default', fetcher: async (url, request) => {
+      assert.equal(url, selectorOrigin + path);
+      assert.equal(request.credentials, 'omit');
+      assert.equal(request.redirect, 'error');
+      assert.equal(request.referrerPolicy, 'no-referrer');
+      assert.equal(request.cache, 'default');
+      return Response.json(payload);
+    } });
+    assert.deepEqual(data, payload);
+  }
+  const sameOrigin = path => async (url, request) => {
+    assert.equal(url, path);
+    assert.equal(request.credentials, 'same-origin');
+    return Response.json(payload);
+  };
+  for (const path of ['/v1/catalog/years', '/v1/catalog/years/2024/makes?region=US', '/v1/workshop/library',
+    '/v1/workshop/checkout', '/v1/catalog/vehicles/a/articles/b', modelPath.replace('US', 'CA')]) {
+    await requestJSON(path, { fetcher: sameOrigin(path) });
+  }
+  await requestJSON(modelPath, { headers: { Authorization: 'fixture-only' }, fetcher: sameOrigin(modelPath) });
+  entry.dataset.publicSelectors = 'false';
+  await requestJSON(modelPath, { fetcher: sameOrigin(modelPath) });
+});
+
+test('the direct selector transport honors cancellation and rate limits before falling back on a failed connection', async t => {
+  usePublicSelectorEntry(t);
+  const { requestJSON: read } = await import('./workshop/catalog.mjs?direct-selector-fallback');
+  const calls = [];
+  const navigation = new AbortController();
+  await assert.rejects(read(modelPath, { signal: navigation.signal, fetcher: async url => {
+    calls.push(url);
+    navigation.abort();
+    throw navigation.signal.reason;
+  } }), { name: 'AbortError' });
+  assert.deepEqual(calls.splice(0), [selectorOrigin + modelPath]);
+  await assert.rejects(read(modelPath, { fetcher: async url => {
+    calls.push(url);
+    return Response.json({ error: { code: 'RATE_LIMITED' } }, { status: 429, headers: { 'Retry-After': '8' } });
+  } }), error => error.status === 429 && error.retryAfterSeconds === 8);
+  assert.deepEqual(calls.splice(0), [selectorOrigin + modelPath]);
+
+  const payload = { items: [{ id: 'envision-awd' }], complete: true };
+  const fetcher = async (url, { signal }) => {
+    calls.push(url);
+    if (url.startsWith(selectorOrigin)) {
+      return new Promise((_, reject) =>
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    }
+    return Response.json(payload);
+  };
+  assert.deepEqual(await read(modelPath, { fetcher }), payload);
+  assert.deepEqual(await read(enginePath, { fetcher }), payload);
+  assert.deepEqual(calls, [selectorOrigin + modelPath, modelPath, enginePath]);
+});
+
 test('procedure order and illustrations are retained; empty legacy steps use full text', () => {
   const steps = [{ number: 9, heading: 'Remove', instructions: ['Keep original instruction'], image_ids: ['image-1'] }, { number: 2, instructions: ['Install'] }];
   assert.deepEqual(articlePresentation({ steps }).steps, steps);

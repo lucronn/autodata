@@ -481,7 +481,47 @@ export async function requestArticleJSON(path, {
     earlyTimeout?.removeEventListener('abort', abortEarly);
   }
 }
-export async function requestJSON(path, options) { return (await requestArticleJSON(path, options)).data; }
+const directSelectorPath = /^\/v1\/catalog\/years\/\d{4}\/makes\/[a-z0-9-]+\/models(?:\/[a-z0-9-]+\/configurations)?\?region=US(?:&stored_only=1)?$/;
+const directSelectorTimeout = 400;
+let directSelectorsUnavailable = false;
+
+function directSelectorURL(path, { method = 'GET', headers, body }) {
+  if (directSelectorsUnavailable || method !== 'GET' || headers || body !== undefined ||
+      globalThis.location?.origin !== 'https://autodata.cars.tk' ||
+      typeof path !== 'string' || !directSelectorPath.test(path)) return null;
+  const catalog = globalThis.document?.getElementById('workshop-catalog-module');
+  if (catalog?.dataset?.publicSelectors !== 'true' || !catalog.dataset.directSelectorOrigin) return null;
+  return catalog.dataset.directSelectorOrigin + path;
+}
+
+export async function requestJSON(path, options = {}) {
+  const direct = directSelectorURL(path, options);
+  if (!direct) return (await requestArticleJSON(path, options)).data;
+  const { fetcher = fetch } = options;
+  return (await requestArticleJSON(path, {
+    ...options,
+    async fetcher(resource, init) {
+      init.signal.throwIfAborted();
+      const connection = new AbortController();
+      const deadline = setTimeout(() => connection.abort(), directSelectorTimeout);
+      try {
+        return await fetcher(direct, {
+          ...init,
+          signal: AbortSignal.any([init.signal, connection.signal]),
+          credentials: 'omit',
+          redirect: 'error',
+          referrerPolicy: 'no-referrer',
+        });
+      } catch {
+        init.signal.throwIfAborted();
+        directSelectorsUnavailable = true;
+        return fetcher(resource, init);
+      } finally {
+        clearTimeout(deadline);
+      }
+    },
+  })).data;
+}
 
 export function vehicleSelectorPath(name, selection) {
   const year = encodeURIComponent(selection.year ?? '');
