@@ -9155,8 +9155,19 @@ function selectorOptionsHarness(response) {
  runInNewContext(appSection('function status(', 'function stage(')+appSection('async function operation(', 'function updateURL(')+
   appSection('function pickerChoice(', 'function selectorPath(')+appSection('function canCachePublicSelectors(', 'function renderPurchase(')+
   'const actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',context);
- return {context,$,statuses,displayed,requests,waits,load:(desired='',current,initial=null,name='configuration')=>context.operation(g=>context.loadOptions(name,current?{...g,current}:g,desired,initial),()=>context.restoreRoute())};
+ return {context,$,statuses,displayed,requests,waits,
+  load:(desired='',current,initial=null,name='configuration',options)=>context.operation(
+    g=>context.loadOptions(name,current?{...g,current}:g,desired,initial,options),()=>context.restoreRoute())};
 }
+
+test('the early live make response keeps usable partial rows without scheduling a duplicate read', async () => {
+  const items = [{ id: 'buick-truck', make: 'Buick Truck' }];
+  const h = selectorOptionsHarness(() => assert.fail('duplicate make request'));
+  await h.load('', undefined, Promise.resolve({ items, complete: false }), 'make', { initialIsLive: true });
+  assert.equal(h.$('make').disabled, false);
+  assert.deepEqual(h.displayed, [items]);
+  assert.deepEqual(h.requests, []);
+});
 
 test('a delayed unverified engine variant appends disabled and keeps the exact selected option', async () => {
   const first = { id: 'engine-a', engine: '6.0', complete: true };

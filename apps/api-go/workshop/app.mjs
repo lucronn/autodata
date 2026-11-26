@@ -524,7 +524,7 @@ async function refreshPicker(name) {
     if (picker.refresh === refresh) picker.refresh = null;
   }
 }
-async function loadOptions(name, g, desired = "", initial = null) {
+async function loadOptions(name, g, desired = "", initial = null, { initialIsLive = false } = {}) {
   const path = selectorPath(name);
   pickerStates.get(name)?.refresh?.abort();
   const picker = { path, incomplete: false, loading: g };
@@ -565,6 +565,7 @@ async function loadOptions(name, g, desired = "", initial = null) {
         initial = null;
         g.signal.throwIfAborted();
         if (Array.isArray(response?.items)) {
+          if (initialIsLive) return trackDiscovery(response);
           const discoveryActive = response.hydrating || response.discovering;
           const storedChoicesReady = desired
             ? response.items.some(choice)
@@ -2974,7 +2975,7 @@ async function signIn() {
   await restoreRoute();
 }
 export async function bootstrap(initialYears, initialAccount, {
-  preservePicker = false, initialSelectors = null, testCheckout, initialDemoIndex = null,
+  preservePicker = false, initialSelectors = null, testCheckout, initialDemoIndex = null, initialYearPicker = null,
 } = {}) {
   if (testCheckout) checkoutModeReady = testCheckout.then(enabled => {
     testStripeMode = enabled;
@@ -3002,7 +3003,9 @@ export async function bootstrap(initialYears, initialAccount, {
   // The first route can restore public selectors while the account is checked.
   // Account actions wait for that same check and use the current navigation.
   if (sessionEstablished) await accountCheck;
-  await Promise.all([accountCheck, restoreRoute(years, { initialSelectors: early, initialAccountCheck: accountCheck })]);
+  await Promise.all([accountCheck, restoreRoute(years, {
+    initialSelectors: early, initialAccountCheck: accountCheck, initialYearPicker,
+  })]);
 }
 function loadPurchaseConfiguration() {
   const configRequest = requestJSON("/workshop/purchase-config.json").catch(() => null)
@@ -3073,6 +3076,7 @@ async function finishSavedYears(g, pending, confirmed) {
 
 async function restoreRoute(initialYears = null, {
   focusArticle = "", indexAnchor = "", initialSelectors = null, initialAccountCheck = null, initialDemoIndex = null,
+  initialYearPicker = null,
 } = {}) {
   invalidate();
   show("welcome");
@@ -3081,7 +3085,9 @@ async function restoreRoute(initialYears = null, {
   if (!early) initialSelectors?.abort();
   // URL state is authoritative on history, sign-in, and direct-link restores.
   // A prior vehicle must not leave usable descendants or filter another index.
-  for (const name of names) populate(name, []);
+  for (const name of names) {
+    if (name !== "year" || !initialYearPicker) populate(name, []);
+  }
   $("search").value = params.get("q") || "";
   vehicle = null;
   quote = null;
@@ -3089,6 +3095,24 @@ async function restoreRoute(initialYears = null, {
   const restore = operation(
     async (g) => {
       if (early) g.signal.addEventListener("abort", early.abort, { once: true });
+      if (initialYearPicker) {
+        const { snapshot, makeRead } = initialYearPicker;
+        populate("year", snapshot.items);
+        rememberSelector(selectorPath("year"), "year", snapshot);
+        if (!$("year").value) {
+          stage("year");
+          status("Choose your vehicle to continue.");
+          return;
+        }
+        updateURL();
+        if (makeRead) g.signal.addEventListener("abort", makeRead.abort, { once: true });
+        try {
+          await loadOptions("make", g, "", makeRead?.response, { initialIsLive: Boolean(makeRead) });
+        } finally {
+          makeRead?.abort();
+        }
+        return;
+      }
       const order = params.get("order");
       if (!openDemo && uuid(order)) {
         if (sessionRequest) {

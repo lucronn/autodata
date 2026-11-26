@@ -19,15 +19,22 @@ test('the entry page preloads the catalog helper before starting bootstrap', () 
 const headPickerCode = source('index.html').match(/<script>([\s\S]+?)<\/script>/)[1];
 
 function startHeadPicker(search, publicSelectors = true, {
-  entry = {}, origin = 'https://workshop.example', initialYears = null, directSelectorOrigin,
+  entry = {}, origin = 'https://workshop.example', initialYears = null, directSelectorOrigin, yearPicker,
 } = {}) {
   const calls = [], hints = [];
+  let parsed;
   const catalogLink = {
     href: assetBase + 'catalog.mjs',
     dataset: { publicSelectors: String(publicSelectors), directSelectorOrigin },
   };
   const context = {
     URL, URLSearchParams, AbortSignal, AbortController, location: { search, origin },
+    Option: function(text, value) { return { text: String(text), value: String(value) }; },
+    MutationObserver: class {
+      constructor(onMutation) { parsed = onMutation; }
+      observe() {}
+      disconnect() { parsed = null; }
+    },
     document: {
       head: { append: link => hints.push(link.href) },
       createElement: () => ({}),
@@ -35,6 +42,7 @@ function startHeadPicker(search, publicSelectors = true, {
       getElementById(id) {
         if (id === 'workshop-catalog-module') return catalogLink;
         if (id === 'workshop-initial-years') return initialYears === null ? null : { textContent: initialYears };
+        if (id === 'year') return yearPicker;
         return {};
       },
     },
@@ -44,7 +52,7 @@ function startHeadPicker(search, publicSelectors = true, {
     },
   };
   runInNewContext(headPickerCode, context);
-  return { calls, hints, context };
+  return { calls, hints, context, parseYear: () => parsed?.() };
 }
 
 test('entry starts matching stored reads and the saved selector consumes them once', async () => {
@@ -95,10 +103,43 @@ test('the picker restores the complete entry snapshot and fetches when no usable
   }
 });
 
+test('the public entry offers stored years and passes the latest early make request to the app', async () => {
+  const snapshot = { version: 'v1', complete: true, items: [{ year: 2023 }, { year: 2024 }] };
+  const yearPicker = {
+    disabled: true, options: [{ value: '' }], value: '',
+    replaceChildren(...options) { this.options = options; },
+    addEventListener(event, listener) { assert.equal(event, 'change'); this.change = listener; },
+    removeEventListener(event, listener) { assert.equal(event, 'change'); assert.equal(this.change, listener); this.change = null; },
+  };
+  const { calls, parseYear, context } = startHeadPicker('', true, {
+    initialYears: JSON.stringify(snapshot), yearPicker,
+  });
+  assert.equal(yearPicker.disabled, true);
+  parseYear();
+  assert.equal(yearPicker.disabled, false);
+  assert.deepEqual(yearPicker.options.map(option => option.value), ['', '2024', '2023']);
+  yearPicker.value = '2024';
+  yearPicker.change();
+  yearPicker.value = '2023';
+  yearPicker.change();
+  assert.deepEqual(calls.map(call => call.path), [2024, 2023].map(year => `/v1/catalog/years/${year}/makes?region=US`));
+  assert.ok(calls.every(call => call.options.cache === 'default'));
+  assert.equal(calls[0].options.signal.aborted, true);
+  assert.equal(calls[1].options.signal.aborted, false);
+  const handoff = context.workshopPickerStartup.takeYearPicker();
+  assert.equal(handoff.makeRead.year, '2023');
+  assert.deepEqual(await handoff.makeRead.response, { items: [{ path: calls[1].path }] });
+  assert.equal(yearPicker.value, '2023');
+  assert.equal(yearPicker.change, null);
+});
+
 test('entry keeps independent, private and unconfirmed paths on their ordinary reads', () => {
+  const completeSnapshot = JSON.stringify({ version: 'v1', complete: true, items: [{ year: 2024 }] });
   for (const search of ['?view=library', '?order=returning', '?article=saved', '?configuration=selected',
     '?year=2024&region=CA', '?sample=1', '?demo=1']) {
-    assert.deepEqual(startHeadPicker(search).calls, [], search);
+    const { calls, context } = startHeadPicker(search, true, { initialYears: completeSnapshot });
+    assert.deepEqual(calls, [], search);
+    assert.equal(context.workshopPickerStartup?.takeYearPicker, undefined, search);
   }
   assert.deepEqual(startHeadPicker('?year=2024', false).calls, []);
   assert.deepEqual(startHeadPicker('').calls.map(({ path }) => path), ['/v1/catalog/years']);
