@@ -9037,6 +9037,46 @@ test('reopening Original checks access and keeps figures only for the same appro
   assert.ok(calls.every(({ path, signal }) => path === mediaSourceURL && signal === h.g.signal));
 });
 
+test('reopening Original renews deferred URLs and keeps figures already decoded', async () => {
+  const blocks = Array.from({ length: 7 }, (_, n) => ({ type: 'image', block_id: `block-${n}`, asset_id: `figure-${n}` }));
+  let now = Date.now(), reads = 0;
+  const h = articleMediaHarness({
+    Date: class extends Date { static now() { return now; } },
+    session: { state: { authenticated: true, mode: 'firebase' } },
+    async requestJSON() {
+      reads++;
+      return {
+        source: { url: mediaSourceURL }, view_revision: 'same-projection', document: { blocks },
+        images: blocks.map(({ asset_id: id }) => ({ id, url: mediaURL(`${id}-${reads}`) })),
+      };
+    },
+  });
+  h.render(mediaArticle(blocks, [], { source_review: { available: true, url: mediaSourceURL } }));
+  const reopen = () => h.context.loadSource(mediaSourceURL, h.g, null, { focusSource: true });
+  const frame = h.nodes.get('source-review-frame');
+  await reopen();
+  const figures = mediaDescendants(frame, 'img');
+  const [first] = figures, last = figures.at(-1);
+  first.dispatch('load');
+  assert.equal(first.dataset.figurePending, undefined);
+  assert.equal(last.loading, 'lazy');
+  assert.equal(last.dataset.figurePending, '');
+  now += 1_000;
+  await reopen();
+  assert.equal(last.src, 'https://cars.example/v1/catalog/images/v2.figure-6-1');
+
+  now += 300_000;
+  await reopen();
+  const reopened = mediaDescendants(frame, 'img');
+  assert.equal(reopened.length, figures.length);
+  assert.ok(reopened.every((img, index) => img === figures[index]));
+  assert.equal(first.src, 'https://cars.example/v1/catalog/images/v2.figure-0-1');
+  assert.equal(last.src, 'https://cars.example/v1/catalog/images/v2.figure-6-3');
+  assert.equal(last.loading, 'lazy');
+  assert.equal(h.context.displayedSourceRevision, 3);
+  assert.equal(reads, 3);
+});
+
 for (const type of ['ordered_list', 'unordered_list', 'callout']) {
   test(`article block media ${type} source evidence handler and image error obey current generation`, async () => {
     const loads = [], renewals = [];
