@@ -52,28 +52,32 @@ def _graphic_bindings(provenance):
     return bindings
 
 
-def _legacy_resource_ids(row, context, manifest, provenance):
+def _legacy_resource_ids(row, context, manifest, provenance, *, has_positioned_flow=False):
     if (
         len(manifest) < 3 or len(manifest) != len(provenance)
         or manifest[0].get("role") != "body" or manifest[0].get("media_type") != "text/html"
         or [entry.get("role") for entry in manifest[1:]] != ["asset_original", "asset"] * (len(manifest) // 2)
-        or not all(entry.get(_SPAN) == HTML_TABLE_SPAN_LAYOUT for entry in (manifest[0], provenance[0]))
         or "asset_bindings" in provenance[0]
     ):
         raise ValueError(_UNSUPPORTED)
     if _replay_fingerprint(context, manifest) != row["source_fingerprint"]:
         raise ValueError(_BINDING)
-    # The retained table marker has its own exact check. The ordinary media
-    # validator verifies the rest of the original receipts and derived assets.
-    receipts = ({key: value for key, value in manifest[0].items() if key != _SPAN}, *manifest[1:])
-    owners = ({key: value for key, value in provenance[0].items() if key != _SPAN}, *provenance[1:])
+    known_layout = {_SPAN: HTML_TABLE_SPAN_LAYOUT}
+    if has_positioned_flow:
+        known_layout.update({_LAYOUT: BANKONE_HTML_FLOW_LAYOUT, _POSITIONS: _graphic_bindings(provenance)})
+    if any(entry.get(key) != value for entry in (manifest[0], provenance[0]) for key, value in known_layout.items()):
+        raise ValueError(_UNSUPPORTED)
+    # The layout markers are verified above. Check ordinary media bindings on
+    # the same receipts without those layout-specific fields.
+    receipts = ({key: value for key, value in manifest[0].items() if key not in known_layout}, *manifest[1:])
+    owners = ({key: value for key, value in provenance[0].items() if key not in known_layout}, *provenance[1:])
     return _resource_binding(
         {**row, "source_fingerprint": _replay_fingerprint(context, receipts)},
         context, receipts, owners, ordinals=False,
     )
 
 
-def load_bankone_order_binding(cur, source_revision_id, *, lock=False):
+def load_bankone_order_binding(cur, source_revision_id, *, lock=False, has_positioned_flow=False):
     """Bind the retained source and read the rights of every retained snapshot."""
     row = _source_replay_row(cur, source_revision_id)
     if (
@@ -87,7 +91,7 @@ def load_bankone_order_binding(cur, source_revision_id, *, lock=False):
     context = _context(row)
     manifest = _rows(row["resource_manifest"])
     provenance = _rows(row["resource_provenance"])
-    resource_ids = _legacy_resource_ids(row, context, manifest, provenance)
+    resource_ids = _legacy_resource_ids(row, context, manifest, provenance, has_positioned_flow=has_positioned_flow)
     _graphic_bindings(provenance)
     evidence = _rows(row["evidence_manifest"])
     if not context.evidence_ids or evidence != tuple(

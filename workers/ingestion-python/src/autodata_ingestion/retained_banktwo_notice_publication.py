@@ -1,5 +1,7 @@
-"""Publish a checksum-bound Banktwo notice correction with its retained rewrite."""
+"""Publish exact source-layout corrections with their retained rewrites."""
 
+from dataclasses import dataclass
+from typing import Callable
 from uuid import UUID
 
 from psycopg.rows import dict_row
@@ -8,8 +10,12 @@ from .article_lifecycle_types import digest_json, transformation_key
 from .procedure_normalize import normalize_procedure_article
 from .published_media_publication import _publication_evidence_for_revision, _publish, _RepairPlan, _result
 from .retained_bankone_order_publication import _article, _captured_revision
-from .retained_banktwo_notice_reply import BANKTWO_NOTICE_METHOD, repair_banktwo_notice_reply
+from .retained_banktwo_notice_reply import BANKONE_DEFINITION_METHOD, BANKTWO_NOTICE_METHOD, repair_layout_reply
 from .retained_procedure_repair import _valid_audit
+from .source_bankone_definition_heading_replay import (
+    load_bankone_definition_heading_binding, preview_bankone_definition_heading_replay,
+    validate_bankone_definition_heading_capture,
+)
 from .source_banktwo_notice_replay import (
     load_banktwo_notice_binding, preview_banktwo_notice_replay, validate_banktwo_notice_capture,
 )
@@ -18,8 +24,30 @@ from .source_revision_reprojection import _require_no_active_normal_job
 
 
 SCHEMA = "autodata:published-banktwo-list-notices:v1"
+BANKONE_DEFINITION_SCHEMA = "autodata:published-bankone-definition-headings:v1"
 _INVALID = "BANKTWO_NOTICE_PUBLICATION_INVALID"
 _STALE = "BANKTWO_NOTICE_PUBLICATION_STALE"
+
+
+@dataclass(frozen=True)
+class _LayoutRepair:
+    provider: str
+    method: str
+    load_binding: Callable
+    preview_replay: Callable
+    validate_capture: Callable
+
+
+_LAYOUTS = {
+    SCHEMA: _LayoutRepair(
+        "banktwo", BANKTWO_NOTICE_METHOD, load_banktwo_notice_binding,
+        preview_banktwo_notice_replay, validate_banktwo_notice_capture,
+    ),
+    BANKONE_DEFINITION_SCHEMA: _LayoutRepair(
+        "bankone", BANKONE_DEFINITION_METHOD, load_bankone_definition_heading_binding,
+        preview_bankone_definition_heading_replay, validate_bankone_definition_heading_capture,
+    ),
+}
 
 
 def _normalize(captured, article_id):
@@ -34,10 +62,11 @@ def _normalize(captured, article_id):
     }, resource_manifest=captured.resource_manifest)["normalized_document"]
 
 
-def _make_plan(cur, article, binding, captured, previous_id, *, lock=False):
+def _make_plan(cur, article, binding, captured, previous_id, *, schema, lock=False):
+    layout = _LAYOUTS[schema]
     if binding.canonical_article_id != article["canonical_article_id"]:
         raise ValueError(_INVALID)
-    validate_banktwo_notice_capture(binding, captured)
+    layout.validate_capture(binding, captured)
     row, review, decision, attempt, response, prompt, authors = _publication_evidence_for_revision(
         cur, article, binding, previous_id, fixture_mode=False, lock=lock,
     )
@@ -55,12 +84,12 @@ def _make_plan(cur, article, binding, captured, previous_id, *, lock=False):
     if owner is None:
         raise ValueError(_INVALID)
     normalized = _normalize(captured, binding.canonical_article_id)
-    repair = repair_banktwo_notice_reply(
+    repair = repair_layout_reply(
         row["normalized_source_document"], row["canonical_document"], normalized, response=response,
-        prompt_version=prompt, profile=row["validation_report"]["profile_version"],
+        prompt_version=prompt, profile=row["validation_report"]["profile_version"], method=layout.method,
     )
     manifest = {
-        "schema": SCHEMA,
+        "schema": schema,
         "article_id": str(binding.canonical_article_id),
         "source_revision_id": str(binding.source_revision_id),
         "source_observation_id": str(binding.source_observation_id),
@@ -94,7 +123,7 @@ def _key(article_id, captured, manifest):
 
 
 def _require_current(cur, article, manifest):
-    if (article is None or article["provider_slug"] != "banktwo"
+    if (article is None or article["provider_slug"] != _LAYOUTS[manifest["schema"]].provider
             or str(article["current_source_revision_id"]) != manifest["source_revision_id"]
             or str(article["current_canonical_revision_id"]) != manifest["canonical_revision_id"]
             or str(article["current_job_id"]) != manifest["current_job_id"]
@@ -106,12 +135,12 @@ def _require_current(cur, article, manifest):
         raise ValueError(_STALE)
 
 
-def _proof(approval):
+def _proof(approval, *, schema=SCHEMA):
     if (not isinstance(approval, dict) or set(approval) != {"manifest", "actor", "reason"}
             or not _valid_audit(approval["actor"], approval["reason"])):
         raise ValueError(_INVALID)
     manifest = approval["manifest"]
-    if not isinstance(manifest, dict) or manifest.get("schema") != SCHEMA:
+    if not isinstance(manifest, dict) or manifest.get("schema") != schema:
         raise ValueError(_INVALID)
     try:
         ids = tuple(UUID(manifest[name]) for name in ("article_id", "source_revision_id", "canonical_revision_id"))
@@ -121,31 +150,49 @@ def _proof(approval):
 
 
 def preview_banktwo_notice_publication(repo, source_revision_id, *, object_store):
-    binding, captured = preview_banktwo_notice_replay(repo, source_revision_id, object_store=object_store)
+    return _preview_layout_publication(repo, source_revision_id, object_store=object_store, schema=SCHEMA)
+
+
+def preview_bankone_definition_heading_publication(repo, source_revision_id, *, object_store):
+    return _preview_layout_publication(repo, source_revision_id, object_store=object_store, schema=BANKONE_DEFINITION_SCHEMA)
+
+
+def _preview_layout_publication(repo, source_revision_id, *, object_store, schema):
+    layout = _LAYOUTS[schema]
+    binding, captured = layout.preview_replay(repo, source_revision_id, object_store=object_store)
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         cur.execute("SET LOCAL statement_timeout='8s'")
         article = _article(cur, binding.canonical_article_id)
-        if article is None or binding != load_banktwo_notice_binding(cur, source_revision_id):
+        if article is None or binding != layout.load_binding(cur, source_revision_id):
             raise ValueError(_STALE)
-        plan, _ = _make_plan(cur, article, binding, captured, article["current_canonical_revision_id"])
+        plan, _ = _make_plan(cur, article, binding, captured, article["current_canonical_revision_id"], schema=schema)
         _require_current(cur, article, plan.manifest)
         return plan.manifest
 
 
 def resolve_banktwo_notice_publication(cur, job, article, candidate, *, lock=False):
-    manifest, (article_id, source_id, previous_id) = _proof(job["checkpoint"].get("media_repair"))
+    return _resolve_layout_publication(cur, job, article, candidate, schema=SCHEMA, lock=lock)
+
+
+def resolve_bankone_definition_heading_publication(cur, job, article, candidate, *, lock=False):
+    return _resolve_layout_publication(cur, job, article, candidate, schema=BANKONE_DEFINITION_SCHEMA, lock=lock)
+
+
+def _resolve_layout_publication(cur, job, article, candidate, *, schema, lock=False):
+    layout = _LAYOUTS[schema]
+    manifest, (article_id, source_id, previous_id) = _proof(job["checkpoint"].get("media_repair"), schema=schema)
     if (article_id != article["canonical_article_id"] or article_id != job["canonical_article_id"]
-            or article_id != candidate["canonical_article_id"] or article["provider_slug"] != "banktwo"
-            or job["provider_slug"] != "banktwo" or job["job_kind"] != "article"
-            or job["source_version"] != BANKTWO_NOTICE_METHOD or job["status"] != "completed"
+            or article_id != candidate["canonical_article_id"] or article["provider_slug"] != layout.provider
+            or job["provider_slug"] != layout.provider or job["job_kind"] != "article"
+            or job["source_version"] != layout.method or job["status"] != "completed"
             or job["phase"] != "completed" or job["source_revision_id"] != candidate["source_revision_id"]
             or candidate["source_revision_id"] == source_id or candidate["canonical_article_revision_id"] == previous_id
             or candidate["status"] != "published" or candidate["review_status"] != "UNREVIEWED"):
         raise ValueError(_INVALID)
-    binding = load_banktwo_notice_binding(cur, source_id, lock=lock)
+    binding = layout.load_binding(cur, source_id, lock=lock)
     captured = _captured_revision(cur, candidate["source_revision_id"])
-    plan, attempt = _make_plan(cur, article, binding, captured, previous_id)
+    plan, attempt = _make_plan(cur, article, binding, captured, previous_id, schema=schema)
     key = _key(article_id, captured, plan.manifest)
     if (manifest != plan.manifest or job["request_generation"] != manifest["request_generation"] + 1
             or job["transformation_key"] != key or candidate["transformation_key"] != key
@@ -180,47 +227,58 @@ def _current_candidate(cur, article):
          article["current_source_revision_id"])).fetchone()
 
 
-def _already_published(cur, article, approval):
+def _already_published(cur, article, approval, *, schema):
     candidate = _current_candidate(cur, article)
-    if candidate is None or candidate["model_metadata"].get("transformation_method") != BANKTWO_NOTICE_METHOD:
+    if candidate is None or candidate["model_metadata"].get("transformation_method") != _LAYOUTS[schema].method:
         return None
     job = cur.execute("SELECT * FROM source_fetch_jobs WHERE transformation_key=%s",
                       (candidate["transformation_key"],)).fetchone()
     if job is None or job["checkpoint"].get("media_repair") != approval:
         raise ValueError(_STALE)
-    resolve_banktwo_notice_publication(cur, job, article, candidate)
+    _resolve_layout_publication(cur, job, article, candidate, schema=schema)
     return _result({**candidate, "source_fetch_job_id": job["source_fetch_job_id"]}, "already_published")
 
 
 def publish_banktwo_notice(repo, *, expected, object_store, actor, reason, hooks=None):
+    return _publish_layout_publication(repo, expected=expected, object_store=object_store, actor=actor, reason=reason,
+                                       schema=SCHEMA, hooks=hooks)
+
+
+def publish_bankone_definition_heading(repo, *, expected, object_store, actor, reason, hooks=None):
+    return _publish_layout_publication(repo, expected=expected, object_store=object_store, actor=actor, reason=reason,
+                                       schema=BANKONE_DEFINITION_SCHEMA, hooks=hooks)
+
+
+def _publish_layout_publication(repo, *, expected, object_store, actor, reason, schema, hooks):
+    layout = _LAYOUTS[schema]
     approval = {"manifest": expected, "actor": actor, "reason": reason}
-    manifest, (article_id, source_id, previous_id) = _proof(approval)
+    manifest, (article_id, source_id, previous_id) = _proof(approval, schema=schema)
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         cur.execute("SET LOCAL statement_timeout='8s'")
         article = _article(cur, article_id)
         if article is None:
             raise ValueError(_STALE)
-        repeated = _already_published(cur, article, approval)
+        repeated = _already_published(cur, article, approval, schema=schema)
         if repeated is not None:
             return repeated
         _require_current(cur, article, manifest)
 
-    binding, captured = preview_banktwo_notice_replay(repo, source_id, object_store=object_store)
+    binding, captured = layout.preview_replay(repo, source_id, object_store=object_store)
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute("SET LOCAL lock_timeout='5s'")
         article = _article(cur, article_id, lock=True)
         if article is None:
             raise ValueError(_STALE)
-        repeated = _already_published(cur, article, approval)
+        repeated = _already_published(cur, article, approval, schema=schema)
         if repeated is not None:
             return repeated
         _require_current(cur, article, manifest)
         _require_no_active_normal_job(cur, article_id)
-        locked = load_banktwo_notice_binding(cur, source_id, lock=True)
+        locked = layout.load_binding(cur, source_id, lock=True)
         if binding != locked:
             raise ValueError(_STALE)
-        plan, _ = _make_plan(cur, article, locked, captured, previous_id, lock=True)
+        plan, _ = _make_plan(cur, article, locked, captured, previous_id, schema=schema, lock=True)
         if plan.manifest != manifest:
             raise ValueError(_STALE)
         key = _key(article_id, captured, manifest)
@@ -230,5 +288,5 @@ def publish_banktwo_notice(repo, *, expected, object_store, actor, reason, hooks
         job = cur.execute("SELECT * FROM source_fetch_jobs WHERE transformation_key=%s", (key,)).fetchone()
         if candidate is None or job is None:
             raise ValueError(_INVALID)
-        resolve_banktwo_notice_publication(cur, job, current, candidate)
+        _resolve_layout_publication(cur, job, current, candidate, schema=schema)
         return result

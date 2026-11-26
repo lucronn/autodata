@@ -14,6 +14,7 @@ from .article_document import (
     validate_ordered_document,
 )
 from .article_lifecycle_types import (
+    BANKONE_DEFINITION_HEADING_LAYOUT,
     BANKONE_HTML_FLOW_LAYOUT,
     BANKTWO_LIST_NOTICE_LAYOUT,
     HTML_BOUND_IMAGE_LAYOUT,
@@ -72,6 +73,7 @@ def normalize_procedure_article(
             or entry.get("html_inline_article_link_layout") == HTML_INLINE_ARTICLE_LINK_LAYOUT
             or entry.get("html_section_title_layout") == HTML_SECTION_TITLE_LAYOUT
             or entry.get("bankone_html_flow_layout") == BANKONE_HTML_FLOW_LAYOUT
+            or entry.get("bankone_definition_heading_layout") == BANKONE_DEFINITION_HEADING_LAYOUT
             or entry.get("banktwo_list_notice_layout") == BANKTWO_LIST_NOTICE_LAYOUT
             or entry.get("html_bound_image_layout") == HTML_BOUND_IMAGE_LAYOUT
             or entry.get("mixed_html_pdf_layout") == MIXED_HTML_PDF_LAYOUT

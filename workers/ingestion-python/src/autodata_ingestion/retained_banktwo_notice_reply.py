@@ -14,10 +14,16 @@ from .published_media_repair import PublishedMediaRepair
 
 
 BANKTWO_NOTICE_METHOD = "published-banktwo-list-notices-v1"
+BANKONE_DEFINITION_METHOD = "published-bankone-definition-headings-v1"
 _INVALID = "PUBLISHED_BANKTWO_NOTICE_REWRITE_INVALID"
 
 
 def repair_banktwo_notice_reply(previous, document, corrected, *, response, prompt_version, profile):
+    return repair_layout_reply(previous, document, corrected, response=response, prompt_version=prompt_version,
+                               profile=profile, method=BANKTWO_NOTICE_METHOD)
+
+
+def repair_layout_reply(previous, document, corrected, *, response, prompt_version, profile, method):
     """Rebind saved prose to unchanged source text at its new coordinates."""
     options = {"prompt_version": prompt_version, "profile_version": profile}
     if (render_auto(previous, response, **options) != document
@@ -51,7 +57,7 @@ def repair_banktwo_notice_reply(previous, document, corrected, *, response, prom
         remapped_response=reply,
         validation=validation,
         provenance={
-            "transformation_method": BANKTWO_NOTICE_METHOD,
+            "transformation_method": method,
             "profile_version": profile,
             "model_calls": 0,
             "model_dispatch_count": 0,
