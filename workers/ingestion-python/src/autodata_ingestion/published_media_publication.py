@@ -64,6 +64,7 @@ class _RepairPlan:
     repair: PublishedMediaRepair
     review_status: str
     drafting_identities: tuple[str, ...]
+    retained_links: tuple[dict, ...] = ()
 
 
 def _normalize(captured, canonical_article_id):
@@ -110,7 +111,7 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
 
 def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fixture_mode, lock, expected_profile=None):
     from .retained_bankone_order_reply import BANKONE_ORDER_METHOD
-    from .retained_banktwo_notice_reply import BANKONE_DEFINITION_METHOD, BANKTWO_NOTICE_METHOD
+    from .retained_banktwo_notice_reply import BANKONE_DEFINITION_METHOD, BANKONE_LIST_BOUNDARY_METHOD, BANKTWO_NOTICE_METHOD
     from .retained_introduction_repair import (
         METHOD as INTRODUCTION_METHOD, PROFILE as INTRODUCTION_PROFILE, resolve_retained_introduction_repair,
     )
@@ -204,6 +205,11 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
         from .retained_banktwo_notice_publication import resolve_bankone_definition_heading_publication
 
         repaired, attempt, prompt_version = resolve_bankone_definition_heading_publication(cur, job, article, row, lock=lock)
+        validation, response = repaired.validation, repaired.remapped_response
+    elif method == BANKONE_LIST_BOUNDARY_METHOD:
+        from .retained_banktwo_notice_publication import resolve_bankone_list_boundary_publication
+
+        repaired, attempt, prompt_version = resolve_bankone_list_boundary_publication(cur, job, article, row, lock=lock)
         validation, response = repaired.validation, repaired.remapped_response
     elif method == RETAINED_PROCEDURE_REPAIR_METHOD:
         recovered = resolve_retained_procedure_repair(cur, job, article, row)
@@ -492,6 +498,13 @@ def _publish(cur, article, captured, key, plan, approval, *, hooks):
               digest_json(plan.normalized), Jsonb(repair.document), repair.projection["body"],
               Jsonb(repair.projection["steps"]), Jsonb(repair.projection["images"]), Jsonb(repair.validation.report),
               digest_json(repair.validation.report), digest_json(repair.document), Jsonb(metadata)))
+    for link in plan.retained_links:
+        cur.execute("""
+            INSERT INTO canonical_article_link_bindings(canonical_article_id,source_revision_id,
+                canonical_article_revision_id,block_id,label_sha256,authored_id_sha256,target_ref_sha256,body_sha256)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (article_id, source_id, revision_id, link["block_id"], link["label_sha256"],
+                  link["authored_id_sha256"], link["target_ref_sha256"], link["body_sha256"]))
     if plan.review_status == "APPROVED":
         reason = {"schema": plan.manifest["schema"], "approval": approval, "source_revision_id": str(source_id)}
         cur.execute("""

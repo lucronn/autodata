@@ -13,6 +13,7 @@ import base64
 from uuid import NAMESPACE_URL, uuid5
 from .article_lifecycle_types import (
     BANKONE_DEFINITION_HEADING_LAYOUT,
+    BANKONE_LIST_BOUNDARY_LAYOUT,
     BANKONE_HTML_FLOW_LAYOUT,
     BANKTWO_LIST_NOTICE_LAYOUT,
     CapturedSource,
@@ -494,6 +495,7 @@ WORKSHOP_CAPTURE_OPTIONS = {
     "keep_bankone_html_flow": True,
     "keep_banktwo_list_notices": True,
     "keep_bankone_definition_headings": True,
+    "keep_bankone_list_boundaries": True,
     "keep_mixed_html_pdf_embeds": True,
     "keep_bound_html_images": True,
     "keep_positioned_figure_labels": True,
@@ -527,6 +529,7 @@ def capture_source_article(
     keep_bankone_html_flow=False,
     keep_banktwo_list_notices=False,
     keep_bankone_definition_headings=False,
+    keep_bankone_list_boundaries=False,
     keep_mixed_html_pdf_embeds=False,
     keep_bound_html_images=False,
     keep_positioned_figure_labels=False,
@@ -850,6 +853,9 @@ def capture_source_article(
             keep_bankone_definition_headings=(
                 keep_bankone_definition_headings and body_digest != context.legacy_published_bankone_definition_heading_body
             ),
+            keep_bankone_list_boundaries=(
+                keep_bankone_list_boundaries and body_digest != context.legacy_published_bankone_list_boundary_body
+            ),
             keep_banktwo_list_notices=(
                 keep_banktwo_list_notices and body_digest != context.legacy_published_banktwo_list_notice_body
             ),
@@ -1044,6 +1050,7 @@ def capture_source_article(
     bankone_html_flow = article.get("bankone_html_flow") is True
     banktwo_list_notices = article.get("banktwo_list_notices") is True
     bankone_definition_headings = article.get("bankone_definition_headings") is True
+    bankone_list_boundaries = article.get("bankone_list_boundaries") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
     retained_pdf_repeats = article.get("retained_repeated_pdf_figures") is True
@@ -1066,7 +1073,7 @@ def capture_source_article(
         structured_table_columns or structured_table_cell_order or step_layout or html_table_captions or html_flow_figure_captions
         or html_table_spans or html_media_table_headers or html_nested_tables or html_numeric_superscripts or image_only_headings
         or html_bound_images or html_document_links or html_section_titles or bankone_html_flow or banktwo_list_notices
-        or positioned_figure_labels or bankone_definition_headings
+        or positioned_figure_labels or bankone_definition_headings or bankone_list_boundaries
         or article.get("embedded_pdf")
         or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
     )
@@ -1115,6 +1122,10 @@ def capture_source_article(
     if bankone_definition_headings:
         resources[0]["bankone_definition_heading_layout"] = manifest[0]["bankone_definition_heading_layout"] = (
             BANKONE_DEFINITION_HEADING_LAYOUT
+        )
+    if bankone_list_boundaries:
+        resources[0]["bankone_list_boundary_layout"] = manifest[0]["bankone_list_boundary_layout"] = (
+            BANKONE_LIST_BOUNDARY_LAYOUT
         )
     if banktwo_list_notices:
         resources[0]["banktwo_list_notice_layout"] = manifest[0]["banktwo_list_notice_layout"] = BANKTWO_LIST_NOTICE_LAYOUT

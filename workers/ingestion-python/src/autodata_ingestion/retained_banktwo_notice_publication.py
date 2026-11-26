@@ -1,21 +1,30 @@
 """Publish exact source-layout corrections with their retained rewrites."""
 
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Callable
 from uuid import UUID
 
 from psycopg.rows import dict_row
 
+from .article_lifecycle_store import resolve_source_bound_correction
 from .article_lifecycle_types import digest_json, transformation_key
 from .procedure_normalize import normalize_procedure_article
 from .published_media_publication import _publication_evidence_for_revision, _publish, _RepairPlan, _result
 from .retained_bankone_order_publication import _article, _captured_revision
-from .retained_banktwo_notice_reply import BANKONE_DEFINITION_METHOD, BANKTWO_NOTICE_METHOD, repair_layout_reply
+from .retained_banktwo_notice_reply import (
+    BANKONE_DEFINITION_METHOD, BANKONE_LIST_BOUNDARY_METHOD, BANKTWO_NOTICE_METHOD, repair_layout_reply,
+)
 from .retained_procedure_repair import _valid_audit
+from .source_article_capture import _walk
 from .source_bankone_definition_heading_replay import (
     load_bankone_definition_heading_binding, preview_bankone_definition_heading_replay,
     validate_bankone_definition_heading_capture,
 )
+from .source_bankone_list_boundary_replay import (
+    load_bankone_list_boundary_binding, preview_bankone_list_boundary_replay, validate_bankone_list_boundary_capture,
+)
+from .source_bankone_order_replay import _without_generated_ids
 from .source_banktwo_notice_replay import (
     load_banktwo_notice_binding, preview_banktwo_notice_replay, validate_banktwo_notice_capture,
 )
@@ -25,6 +34,7 @@ from .source_revision_reprojection import _require_no_active_normal_job
 
 SCHEMA = "autodata:published-banktwo-list-notices:v1"
 BANKONE_DEFINITION_SCHEMA = "autodata:published-bankone-definition-headings:v1"
+BANKONE_LIST_BOUNDARY_SCHEMA = "autodata:published-bankone-list-boundaries:v1"
 _INVALID = "BANKTWO_NOTICE_PUBLICATION_INVALID"
 _STALE = "BANKTWO_NOTICE_PUBLICATION_STALE"
 
@@ -47,6 +57,10 @@ _LAYOUTS = {
         "bankone", BANKONE_DEFINITION_METHOD, load_bankone_definition_heading_binding,
         preview_bankone_definition_heading_replay, validate_bankone_definition_heading_capture,
     ),
+    BANKONE_LIST_BOUNDARY_SCHEMA: _LayoutRepair(
+        "bankone", BANKONE_LIST_BOUNDARY_METHOD, load_bankone_list_boundary_binding,
+        preview_bankone_list_boundary_replay, validate_bankone_list_boundary_capture,
+    ),
 }
 
 
@@ -62,6 +76,35 @@ def _normalize(captured, article_id):
     }, resource_manifest=captured.resource_manifest)["normalized_document"]
 
 
+def _retained_link_rows(cur, revision):
+    return tuple(cur.execute("""SELECT block_id,label_sha256,authored_id_sha256,target_ref_sha256,body_sha256
+        FROM canonical_article_link_bindings WHERE canonical_article_revision_id=%s
+          AND canonical_article_id=%s AND source_revision_id=%s ORDER BY block_id COLLATE "C" LIMIT 129
+        """, (revision["canonical_article_revision_id"], revision["canonical_article_id"],
+              revision["source_revision_id"])).fetchall())
+
+
+def _link_successors(links, previous, corrected, *, body_sha256):
+    if len(links) > 128:
+        raise ValueError(_INVALID)
+    before = [node for node in _walk(previous["blocks"]) if node.get("type") == "link"]
+    after = [node for node in _walk(corrected["blocks"]) if node.get("type") == "link"]
+    result = []
+    for link in links:
+        old = [node for node in before if node.get("block_id") == link["block_id"]]
+        if (len(old) != 1 or link["body_sha256"] != body_sha256 or "target_ref_sha256" in old[0]
+                or sha256(old[0]["text"].encode()).hexdigest() != link["label_sha256"]):
+            raise ValueError(_INVALID)
+        target = _without_generated_ids(old[0])
+        matches = [node for node in after if _without_generated_ids(node) == target]
+        if len(matches) != 1:
+            raise ValueError(_INVALID)
+        result.append({**link, "block_id": matches[0]["block_id"]})
+    if len({link["block_id"] for link in result}) != len(result):
+        raise ValueError(_INVALID)
+    return tuple(sorted(result, key=lambda link: link["block_id"]))
+
+
 def _make_plan(cur, article, binding, captured, previous_id, *, schema, lock=False):
     layout = _LAYOUTS[schema]
     if binding.canonical_article_id != article["canonical_article_id"]:
@@ -70,24 +113,35 @@ def _make_plan(cur, article, binding, captured, previous_id, *, schema, lock=Fal
     row, review, decision, attempt, response, prompt, authors = _publication_evidence_for_revision(
         cur, article, binding, previous_id, fixture_mode=False, lock=lock,
     )
+    links = _retained_link_rows(cur, row)
     if (review is not None or decision != "UNREVIEWED" or attempt is None or not prompt
             or row["normalized_source_hash"] != binding.source_document_hash
-            or cur.execute("""SELECT 1 FROM canonical_article_link_bindings WHERE canonical_article_revision_id=%s
-                UNION ALL SELECT 1 FROM canonical_article_inline_link_bindings
-                WHERE canonical_article_revision_id=%s LIMIT 1""", (previous_id, previous_id)).fetchone()):
+            or links and schema != BANKONE_LIST_BOUNDARY_SCHEMA
+            or cur.execute("""SELECT 1 FROM canonical_article_inline_link_bindings
+                WHERE canonical_article_revision_id=%s LIMIT 1""", (previous_id,)).fetchone()):
         raise ValueError(_INVALID)
 
-    owner = cur.execute("""SELECT source_fetch_job_id, request_generation FROM source_fetch_jobs
+    owner = cur.execute("""SELECT * FROM source_fetch_jobs
         WHERE transformation_key=%s AND status='completed' AND phase='completed'
           AND canonical_article_id=%s AND source_revision_id=%s""",
         (row["transformation_key"], binding.canonical_article_id, binding.source_revision_id)).fetchone()
     if owner is None:
         raise ValueError(_INVALID)
+    bankone_structure = None
+    if schema == BANKONE_LIST_BOUNDARY_SCHEMA:
+        original = resolve_source_bound_correction(cur, owner, row)
+        if original.response != response or original.evidence["guard_version"] != prompt or original.bankone_structure is None:
+            raise ValueError(_INVALID)
+        bankone_structure = original.bankone_structure
     normalized = _normalize(captured, binding.canonical_article_id)
     repair = repair_layout_reply(
         row["normalized_source_document"], row["canonical_document"], normalized, response=response,
         prompt_version=prompt, profile=row["validation_report"]["profile_version"], method=layout.method,
+        bankone_structure=bankone_structure,
     )
+    retained_links = _link_successors(
+        links, row["canonical_document"], repair.document, body_sha256=binding.body_sha256,
+    ) if links else ()
     manifest = {
         "schema": schema,
         "article_id": str(binding.canonical_article_id),
@@ -109,9 +163,11 @@ def _make_plan(cur, article, binding, captured, previous_id, *, schema, lock=Fal
         "original_prompt_hash": attempt["prompt_hash"],
         "original_validation_hash": row["validation_hash"],
         "repaired_validation_hash": digest_json(repair.validation.report),
+        **({"retained_link_count": len(retained_links), "retained_link_hash": digest_json(retained_links)}
+           if schema == BANKONE_LIST_BOUNDARY_SCHEMA else {}),
         **repair.provenance,
     }
-    return _RepairPlan(manifest, row, normalized, repair, decision, authors), attempt
+    return _RepairPlan(manifest, row, normalized, repair, decision, authors, retained_links), attempt
 
 
 def _key(article_id, captured, manifest):
@@ -157,6 +213,10 @@ def preview_bankone_definition_heading_publication(repo, source_revision_id, *, 
     return _preview_layout_publication(repo, source_revision_id, object_store=object_store, schema=BANKONE_DEFINITION_SCHEMA)
 
 
+def preview_bankone_list_boundary_publication(repo, source_revision_id, *, object_store):
+    return _preview_layout_publication(repo, source_revision_id, object_store=object_store, schema=BANKONE_LIST_BOUNDARY_SCHEMA)
+
+
 def _preview_layout_publication(repo, source_revision_id, *, object_store, schema):
     layout = _LAYOUTS[schema]
     binding, captured = layout.preview_replay(repo, source_revision_id, object_store=object_store)
@@ -179,6 +239,10 @@ def resolve_bankone_definition_heading_publication(cur, job, article, candidate,
     return _resolve_layout_publication(cur, job, article, candidate, schema=BANKONE_DEFINITION_SCHEMA, lock=lock)
 
 
+def resolve_bankone_list_boundary_publication(cur, job, article, candidate, *, lock=False):
+    return _resolve_layout_publication(cur, job, article, candidate, schema=BANKONE_LIST_BOUNDARY_SCHEMA, lock=lock)
+
+
 def _resolve_layout_publication(cur, job, article, candidate, *, schema, lock=False):
     layout = _LAYOUTS[schema]
     manifest, (article_id, source_id, previous_id) = _proof(job["checkpoint"].get("media_repair"), schema=schema)
@@ -194,6 +258,8 @@ def _resolve_layout_publication(cur, job, article, candidate, *, schema, lock=Fa
     captured = _captured_revision(cur, candidate["source_revision_id"])
     plan, attempt = _make_plan(cur, article, binding, captured, previous_id, schema=schema)
     key = _key(article_id, captured, plan.manifest)
+    if schema == BANKONE_LIST_BOUNDARY_SCHEMA and _retained_link_rows(cur, candidate) != plan.retained_links:
+        raise ValueError(_INVALID)
     if (manifest != plan.manifest or job["request_generation"] != manifest["request_generation"] + 1
             or job["transformation_key"] != key or candidate["transformation_key"] != key
             or not all(job[field] == candidate[field] == manifest[field]
@@ -247,6 +313,11 @@ def publish_banktwo_notice(repo, *, expected, object_store, actor, reason, hooks
 def publish_bankone_definition_heading(repo, *, expected, object_store, actor, reason, hooks=None):
     return _publish_layout_publication(repo, expected=expected, object_store=object_store, actor=actor, reason=reason,
                                        schema=BANKONE_DEFINITION_SCHEMA, hooks=hooks)
+
+
+def publish_bankone_list_boundary(repo, *, expected, object_store, actor, reason, hooks=None):
+    return _publish_layout_publication(repo, expected=expected, object_store=object_store, actor=actor, reason=reason,
+                                       schema=BANKONE_LIST_BOUNDARY_SCHEMA, hooks=hooks)
 
 
 def _publish_layout_publication(repo, *, expected, object_store, actor, reason, schema, hooks):

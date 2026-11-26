@@ -202,7 +202,7 @@ class ArticleParser(HTMLParser):
         include_untyped_pdf_positions=False, keep_bound_html_images=False, skip_noscript_images=frozenset(),
         declared_image_refs=frozenset(), lazy_image_alts=None, keep_html_document_links=False,
         keep_html_section_titles=False, keep_bankone_html_flow=False, keep_banktwo_list_notices=False,
-        keep_bankone_definition_headings=False,
+        keep_bankone_definition_headings=False, keep_bankone_list_boundaries=False,
         positioned_figures=None,
     ):
         super().__init__(convert_charrefs=True)
@@ -237,6 +237,8 @@ class ArticleParser(HTMLParser):
         self.bankone_html_flow = False
         self._keep_bankone_definition_headings = keep_bankone_definition_headings
         self.bankone_definition_headings = False
+        self._keep_bankone_list_boundaries = keep_bankone_list_boundaries
+        self.bankone_list_boundaries = False
         self._keep_banktwo_list_notices = keep_banktwo_list_notices
         self.banktwo_list_notices = False
         self._keep_html_document_links = keep_html_document_links
@@ -299,6 +301,12 @@ class ArticleParser(HTMLParser):
     def _current_list_item(self):
         return self._lists[-1].item if self._lists else None
 
+    def _at_bankone_list_boundary(self):
+        return (
+            self._keep_bankone_list_boundaries and not self._in_table
+            and self._lists and self._lists[-1].item is None
+        )
+
     def _between_ordered_items(self):
         return (self._keep_banktwo_list_notices and not self._in_table and self._lists
                 and self._lists[-1].tag == "ol" and self._lists[-1].item is None)
@@ -352,6 +360,8 @@ class ArticleParser(HTMLParser):
             self._append_between_list_items(
                 {"kind": "callout", "label": notice["label"].title(), "text": text}, keep_continuation=True,
             )
+        elif self._at_bankone_list_boundary() and len(self._lists) > 1:
+            self._append_block(block)
         elif item is None and self._keep_bankone_html_flow and self._lists and self._lists[-1].items:
             self.bankone_html_flow = True
             self._append_between_list_items(block, keep_continuation=True)
@@ -366,10 +376,16 @@ class ArticleParser(HTMLParser):
 
     def _append_block(self, block):
         item = self._current_list_item()
-        if item is None:
-            self.blocks.append(block)
-        else:
+        if item is not None:
             item.blocks.append(block)
+        elif self._at_bankone_list_boundary():
+            # A note, nested list or media between explicit list items does
+            # not occupy a number in the enclosing ordered list.
+            self.bankone_html_flow = True
+            self.bankone_list_boundaries = True
+            self._append_between_list_items(block, keep_continuation=True)
+        else:
+            self.blocks.append(block)
 
     def _start_document_link_tag(self, tag, raw_attrs, attrs):
         if self._document_link_scope is not None:
@@ -459,6 +475,10 @@ class ArticleParser(HTMLParser):
         return next_number, has_numbering
 
     def _finish_list(self):
+        if self._at_bankone_list_boundary() and self._text:
+            if any(part.strip() for part in self._text):
+                self.bankone_list_boundaries = True
+            self.flush()
         self._finish_list_item()
         frame = self._lists.pop()
         self._emit_list(frame, top_level=not self._lists)
@@ -626,7 +646,10 @@ class ArticleParser(HTMLParser):
             return
         if self._lists and self._lists[-1].item is None:
             # Emit media between sibling <li> tags in the enclosing item.
-            self._append_between_list_items(block, keep_continuation=isinstance(block, ConnectorBankoneGraphic))
+            if self._at_bankone_list_boundary() and len(self._lists) > 1:
+                self._append_block(block)
+            else:
+                self._append_between_list_items(block, keep_continuation=isinstance(block, ConnectorBankoneGraphic))
         else:
             self._append_block(block)
 
@@ -878,7 +901,7 @@ class ArticleParser(HTMLParser):
             self.flush()
             if len(self._lists) >= _MAX_LIST_DEPTH:
                 raise ValueError("HTML list nesting exceeds its limit")
-            if self._lists and self._lists[-1].item is None:
+            if self._lists and self._lists[-1].item is None and not self._at_bankone_list_boundary():
                 self._lists[-1].item = _ListItem()
             # Separate <ol> elements have independent browser counters.
             # Only the compatibility facade reuses implicit top-level starts.
@@ -891,7 +914,10 @@ class ArticleParser(HTMLParser):
             self._list_continuation_pending = False
             return
         if tag == "li" and self._lists and not self._in_table:
-            if self._between_ordered_items() and self._text:
+            if self._at_bankone_list_boundary() and any(part.strip() for part in self._text):
+                self.bankone_list_boundaries = True
+                self.flush()
+            elif self._between_ordered_items() and self._text:
                 self.flush()
             self._finish_list_item()
             frame = self._lists[-1]

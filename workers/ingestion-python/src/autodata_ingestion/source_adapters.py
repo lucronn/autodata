@@ -1969,6 +1969,7 @@ def adapt_bound_article(
     keep_bankone_html_flow: bool = False,
     keep_banktwo_list_notices: bool = False,
     keep_bankone_definition_headings: bool = False,
+    keep_bankone_list_boundaries: bool = False,
     keep_positioned_figure_labels: bool = False,
     keep_pdf_figure_order: bool = False, keep_multiple_pdf_figures: bool = False,
     keep_html_table_image_order: bool = False,
@@ -2014,6 +2015,9 @@ def adapt_bound_article(
             keep_bankone_html_flow=keep_bankone_html_flow and context.key.provider == "bankone",
             keep_banktwo_list_notices=keep_banktwo_list_notices and context.key.provider == "banktwo",
             keep_bankone_definition_headings=keep_bankone_definition_headings and context.key.provider == "bankone",
+            keep_bankone_list_boundaries=(
+                keep_bankone_list_boundaries and keep_bankone_html_flow and context.key.provider == "bankone"
+            ),
             keep_bound_pdf_iframes=keep_bound_pdf_iframes,
             resolved_pdf_refs=resolved_pdf_refs,
             include_untyped_pdf_positions=include_untyped_pdf_positions,
@@ -2071,6 +2075,7 @@ def adapt_bound_article(
             **({"bankone_html_flow": True} if parser.bankone_html_flow else {}),
             **({"banktwo_list_notices": True} if parser.banktwo_list_notices else {}),
             **({"bankone_definition_headings": True} if parser.bankone_definition_headings else {}),
+            **({"bankone_list_boundaries": True} if parser.bankone_list_boundaries else {}),
             **({"handled_pdf_embeds": True} if parser.handled_pdf_embeds else {}),
             **({"untyped_pdf_embed_refs": tuple(parser.untyped_pdf_embed_refs)} if parser.untyped_pdf_embed_refs else {}),
             **({"positioned_html_table_images": True} if parser.positioned_html_table_images else {}),
@@ -2224,6 +2229,7 @@ def adapt_bound_article(
                         keep_bankone_html_flow=keep_bankone_html_flow,
                         keep_banktwo_list_notices=keep_banktwo_list_notices,
                         keep_bankone_definition_headings=keep_bankone_definition_headings,
+                        keep_bankone_list_boundaries=keep_bankone_list_boundaries,
                         keep_positioned_figure_labels=keep_positioned_figure_labels,
                         keep_bound_pdf_iframes=keep_bound_pdf_iframes,
                         resolved_pdf_refs=resolved_pdf_refs,
