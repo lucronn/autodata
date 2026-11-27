@@ -93,7 +93,9 @@ func TestPostgresPublicSelectorSlugsPreserveScope(t *testing.T) {
 	ctx := context.Background()
 	pool := openSelectorTestPool(t)
 	// Temporary relations keep this read-path regression independent of durable fixture data.
-	_, err := pool.Exec(ctx, `CREATE TEMP TABLE vehicle_identity_bases(vehicle_identity_base_id int, model_year int, make text, model text, region text, reviewer_state text, body_style text, drivetrain text);
+	_, err := pool.Exec(ctx, `CREATE TEMP TABLE vehicle_identity_bases(vehicle_identity_base_id int, model_year int, make text, model text, region text, reviewer_state text, body_style text, drivetrain text,
+     vehicle_id uuid DEFAULT gen_random_uuid(), source_snapshot_id uuid DEFAULT gen_random_uuid(), extraction_evidence_id uuid DEFAULT gen_random_uuid());
+ CREATE TEMP TABLE vehicle_identity_observations(vehicle_id uuid, source_snapshot_id uuid, extraction_evidence_id uuid, raw_observation jsonb);
  CREATE TEMP TABLE vehicle_configurations(vehicle_configuration_id uuid, vehicle_id uuid, vehicle_identity_base_id int, trim text, engine_displacement_l numeric, reviewer_state text, engine_variant text, engine_variant_market_verified boolean NOT NULL DEFAULT false);
  CREATE TEMP TABLE vehicle_catalog_hydration_scopes(scope text, model_year int, make text, model text, region text, completion_version int, selector_rows jsonb);
  CREATE TEMP TABLE vehicle_catalog_sync_scopes(vehicle_catalog_sync_id int, status text, scope_key text);
@@ -135,6 +137,37 @@ func TestPostgresPublicSelectorSlugsPreserveScope(t *testing.T) {
 		t.Fatalf("sparse public model completeness = %v, %v", complete, err)
 	}
 
+	_, err = pool.Exec(ctx, `
+		INSERT INTO vehicle_identity_bases (vehicle_identity_base_id, model_year, make, model, region, reviewer_state)
+		VALUES (6, 2012, 'Buick Truck', 'Make', 'US', 'pending'),
+		       (7, 2012, 'Buick Truck', 'Make', 'CA', 'pending'),
+		       (8, 2012, 'Buick Truck', '_make_', 'US', 'pending');
+		INSERT INTO vehicle_identity_observations
+		SELECT vehicle_id, source_snapshot_id, extraction_evidence_id,
+		       jsonb_build_object('model', CASE vehicle_identity_base_id WHEN 6 THEN '_make_' ELSE 'Make' END)
+		FROM vehicle_identity_bases WHERE vehicle_identity_base_id IN (6, 7);
+		INSERT INTO vehicle_configurations (vehicle_configuration_id,vehicle_id,vehicle_identity_base_id,engine_displacement_l,reviewer_state)
+		SELECT gen_random_uuid(), vehicle_id, vehicle_identity_base_id, 3.6, 'pending'
+		FROM vehicle_identity_bases WHERE vehicle_identity_base_id IN (6, 7, 8);
+		INSERT INTO vehicle_catalog_hydration_scopes VALUES
+		('models',2012,'Buick Truck','','US',0,'[{"model":"Enclave AWD"}]');`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	makes, err := store.Makes(ctx, Principal{}, 2012, "US")
+	if err != nil || len(makes) != 1 || makes[0].ID != "buick-truck" {
+		t.Fatalf("make-level evidence = %#v, %v", makes, err)
+	}
+	for _, tc := range []struct{ region, id string }{{"US", "enclave-awd"}, {"CA", "make"}} {
+		models, err := store.Models(ctx, Principal{}, 2012, "buick-truck", tc.region)
+		if err != nil || len(models) != 1 || models[0].ID != tc.id {
+			t.Fatalf("%s models = %#v, %v", tc.region, models, err)
+		}
+		configurations, err := store.Configurations(ctx, Principal{}, 2012, "buick-truck", "make", tc.region)
+		if err != nil || (len(configurations) != 0) != (tc.region == "CA") {
+			t.Fatalf("%s Make configurations = %#v, %v", tc.region, configurations, err)
+		}
+	}
 }
 
 func TestPostgresSparseSelectorKeepsEngineVariants(t *testing.T) {
@@ -148,11 +181,13 @@ func TestPostgresSparseSelectorKeepsEngineVariants(t *testing.T) {
 	)
 	_, err := pool.Exec(ctx, `
         CREATE TEMP TABLE vehicle_identity_bases (vehicle_identity_base_id int, vehicle_id uuid, model_year int,
-            make text, model text, region text, reviewer_state text, body_style text, drivetrain text);
+            make text, model text, region text, reviewer_state text, body_style text, drivetrain text,
+            source_snapshot_id uuid, extraction_evidence_id uuid);
+        CREATE TEMP TABLE vehicle_identity_observations (vehicle_id uuid, source_snapshot_id uuid, extraction_evidence_id uuid, raw_observation jsonb);
         CREATE TEMP TABLE vehicle_configurations (vehicle_configuration_id uuid, vehicle_id uuid, vehicle_identity_base_id int,
             trim text, engine_displacement_l numeric, reviewer_state text, engine_variant text,
             engine_variant_market_verified boolean NOT NULL DEFAULT false);
-        INSERT INTO vehicle_identity_bases VALUES (1, '`+vehicle+`', 2020, 'Chevy Truck', 'Express 4500', 'US', 'approved', NULL, NULL);
+        INSERT INTO vehicle_identity_bases VALUES (1, '`+vehicle+`', 2020, 'Chevy Truck', 'Express 4500', 'US', 'approved', NULL, NULL, NULL, NULL);
         INSERT INTO vehicle_configurations VALUES
             ('`+cng+`', '`+vehicle+`', 1, NULL, 6.0, 'pending', 'CNG', false),
             ('`+lpg+`', '`+vehicle+`', 1, NULL, 6.0, 'pending', 'LPG', true),
@@ -206,7 +241,9 @@ func TestPostgresUnresolvedConfigurationRequiresExactEvidence(t *testing.T) {
 	ctx := context.Background()
 	_, err := pool.Exec(ctx, `
 		CREATE TEMP TABLE vehicle_identity_bases (vehicle_identity_base_id int, vehicle_id uuid,
-		  model_year int, make text, model text, region text, reviewer_state text, body_style text, drivetrain text);
+		  model_year int, make text, model text, region text, reviewer_state text, body_style text, drivetrain text,
+		  source_snapshot_id uuid, extraction_evidence_id uuid);
+		CREATE TEMP TABLE vehicle_identity_observations (vehicle_id uuid, source_snapshot_id uuid, extraction_evidence_id uuid, raw_observation jsonb);
 		CREATE TEMP TABLE vehicle_configurations (vehicle_configuration_id uuid, vehicle_id uuid,
 		  vehicle_identity_base_id int, trim text, engine_displacement_l numeric, reviewer_state text,
 		  engine_variant text, engine_variant_market_verified boolean);
@@ -216,7 +253,7 @@ func TestPostgresUnresolvedConfigurationRequiresExactEvidence(t *testing.T) {
 		CREATE TEMP TABLE canonical_articles (scope_key text, provider_slug text, membership_status text, takedown_status text,
 		  source_vehicle_ref text, source_article_ref text);
 		INSERT INTO vehicle_identity_bases VALUES
-		  (1, '44444444-4444-4444-8444-444444444444', 2024, 'Buick Truck', 'Envision AWD', 'US', 'approved', NULL, NULL);
+		  (1, '44444444-4444-4444-8444-444444444444', 2024, 'Buick Truck', 'Envision AWD', 'US', 'approved', NULL, NULL, NULL, NULL);
 		INSERT INTO vehicle_configurations
 		  SELECT ('00000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, vehicle_id, 1,
 		    CASE WHEN n=1 THEN chr(9) || ' ' END, CASE WHEN n=2 THEN 2.0 END, 'pending', NULL, false
