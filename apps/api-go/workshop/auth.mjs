@@ -89,6 +89,7 @@ export function createSession({
     provider,
     epoch = 0,
     preparation,
+    guestRefresh,
     selectedIndexConfirmation,
     retried = false;
   const changed = () => onChange({ ...state });
@@ -97,8 +98,13 @@ export function createSession({
     state.mode = ["local", "firebase"].includes(config?.mode) ? config.mode : null;
     state.available = validLoginConfig(config);
   };
+  const stopGuestRefresh = () => {
+    guestRefresh?.abort();
+    guestRefresh = null;
+  };
   const clear = () => {
     epoch++;
+    stopGuestRefresh();
     selectedIndexConfirmation?.abort();
     state.mode = null;
     state.authenticated = false;
@@ -166,10 +172,11 @@ export function createSession({
     },
     async bootstrap({ signal, initial, preserveGuestSignIn = false } = {}) {
       const current = ++epoch;
+      stopGuestRefresh();
       const wasReady = state.ready || state.popupPending;
       // A prepared guest sign-in can remain available during a picker focus refresh.
       // Any authenticated session still needs a fresh check before use.
-      const keepGuestSignIn = preserveGuestSignIn && state.mode === "firebase" &&
+      const keepGuestSignIn = preserveGuestSignIn && !initial && state.mode === "firebase" &&
         !state.authenticated && state.available && state.ready && !state.popupPending;
       selectedIndexConfirmation?.abort();
       pendingLoginConfiguration = null;
@@ -180,8 +187,13 @@ export function createSession({
       state.popupPending = false;
       if (wasReady && !keepGuestSignIn) changed();
       const initialResult = initial ? await initial : null;
-      const [configuration, response] = initialResult ?? readSessionBootstrap(request, { signal });
+      if (signal?.aborted || current !== epoch) return;
+      const refresh = keepGuestSignIn ? new AbortController() : null;
+      guestRefresh = refresh;
+      const readSignal = refresh && signal ? AbortSignal.any([refresh.signal, signal]) : refresh?.signal ?? signal;
+      const [configuration, response] = initialResult ?? readSessionBootstrap(request, { signal: readSignal });
       const session = await response;
+      if (guestRefresh === refresh) guestRefresh = null;
       if (signal?.aborted || current !== epoch) return;
       const data = session.status === "fulfilled" ? session.value : null;
       const confirmedMode = validSession(data) && data.mode === "firebase";
@@ -221,6 +233,8 @@ export function createSession({
       // Firebase cancels the previous popup when a new one opens. Only this
       // attempt may exchange a token or update the customer session.
       const current = ++epoch;
+      // A pending guest response can expire the cookie issued by the exchange.
+      stopGuestRefresh();
       state.ready = false;
       state.popupPending = true;
       state.message = "Continue in the Google sign-in window.";

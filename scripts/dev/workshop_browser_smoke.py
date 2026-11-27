@@ -212,6 +212,7 @@ class DTOFixture:
         self.token = None
         self.account = 'user'
         self.auth_config_hold = None
+        self.auth_session_hold = None
 
     async def route(self, route):
         request = route.request
@@ -227,6 +228,7 @@ class DTOFixture:
         if path.startswith('/__fixture/') or path.startswith('/workshop/') and path != '/workshop/purchase-config.json':
             await route.continue_(); return
         status, data = 200, None
+        headers = {}
         if path == '/auth/config':
             if self.auth_config_hold:
                 config_requested, release_config = self.auth_config_hold
@@ -241,12 +243,31 @@ class DTOFixture:
             if self.scenario == 'session-blocked': status, data = 403, {'error':{'code':'FORBIDDEN'}}
             elif self.scenario == 'auth-dependency-unavailable': status, data = 503, {'error':{'code':'AUTHENTICATION_UNAVAILABLE','retryable':True}}
             elif not self.authenticated: status, data = 401, {'error':{'code':'UNAUTHENTICATED'}}
+            if self.auth_session_hold:
+                session_requested, release_session, session_settled = self.auth_session_hold
+                self.auth_session_hold = None
+                assert status == 401
+                session_requested.set()
+                try:
+                    await release_session.wait()
+                    if request.failure:
+                        await route.abort()
+                        return
+                    # Match the real stale guest reply's cookie expiration.
+                    await route.fulfill(status=status, json=data, headers={
+                        'set-cookie': '__Host-autodata_session=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0',
+                    })
+                    return
+                finally:
+                    session_settled.set()
         elif path == '/auth/firebase/session':
             self.exchange_count += 1
             assert request.headers.get('x-autodata-session-exchange') == '1'
             assert json.loads(request.post_data).keys() == {'id_token'}
             self.authenticated = True
             status, data = 204, None
+            if self.scenario == 'google-popup-exchange':
+                headers['set-cookie'] = '__Host-autodata_session=fixture; Path=/; Secure; HttpOnly; SameSite=Lax'
         elif path == '/auth/logout':
             assert request.headers.get('x-csrf-token') == session()['csrf_token']
             self.authenticated = False; status, data = 204, None
@@ -312,7 +333,7 @@ class DTOFixture:
             status,data=404,{'error':{'code':'NOT_FOUND'}}
         else:
             self.unexpected.append(request.url);await route.abort();return
-        await route.fulfill(status=status,content_type='application/json',body='' if data is None else json.dumps(data))
+        await route.fulfill(status=status,content_type='application/json',body='' if data is None else json.dumps(data),headers=headers)
 
     async def external(self, route):
         request=route.request;url=urlsplit(request.url)
@@ -568,15 +589,26 @@ async def sign_in_during_guest_refocus(page, fixture):
     await assert_text(page, '#purchase-selection', '2024 Fixture / Engine')
     config_requested = asyncio.Event()
     release_config = asyncio.Event()
+    session_requested = asyncio.Event()
+    release_session = asyncio.Event()
+    session_settled = asyncio.Event()
     fixture.auth_config_hold = (config_requested, release_config)
+    fixture.auth_session_hold = (session_requested, release_session, session_settled)
     try:
         await page.evaluate("window.dispatchEvent(new FocusEvent('focus'))")
-        await asyncio.wait_for(config_requested.wait(), timeout=5)
+        await asyncio.wait_for(asyncio.gather(config_requested.wait(), session_requested.wait()), timeout=5)
         await expect(page.locator('#signin')).to_be_enabled(timeout=2000)
-        await page.get_by_role('button', name='Sign in with Google').and_(page.locator('#purchase-action')).click(timeout=2000)
-        await assert_text(page, '#account-status', 'Signed in.')
+        async with page.expect_event('requestfailed', lambda request: request.url == fixture.origin + '/auth/session',
+                                     timeout=5000) as cancelled:
+            await page.get_by_role('button', name='Sign in with Google').and_(page.locator('#purchase-action')).click(timeout=2000)
+            await assert_text(page, '#account-status', 'Signed in.')
+        assert (await cancelled.value).failure
     finally:
         release_config.set()
+        release_session.set()
+    await asyncio.wait_for(session_settled.wait(), timeout=5)
+    cookie, = [row for row in await page.context.cookies(fixture.origin) if row['name'] == '__Host-autodata_session']
+    assert cookie['value'] == 'fixture' and cookie['httpOnly']
     await expect(page.locator('#configuration')).to_have_value(CONFIG)
     assert fixture.checkout_count == 0
 
