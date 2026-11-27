@@ -9634,7 +9634,7 @@ function selectorOptionsHarness(response) {
  const statuses=[], displayed=[];
  const requests=[], waits=[];
  let clock = 0;
- const context={ $, rows:{}, Option:PickerOption, AbortController, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices',
+ const context={ $, rows:{ model: [] }, Option:PickerOption, AbortController, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices',
   async requestJSON(path, options) {
     requests.push(path);
     if (response instanceof Error) throw response;
@@ -10324,6 +10324,30 @@ test('actual selector incomplete nonhydrating scope does not claim empty complet
  const h=selectorOptionsHarness({items:[],complete:false,hydrating:false});await h.load();
  assert.equal(h.statuses.at(-1).error,true);assert.equal(typeof h.statuses.at(-1).retry,'function');
  assert.equal(h.$('retry').hidden,false);assert.equal(typeof h.context.retryAction,'function');
+});
+test('an unavailable grouped model suggests the separate choices already in its picker', async () => {
+  const group = { id: 'sl1-sc1-sw1', name: 'SL1/SC1/SW1' };
+  const separate = ['SL1', 'SC1', 'SW1'].map(name => ({ id: name.toLowerCase(), name }));
+  for (const [items, complete, models, suggestsAlternatives] of [
+    [[], false, separate, true],
+    [[], true, separate, true],
+    [[{ id: 'unresolved', configuration_unresolved: true }], true, separate, true],
+    [[], false, separate.slice(0, 2), false],
+    [[{ id: 'verified' }], true, separate, false],
+  ]) {
+    const h = selectorOptionsHarness({ items, complete });
+    h.context.rows.model = [group, ...models];
+    h.$('model').value = group.id;
+    await h.load();
+    if (suggestsAlternatives)
+      assert.match(h.statuses.at(-1).text, /Choose SL1, SC1, or SW1 in Model/);
+    else
+      assert.doesNotMatch(h.statuses.at(-1).text, /in Model/);
+    assert.equal(h.$('model').value, group.id);
+    assert.equal(h.$('configuration').value, '');
+    assert.equal(h.$('retry').hidden, complete);
+    assert.deepEqual(h.requests, ['/choices']);
+  }
 });
 test('selector success hides retry for completed and saved partial choices',async()=>{
  for(const [response,desired] of [
