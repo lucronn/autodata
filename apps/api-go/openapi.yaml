@@ -698,6 +698,14 @@ paths:
         schema:
           type: string
           example: workshop-source-document
+      - name: X-Workshop-Source-View
+        in: header
+        required: false
+        description: The view_revision of an already displayed Original. With
+          workshop-source-document and application/json, a matching authorized view
+          may return current media URLs and document_unchanged instead of document.
+        schema:
+          type: string
       - name: source_revision_id
         in: query
         required: false
@@ -2413,6 +2421,10 @@ components:
         view_revision:
           type: string
           nullable: true
+        document_unchanged:
+          type: boolean
+          description: True when the exact authorized document is already displayed and
+            the response omits the document while refreshing media URLs.
     SourceReview:
       type: object
       properties:
