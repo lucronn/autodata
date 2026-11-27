@@ -264,6 +264,12 @@ function usePublicSelectorEntry(t) {
 
 test('the direct connection sends eligible public US selector reads without credentials', async t => {
   const entry = usePublicSelectorEntry(t);
+  const deadlines = [];
+  const schedule = globalThis.setTimeout;
+  t.mock.method(globalThis, 'setTimeout', (callback, delay, ...args) => {
+    deadlines.push(delay);
+    return schedule(callback, delay, ...args);
+  });
   const payload = { items: [{ id: 'envision-awd' }], complete: false, hydrating: true };
   for (const path of [makePath, modelPath, enginePath, modelPath + '&stored_only=1']) {
     const data = await requestJSON(path, { cache: 'default', fetcher: async (url, request) => {
@@ -276,6 +282,7 @@ test('the direct connection sends eligible public US selector reads without cred
     } });
     assert.deepEqual(data, payload);
   }
+  assert.deepEqual(deadlines, [175, 200, 400, 200]);
   const sameOrigin = path => async (url, request) => {
     assert.equal(url, path);
     assert.equal(request.credentials, 'same-origin');
