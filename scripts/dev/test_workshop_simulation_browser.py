@@ -130,7 +130,8 @@ async def verify_list_start_reader(page, owner, detail, expected, pins, *, origi
     return digest
 
 
-def authored_table_fixture(runtime):
+def authored_table_fixture(runtime, monkeypatch, tmp_path, variant):
+    from autodata_ingestion import source_article_capture
     from autodata_ingestion.article_lifecycle import run_article_worker_once
     from autodata_ingestion.procedure_rewrite_auto import PROFILE
     from autodata_ingestion.source_job_persistence import refresh_article_job
@@ -140,38 +141,117 @@ def authored_table_fixture(runtime):
         '<p>Remove the pump.</p><table><caption>Service check</caption>'
         '<thead><tr><th rowspan="2">Assembly</th><th scope="colgroup" colspan="2">Inspection</th></tr>'
         '<tr><th scope="col">Item</th><th scope="col">Illustration</th></tr></thead>'
-        '<tbody><tr><th scope="row">Pump</th><td>Seal</td>'
+        '<tbody><tr><th scope="row">'
+        '<table><tbody><tr><th scope="row">Pump</th><td>Seat</td></tr></tbody></table>'
+        '</th><td>Seal</td>'
         '<td><img data-resource-ref="figure" alt="Pump figure"></td></tr></tbody></table>'
     )
     runtime.servers["banktwo"].body(
         json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode(),
         "application/hal+json", assets=["figure"],
     )
-    model = NoticeModel()
+    source_only = variant == "source-table"
+    model = None if source_only else NoticeModel()
     refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="capture authored table",
-                        rewrite_profile_version=PROFILE)
-    assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
-                                   object_store=runtime.objects, model_client=model)
-    assert runtime.read_current()["content_origin"] == "canonical" and model.calls == 1, runtime.diagnostics()
+                        rewrite_profile_version="technical-prose-v1" if source_only else PROFILE)
+    capture = source_article_capture.capture_source_article
+
+    def legacy_capture(*args, **kwargs):
+        kwargs.update(keep_html_table_cell_headers=False, keep_html_table_spans=False)
+        return capture(*args, **kwargs)
+
+    with monkeypatch.context() as capture_scope:
+        if variant != "authored-table":
+            capture_scope.setattr(source_article_capture, "capture_source_article", legacy_capture)
+        assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+                                       object_store=runtime.objects, model_client=model)
+    before = runtime.read_current()
+    assert before["content_origin"] == ("source" if source_only else "canonical"), runtime.diagnostics()
+    if variant == "authored-table":
+        assert model.calls == 1
+        return None
+
+    if source_only:
+        from autodata_ingestion.article_lifecycle_types import digest_json
+        from autodata_ingestion.source_revision_reprojection import apply_table_reprojection
+        from autodata_ingestion.source_table_geometry import preview_table_geometry
+
+        binding, captured = preview_table_geometry(runtime.repo, before["source_revision_id"], object_store=runtime.objects)
+        args = dict(object_store=runtime.objects, expected_observation_id=binding.source_observation_id,
+                    expected_fingerprint=binding.source_fingerprint, expected_body_sha256=binding.body_sha256,
+                    expected_document_sha256=digest_json(captured.source_document), actor="fixture",
+                    reason="Restore the archived supplier header roles and spans.", geometry=True)
+
+        def restore():
+            state = apply_table_reprojection(runtime.repo, runtime.article_id, before["source_revision_id"], **args)
+            assert state["status"] == "applied"
+            assert apply_table_reprojection(runtime.repo, runtime.article_id, before["source_revision_id"], **args) == {
+                **state, "status": "already_applied",
+            }
+            assert runtime.read_current()["canonical_revision_id"] is None
+            return state
+    else:
+        from autodata_ingestion.published_media_publication import (
+            preview_published_media_repair, publish_retained_media_repair,
+        )
+        from test_published_media_publication import _allowlist
+
+        destination = tmp_path / "geometry-review"
+        preview_published_media_repair(runtime.repo, runtime.article_id, before["source_revision_id"],
+                                       object_store=runtime.objects, destination=destination,
+                                       table_geometry=True, fixture_mode=True)
+        expected = json.loads((destination / "manifest.json").read_text())
+        assert expected["model_calls"] == 0
+        args = dict(expected=expected, object_store=runtime.objects, reviewer_id="media-reviewer",
+                    allowlist=_allowlist(tmp_path), rationale="Match the retained supplier table headers and spans.",
+                    fixture_mode=True)
+
+        def restore():
+            with pytest.raises(ValueError, match="PUBLISHED_MEDIA_REPAIR_STALE"):
+                publish_retained_media_repair(runtime.repo, **{
+                    **args, "expected": {**expected, "repaired_published_document_hash": "0" * 64},
+                })
+
+            def interrupt(point):
+                assert point == "inside_publication" and runtime.read_current() == before
+                raise RuntimeError("interrupt archived geometry publication")
+
+            with pytest.raises(RuntimeError, match="interrupt archived geometry publication"):
+                publish_retained_media_repair(runtime.repo, hooks=interrupt, **args)
+            assert runtime.read_current() == before
+            state = publish_retained_media_repair(runtime.repo, **args)
+            assert state["status"] == "published"
+            assert publish_retained_media_repair(runtime.repo, **args) == {**state, "status": "already_published"}
+            assert model.calls == 1
+            return state
+    return before, restore
 
 
-async def verify_authored_table(page, detail):
+async def verify_authored_table(page, detail, *, restored=True):
     from playwright.async_api import expect
 
     expected = [
         [["TH", 2, 1, None, "Assembly"], ["TH", 1, 2, "colgroup", "Inspection"]],
         [["TH", 1, 1, "col", "Item"], ["TH", 1, 1, "col", "Illustration"]],
-        [["TH", 1, 1, "row", "Pump"], ["TD", 1, 1, None, "Seal"], ["TD", 1, 1, None, ""]],
+        [["TH", 1, 1, "row", ""], ["TD", 1, 1, None, "Seal"], ["TD", 1, 1, None, ""]],
     ]
+    if not restored:
+        expected = [[["TD", 1, 1, None, cell[-1]] for cell in row] for row in expected]
 
     async def check(content):
-        table = content.locator("table")
+        table = content.locator("table").first
         await expect(table.locator("caption")).to_have_text("Service check")
         assert await table.evaluate("""table => [...table.rows].map(row => [...row.cells].map(cell => {
-            const text = [...cell.childNodes].filter(node => node.tagName !== 'FIGURE')
-                .map(node => node.textContent).join('').trim();
-            return [cell.tagName, cell.rowSpan, cell.colSpan, cell.getAttribute('scope'), text];
+            const ownContent = cell.cloneNode(true);
+            ownContent.querySelectorAll('figure, table, .source-reference').forEach(node => node.remove());
+            return [cell.tagName, cell.rowSpan, cell.colSpan, cell.getAttribute('scope'), ownContent.textContent.trim()];
         }))""") == expected
+        nested = table.locator("table")
+        await expect(nested.locator("tr > *").first).to_have_text("Pump")
+        nested_header = ["TH", "row", "Pump"] if restored else ["TD", None, "Pump"]
+        assert await nested.locator("tr > *").evaluate_all(
+            "cells => cells.map(cell => [cell.tagName, cell.getAttribute('scope'), cell.textContent.trim()])"
+        ) == [nested_header, ["TD", None, "Seat"]]
         image = table.locator("tr:last-child td:last-child figure img")
         await expect(image).to_have_attribute("alt", "Pump figure")
         assert await image.evaluate("(node) => node.decode().then(() => node.naturalWidth > 0)")
@@ -182,7 +262,7 @@ async def verify_authored_table(page, detail):
     await page.set_viewport_size({"width": 320, "height": 850})
     reader = page.locator("#article-content")
     reader_asset = await check(reader)
-    assert await reader.locator(".table-scroll").evaluate(
+    assert await reader.locator(".table-scroll").first.evaluate(
         "node => node.getBoundingClientRect().right <= document.documentElement.clientWidth"
     )
     async with page.expect_response(lambda response: urlsplit(response.url).path == urlsplit(detail).path + "/source") as pending:
@@ -202,7 +282,7 @@ async def verify_authored_table(page, detail):
     return reader_asset
 
 
-async def exercise_simulated_payment(origin, scope, customer_account, repair=None, authored_table=False):
+async def exercise_simulated_payment(origin, scope, customer_account, repair=None, table_variant=None, table_repair=None):
     from playwright.async_api import async_playwright, expect
 
     configuration = scope["configuration"]
@@ -285,11 +365,12 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             await page.reload()
             await expect(page.locator("#library-items > li")).to_have_count(1)
             await expect(page.locator("#library-items h3")).to_contain_text("Paid selected")
-            if repair is None and not authored_table:
+            if repair is None and table_variant is None:
                 await api_control(owner, origin, "control/start-workers")
             await page.get_by_role("button", name="Open articles", exact=True).click()
             await page.locator(f'#articles a[href*="{article}"]').click()
-            await expect(page.locator("#article-kind")).to_have_text("Workshop article", timeout=18000)
+            article_kind = "Stored source" if table_variant == "source-table" else "Workshop article"
+            await expect(page.locator("#article-kind")).to_have_text(article_kind, timeout=18000)
             if repair is not None:
                 prior, publish = repair
                 previous_reader = await verify_list_start_reader(page, owner, detail, [1, 1], prior)
@@ -302,11 +383,25 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                 print(json.dumps({"case": "banktwo-list-starts", "engine": engine, "headed": True,
                                   "starts": [1, 7], "figure_sha256": corrected_reader,
                                   "publication_retry_and_rollback_verified": True}), flush=True)
-            if authored_table:
+            if table_repair is not None:
+                before, restore = table_repair
+                previous_digest = await verify_authored_table(page, detail, restored=False)
+                result_pins = await asyncio.to_thread(restore)
+                await page.reload()
+                await expect(page.locator("#article-kind")).to_have_text(article_kind)
+                assert await verify_authored_table(page, detail) == previous_digest
+                article = (await (await owner.request.get(detail)).json())["article"]
+                assert article["source_revision_id"] == result_pins["source_revision_id"] != str(before["source_revision_id"])
+                assert article.get("canonical_revision_id") == result_pins.get("canonical_revision_id")
+                print(json.dumps({"case": table_variant, "engine": engine, "headed": True,
+                                  "header_cells": 6, "spans": 2, "figure_sha256": previous_digest,
+                                  "idempotent": True, "zero_model_replay": True}), flush=True)
+            if table_variant == "authored-table":
                 digest = await verify_authored_table(page, detail)
                 print(json.dumps({"case": "authored-table", "engine": engine, "headed": True,
-                                  "header_cells": 5, "spans": 2, "figure_sha256": digest}), flush=True)
-            await expect(page.locator("#article-content")).to_contain_text("Take off the pump.")
+                                  "header_cells": 6, "spans": 2, "figure_sha256": digest}), flush=True)
+            expected_text = "Remove the pump." if table_variant == "source-table" else "Take off the pump."
+            await expect(page.locator("#article-content")).to_contain_text(expected_text)
             image = page.locator("#article-content img").first
             await expect(image).to_be_visible()
             assert await image.evaluate("(node) => node.decode().then(() => node.naturalWidth > 0)")
@@ -340,7 +435,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             await browser.close()
 
 
-@pytest.mark.parametrize("variant", ["payment", "list-starts", "authored-table"])
+@pytest.mark.parametrize("variant", ["payment", "list-starts", "authored-table", "archived-table", "source-table"])
 def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_database, monkeypatch, tmp_path, variant):
     from autodata_ingestion.http_service import make_handler
 
@@ -359,8 +454,8 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
         scope = configure_scoped_runtime(runtime, provider)
         scope["article"] = str(runtime.article_id)
         repair = retained_list_start_fixture(runtime, monkeypatch) if variant == "list-starts" else None
-        if variant == "authored-table":
-            authored_table_fixture(runtime)
+        table_variant = variant if variant in ("authored-table", "archived-table", "source-table") else None
+        table_repair = authored_table_fixture(runtime, monkeypatch, tmp_path, table_variant) if table_variant else None
         bridge = Bridge(runtime, GO_NAMES[0])
         for name, value in {
             **runtime.env,
@@ -423,7 +518,7 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
             assert metadata["kind"] == "api-fixture" and metadata["scope"]["article"] == scope["article"]
             asyncio.run(asyncio.wait_for(exercise_simulated_payment(
                 fixture_origin(metadata["origin"]), scope, account, repair=repair,
-                authored_table=variant == "authored-table",
+                table_variant=table_variant, table_repair=table_repair,
             ), 45))
             assert go.wait(timeout=5) == 0
             with repo.connect() as conn:

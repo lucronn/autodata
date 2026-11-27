@@ -234,6 +234,27 @@ def verify_staged_media_reply_recovery(cur, job, article, candidate):
     return validation
 
 
+def resolve_published_staged_media_evidence(cur, job, article, candidate, *, lock):
+    """Authenticate a committed staged recovery before a geometry-only repair."""
+    refresh = job["checkpoint"].get(STAGED_MEDIA_REFRESH)
+    if (not isinstance(refresh, dict) or job["status"] != "completed" or candidate["status"] != "published"
+            or article["current_canonical_revision_id"] != candidate["canonical_article_revision_id"]
+            or article["current_source_revision_id"] != candidate["source_revision_id"]):
+        raise ValueError(_STALE)
+    validation, evidence = _verify_replay(
+        cur, job, article, candidate, prior_source=UUID(refresh["prior_source_revision_id"]),
+        prior_canonical=UUID(refresh["prior_canonical_revision_id"]), lock=lock,
+    )
+    attempts = [cur.execute("SELECT * FROM canonical_article_rewrite_attempts WHERE rewrite_attempt_id=%s",
+                            (evidence[key]["attempt_id"],)).fetchone()
+                for key in ("prior_attempt", "staged_attempt")]
+    if any(attempt is None for attempt in attempts):
+        raise ValueError(_INVALID)
+    authors = {attempt[key] for attempt in attempts for key in ("model", "provider")}
+    authors.add(job["checkpoint"][CHECKPOINT]["actor"])
+    return validation, attempts[-1], evidence["staged_prompt_version"], authors
+
+
 def recover_staged_media_reply(
     repo, article_id, *, expected_job_id, expected_source_revision_id, expected_published_revision_id, actor, reason,
     hooks=None,

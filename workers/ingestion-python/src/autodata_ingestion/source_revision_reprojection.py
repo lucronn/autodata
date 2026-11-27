@@ -301,12 +301,18 @@ def apply_media_reprojection(repo, canonical_article_id, expected_source_revisio
 
 def apply_table_reprojection(repo, canonical_article_id, expected_source_revision_id, *,
                              object_store, expected_observation_id, expected_fingerprint,
-                             expected_body_sha256, expected_document_sha256, actor, reason):
-    """Append a verified span-only source revision for a source-only article."""
-    from .source_table_replay import TABLE_REPLAY_PROJECTION_VERSION, load_table_replay_binding, preview_table_replay
+                             expected_body_sha256, expected_document_sha256, actor, reason, geometry=False):
+    """Append a verified table correction for a source-only article."""
+    from .source_table_replay import load_table_replay_binding, preview_table_replay
+
+    load, preview = load_table_replay_binding, preview_table_replay
+    if geometry:
+        from .source_table_geometry import load_table_geometry_binding, preview_table_geometry
+
+        load, preview = load_table_geometry_binding, preview_table_geometry
 
     _validate_actor_reason(actor, reason)
-    binding, captured = preview_table_replay(repo, expected_source_revision_id, object_store=object_store)
+    binding, captured = preview(repo, expected_source_revision_id, object_store=object_store)
     row = binding.row
     if (row["canonical_article_id"] != canonical_article_id
             or row["source_observation_id"] != expected_observation_id
@@ -316,7 +322,7 @@ def apply_table_reprojection(repo, canonical_article_id, expected_source_revisio
         raise ValueError("SOURCE_TABLE_REPLAY_PREVIEW_BINDING_MISMATCH")
     checkpoint = {
         "source_only_reprojection": True,
-        "table_span_reprojection": True,
+        ("table_geometry_reprojection" if geometry else "table_span_reprojection"): True,
         "original_source_revision_id": str(expected_source_revision_id),
         "original_source_observation_id": str(expected_observation_id),
         "actor": actor,
@@ -332,7 +338,7 @@ def apply_table_reprojection(repo, canonical_article_id, expected_source_revisio
         ).fetchone()
         if article is None:
             raise ValueError("SOURCE_TABLE_REPLAY_ARTICLE_NOT_FOUND")
-        if load_table_replay_binding(cur, expected_source_revision_id, lock=True) != binding:
+        if load(cur, expected_source_revision_id, lock=True) != binding:
             raise ValueError("SOURCE_TABLE_REPLAY_PREVIEW_BINDING_MISMATCH")
         current = cur.execute("""
             SELECT j.source_fetch_job_id,j.status,j.error_code,j.checkpoint,j.request_generation,
@@ -343,7 +349,7 @@ def apply_table_reprojection(repo, canonical_article_id, expected_source_revisio
         if (current and article["current_canonical_revision_id"] is None
                 and current["status"] == "needs_review" and current["error_code"] == "SOURCE_ONLY_REPROJECTION"
                 and current["checkpoint"] == checkpoint and current["request_generation"] == article["request_generation"]
-                and current["projection_version"] == TABLE_REPLAY_PROJECTION_VERSION
+                and current["projection_version"] == captured.projection_version
                 and current["source_fingerprint"] == captured.source_fingerprint
                 and digest_json(current["source_document"]) == expected_document_sha256):
             return {"status": "already_applied", "source_revision_id": str(current["source_revision_id"]),
