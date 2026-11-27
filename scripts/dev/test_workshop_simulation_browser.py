@@ -556,7 +556,18 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             await page.get_by_role("button", name="Open articles", exact=True).click()
             article_link = page.locator(f'#articles a[href*="{article}"]')
             if cold_index:
-                await expect(article_link).to_have_text(cold_index["title"], timeout=15000)
+                try:
+                    await expect(article_link).to_have_text(cold_index["title"], timeout=15000)
+                except AssertionError:
+                    with cold_index["repository"].connect() as conn:
+                        states = conn.execute("""SELECT s.provider_slug,s.status,s.row_count,s.error_code,j.status AS job_status
+                            FROM catalog_article_provider_scopes s LEFT JOIN source_fetch_jobs j
+                                ON j.source_fetch_job_id=s.current_job_id
+                            WHERE s.vehicle_configuration_id=%s ORDER BY s.provider_slug""",
+                            (cold_index["configuration"],)).fetchall()
+                    print(json.dumps({"cold_index_states": states, "fixture_model_queries": cold_index["queries"],
+                                      "second_page_requested": cold_index["pending"].is_set()}), flush=True)
+                    raise
                 first_index_ms = round((time.monotonic() - index_started) * 1000)
                 assert cold_index["pending"].is_set() and cold_index["queries"] == [cold_index["model"]]
                 with cold_index["repository"].connect() as conn:
