@@ -21,10 +21,12 @@
         }
 
         const catalog = document.getElementById('workshop-catalog-module');
+        const startupRetry = globalThis.history?.state?.workshopPickerStartupRetry;
         for (const name of ['app', 'auth', 'commerce', 'article-read']) {
           const hint = document.createElement('link');
           hint.rel = 'modulepreload';
-          hint.href = new URL(`./${name}.mjs`, catalog.href).href;
+          const suffix = name === 'app' && startupRetry ? `?picker-retry=${startupRetry}` : '';
+          hint.href = new URL(`./${name}.mjs${suffix}`, catalog.href).href;
           document.head.append(hint);
         }
         const configuration = params.get('configuration');
@@ -302,8 +304,75 @@
       type="font/woff2"
       crossorigin
     />
+    <script>
+      (() => {
+        const params = new URLSearchParams(location.search);
+        if (['article', 'configuration', 'demo', 'order', 'q', 'sample', 'view'].some(key => params.has(key)))
+          return;
+        if (params.has('region') && params.get('region') !== 'US') return;
+
+        const deadline = setTimeout(recover, 10000);
+        let retry;
+        function stopWatchingFailures() {
+          clearTimeout(deadline);
+          document.removeEventListener('error', failedEntry, true);
+          window.removeEventListener('workshop-picker-startup-failed', recover);
+        }
+        function finish() {
+          stopWatchingFailures();
+          window.removeEventListener('workshop-picker-started', finish);
+          document.removeEventListener('DOMContentLoaded', showRetry);
+          if (retry) {
+            retry.removeEventListener('click', reloadPicker);
+            retry.hidden = true;
+          }
+          if (history.state?.workshopPickerStartupRetry) {
+            const state = { ...history.state };
+            delete state.workshopPickerStartupRetry;
+            history.replaceState(state, '');
+          }
+        }
+        function reloadPicker() {
+          const url = new URL(location.href);
+          const year = document.getElementById('year');
+          const make = document.getElementById('make');
+          // The entry can show these choices before the app can put them in the URL.
+          if (!url.searchParams.has('year') && year?.value) {
+            url.searchParams.set('year', year.value);
+            if (make?.value && !make.disabled) url.searchParams.set('make', make.value);
+          }
+          const startupRetry = (history.state?.workshopPickerStartupRetry ?? 0) + 1;
+          history.replaceState({ ...history.state, workshopPickerStartupRetry: startupRetry }, '', url);
+          location.reload();
+        }
+        function showRetry() {
+          document.getElementById('activity-text').textContent = 'Workshop could not load the vehicle picker.';
+          retry = document.getElementById('retry');
+          retry.addEventListener('click', reloadPicker, { once: true });
+          retry.hidden = false;
+        }
+        function recover() {
+          stopWatchingFailures();
+          if (!history.state?.workshopPickerStartupRetry) {
+            window.removeEventListener('workshop-picker-started', finish);
+            reloadPicker();
+            return;
+          }
+          if (document.readyState === 'loading')
+            document.addEventListener('DOMContentLoaded', showRetry, { once: true });
+          else showRetry();
+        }
+        function failedEntry(event) {
+          if (event.target.id === 'workshop-bootstrap') recover();
+        }
+
+        document.addEventListener('error', failedEntry, true);
+        window.addEventListener('workshop-picker-startup-failed', recover);
+        window.addEventListener('workshop-picker-started', finish);
+      })();
+    </script>
     <link rel="stylesheet" href="/workshop/styles.css" />
-    <script type="module" async src="/workshop/bootstrap.mjs"></script>
+    <script id="workshop-bootstrap" type="module" async src="/workshop/bootstrap.mjs"></script>
   </head>
   <body>
     <a class="skip-link" href="#vehicle-picker">Skip to vehicle selection</a>

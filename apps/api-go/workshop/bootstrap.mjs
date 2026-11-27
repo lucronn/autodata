@@ -90,7 +90,14 @@ if (params.get('sample') === '1' && !wantsDemo) {
     document.getElementById('open-demo-banner').hidden = !openDemo;
     document.documentElement.dataset.workshopMode = openDemo ? 'open-demo' : 'regular';
     const initial = await preview;
-    const { bootstrap } = await import('./app.mjs');
+    const startupRetry = globalThis.history?.state?.workshopPickerStartupRetry;
+    // WebKit can retain a failed module fetch through a reload of the same URL.
+    const appPath = startupRetry ? `./app.mjs?picker-retry=${startupRetry}` : './app.mjs';
+    const { bootstrap } = await import(appPath).catch(error => {
+      globalThis.dispatchEvent?.(new Event('workshop-picker-startup-failed'));
+      throw error;
+    });
+    globalThis.dispatchEvent?.(new Event('workshop-picker-started'));
     const purchasePath = '/workshop/purchase-config.json';
     const initialPurchaseConfig = pickerStartup?.has(purchasePath)
       ? initial?.request(purchasePath) : null;
