@@ -332,10 +332,11 @@ async def verify_labelled_market_picker(page, origin, misplaced, verified):
 
 
 def authored_model_index_fixture(runtime, scope):
-    from threading import Event
+    from threading import Event, Thread
 
     from psycopg.types.json import Jsonb
     from autodata_ingestion.article_lifecycle_types import ArticleKey, article_id
+    from autodata_ingestion.catalog_index_worker import run_catalog_worker
 
     vehicle = seed_vehicle(runtime.repo)
     configuration = seed_configuration(runtime.repo, vehicle, engine_displacement_l=6.0)
@@ -399,6 +400,19 @@ def authored_model_index_fixture(runtime, scope):
         return original_response(path, payload)
 
     banktwo.response = response
+    stop = Event()
+    preparation = Thread(target=run_catalog_worker, args=(runtime.repo,), kwargs={
+        "registry": runtime.registry, "object_store": runtime.objects, "prepare_orders": True, "stop": stop,
+    }, name="workshop-catalog-preparation-fixture", daemon=True)
+
+    def stop_preparation():
+        stop.set()
+        allow_page.set()
+        preparation.join(5)
+        assert not preparation.is_alive()
+
+    runtime.stack.callback(stop_preparation)
+    preparation.start()
     identifier = article_id(ArticleKey("banktwo", vehicle, configuration, ref, document))
     scope.update(configuration=str(configuration), article=str(identifier), authored_index={
         "vehicle": vehicle, "configuration": configuration, "repository": runtime.repo, "title": title,
@@ -569,7 +583,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                                       "second_page_requested": cold_index["pending"].is_set()}), flush=True)
                     raise
                 first_index_ms = round((time.monotonic() - index_started) * 1000)
-                assert cold_index["pending"].is_set() and cold_index["queries"] == [cold_index["model"]]
+                assert await asyncio.to_thread(cold_index["pending"].wait, 3)
+                assert cold_index["queries"] == [cold_index["model"]]
                 with cold_index["repository"].connect() as conn:
                     rows = conn.execute("""SELECT s.status,s.row_count,p.complete,b.adapter_name
                         FROM catalog_article_provider_scopes s
