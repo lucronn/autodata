@@ -896,7 +896,13 @@ async function selectVehicle(g, articleID = "", {
       if (access === "owned") {
         $("vehicle-caption").textContent = $("purchase-selection").textContent;
       }
-    } catch {
+    } catch (error) {
+      if (needsPublicLabel && current() && error.code === "CONFIGURATION_NOT_FOUND") {
+        vehicle = null;
+        renderPurchase();
+        status("This saved vehicle choice is unavailable in the selected region.");
+        return;
+      }
       // The quote is optional for owned articles. Its absence keeps Buy disabled.
       if (g.current()) renderPurchase();
     }
