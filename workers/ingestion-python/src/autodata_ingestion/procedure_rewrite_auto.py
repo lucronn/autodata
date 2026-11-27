@@ -82,6 +82,7 @@ _OPTIONAL_OBSERVATION_PROMPT_VERSION = "full-prose-auto-prompt-v65"
 _SPACED_ROTATION_PROMPT_VERSION = "full-prose-auto-prompt-v66"
 _SHORT_ACTION_PROMPT_VERSION = "full-prose-auto-prompt-v67"
 SINGLE_USE_PARTS_PROMPT_VERSION = "full-prose-auto-prompt-v68"
+_FILTER_PREPARATION_PROMPT_VERSION = "full-prose-auto-prompt-v69"
 _SINGLE_USE_PARTS_HEADING = "single use fasteners and components"
 SINGLE_USE_PARTS_TEXT = "Use each listed part only once."
 _SINGLE_USE_PART_LABEL = re.compile(
@@ -2070,6 +2071,7 @@ def authored_note_prefix(text: str) -> str | None:
 def _keeps_authored_note_labels(prompt_version):
     return prompt_version in (
         _NOTE_LABEL_PROMPT_VERSION, *_PROCEDURE_FIDELITY_PROMPT_VERSIONS, SINGLE_USE_PARTS_PROMPT_VERSION,
+        _FILTER_PREPARATION_PROMPT_VERSION,
     )
 
 
@@ -2091,7 +2093,7 @@ def single_use_part_slots(document):
 
 
 def _encode_automatic_prompt(document, *, context):
-    payload = _auto_prompt_payload_v67(document, context=context)
+    payload = _auto_prompt_payload_v69(document, context=context)
     if payload["slots"]:
         sections, labels = single_use_part_slots(document)
         if labels:
@@ -2117,14 +2119,15 @@ def build_auto_prompt(document, *, context, profile_version=PROFILE):
     return _build_source_bound_prompt(
         document, preserve_notes=True, procedure_fidelity=True,
         allow_drain_subject=True, allow_rotation_removal=True, allow_optional_observation=True,
-        allow_spaced_rotation=True, include_technical_tokens=True, retain_standalone_notes=True, recast_short_actions=True,
+        allow_spaced_rotation=True, include_technical_tokens=True, retain_standalone_notes=True,
+        recast_short_actions=True, recast_filter_preparation=True,
     )
 
 
 def _build_source_bound_prompt(
     document, *, preserve_notes, procedure_fidelity=False, allow_drain_subject=False, allow_rotation_removal=False,
     allow_optional_observation=False, allow_spaced_rotation=False, include_technical_tokens=False,
-    retain_standalone_notes=False, recast_short_actions=False,
+    retain_standalone_notes=False, recast_short_actions=False, recast_filter_preparation=False,
 ):
     builder = _auto_prompt_payload_v61 if preserve_notes else _auto_prompt_payload_v60
     if procedure_fidelity:
@@ -2137,6 +2140,8 @@ def _build_source_bound_prompt(
         builder = _auto_prompt_payload_v66
     if recast_short_actions:
         builder = _auto_prompt_payload_v67
+    if recast_filter_preparation:
+        builder = _auto_prompt_payload_v69
     payload = builder(document, context={})
     payload.pop("context", None)
     payload["profile_version"] = SOURCE_BOUND_REWRITE_PROFILE
@@ -2319,6 +2324,33 @@ def _auto_prompt_payload_v67(document, *, context):
     return payload
 
 
+def _filter_preparation_recasts(document, slots):
+    if [block.get("type") for block in document.get("blocks", ())] != ["heading", "paragraph"]:
+        return {}
+    heading = document["blocks"][0].get("text", "")
+    if re.search(r"\b(?:warning|caution|danger|notice|important|note)\b", heading, re.I):
+        return {}
+    return {
+        slot["path"]: recast for slot in slots
+        if slot["required_action"] == "retain" and (recast := recast_oil_filter_preparation(slot["text"]))
+    }
+
+
+def _auto_prompt_payload_v69(document, *, context):
+    payload = _auto_prompt_payload_v67(document, context=context)
+    if recasts := _filter_preparation_recasts(document, payload["slots"]):
+        for slot in payload["slots"]:
+            if slot["path"] in recasts:
+                slot.update(required_action="rewrite", required_text=recasts[slot["path"]])
+        payload["prompt_version"] = _FILTER_PREPARATION_PROMPT_VERSION
+        payload["rules"].append(
+            "Copy required_text exactly for the oil filter preparation recast. It rewords the gasket seating "
+            "surface and the light oil application before filter installation. All other sentences and their "
+            "positions are fixed. Leave required_text out of the response object."
+        )
+    return payload
+
+
 def _encode_prompt_with_technical_tokens(payload, *, retain_standalone_notes=False):
     if retain_standalone_notes:
         labels = [slot for slot in payload["slots"] if authored_note_prefix(slot["text"]) == slot["text"]]
@@ -2377,6 +2409,20 @@ def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROF
     current_version = json.loads(current)["prompt_version"]
     if sha256(current.encode()).hexdigest() == prompt_hash:
         return current_version
+    if current_version == _FILTER_PREPARATION_PROMPT_VERSION:
+        if profile_version == SOURCE_BOUND_REWRITE_PROFILE:
+            previous = _build_source_bound_prompt(
+                document, preserve_notes=True, procedure_fidelity=True, allow_drain_subject=True,
+                allow_rotation_removal=True, allow_optional_observation=True, allow_spaced_rotation=True,
+                include_technical_tokens=True, retain_standalone_notes=True, recast_short_actions=True,
+            )
+        else:
+            previous = _encode_prompt_with_technical_tokens(
+                _auto_prompt_payload_v67(document, context=context), retain_standalone_notes=True,
+            )
+        current_version = json.loads(previous)["prompt_version"]
+        if sha256(previous.encode()).hexdigest() == prompt_hash:
+            return current_version
     if current_version == SINGLE_USE_PARTS_PROMPT_VERSION:
         previous = _encode_prompt_with_technical_tokens(
             _auto_prompt_payload_v67(document, context=context), retain_standalone_notes=True,
@@ -2788,6 +2834,35 @@ def recast_short_procedure(text):
     if match := _REMOVE_BOLTS_AND_PUMP_PARTS.fullmatch(text):
         return f"Remove the bolts. Remove the {match['parts']} as well."
     return None
+
+
+_OIL_FILTER_CLEANING = re.compile(
+    r"Clean (?:the )?gasket seal(?:ing)? area on (?:the )?"
+    r"(?P<surface>(?:engine )?oil filter mounting surface)\.", re.I,
+)
+_OIL_FILTER_LUBRICATION = re.compile(
+    r"Lightly oil (?:the )?gasket with (?P<oil>clean (?:engine )?oil) "
+    r"and install (?:the )?filter\.", re.I,
+)
+
+
+def recast_oil_filter_preparation(text):
+    """Reword two complete preparation sentences and retain the surrounding instructions."""
+    if _INLINE_WARNING.search(text) or _AUTHORED_QUOTATION.search(text) or authored_note_prefix(text):
+        return None
+    parts = re.split(f"({_SENTENCES.pattern})", text)
+    cleaning = [(i, match) for i, part in enumerate(parts)
+                if (match := _OIL_FILTER_CLEANING.fullmatch(part))]
+    lubrication = [(i, match) for i, part in enumerate(parts)
+                   if (match := _OIL_FILTER_LUBRICATION.fullmatch(part))]
+    if len(cleaning) != 1 or len(lubrication) != 1:
+        return None
+    (clean_index, clean), (oil_index, oil) = cleaning[0], lubrication[0]
+    if clean_index >= oil_index:
+        return None
+    parts[clean_index] = f"Clean the part of the {clean['surface']} that seals against the gasket."
+    parts[oil_index] = f"Coat the gasket lightly with {oil['oil']}. Then install the filter."
+    return "".join(parts)
 
 
 def _component_words(text):
@@ -3963,6 +4038,7 @@ def _combined_replacement_preparation_targets(text, *, recognize_then_comma=Fals
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
         None, *_PROCEDURE_FIDELITY_PROMPT_VERSIONS, _NOTE_LABEL_PROMPT_VERSION, SINGLE_USE_PARTS_PROMPT_VERSION,
+        _FILTER_PREPARATION_PROMPT_VERSION,
         _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
         _SPATIAL_SCOPE_PROMPT_VERSION, _ASSEMBLY_LABEL_PROMPT_VERSION,
         _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
@@ -3977,6 +4053,7 @@ def _uses_prose_guards(prompt_version, slot_count):
 def _include_cell_blocks(prompt_version):
     return prompt_version in (
         None, *_PROCEDURE_FIDELITY_PROMPT_VERSIONS, _NOTE_LABEL_PROMPT_VERSION, SINGLE_USE_PARTS_PROMPT_VERSION,
+        _FILTER_PREPARATION_PROMPT_VERSION,
         _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
         _SPATIAL_SCOPE_PROMPT_VERSION, _ASSEMBLY_LABEL_PROMPT_VERSION,
         _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
@@ -3989,7 +4066,7 @@ def _include_cell_blocks(prompt_version):
 def _require_changes(
     source, candidate, *, prompt_version, include_cell_blocks=None, slot_errors=None, introduction_only=False,
     bankone_structure=None, verified_color_notes=False, allow_rotation_removal=False, allow_optional_observation=False,
-    enforce_spaced_rotation=False, preserve_single_use_parts=False,
+    enforce_spaced_rotation=False, preserve_single_use_parts=False, preserve_filter_preparation=False,
 ):
     # The introduced first block is the only offset in source paths.
     restored = {"blocks": candidate["blocks"][1:]}
@@ -3998,6 +4075,14 @@ def _require_changes(
     if prompt_version == SINGLE_USE_PARTS_PROMPT_VERSION:
         preserve_single_use_parts = True
         prompt_version = _auto_prompt_payload_v67(source, context={})["prompt_version"]
+    filter_preparation = {}
+    if prompt_version == _FILTER_PREPARATION_PROMPT_VERSION or preserve_filter_preparation:
+        prompt = _auto_prompt_payload_v67(source, context={})
+        filter_preparation = _filter_preparation_recasts(source, prompt["slots"])
+        if not filter_preparation:
+            raise ValueError("REWRITE_FILTER_PREPARATION_MUTATION")
+        if prompt_version == _FILTER_PREPARATION_PROMPT_VERSION:
+            prompt_version = prompt["prompt_version"]
     sections, labels = single_use_part_slots(source) if preserve_single_use_parts else (set(), set())
     short_actions = {}
     if prompt_version == _SHORT_ACTION_PROMPT_VERSION:
@@ -4189,6 +4274,10 @@ def _require_changes(
     def check_slot(slot):
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
+        if slot["path"] in filter_preparation:
+            if replacement != filter_preparation[slot["path"]]:
+                raise ValueError("REWRITE_FILTER_PREPARATION_MUTATION")
+            return
         if slot["path"] in sections or slot["path"] in labels:
             expected = SINGLE_USE_PARTS_TEXT if slot["path"] in sections else original
             if replacement != expected:
@@ -4442,6 +4531,10 @@ def _require_changes(
 def require_current_publication_checks(source, candidate, *, saved_prompt_version, bankone_structure=None):
     """Apply current prose rules to the saved prompt's editable slots."""
     preserve_single_use_parts = saved_prompt_version == SINGLE_USE_PARTS_PROMPT_VERSION
+    preserve_filter_preparation = saved_prompt_version == _FILTER_PREPARATION_PROMPT_VERSION
+    if preserve_filter_preparation:
+        _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure)
+        saved_prompt_version = _auto_prompt_payload_v67(source, context={})["prompt_version"]
     if preserve_single_use_parts:
         _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure)
         saved_prompt_version = _auto_prompt_payload_v67(source, context={})["prompt_version"]
@@ -4503,6 +4596,7 @@ def require_current_publication_checks(source, candidate, *, saved_prompt_versio
         bankone_structure=bankone_structure, allow_rotation_removal=allow_rotation_removal,
         allow_optional_observation=allow_optional_observation,
         enforce_spaced_rotation=enforce_spaced_rotation, preserve_single_use_parts=preserve_single_use_parts,
+        preserve_filter_preparation=preserve_filter_preparation,
     )
 
 
@@ -4675,6 +4769,7 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None, prof
             _SPACED_ROTATION_PROMPT_VERSION: "full-prose-auto-validator-v64",
             _SHORT_ACTION_PROMPT_VERSION: "full-prose-auto-validator-v65",
             SINGLE_USE_PARTS_PROMPT_VERSION: "full-prose-auto-validator-v66",
+            _FILTER_PREPARATION_PROMPT_VERSION: "full-prose-auto-validator-v67",
         }.get(prompt_version, "full-prose-auto-validator-v53")
     if verified_color_notes:
         validator_version = "full-prose-color-note-replay-validator-v1"
