@@ -3387,13 +3387,13 @@ for (const previouslyRead of [true, false]) {
   });
 }
 
-test('a slow speculative read on a new saved link is cancelled after account restoration', async () => {
+test('a slow saved link can reuse its pending read until route work finishes', async () => {
   const h = loginRouteHarness(`?configuration=${routeConfiguration}&region=US&article=${routeArticle}`);
   const account = deferredAuthOperation();
   const grace = deferredAuthOperation();
   h.context.sessionRequest = account.promise;
   h.context.AbortController = AbortController;
-  let signal, startedGrace = false;
+  let signal, pending, startedGrace = false;
   h.context.requestArticleJSON = (_path, options) => {
     signal = options.signal;
     return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason)));
@@ -3406,8 +3406,9 @@ test('a slow speculative read on a new saved link is cancelled after account res
   };
   h.context.selectVehicle = async (_g, _article, options) => {
     await account.promise;
-    assert.equal(await options.initialRetainedReader(), null);
-    assert.equal(signal.aborted, true);
+    assert.equal(await options.initialRetainedReader(read => { pending = read; }), null);
+    assert.equal(signal.aborted, false);
+    assert.ok(pending);
   };
   const opening = h.context.restoreRoute();
   assert.equal(startedGrace, false);
@@ -3417,6 +3418,8 @@ test('a slow speculative read on a new saved link is cancelled after account res
   assert.equal(startedGrace, true);
   grace.resolve();
   await opening;
+  assert.equal(signal.aborted, true);
+  assert.equal(await pending, null);
 });
 
 for (const query of ['?view=library', `?order=${routeOrder}`]) {
