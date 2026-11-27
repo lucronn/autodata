@@ -35,6 +35,31 @@ _BRAKE_APPLICABILITY = re.compile(
     rf"the (?P<rotor>{_NOUN} rotor)s (?:have been|are) (?:refinished|resurfaced) or replaced, "
     rf"and/or whenever the (?P<pad>{_NOUN} pad)s (?:have been|are) replaced\."
 )
+_LOW_RESERVOIR_CHECK = (
+    rf"If the (?P<fluid>{_NOUN} fluid) level is at or below the (?P<half>half-full) point "
+    r"during routine fluid checks"
+)
+_FILL_LIMIT = r"may be topped-off up to the (?P<limit>maximum-fill level)\."
+_RESERVOIR_INSPECTION = re.compile(
+    _LOW_RESERVOIR_CHECK + rf", the (?P<system>{_NOUN} system) should be inspected "
+    r"for wear and possible (?P=fluid) leaks\."
+)
+_RESERVOIR_FILL_AFTER_INSPECTION = re.compile(
+    _LOW_RESERVOIR_CHECK + rf", and an inspection of the (?P<system>{_NOUN} system) "
+    r"did not reveal wear or (?P=fluid) leaks, the (?P=fluid) " + _FILL_LIMIT
+)
+_RESERVOIR_FILL_AFTER_SERVICE = re.compile(
+    rf"If (?P<system>{_NOUN} system) service was just completed, the (?P<fluid>{_NOUN} fluid) " + _FILL_LIMIT
+)
+_RESERVOIR_ABOVE_HALF = re.compile(
+    rf"If the (?P<fluid>{_NOUN} fluid) level is above the (?P<half>half-full) point, "
+    r"adding (?P=fluid) is not recommended under normal conditions\."
+)
+_RESERVOIR_CLEAN_BEFORE_OPENING = re.compile(
+    rf"If (?P<fluid>{_NOUN} fluid) is to be added to the (?P<container>{_NOUN} reservoir), "
+    r"clean the outside of the reservoir on and around the reservoir (?P<cap>cap) "
+    r"prior to removing the (?P=cap) and (?P<seal>diaphragm)\."
+)
 
 
 def recast_brake_applicability(text):
@@ -43,6 +68,26 @@ def recast_brake_applicability(text):
         modality = {"should": "recommended", "must": "required"}[match["modal"]]
         return (f"This procedure is {modality} after {match['rotor']} resurfacing or replacement, "
                 f"after {match['pad']} replacement, or after both kinds of work.")
+    return None
+
+
+def recast_reservoir_filling(text):
+    """Rephrase bounded fluid-level and reservoir preparation instructions."""
+    if match := _RESERVOIR_INSPECTION.fullmatch(text):
+        return (f"A routine fluid check showing a {match['fluid']} level of {match['half']} or less calls for "
+                f"inspecting the {match['system']} for wear and possible fluid leaks.")
+    if match := _RESERVOIR_FILL_AFTER_INSPECTION.fullmatch(text):
+        return (f"During a routine fluid check, a level of {match['half']} or less permits topping up the {match['fluid']} "
+                f"to the {match['limit']} once an inspection finds the {match['system']} free of wear and {match['fluid']} leaks.")
+    if match := _RESERVOIR_FILL_AFTER_SERVICE.fullmatch(text):
+        return (f"You may bring the {match['fluid']} up to its {match['limit']} immediately after completing service "
+                f"on the {match['system']}.")
+    if match := _RESERVOIR_ABOVE_HALF.fullmatch(text):
+        return (f"Under normal conditions, topping up is discouraged when the {match['fluid']} stands higher "
+                f"than {match['half']}.")
+    if match := _RESERVOIR_CLEAN_BEFORE_OPENING.fullmatch(text):
+        return (f"To prepare the {match['container']} for added {match['fluid']}, clean its outside at the "
+                f"{match['cap']} and around it prior to removing the {match['cap']} and {match['seal']}.")
     return None
 
 
