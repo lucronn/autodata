@@ -2576,16 +2576,21 @@ function recentMediaURLs(issuedAt, now) {
   return issuedAt <= now && now - issuedAt < 30_000;
 }
 
-function refreshPendingSourceFigures(images, selected) {
+function sourceAssetAvailability(images) {
+  return JSON.stringify([...images].map(([id, image]) => [
+    id, Boolean(localImageURL(image.url, location.origin, { authMode: session.state.mode })),
+  ]));
+}
+
+function refreshPendingSourceFigures(source, images, failed = null) {
   const now = Date.now();
-  if (recentMediaURLs(mountedSource.imagesRefreshedAt, now)) return;
-  const pending = mountedSource.figures.filter(({ img }) => "figurePending" in img.dataset);
-  if (!pending.length) return;
+  if (recentMediaURLs(source.imagesRefreshedAt, now)) return false;
+  const pending = source.figures.filter(({ img }) => "figurePending" in img.dataset &&
+    (!failed || img !== failed && !img.complete));
+  if (!pending.length) return false;
   // Lazy figures may make their first request after the earlier signed URLs
   // have expired. Leave downloaded figures in place and use the fresh read.
-  mountedSource.imagesRefreshedAt = now;
-  displayedSourceRevision = selected;
-  sourceImageRefresh = null;
+  source.imagesRefreshedAt = now;
   for (const { img } of pending) {
     const url = localImageURL(images.get(img.dataset.assetId)?.url, location.origin, { authMode: session.state.mode });
     if (!url || img.src === url) continue;
@@ -2593,6 +2598,7 @@ function refreshPendingSourceFigures(images, selected) {
     img.src = url;
     figureWatches.get(img)?.arm();
   }
+  return true;
 }
 
 function sourceDocumentKey(requested) {
@@ -2609,8 +2615,8 @@ function matchesMountedSource(key, g) {
     mountedSource.signal === g.signal && mountedSource.articleRevision === renderedRevision;
 }
 
-function requestSourceDocument(requested, g, key, sourceView) {
-  const response = requestJSON(demoPath(requested.pathname + requested.search), {
+function requestSourceDocument(path, g, key, sourceView) {
+  const response = requestJSON(path, {
     signal: g.signal,
     headers: sourceView ? { ...sourceDocumentHeaders, "X-Workshop-Source-View": sourceView } : sourceDocumentHeaders,
   });
@@ -2631,7 +2637,7 @@ async function loadSource(value, g, blockID = null, { focusSource = false, force
       const sourceView = !forceDocument && matchesMountedSource(key, g) ? mountedSource.revision : "";
       if (sourceDocumentRequest?.key !== key || sourceDocumentRequest.signal !== g.signal ||
           sourceDocumentRequest.sourceView !== sourceView) {
-        sourceDocumentRequest = requestSourceDocument(requested, g, key, sourceView);
+        sourceDocumentRequest = requestSourceDocument(demoPath(requested.pathname + requested.search), g, key, sourceView);
       }
       pending = sourceDocumentRequest;
     }
@@ -2652,9 +2658,7 @@ async function loadSource(value, g, blockID = null, { focusSource = false, force
     const unchanged = data.document_unchanged === true && sourceView === revision;
     const stable = !openDemo && session.state.mode === "firebase" && (blocks?.length || unchanged) &&
       typeof revision === "string" && revision;
-    const assets = stable && JSON.stringify([...images].map(([id, image]) => [
-      id, Boolean(localImageURL(image.url, location.origin, { authMode: session.state.mode })),
-    ]));
+    const assets = stable && sourceAssetAvailability(images);
     // After a fresh authorized read, keep images already fetching for the same
     // source projection. Media URLs rotate even when the displayed view agrees.
     const keep = stable && matchesMountedSource(key, g) && mountedSource.revision === revision && mountedSource.assets === assets;
@@ -2682,7 +2686,10 @@ async function loadSource(value, g, blockID = null, { focusSource = false, force
       } : null;
       sourceImageRefresh = null;
       displayedSourceRevision = selected;
-    } else refreshPendingSourceFigures(images, selected);
+    } else if (refreshPendingSourceFigures(mountedSource, images)) {
+      displayedSourceRevision = selected;
+      sourceImageRefresh = null;
+    }
     $("source-review-frame").hidden = false;
     $("back-to-article").hidden = false;
     sourceURL = demoPath(requested.href);
@@ -2740,7 +2747,10 @@ async function renewMedia(g, failed, timedOut = false) {
       if (stored) {
         const requested = validSourceURL(selectedSourceURL);
         if (!requested) return [];
-        const data = await requestJSON(selectedSourceURL, { signal: g.signal, headers: sourceDocumentHeaders });
+        const key = sourceDocumentKey(requested);
+        const source = matchesMountedSource(key, g) ? mountedSource : null;
+        const read = requestSourceDocument(selectedSourceURL, g, key, source?.revision ?? "");
+        const data = await read.response;
         if (!current()) return [];
         const returned = validSourceURL(data.source?.url);
         if (
@@ -2749,6 +2759,12 @@ async function renewMedia(g, failed, timedOut = false) {
             requested.searchParams.get("source_revision_id")
         )
           throw new Error("The stored source changed.");
+        if (source && mountedSource === source && data.document_unchanged === true &&
+            data.view_revision === source.revision) {
+          const images = indexRenderableImages(data.images);
+          if (sourceAssetAvailability(images) === source.assets)
+            refreshPendingSourceFigures(source, images, failed);
+        }
         return data.images || [];
       }
       const order = articleDetailOrder(g, id);
@@ -3897,7 +3913,7 @@ async function recheckReader(g) {
       requestArticleDetail(order, articleRequestPath(opened.id), { signal, preferShortPublicationCheck: true }),
     ]);
     const sourceKey = pinned && sourceDocumentKey(pinned);
-    const sourceRead = pinned && requestSourceDocument(pinned, g, sourceKey,
+    const sourceRead = pinned && requestSourceDocument(pinned.pathname + pinned.search, g, sourceKey,
       matchesMountedSource(sourceKey, g) ? mountedSource.revision : "");
     const sourceFailure = sourceRead?.response.then(() => null, (error) => error);
     const [sameSession, detail] = await articleRead;
