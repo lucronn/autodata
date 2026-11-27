@@ -664,6 +664,49 @@ class SourceConnectorClientTests(unittest.TestCase):
                     client.catalog("models", {"year": 2020, "make": "f 150"})
                 self.assertEqual(caught.exception.code, code)
 
+    def test_owned_banktwo_models_reuse_exact_labels_from_a_complete_parent_read(self):
+        from autodata_ingestion import catalog_service
+        from autodata_ingestion.selector_job import SelectorJobControl
+
+        calls = []
+
+        def open_request(request, timeout):
+            parsed = urlsplit(request.full_url)
+            scope = parsed.path.rsplit("/", 1)[1]
+            query = parse_qs(parsed.query)
+            calls.append((scope, query.get("make", query.get("cursor", []))))
+            if scope == "makes":
+                last = "cursor" in query
+                names = ("Toyota", "F 150") if last else ("Ford", "F-150")
+                items = [{"opaque_ref": f"make:{name}", "label": name, "year": 2020, "make": name} for name in names]
+                response = _envelope("banktwo", scope=scope, complete=last, items=items,
+                                     next_cursor=None if last else "next")
+            elif query["make"][0] in ("Ford", "Toyota"):
+                make = query["make"][0]
+                response = _envelope("banktwo", scope=scope, complete=True, items=[
+                    {"opaque_ref": "model:sample", "label": "Test model", "year": 2020, "make": make, "model": "Sample"},
+                ])
+            else:
+                return _Response({}, status=404, url=request.full_url)
+            return _Response(response, url=request.full_url)
+
+        budget = SelectorJobControl(30, clock=lambda: 0, dispatch_interval=0)
+        client = SourceConnectorClient("https://banktwo.test", provider="banktwo", opener=open_request)
+        provider = _SourceCatalogProvider(client, deepening_control=budget)
+        with patch.object(catalog_service, "_stored_banktwo_make_label", return_value=None):
+            first = provider.resolve_catalog(CatalogRequest(2020, "ford", "placeholder", scope="models"))
+        self.assertEqual(calls, [
+            ("models", ["ford"]), ("makes", []), ("makes", ["next"]), ("models", ["Ford"]),
+        ])
+        [proof] = [item["metadata"] for item in first["provenance"] if "exact_make_labels" in item["metadata"]]
+        self.assertEqual(proof["exact_make_labels"], {"ford": "Ford", "toyota": "Toyota"})
+        self.assertEqual(proof["connector_origin"], "https://banktwo.test")
+        calls.clear()
+        with patch.object(catalog_service, "_stored_banktwo_make_label", return_value=proof["exact_make_labels"]["toyota"]):
+            second = provider.resolve_catalog(CatalogRequest(2020, "toyota", "placeholder", scope="models"))
+        self.assertEqual(calls, [("models", ["Toyota"])])
+        self.assertEqual(second["rows"][0]["make"], "Toyota")
+
     def test_complete_parent_absence_retains_original_paginated_evidence(self):
         calls = []
         payloads = []

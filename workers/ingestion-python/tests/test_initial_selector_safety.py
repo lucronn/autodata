@@ -455,7 +455,8 @@ def test_initial_models_persist_evidence_from_the_last_provider_dispatch(monkeyp
     assert len(commits) == 1
     assert row[6].obj == payload["provenance"]
     assert row[7].obj == [{"year": 2024, "make": "Authored", "model": "Fiction"}]
-    assert row[8:] == (0, delivery == "progress")
+    assert row[8] == 0
+    assert row[-1] == (delivery == "progress")
     if delivery == "final":
         assert result["coverage"]["status"] == "persisted"
 
