@@ -131,6 +131,34 @@ def test_genuine_upstream_failure_with_remaining_budget_keeps_supplier_diagnosti
     assert service._persist_hydration_scope.call_args.args[1].complete is False
 
 
+def test_first_supplier_timeout_leaves_budget_to_persist_peer_rows(monkeypatch, caplog):
+    clock = [1.0]
+    calls = []
+    monkeypatch.setattr(service.time, "monotonic", lambda: clock[0])
+
+    def stalled(req, timeout):
+        calls.append("bankone")
+        assert 0 < timeout <= 10
+        clock[0] += timeout + 0.01
+        raise TimeoutError()
+
+    def usable(req, timeout):
+        calls.append("banktwo")
+        assert 8 < timeout <= 10
+        return Response(req, envelope("banktwo", "configurations", items=[{
+            "year": 2024, "make": "Acura", "model": "Integra", "engine": "1.5L", "region": "US",
+            "opaque_ref": "exact-integra", "label": "1.5L",
+        }]))
+
+    configure(monkeypatch, {"bankone": stalled, "banktwo": usable})
+    result = service.ensure_catalog_hydration(json.dumps(request()))
+    assert calls == ["bankone", "banktwo"]
+    assert len(result["rows"]) == 1 and result["complete"] is False
+    assert result["rows"][0]["provider_mappings"][0]["source_provider"] == "banktwo"
+    assert service._persist_hydration_scope.call_args.args[1].complete is False
+    assert "provider=bankone stage=provider_resolution outcome=incomplete" in caplog.text
+
+
 def test_rate_limit_stops_without_retry_or_second_bank(monkeypatch,caplog):
     calls=[]
     def limited(req,timeout):calls.append('bankone');return Response(req,{},429)
@@ -360,7 +388,8 @@ def test_http_budget_stop_is_generic_502_and_never_false_complete(monkeypatch):
         server.shutdown();server.server_close();thread.join(1);assert not thread.is_alive()
 
 
-def test_configuration_body_deadline_closes_trickled_transport_and_stops_next_bank(monkeypatch,caplog):
+@pytest.mark.parametrize("with_peer", [False, True])
+def test_configuration_body_deadline_closes_trickled_transport(monkeypatch, caplog, with_peer):
     from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
     from threading import Event,Thread
     from urllib.request import build_opener,ProxyHandler
@@ -380,16 +409,37 @@ def test_configuration_body_deadline_closes_trickled_transport_and_stops_next_ba
         def log_message(self,*args):pass
     server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
     thread=Thread(target=lambda:server.serve_forever(poll_interval=.02),daemon=True);thread.start()
-    control=service._ConfigurationHydrationControl();control.deadline=time.monotonic()+.25
+    control=service._ConfigurationHydrationControl();control.deadline=time.monotonic()+.5
     monkeypatch.setattr(service,'_ConfigurationHydrationControl',lambda:control)
     first=SourceConnectorClient(f'http://127.0.0.1:{server.server_port}',provider='bankone',opener=build_opener(ProxyHandler({})).open)
-    second=SimpleNamespace(provider='banktwo',catalog=Mock(side_effect=AssertionError('late bank dispatch')))
-    monkeypatch.setattr('autodata_ingestion.source_connector_client.source_connector_registry',lambda:{'bankone':first,'banktwo':second})
+
+    def usable(req, timeout):
+        calls.append('banktwo')
+        return Response(req, envelope('banktwo', 'configurations', items=[{
+            'year': 2024, 'make': 'Acura', 'model': 'Integra', 'engine': '1.5L', 'region': 'US',
+            'opaque_ref': 'exact-integra', 'label': '1.5L',
+        }]))
+
+    clients = {'bankone': first}
+    if with_peer:
+        clients['banktwo'] = SourceConnectorClient('https://banktwo.test', provider='banktwo', opener=usable)
+    monkeypatch.setattr('autodata_ingestion.source_connector_client.source_connector_registry', lambda: clients)
     try:
         started=time.monotonic()
-        with pytest.raises(service._ConfigurationHydrationStopped) as caught:service.ensure_catalog_hydration(json.dumps(request()))
-        assert time.monotonic()-started<2 and caught.value.reason=='elapsed'
-        assert calls==['bankone'];second.catalog.assert_not_called();assert_no_persistence()
+        if with_peer:
+            result = service.ensure_catalog_hydration(json.dumps(request()))
+            assert calls == ['bankone', 'banktwo'] and result['complete'] is False
+            assert len(result['rows']) == 1
+            assert result['rows'][0]['provider_mappings'][0]['source_provider'] == 'banktwo'
+            assert service._persist_hydration_scope.call_args.args[1].complete is False
+            assert 'provider=bankone stage=provider_resolution outcome=incomplete' in caplog.text
+        else:
+            with pytest.raises(service._ConfigurationHydrationStopped) as caught:
+                service.ensure_catalog_hydration(json.dumps(request()))
+            assert caught.value.reason == 'elapsed' and calls == ['bankone']
+            assert_no_persistence()
+        assert time.monotonic() - started < 2
+        assert handler_finished.wait(1)
         assert 'stage=provider_resolution outcome=failed' not in caplog.text
     finally:
         stopped.set();server.shutdown();server.server_close();thread.join(1)
