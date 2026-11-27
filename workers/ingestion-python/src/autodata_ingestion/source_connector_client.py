@@ -138,6 +138,10 @@ class SourceCatalogAbsence:
     pages: tuple[SourceEnvelopeV1, ...]
 
 
+def catalog_selector_slug(label: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
+
+
 class SourceConnectorClient:
     """Read a single bank origin using the shared `/v1` operations only."""
 
@@ -180,6 +184,7 @@ class SourceConnectorClient:
         self, scope: str, selector: Mapping[str, Any] | None = None, cursor: str | None = None,
         *, timeout: float | None = None,
         before_additional_request: Callable[[], float] | None = None,
+        on_make_pages: Callable[[tuple[SourceEnvelopeV1, ...]], None] | None = None,
         read_control: Any = None,
     ) -> SourceEnvelopeV1 | SourceCatalogAbsence:
         if not isinstance(scope, str) or scope not in _SCOPES:
@@ -238,6 +243,7 @@ class SourceConnectorClient:
         make = self._catalog_label(
             "makes", "make", {"year": query["year"]}, str(query["make"]), read_page,
             requested_scope=scope, requested_selector=requested_selector,
+            on_complete=on_make_pages,
         )
         if isinstance(make, SourceCatalogAbsence):
             return make
@@ -260,11 +266,9 @@ class SourceConnectorClient:
         scope: str, field: str, query: Mapping[str, str | int], value: str,
         read_page: Callable[[str, Mapping[str, str | int]], SourceEnvelopeV1],
         *, requested_scope: str, requested_selector: Mapping[str, str | int],
+        on_complete: Callable[[tuple[SourceEnvelopeV1, ...]], None] | None = None,
     ) -> str | SourceCatalogAbsence:
-        def slug(label: str) -> str:
-            return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
-
-        target = slug(value)
+        target = catalog_selector_slug(value)
         if not target:
             raise SourceConnectorError("NOT_FOUND", status=404)
         matches: set[str] = set()
@@ -276,11 +280,13 @@ class SourceConnectorClient:
             pages.append(page)
             for item in page.body["items"]:
                 label = item.get(field)
-                if not isinstance(label, str) or not slug(label):
+                if not isinstance(label, str) or not (key := catalog_selector_slug(label)):
                     raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
-                if slug(label) == target:
+                if key == target:
                     matches.add(label)
             if page.complete:
+                if on_complete is not None:
+                    on_complete(tuple(pages))
                 if not matches:
                     return SourceCatalogAbsence(
                         requested_scope=requested_scope, requested_selector=dict(requested_selector),

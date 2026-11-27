@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from hashlib import sha256
 import inspect
 import json
@@ -1538,6 +1539,7 @@ def _persist_hydration_scope(
     if (not result.complete and not selector_scope and not year_progress) or os.getenv("AUTODATA_SOURCE_PERSIST", "1") != "1":
         return {"status": "not_complete"}
     from .catalog_sync import _conninfo
+    from .source_connector_client import catalog_selector_slug
 
     year = int(request.get("year", 0))
     make = str(request.get("make", "")).strip()
@@ -1567,10 +1569,14 @@ def _persist_hydration_scope(
                     row_model = str(row.get("model") or "").strip()
                     row_region = str(row.get("region") or region).strip().upper()
                     source_region = str(row.get("source_region") or "").strip().upper()
+                    valid_make = row_make.casefold() == make.casefold() or (
+                        bool(make) and bool(make_slug := catalog_selector_slug(make))
+                        and catalog_selector_slug(row_make) == make_slug
+                    )
                     if (
                         row.get("year") != year or not row_make or row_region != region
                         or (source_region and source_region != region)
-                        or (scope == "models" and (row_make.casefold() != make.casefold() or not row_model))
+                        or (scope == "models" and (not valid_make or not row_model))
                     ):
                         raise ValueError("source selector row does not match requested catalog scope")
                     item = {"year": year, "make": row_make}
@@ -1586,11 +1592,18 @@ def _persist_hydration_scope(
                          selector_rows, completion_version)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (scope_key) DO UPDATE
-                    SET provenance = CASE WHEN EXCLUDED.completion_version = 1
-                            THEN EXCLUDED.provenance
-                            ELSE (SELECT COALESCE(jsonb_agg(DISTINCT item), '[]'::jsonb)
-                                  FROM jsonb_array_elements(vehicle_catalog_hydration_scopes.provenance
-                                       || EXCLUDED.provenance) AS merged(item)) END,
+                    SET provenance = (
+                            SELECT COALESCE(jsonb_agg(DISTINCT item), '[]'::jsonb)
+                            FROM (
+                                SELECT item FROM jsonb_array_elements(EXCLUDED.provenance) AS current(item)
+                                UNION ALL
+                                SELECT item FROM jsonb_array_elements(vehicle_catalog_hydration_scopes.provenance) AS prior(item)
+                                WHERE CASE WHEN prior.item->'metadata'->>'coverage_basis'=%s THEN NOT EXISTS (
+                                    SELECT 1 FROM jsonb_array_elements(EXCLUDED.provenance) AS replacement(proof)
+                                    WHERE replacement.proof->'metadata'->>'coverage_basis'=%s
+                                ) ELSE EXCLUDED.completion_version=0 END
+                            ) AS merged
+                        ),
                         selector_rows = CASE WHEN EXCLUDED.completion_version = 1
                             THEN EXCLUDED.selector_rows
                             ELSE (SELECT COALESCE(jsonb_agg(DISTINCT item), '[]'::jsonb)
@@ -1601,7 +1614,8 @@ def _persist_hydration_scope(
                     WHERE NOT %s OR vehicle_catalog_hydration_scopes.completion_version = 0
                     """,
                     (scope_key, scope, year, make, model, region, Jsonb(list(result.provenance)),
-                     Jsonb(selector_rows), 1 if result.complete else 0, progress),
+                     Jsonb(selector_rows), 1 if result.complete else 0,
+                     _BANKTWO_MAKE_COVERAGE, _BANKTWO_MAKE_COVERAGE, progress),
                 )
             else:
                 if deadline is not None and scope == "years":
@@ -1648,6 +1662,69 @@ def _persist_hydration_scope(
     return {"status": "persisted", "scope_key": scope_key}
 
 
+_BANKTWO_MAKE_COVERAGE = "banktwo_complete_make_labels_v1"
+
+
+def _banktwo_make_provenance(pages, year, origin):
+    from .source_connector_client import catalog_selector_slug
+
+    if not pages or not pages[-1].complete or any(
+        page.provider != "banktwo" or page.complete != (index == len(pages) - 1)
+        for index, page in enumerate(pages)
+    ):
+        return []
+    candidates = {}
+    for page in pages:
+        for item in page.body["items"]:
+            label = item.get("make")
+            if item.get("year") != year or not isinstance(label, str) or not (slug := catalog_selector_slug(label)):
+                return []
+            candidates.setdefault(slug, set()).add(label)
+    last = pages[-1]
+    return [{
+        "provider": last.persisted_provider,
+        "source_uri": last.source_locator or f"{origin}/v1/catalog/makes",
+        "source_version": last.source_revision,
+        "retrieved_at": last.fetched_at,
+        "metadata": {
+            "coverage_basis": _BANKTWO_MAKE_COVERAGE,
+            "connector_origin": origin,
+            "verified_at": datetime.now(timezone.utc).isoformat(),
+            "page_number": len(pages),
+            "request_id": last.request_id,
+            "exact_make_labels": {slug: next(iter(labels)) for slug, labels in candidates.items() if len(labels) == 1},
+        },
+    }]
+
+
+def _stored_banktwo_make_label(request, origin):
+    from .catalog_sync import _conninfo
+    from .source_connector_client import catalog_selector_slug
+    import psycopg
+
+    slug = catalog_selector_slug(request.make)
+    if not slug or os.getenv("AUTODATA_SOURCE_PERSIST", "1") != "1":
+        return None
+    try:
+        conninfo = _conninfo()
+        conninfo.update(connect_timeout=1, options="-c statement_timeout=300 -c default_transaction_read_only=on")
+        with psycopg.connect(**conninfo) as connection:
+            row = connection.execute("""
+                SELECT proof->'metadata'->'exact_make_labels'->>(%s::text)
+                FROM vehicle_catalog_hydration_scopes scope
+                CROSS JOIN LATERAL jsonb_array_elements(scope.provenance) proof
+                WHERE scope.model_year=%s AND scope.region=%s AND scope.scope IN ('makes','models')
+                  AND proof->>'provider'='autoapitwo'
+                  AND proof->'metadata'->>'coverage_basis'=%s
+                  AND proof->'metadata'->>'connector_origin'=%s
+                ORDER BY proof->'metadata'->>'verified_at' DESC NULLS LAST LIMIT 1
+                """, (slug, request.year, request.region.strip().upper(), _BANKTWO_MAKE_COVERAGE, origin)).fetchone()
+    except (OSError, ValueError, psycopg.Error):
+        return None
+    label = row[0] if row else None
+    return label if isinstance(label, str) and catalog_selector_slug(label) == slug else None
+
+
 def _configured_catalog_providers(*, deepening_control: _SelectorDeepeningControl | _ConfigurationHydrationControl | None = None) -> tuple[Any, ...]:
     from .source_connector_client import source_connector_registry
 
@@ -1675,6 +1752,12 @@ class _SourceCatalogProvider:
             selector["make"] = request.make
         if scope == "configurations":
             selector["model"] = request.model
+        owned_banktwo = (getattr(self.deepening_control, "initial_selector_budget", False)
+                         and getattr(self.client, "provider", None) == "banktwo")
+        make_pages = []
+        if owned_banktwo and scope == "models":
+            if label := _stored_banktwo_make_label(request, self.client.base_url):
+                selector["make"] = label
         rows: list[dict[str, Any]] = []
         provenance: list[dict[str, Any]] = []
         cursor: str | None = None
@@ -1690,10 +1773,15 @@ class _SourceCatalogProvider:
                            if getattr(self.deepening_control, "initial_selector_budget", False)
                            else self.deepening_control.before_request())
                 try:
+                    options = {}
+                    if getattr(self.deepening_control, "initial_selector_budget", False):
+                        options["read_control"] = self.deepening_control
+                    if owned_banktwo and scope == "models":
+                        options["on_make_pages"] = make_pages.extend
                     page = self.client.catalog(
                         scope, selector, cursor, timeout=timeout,
                         before_additional_request=self.deepening_control.before_request,
-                        **({"read_control": self.deepening_control} if getattr(self.deepening_control, "initial_selector_budget", False) else {}),
+                        **options,
                     )
                 except SourceConnectorError as error:
                     if (getattr(self.deepening_control, "configuration_budget", False)
@@ -1726,8 +1814,10 @@ class _SourceCatalogProvider:
                             "parent_selector": dict(page.parent_selector),
                             "missing_field": page.missing_field, "missing_value": page.missing_value,
                         },
-                    } for parent in page.pages],
+                    } for parent in page.pages] + _banktwo_make_provenance(make_pages, request.year, self.client.base_url),
                 }
+            if owned_banktwo and scope == "makes":
+                make_pages.append(page)
             source_uri = f"{self.client.base_url}/v1/catalog/{scope}"
             metadata = {"request_id": page.request_id, "wire_provider": page.provider}
             if scope == "years":
@@ -1790,7 +1880,8 @@ class _SourceCatalogProvider:
                 # Completeness belongs to the requested selector scope. Sparse
                 # scope rows remain available to selectors; full-vehicle
                 # persistence performs its own field check.
-                return {"rows": rows, "complete": True, "provenance": provenance,
+                return {"rows": rows, "complete": True,
+                        "provenance": provenance + _banktwo_make_provenance(make_pages, request.year, self.client.base_url),
                         "missing_scopes": []}
             cursor = page.next_cursor
             if cursor is None or cursor in seen:

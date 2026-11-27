@@ -544,6 +544,46 @@ from lifecycle_support import fresh_database
 import pytest
 
 
+def test_banktwo_exact_make_label_uses_latest_proof_for_same_market_and_connector(fresh_database, monkeypatch):
+    from autodata_ingestion import catalog_service, catalog_sync
+
+    repo = fresh_database()
+    monkeypatch.setenv("AUTODATA_SOURCE_PERSIST", "1")
+    monkeypatch.setattr(catalog_sync, "_conninfo", lambda: {
+        "host": "postgres", "dbname": repo.database_name,
+        "user": "lifecycle_test", "password": "lifecycle_test_only",
+    })
+    origin = "https://banktwo.test"
+
+    def persist(make, region, verified_at, labels, *, connector=origin, complete=False):
+        request = {"scope": "models", "year": 2021, "make": make, "region": region}
+        provenance = () if labels is None else ({"provider": "autoapitwo", "metadata": {
+            "coverage_basis": catalog_service._BANKTWO_MAKE_COVERAGE,
+            "connector_origin": connector, "verified_at": verified_at, "exact_make_labels": labels,
+        }},)
+        row = {"year": 2021, "make": "Fixture-Truck", "model": "Fixture model"}
+        result = catalog_service.CatalogResult(
+            rows=(row,) if make == "fixture truck" else (), complete=complete, provenance=provenance,
+        )
+        assert catalog_service._persist_hydration_scope(request, result)["status"] == "persisted"
+
+    request = catalog_service.CatalogRequest(2021, "fixture truck", "placeholder", scope="models")
+    assert catalog_service._stored_banktwo_make_label(request, origin) is None
+    persist("fixture truck", "US", "2026-11-27T01:00:00+00:00", {"fixture-truck": "Fixture-Truck"})
+    assert catalog_service._stored_banktwo_make_label(request, origin) == "Fixture-Truck"
+    persist("other", "CA", "2026-11-27T02:00:00+00:00", {})
+    persist("other", "US", "2026-11-27T02:00:00+00:00", {}, connector="https://another.test")
+    assert catalog_service._stored_banktwo_make_label(request, origin) == "Fixture-Truck"
+    persist("fixture truck", "US", None, None, complete=True)
+    assert catalog_service._stored_banktwo_make_label(request, origin) == "Fixture-Truck"
+    persist("fixture truck", "US", "2026-11-27T03:00:00+00:00", {})
+    assert catalog_service._stored_banktwo_make_label(request, origin) is None
+    with repo.connect() as conn:
+        row = conn.execute("SELECT provenance FROM vehicle_catalog_hydration_scopes WHERE scope_key=%s",
+                           ("models|2021|fixture truck||US",)).fetchone()
+    assert len(row["provenance"]) == 1
+
+
 @pytest.mark.parametrize("states,retryable,http_status,state",[
     (("completed","completed"),False,200,"completed"),
     (("needs_review","needs_review"),False,409,"needs_review"),
