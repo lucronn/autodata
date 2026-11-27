@@ -236,7 +236,7 @@ def _main():
         request = envelope['request']
         control = SelectorJobControl(float(envelope['deadline']))
         control.remaining()
-        from .catalog_service import CatalogRequest, CacheFirstCatalogService, _configured_catalog_providers
+        from .catalog_service import CatalogRequest, _resolve_initial_catalog
         if request['scope'] not in {'years', 'makes', 'models'}:
             raise ValueError()
         model = CatalogRequest(int(request.get('year', 2000)), str(request.get('make', 'unknown')),
@@ -255,10 +255,9 @@ def _main():
                 sys.stdout.buffer.flush()
                 progress_remaining -= len(encoded)
 
-        resolved = CacheFirstCatalogService(cache_reader=lambda _: None,
-                    providers=_configured_catalog_providers(deepening_control=control)).resolve(
-                        model, on_progress=emit_progress if envelope.get('progress') else None,
-                    )
+        resolved = _resolve_initial_catalog(
+            model, control, on_progress=emit_progress if envelope.get('progress') else None,
+        )
         control.remaining()
         result = {'rows': list(resolved.rows), 'complete': resolved.complete,
                   'provenance': list(resolved.provenance), 'missing_scopes': list(resolved.missing_scopes)}

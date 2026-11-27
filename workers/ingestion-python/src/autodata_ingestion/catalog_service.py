@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import partial
 from hashlib import sha256
 import inspect
 import json
@@ -1732,6 +1733,53 @@ def _configured_catalog_providers(*, deepening_control: _SelectorDeepeningContro
     return tuple(_SourceCatalogProvider(client, deepening_control=deepening_control) for client in clients.values())
 
 
+def _resolve_initial_catalog(request, control, *, on_progress=None):
+    providers = _configured_catalog_providers(deepening_control=control)
+    if (on_progress is not None and request.scope == "models"
+        and tuple(provider.client.provider for provider in providers) == ("bankone", "banktwo")):
+        bankone, banktwo = providers
+        providers = (bankone, _read_preferred_models(request, banktwo, control, on_progress))
+    return CacheFirstCatalogService(cache_reader=lambda _: None, providers=providers).resolve(
+        request, on_progress=on_progress,
+    )
+
+
+def _read_preferred_models(request, banktwo, control, on_progress):
+    """Try the proved model route once before the normal supplier merge."""
+    from .source_connector_client import SourceConnectorError
+
+    label = _stored_banktwo_make_label(request, banktwo.client.base_url)
+    if not label:
+        return partial(banktwo.resolve_catalog, model_make=request.make)
+    try:
+        first_read = banktwo.client.catalog(
+            "models", {"year": request.year, "make": label},
+            timeout=min(2.0, control.remaining()), read_control=control, recover_labels=False,
+        )
+    except SourceConnectorError as error:
+        if error.status == 429:
+            control.stop("rate_limited")
+        # Retry an indeterminate transport failure in the normal slot with the
+        # remaining budget. Replay a definite HTTP failure without another call.
+        first_read = None if error.status is None and error.retryable else error
+    read = partial(banktwo.resolve_catalog, model_make=label, first_model_read=first_read)
+    if first_read is not None and not isinstance(first_read, SourceConnectorError) and first_read.complete:
+        payload = read(request)
+        rows = _canonical_rows(payload["rows"], scope="models")
+        provenance = _provenance(payload["provenance"])
+        if rows and provenance:
+            on_progress(CatalogResult(
+                rows=tuple(rows), complete=False, missing_scopes=("models",),
+                provenance=tuple(provenance),
+            ))
+
+        def return_resolved(_request):
+            return payload
+
+        return return_resolved
+    return read
+
+
 class _SourceCatalogProvider:
     """Project contract rows into the existing canonical catalog shape."""
 
@@ -1739,7 +1787,7 @@ class _SourceCatalogProvider:
         self.client = client
         self.deepening_control = deepening_control
 
-    def resolve_catalog(self, request: CatalogRequest) -> Mapping[str, Any]:
+    def resolve_catalog(self, request: CatalogRequest, *, model_make=None, first_model_read=None) -> Mapping[str, Any]:
         from .source_connector_client import SourceCatalogAbsence
 
         scope = request.scope if request.scope in {"years", "makes", "models", "configurations"} else "configurations"
@@ -1756,7 +1804,8 @@ class _SourceCatalogProvider:
                          and getattr(self.client, "provider", None) == "banktwo")
         make_pages = []
         if owned_banktwo and scope == "models":
-            if label := _stored_banktwo_make_label(request, self.client.base_url):
+            label = model_make if model_make is not None else _stored_banktwo_make_label(request, self.client.base_url)
+            if label:
                 selector["make"] = label
         rows: list[dict[str, Any]] = []
         provenance: list[dict[str, Any]] = []
@@ -1778,6 +1827,9 @@ class _SourceCatalogProvider:
                         options["read_control"] = self.deepening_control
                     if owned_banktwo and scope == "models":
                         options["on_make_pages"] = make_pages.extend
+                        if first_model_read is not None:
+                            options["first_model_read"] = first_model_read
+                            first_model_read = None
                     page = self.client.catalog(
                         scope, selector, cursor, timeout=timeout,
                         before_additional_request=self.deepening_control.before_request,
