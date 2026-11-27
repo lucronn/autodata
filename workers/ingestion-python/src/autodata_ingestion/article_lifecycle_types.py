@@ -47,6 +47,7 @@ BANKONE_LIST_BOUNDARY_LAYOUT = "bankone-list-boundaries-v1"
 BANKTWO_LIST_NOTICE_LAYOUT = "banktwo-list-notices-v1"
 MIXED_HTML_PDF_LAYOUT = "mixed-html-pdf-v1"
 PDF_BLANK_PAGE_LAYOUT = "blank-pdf-pages-v1"
+PDF_CLIPPED_FIGURE_LAYOUT = "clipped-pdf-figures-v1"
 PDF_COMPACT_FIGURE_LAYOUT = "compact-pdf-figures-v1"
 PDF_FAST_PNG_ENCODING = "png-level-3-v1"
 PDF_LEGACY_FIGURE_LAYOUT = "legacy-pdf-figures-v1"
@@ -211,6 +212,7 @@ class SourceArticleContext:
     legacy_published_banktwo_list_notice_body: str | None = None
     legacy_published_bankone_definition_heading_body: str | None = None
     legacy_published_bankone_list_boundary_body: str | None = None
+    legacy_published_pdf_clipped_roots: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)

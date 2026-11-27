@@ -9,6 +9,12 @@ _AMBIGUOUS_OPERATORS = frozenset({
 })
 
 _WORDLESS_TEXT_SETUP = frozenset({b"Tf", b"TL"})
+_PATH_BUILDERS = frozenset({b"m", b"l", b"c", b"v", b"y", b"h", b"re"})
+_PATH_PAINTS = frozenset({b"S", b"s", b"f", b"F", b"f*", b"B", b"B*", b"b", b"b*"})
+
+
+def normalized_native_pdf_text(value):
+    return "\n".join(line for raw in value.splitlines() if (line := re.sub(r"[ \t]+", " ", raw).strip()))
 
 
 def _upright_matrix(matrix):
@@ -63,6 +69,120 @@ def is_single_wordless_figure(page, image_key):
         and x0 <= left and left + width <= x1 and y0 <= bottom and bottom + height <= y1
         for x0, y0, x1, y1 in (crop, media)
     )
+
+
+def _rectangle(values):
+    left, bottom, right, top = map(float, values)
+    if not all(math.isfinite(value) for value in (left, bottom, right, top)) or not (left < right and bottom < top):
+        raise ValueError("invalid PDF rectangle")
+    return left, bottom, right, top
+
+
+def _contains_figure(rectangle, figure, *, rounding=0):
+    left, bottom, right, top = rectangle
+    x0, y0, x1, y1 = figure
+    return left <= x0 + rounding and bottom <= y0 + rounding and right >= x1 - rounding and top >= y1 - rounding
+
+
+def _links_clear_of_figure(page, figure):
+    x0, y0, x1, y1 = figure
+    for reference in page.get("/Annots", ()):
+        link = reference.get_object()
+        if link.get("/Subtype") != "/Link" or link.get("/AP"):
+            return False
+        left, bottom, right, top = _rectangle(link["/Rect"])
+        if right > x0 and left < x1 and top > y0 and bottom < y1:
+            return False
+    return True
+
+
+def clipped_figure_text_gap(page, text, segments, image_key, *, step_parser=None):
+    """Place a direct image in a proven native-text gap inside a full rectangular clip."""
+    from .article_document import segment_plain_article_text
+
+    paragraphs = [[], []]
+    font_bounds = [[], []]
+    phase = 0
+    clip = figure = None
+
+    def visit_operand(operator, operands, matrix, _text_matrix):
+        nonlocal phase, clip, figure
+        if operator in (b"W", b"W*") and not phase:
+            if tuple(matrix) != (1, 0, 0, 1, 0, 0):
+                raise ValueError("transformed PDF clip")
+            x, y, width, height = map(float, operations[draw - 5][0])
+            clip = _rectangle((x, y, x + width, y + height))
+        if operator == b"Do":
+            if list(operands) != [image_key] or not _upright_matrix(matrix):
+                raise ValueError("ambiguous PDF figure transform")
+            width, _, _, height, x, y = matrix
+            figure = _rectangle((x, y, x + width, y + height))
+            phase = 1
+
+    def visit_text(value, matrix, text_matrix, font, size):
+        paragraphs[phase].append(value)
+        stripped = value.strip()
+        if not stripped:
+            return
+        if (len(stripped.splitlines()) != 1 or not _upright_matrix(matrix)
+                or not _upright_matrix(text_matrix) or font is None or font.get("/Subtype") != "/Type1"):
+            raise ValueError("ambiguous PDF text geometry")
+        bbox = font["/FontDescriptor"]["/FontBBox"]
+        baseline = matrix[3] * text_matrix[5] + matrix[5]
+        scale = matrix[3] * text_matrix[3] * float(size) / 1000
+        bottom, top = (float(bbox[index]) * scale + baseline for index in (1, 3))
+        if scale <= 0 or not math.isfinite(bottom) or not math.isfinite(top) or bottom >= top:
+            raise ValueError("invalid PDF font bounds")
+        font_bounds[phase].append((bottom, top))
+
+    try:
+        if page.rotation != 0 or page.get("/Group") or not isinstance(image_key, str):
+            return None
+        image = page["/Resources"]["/XObject"][image_key]
+        if image.get("/Subtype") != "/Image" or any(key in image for key in ("/Mask", "/SMask", "/ImageMask", "/OC")):
+            return None
+        operations = page.get_contents().operations
+        operators = [operator for _, operator in operations]
+        if operators.count(b"Do") != 1:
+            return None
+        draw = operators.index(b"Do")
+        preface, following = operators[:draw - 6], operators[draw + 3:]
+        clip_scope = operators[draw - 6:draw]
+        last_path = next((op for op in reversed(preface) if op in _PATH_BUILDERS | _PATH_PAINTS | {b"n"}), None)
+        if (len(clip_scope) != 6 or clip_scope[2] not in (b"W", b"W*")
+                or clip_scope != [b"q", b"re", clip_scope[2], b"n", b"q", b"cm"]
+                or operators[draw + 1:draw + 3] != [b"Q", b"Q"]
+                or preface.count(b"q") != preface.count(b"Q") or last_path in _PATH_BUILDERS
+                or set(preface) & {b"W", b"W*"}
+                or set(operators) & (_AMBIGUOUS_OPERATORS - {b"W", b"W*"})
+                or set(following) & (_PATH_PAINTS | {b"sh"})):
+            return None
+
+        source = normalized_native_pdf_text(page.extract_text(visitor_operand_before=visit_operand, visitor_text=visit_text))
+        before, after = (normalized_native_pdf_text("".join(part)) for part in paragraphs)
+        if (source != text or source != before + "\n" + after or not before or not after
+                or clip is None or figure is None or not all(font_bounds)):
+            return None
+        left, bottom, right, top = figure
+        if (min(right - left, top - bottom) < 64
+                or min(lower for lower, _ in font_bounds[0]) <= top
+                or max(upper for _, upper in font_bounds[1]) >= bottom):
+            return None
+        # Permit rounding in a producer's rectangle coordinates only. Reject
+        # any meaningful crop or a link annotation painted over the image.
+        if (not _contains_figure(clip, figure, rounding=0.001)
+                or not all(_contains_figure(_rectangle(box), figure) for box in (page.cropbox, page.mediabox))
+                or not _links_clear_of_figure(page, figure)):
+            return None
+
+        leading = segment_plain_article_text(before, step_parser=step_parser)
+        trailing = segment_plain_article_text(after, step_parser=step_parser)
+        if leading and trailing and leading + trailing == segments:
+            return len(leading)
+    except Exception:
+        # Geometry is optional. A PDF reader failure leaves the standard projection usable.
+        return None
+    return None
 
 
 def figure_text_gaps(
