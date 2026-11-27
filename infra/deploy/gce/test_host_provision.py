@@ -26,7 +26,10 @@ class BundleTests(unittest.TestCase):
         self.assertIn('scripts/dev/migrate_sql.sh', names)
         self.assertIn('infra/deploy/gce/host-bootstrap-roles.sql', names)
         self.assertFalse(any('/test_' in name or name.endswith('host.json') for name in names))
-        self.assertEqual(len([name for name in names if name.startswith('db/migrations/')]), 42)
+        runner = (HERE.parents[2] / 'scripts/dev/migrate_sql.sh').read_bytes()
+        migrations = load('host_provision').migration_manifest(runner)
+        self.assertEqual([name for name in names if name.startswith('db/migrations/')],
+                         ['db/migrations/' + name for name in migrations])
 
     def test_wrong_source_and_dirty_tree_rejected_before_output(self):
         builder = load('build_host_bundle')
@@ -182,6 +185,16 @@ class MaterializedBundleTests(unittest.TestCase):
             self.assertEqual(expected,actual)
             self.assertEqual((first/'inventory.json').read_bytes(),(second/'inventory.json').read_bytes())
             provision.validate_inventory(first,expected,sha)
+            newest = max(item['path'] for item in expected['files']
+                         if item['path'].startswith(provision.MIGRATION_DIRECTORY))
+            hidden = Path(directory)/'removed-migration.sql'
+            (first/newest).rename(hidden)
+            try:
+                incomplete = {**expected, 'files': [item for item in expected['files'] if item['path'] != newest]}
+                with self.assertRaises(ValueError):
+                    provision.validate_inventory(first,incomplete,sha)
+            finally:
+                hidden.rename(first/newest)
             spec = importlib.util.spec_from_file_location('installed_runtime_test',first/'opt/autodata/bin/runtime-check.py')
             runtime = importlib.util.module_from_spec(spec); spec.loader.exec_module(runtime)
             fixture = ContractTests(); fixture.setUp()

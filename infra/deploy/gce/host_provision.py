@@ -36,6 +36,8 @@ PREPARE = ('manifest_raw_sha256','publisher_acceptance_sha256')
 IMAGES = ('images','registry_config_sha256')
 DATABASE = ('bootstrap_roles_sha256','runtime_grants_sha256','pgdata_initial_empty','image_cache_receipt_sha256','resume')
 REQUIRED_PACKAGES = {'docker-ce','docker-ce-cli','docker-compose-plugin','containerd.io','nftables','util-linux','e2fsprogs','python3'}
+MIGRATION_RUNNER = 'opt/autodata/source/scripts/dev/migrate_sql.sh'
+MIGRATION_DIRECTORY = 'opt/autodata/source/db/migrations/'
 
 class Rejected(ValueError):
     def __init__(self): super().__init__('host operation rejected')
@@ -192,12 +194,25 @@ def allowed_path(path):
         return (name.endswith('.py') and not name.startswith('test_') and name != 'build_host_bundle.py') or name in {
             'release.schema.json','runtime-entrypoint.sh','deploy.sh','metadata-guard.nft','autodata-metadata-guard.service',
             'docker-autodata.conf','Caddyfile','nats.conf.template','seaweedfs-s3.json.template','runtime-grants.sql','host-bootstrap-roles.sql'}
-    return path == 'opt/compose/compose.production.yaml' or path == 'opt/autodata/source/scripts/dev/migrate_sql.sh' or match(path,r'opt/autodata/source/db/migrations/[0-9]{3}_[a-z0-9_]+\.sql')
+    return path == 'opt/compose/compose.production.yaml' or path == MIGRATION_RUNNER or match(path,r'opt/autodata/source/db/migrations/[0-9]{3}_[a-z0-9_]+\.sql')
+
+def migration_manifest(runner):
+    """Read the ordered manifest in the pinned runner without executing it."""
+    manifests = re.findall(
+        rb"(?m)^canonical=\$\(cat <<'MANIFEST'\n((?:[0-9]{3}_[a-z0-9_]+\.sql\n)+)MANIFEST\n\)$",
+        runner,
+    )
+    require(len(manifests) == 1)
+    names = manifests[0].decode('ascii').splitlines()
+    # The host bundle must still include the baseline through catalog selectors.
+    require(len(names) >= 42 and [name[:3] for name in names] == [f'{i:03d}' for i in range(1, len(names)+1)])
+    return names
 
 def validate_inventory(root,value,sha,pins=None):
     exact(value,('schema_version','source_sha','files')); require(type(value['schema_version']) is int and value['schema_version'] == 1 and value['source_sha'] == sha)
     entries = value['files']; require(type(entries) is list and 40 <= len(entries) <= 128)
     paths = []
+    migrations = []
     for item in entries:
         exact(item,('path','bytes','sha256','mode')); path = item['path']; require(type(path) is str and allowed_path(path))
         require(type(item['bytes']) is int and 0 < item['bytes'] <= MIB); validate_hash(item['sha256'])
@@ -209,6 +224,8 @@ def validate_inventory(root,value,sha,pins=None):
             require(stat.S_ISREG(value_stat.st_mode) and value_stat.st_nlink == 1 and stat.S_IMODE(value_stat.st_mode) == item['mode'])
             data = target.read_bytes()
         require(len(data) == item['bytes'] and digest(data) == item['sha256']); paths.append(path)
+        if path == MIGRATION_RUNNER:
+            migrations = [MIGRATION_DIRECTORY + name for name in migration_manifest(data)]
     require(paths == sorted(set(paths)))
     actual = []
     for base,dirs,files in os.walk(root,followlinks=False):
@@ -218,7 +235,7 @@ def validate_inventory(root,value,sha,pins=None):
             if relative != 'inventory.json': actual.append(relative)
     require(sorted(actual) == paths)
     required = {'opt/autodata/bin/'+name for name in ('runtime-check.py','host_activation.py','host_install.py','host_provision.py','host_prepare_release.py','host-bootstrap-roles.sql','release.schema.json')}
-    require(required <= set(paths) and len([name for name in paths if '/db/migrations/' in name]) == 42)
+    require(required <= set(paths) and migrations and [name for name in paths if name.startswith(MIGRATION_DIRECTORY)] == migrations)
     return entries
 
 def load_module(path,name):
