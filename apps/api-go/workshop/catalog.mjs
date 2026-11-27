@@ -558,6 +558,26 @@ function directSelectorURL(path, { method = 'GET', headers, body, preferSameOrig
   return catalog.dataset.directSelectorOrigin + path;
 }
 
+async function fetchSelectorBeforeAbort(fetcher, resource, init) {
+  const { signal } = init;
+  signal.throwIfAborted();
+  let onAbort;
+  const cancelled = new Promise((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    // A browser can leave the transport promise pending after its signal is aborted.
+    const response = Promise.resolve().then(() => {
+      signal.throwIfAborted();
+      return fetcher(resource, init);
+    });
+    return await Promise.race([response, cancelled]);
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
+}
+
 export async function requestJSON(path, options = {}) {
   if (options.deferModelRefresh) path += '&defer_refresh=1';
   const direct = directSelectorURL(path, options);
@@ -567,6 +587,7 @@ export async function requestJSON(path, options = {}) {
   const connectionTimeout = isMake ? directMakeTimeout
     : directModelPath.test(path) ? directModelTimeout : directConfigurationTimeout;
   const { fetcher = fetch } = options;
+  const fetchSelector = (resource, init) => fetchSelectorBeforeAbort(fetcher, resource, init);
   const bodyDeadline = performance.now() + Math.max(1, Math.min(10000, options.timeout ?? 10000));
   const connection = new AbortController();
   let canRetryDirectBody = false;
@@ -579,7 +600,7 @@ export async function requestJSON(path, options = {}) {
       const deadline = setTimeout(() => connection.abort(), connectionTimeout);
       let response;
       try {
-        response = await fetcher(direct, {
+        response = await fetchSelector(direct, {
           ...init,
           signal: AbortSignal.any([init.signal, connection.signal]),
           credentials: 'omit',
@@ -606,7 +627,7 @@ export async function requestJSON(path, options = {}) {
       }
       init.signal.throwIfAborted();
       if (response?.body) void response.body.cancel().catch(() => {});
-      const fallback = await fetcher(resource, init);
+      const fallback = await fetchSelector(resource, init);
       if (isMake && fallback.ok) rememberSameOriginMake(path);
       return fallback;
     },
@@ -619,7 +640,7 @@ export async function requestJSON(path, options = {}) {
     // A stalled or truncated direct body can surface as a network error or invalid JSON.
     if (!canRetryDirectBody || !(error instanceof CatalogRequestError) ||
         error.status || !(error.retryable || error.code === 'INVALID_RESPONSE') || remaining < 1) throw error;
-    const fallback = await requestArticleJSON(path, { ...options, timeout: remaining });
+    const fallback = await requestArticleJSON(path, { ...options, timeout: remaining, fetcher: fetchSelector });
     if (isMake) rememberSameOriginMake(path);
     return fallback.data;
   }
