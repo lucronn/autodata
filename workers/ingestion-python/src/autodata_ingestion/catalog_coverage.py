@@ -12,6 +12,26 @@ from .source_article_capture import upload_envelope
 from .vehicle_identity import _extract_engine_displacement, _slug, engine_variants_from_label
 
 PROVIDERS = ("bankone", "banktwo")
+MAX_CATALOG_PAGES = 1000
+
+
+def next_catalog_job(cur, providers):
+    row = cur.execute(
+        """SELECT j.source_fetch_job_id FROM source_fetch_jobs j
+        JOIN catalog_article_provider_scopes s
+          ON s.catalog_provider_scope_id=j.catalog_provider_scope_id
+        WHERE j.job_kind=%s AND j.provider_slug=ANY(%s)
+          AND s.provider_slug=j.provider_slug
+          AND s.vehicle_id=j.canonical_vehicle_id
+          AND s.current_job_id=j.source_fetch_job_id
+          AND s.generation=j.request_generation
+          AND ((j.status IN ('pending','failed') AND j.retry_count<j.max_attempts
+                AND COALESCE(j.next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp())
+               OR (j.status='processing' AND j.lease_expires_at<clock_timestamp()))
+        ORDER BY COALESCE(j.next_attempt_at,j.created_at),j.created_at,j.source_fetch_job_id LIMIT 1""",
+        ("catalog_index", list(providers)),
+    ).fetchone()
+    return row["source_fetch_job_id"] if row else None
 
 
 def ensure_article_catalog_jobs(repo, *, vehicle_id, vehicle_configuration_id):
@@ -451,7 +471,7 @@ def _verified_catalog_mapping(cur, scope):
     return mappings[0] if mappings else None
 
 
-def run_catalog_index_job(repo, lease, *, registry, object_store):
+def run_catalog_index_job(repo, lease, *, registry, object_store, yield_for_waiting_job=False):
     if lease is None or lease.kind != "catalog_index":
         raise ValueError("catalog lease required")
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
@@ -578,7 +598,7 @@ def run_catalog_index_job(repo, lease, *, registry, object_store):
         cursor = checkpoint.get("next_cursor")
         page_number = checkpoint.get("next_page_number", 0)
         seen_cursors = set(checkpoint.get("seen_cursors", []))
-        for number in range(page_number, 1000):
+        for number in range(page_number, MAX_CATALOG_PAGES):
             envelope = client.list_articles(ref, cursor)
             resource = upload_envelope(envelope, "article_index", object_store)
             repeated = not envelope.complete and (
@@ -655,6 +675,21 @@ def run_catalog_index_job(repo, lease, *, registry, object_store):
                 )
                 if envelope.complete and not conflict:
                     _complete(cur, lease, scope)
+                    return
+                if (
+                    yield_for_waiting_job and not conflict and not repeated
+                    and number + 1 < MAX_CATALOG_PAGES
+                    and next_catalog_job(cur, (provider,)) is not None
+                ):
+                    # Commit the cursor and queue position together. A clean
+                    # handoff refunds this lease's attempt, including on resume.
+                    cur.execute(
+                        """UPDATE source_fetch_jobs SET status='pending',retry_count=retry_count-1,
+                        lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,
+                        next_attempt_at=clock_timestamp(),updated_at=clock_timestamp()
+                        WHERE source_fetch_job_id=%s""",
+                        (lease.job_id,),
+                    )
                     return
             if conflict:
                 raise SourceConnectorError("CONFLICTING_DESCRIPTOR")

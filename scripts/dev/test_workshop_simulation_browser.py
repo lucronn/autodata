@@ -470,6 +470,115 @@ def hold_unrelated_bankone_catalog(runtime):
     return start, verify
 
 
+def hold_banktwo_continuation(runtime, configuration):
+    from threading import Event
+
+    from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
+
+    active, release, overlapping = Event(), Event(), Event()
+    runtime.stack.callback(release.set)
+    supplier = runtime.servers["banktwo"]
+    original_response = supplier.response
+    make = "Earlier Fixture Index"
+    ref = "fixture-earlier-index"
+    page_count = 12
+    requests = []
+    earlier_job = None
+
+    def response(path, payload=None):
+        parsed = urlsplit(path)
+        if parsed.path == "/v1/vehicle-resolutions" and payload and payload.get("make") == make:
+            return 200, supplier.envelope(selector=payload, candidates=[
+                {"opaque_ref": ref, "label": "Base", "confidence": 1.0},
+            ])
+        if parsed.path != f"/v1/vehicles/{ref}/articles":
+            if active.is_set() and not release.is_set():
+                overlapping.set()
+            return original_response(path, payload)
+        cursor = int(parse_qs(parsed.query).get("cursor", ["0"])[0])
+        requests.append(cursor)
+        if cursor == 1:
+            active.set()
+            assert release.wait(10), "the paid scope did not reach the queue"
+        complete = cursor == page_count - 1
+        page = supplier.envelope(complete=complete, articles=[{
+            "opaque_ref": f"entry-{cursor}", "title": "Earlier index entry", "resource_ref": f"body-{cursor}",
+        }])
+        if not complete:
+            page["next_cursor"] = str(cursor + 1)
+        return 200, page
+
+    supplier.response = response
+
+    def start():
+        nonlocal earlier_job
+        vehicle = seed_vehicle(runtime.repo)
+        with runtime.repo.connect() as conn:
+            conn.execute("UPDATE vehicles SET make=%s WHERE vehicle_id=%s", (make, vehicle))
+        _, banktwo = ensure_article_catalog_jobs(runtime.repo, vehicle_id=vehicle, vehicle_configuration_id=None)
+        earlier_job = banktwo.job_id
+        assert active.wait(6), "the earlier index did not start its second page"
+
+    def admit_paid_scope():
+        until = time.monotonic() + 5
+        while time.monotonic() < until:
+            with runtime.repo.connect() as conn:
+                row = conn.execute("""SELECT j.status FROM source_fetch_jobs j
+                    JOIN catalog_article_provider_scopes s ON s.current_job_id=j.source_fetch_job_id
+                    WHERE s.vehicle_configuration_id=%s AND s.provider_slug='banktwo'""",
+                    (configuration,)).fetchone()
+            if row and row["status"] == "pending":
+                assert not overlapping.is_set()
+                release.set()
+                return
+            time.sleep(.05)
+        raise AssertionError("the paid scope was not queued")
+
+    def earlier_state():
+        with runtime.repo.connect() as conn:
+            return conn.execute("""SELECT s.catalog_provider_scope_id,s.status,s.row_count,
+                       j.status AS job_status,j.lease_owner,j.lease_token,j.retry_count
+                FROM source_fetch_jobs j JOIN catalog_article_provider_scopes s
+                  ON s.current_job_id=j.source_fetch_job_id
+                WHERE j.source_fetch_job_id=%s""", (earlier_job,)).fetchone()
+
+    def verify_handoff():
+        row = earlier_state()
+        assert row["job_status"] == "pending" and row["lease_owner"] is None
+        assert 2 <= row["row_count"] < page_count and row["retry_count"] == 0
+        return row["row_count"]
+
+    def verify_completion():
+        until = time.monotonic() + 6
+        while time.monotonic() < until:
+            row = earlier_state()
+            if row["job_status"] == "completed":
+                break
+            time.sleep(.05)
+        assert row["status"] == "complete" and row["row_count"] == page_count
+        assert row["lease_token"] > 1 and row["retry_count"] == 1 and requests == list(range(page_count))
+        with runtime.repo.connect() as conn:
+            pages = conn.execute("""SELECT page_number,cursor_in,cursor_out,complete
+                FROM catalog_article_index_pages WHERE catalog_provider_scope_id=%s ORDER BY page_number""",
+                (row["catalog_provider_scope_id"],)).fetchall()
+            articles = conn.execute("""SELECT a.source_article_ref,a.source_sort_order FROM canonical_articles a
+                JOIN catalog_article_provider_scopes s USING (scope_key,provider_slug)
+                WHERE s.catalog_provider_scope_id=%s ORDER BY a.source_sort_order""",
+                (row["catalog_provider_scope_id"],)).fetchall()
+        assert pages == [
+            {"page_number": number, "cursor_in": str(number) if number else None,
+             "cursor_out": str(number + 1) if number < page_count - 1 else None,
+             "complete": number == page_count - 1}
+            for number in range(page_count)
+        ]
+        assert articles == [
+            {"source_article_ref": f"entry-{number}", "source_sort_order": number * 1000}
+            for number in range(page_count)
+        ]
+
+    return start, admit_paid_scope, verify_handoff, verify_completion
+
+
 async def exercise_simulated_payment(origin, scope, customer_account, repair=None, table_variant=None, table_repair=None):
     from playwright.async_api import async_playwright, expect
 
@@ -481,6 +590,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
     checkout_path = "/v1/workshop/checkout-sessions"
     cold_index = scope.get("authored_index")
     bankone_hold = scope.get("bankone_hold")
+    banktwo_hold = scope.get("banktwo_hold")
     picker_values = (("year", "2005"), ("make", "cadillac-truck"), ("model", "escalade-esv-awd")) if cold_index else (
         ("year", "2024"), ("make", "example"), ("model", "car"),
     )
@@ -580,6 +690,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             assert before["workshop_orders"] == before["entitlements"] == 0
             if bankone_hold:
                 await asyncio.to_thread(bankone_hold[0])
+            if banktwo_hold:
+                await asyncio.to_thread(banktwo_hold[0])
 
             purchase_started = time.monotonic()
             async with page.expect_response(
@@ -615,10 +727,12 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             await expect(page.locator("#library-items h3")).to_contain_text(
                 "Escalade" if cold_index else "Paid selected"
             )
-            if repair is None and table_variant is None:
+            if repair is None and table_variant is None and not banktwo_hold:
                 await api_control(owner, origin, "control/start-workers")
             index_started = time.monotonic()
             await page.get_by_role("button", name="Open articles", exact=True).click()
+            if banktwo_hold:
+                await asyncio.to_thread(banktwo_hold[1])
             article_link = page.locator(f'#articles a[href*="{article}"]')
             if cold_index:
                 try:
@@ -637,6 +751,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                 if bankone_hold:
                     bankone_hold[1]()
                 assert await asyncio.to_thread(cold_index["pending"].wait, 3)
+                if banktwo_hold:
+                    earlier_rows = await asyncio.to_thread(banktwo_hold[2])
                 assert cold_index["queries"] == [cold_index["model"]]
                 assert cold_index["resolution_queries"] == cold_index["expected_resolution_queries"]
                 with cold_index["repository"].connect() as conn:
@@ -648,6 +764,13 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                         (cold_index["configuration"],)).fetchall()
                     assert rows == [{"status": "running", "row_count": 1, "complete": False, "adapter_name": "banktwo"}]
                 cold_index["release"].set()
+                if banktwo_hold:
+                    await asyncio.to_thread(banktwo_hold[3])
+                    await api_control(owner, origin, "control/start-workers")
+                    print("WORKSHOP_CATALOG_PAGE_HANDOFF " + json.dumps({
+                        "engine": engine, "headed": True, "first_index_ms": first_index_ms,
+                        "earlier_rows_at_visibility": earlier_rows, "earlier_index_completed_in_order": True,
+                    }), flush=True)
             article_started = time.monotonic()
             await article_link.click()
             article_kind = "Stored source" if table_variant == "source-table" else "Workshop article"
@@ -778,6 +901,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
 @pytest.mark.parametrize("variant", [
     "payment", "list-starts", "authored-table", "archived-table", "source-table", "labelled-market",
     "authored-model-index", "authored-model-index-competing-fitment", "authored-model-index-held-bankone",
+    "authored-model-index-held-banktwo",
 ])
 def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_database, monkeypatch, tmp_path, variant):
     from autodata_ingestion.http_service import make_handler
@@ -802,6 +926,8 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
             scope = authored_model_index_fixture(runtime, scope, competing_fitment=variant.endswith("-competing-fitment"))
         if variant == "authored-model-index-held-bankone":
             scope["bankone_hold"] = hold_unrelated_bankone_catalog(runtime)
+        if variant == "authored-model-index-held-banktwo":
+            scope["banktwo_hold"] = hold_banktwo_continuation(runtime, scope["configuration"])
         repair = retained_list_start_fixture(runtime, monkeypatch) if variant == "list-starts" else None
         table_variant = variant if variant in ("authored-table", "archived-table", "source-table") else None
         table_repair = authored_table_fixture(runtime, monkeypatch, tmp_path, table_variant) if table_variant else None

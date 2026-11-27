@@ -11,30 +11,16 @@ from uuid import uuid4
 
 from psycopg import Error, OperationalError, sql
 
-from .article_lifecycle import run_article_worker_once
-from .catalog_coverage import PROVIDERS
+from .article_lifecycle import _heartbeat
+from .catalog_coverage import PROVIDERS, next_catalog_job, run_catalog_index_job
 from .commerce_service import WORKSHOP_PREPARATION_CHANNEL, reconcile_workshop_preparation
+from .source_job_persistence import LeaseLost, claim_source_job
 
 
 def select_next_catalog_job(repo, *, provider=None):
     """Read one current, eligible UUID; release the connection before any I/O."""
     with repo.connect() as conn:
-        row = conn.execute(
-            """SELECT j.source_fetch_job_id FROM source_fetch_jobs j
-            JOIN catalog_article_provider_scopes s
-              ON s.catalog_provider_scope_id=j.catalog_provider_scope_id
-            WHERE j.job_kind=%s AND j.provider_slug=ANY(%s)
-              AND s.provider_slug=j.provider_slug
-              AND s.vehicle_id=j.canonical_vehicle_id
-              AND s.current_job_id=j.source_fetch_job_id
-              AND s.generation=j.request_generation
-              AND ((j.status IN ('pending','failed') AND j.retry_count<j.max_attempts
-                    AND COALESCE(j.next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp())
-                   OR (j.status='processing' AND j.lease_expires_at<clock_timestamp()))
-            ORDER BY j.created_at,j.source_fetch_job_id LIMIT 1""",
-            ('catalog_index', list(PROVIDERS) if provider is None else [provider]),
-        ).fetchone()
-    return row['source_fetch_job_id'] if row else None
+        return next_catalog_job(conn, PROVIDERS if provider is None else (provider,))
 
 
 def dispatch_next(repo, *, worker_id, registry, object_store, stop=None, provider=None):
@@ -43,10 +29,17 @@ def dispatch_next(repo, *, worker_id, registry, object_store, stop=None, provide
     job_id = select_next_catalog_job(repo) if provider is None else select_next_catalog_job(repo, provider=provider)
     if job_id is None or (stop is not None and stop.is_set()):
         return False
-    return run_article_worker_once(
-        repo, worker_id=worker_id, registry=registry, object_store=object_store,
-        model_client=None, job_id=job_id,
-    )
+    lease = claim_source_job(repo, worker_id=worker_id, model_ready=False, job_id=job_id)
+    if lease is None:
+        return False
+    try:
+        with _heartbeat(repo, lease):
+            run_catalog_index_job(repo, lease, registry=registry, object_store=object_store,
+                                  yield_for_waiting_job=provider is not None)
+    except LeaseLost:
+        # A stale lease cannot update rows or advance a cursor.
+        pass
+    return True
 
 
 def _listen_for_preparation(repo):
@@ -78,7 +71,7 @@ def _stop_provider_catalog_workers(stop, wakes):
 
 
 def run_catalog_worker(repo, *, registry, object_store, once=False, prepare_orders=False, stop=None):
-    """Signals stop between jobs; an active multi-page job may run much longer."""
+    """Stop between dispatches. A supplier lane can hand off after a stored page."""
     if stop is None:
         stop = Event()
     worker_id = uuid4()
