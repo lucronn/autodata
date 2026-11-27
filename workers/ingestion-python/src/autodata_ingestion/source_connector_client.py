@@ -186,6 +186,8 @@ class SourceConnectorClient:
         before_additional_request: Callable[[], float] | None = None,
         on_make_pages: Callable[[tuple[SourceEnvelopeV1, ...]], None] | None = None,
         read_control: Any = None,
+        recover_labels: bool = True,
+        first_model_read: SourceEnvelopeV1 | SourceConnectorError | None = None,
     ) -> SourceEnvelopeV1 | SourceCatalogAbsence:
         if not isinstance(scope, str) or scope not in _SCOPES:
             raise ValueError("unsupported catalog scope")
@@ -198,6 +200,11 @@ class SourceConnectorClient:
                 query[key] = _selector_field(key, selector[key])
         if cursor is not None:
             query["cursor"] = _bounded_text(cursor, "cursor", 512)
+        if first_model_read is not None and (
+            scope != "models" or self.provider != "banktwo" or cursor is not None
+            or not getattr(read_control, "initial_selector_budget", False)
+        ):
+            raise ValueError("retained model reads require the initial Banktwo selector budget")
         if read_control is not None:
             remaining = read_control.remaining()
             timeout = min(timeout, remaining) if timeout is not None else remaining
@@ -227,9 +234,14 @@ class SourceConnectorClient:
             return page
 
         try:
+            # An exact-model probe already charged this read to the same job.
+            if isinstance(first_model_read, SourceConnectorError):
+                raise first_model_read
+            if first_model_read is not None:
+                return first_model_read
             return read_page(scope, query)
         except SourceConnectorError as error:
-            if (self.provider != "banktwo" or error.code != "NOT_FOUND"
+            if (not recover_labels or self.provider != "banktwo" or error.code != "NOT_FOUND"
                     or scope not in {"models", "configurations"}
                     or not {"year", "make"}.issubset(query)
                     or scope == "configurations" and "model" not in query):
