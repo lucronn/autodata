@@ -17,6 +17,42 @@ def run(source, payload):
 
 
 @pytest.mark.parametrize("profile", [PROFILE, SOURCE_BOUND_REWRITE_PROFILE])
+@pytest.mark.parametrize("marker", ["Note:", "NOTE :"])
+def test_standalone_authored_note_is_retained_without_exempting_prose(profile, marker):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source = document(marker, "Inspect the cover for damage.")
+    prompt = auto.build_auto_prompt(source, context={}, profile_version=profile)
+    if profile == PROFILE:
+        previous = auto._build_auto_prompt_with_technical_tokens(source, context={})
+    else:
+        previous = auto._build_source_bound_prompt(
+            source, preserve_notes=True, procedure_fidelity=True, allow_drain_subject=True,
+            allow_rotation_removal=True, allow_optional_observation=True, allow_spaced_rotation=True,
+            include_technical_tokens=True,
+        )
+    assert [entry["required_action"] for entry in json.loads(prompt)["slots"]] == ["retain", "rewrite"]
+    assert prompt != previous
+    for archived in (prompt, previous):
+        assert auto._auto_prompt_version(
+            source, context={}, profile_version=profile, prompt_hash=sha256(archived.encode()).hexdigest(),
+        ) == auto._NOTE_LABEL_PROMPT_VERSION
+
+    payload = response(marker, "Check the cover for damage.",
+                       introduction="This article describes service checks for the cover.")
+    payload["replacements"][0].update(action="retain", reason="Preserve the exact label.")
+    result = rewrite.rewrite_ordered_document(source, client=Draft(payload), context={}, profile_version=profile)
+    assert result.error_code is None
+    assert result.document["blocks"][1]["text"] == marker
+    assert result.document["blocks"][2]["text"] == "Check the cover for damage."
+
+    payload["replacements"][0].update(action="rewrite", text=f"{marker} Remove the cover.", reason="")
+    result = rewrite.rewrite_ordered_document(source, client=Draft(payload), context={}, profile_version=profile)
+    assert result.error_code == "REWRITE_NOTE_LABEL_MUTATION"
+    assert result.document == source
+
+
+@pytest.mark.parametrize("profile", [PROFILE, SOURCE_BOUND_REWRITE_PROFILE])
 def test_automatic_prompt_lists_each_required_technical_token_and_replays_previous_attempts(profile):
     from autodata_ingestion import procedure_rewrite_auto as auto
 

@@ -2052,19 +2052,22 @@ def _keeps_authored_note_labels(prompt_version):
 
 def build_auto_prompt(document, *, context, profile_version=PROFILE):
     if profile_version == PROFILE:
-        return _build_auto_prompt_with_technical_tokens(document, context=context)
+        return _encode_prompt_with_technical_tokens(
+            _auto_prompt_payload_v66(document, context=context), retain_standalone_notes=True,
+        )
     if profile_version != SOURCE_BOUND_REWRITE_PROFILE:
         raise ValueError("REWRITE_PROFILE_UNSUPPORTED")
     return _build_source_bound_prompt(
         document, preserve_notes=True, procedure_fidelity=True,
         allow_drain_subject=True, allow_rotation_removal=True, allow_optional_observation=True,
-        allow_spaced_rotation=True, include_technical_tokens=True,
+        allow_spaced_rotation=True, include_technical_tokens=True, retain_standalone_notes=True,
     )
 
 
 def _build_source_bound_prompt(
     document, *, preserve_notes, procedure_fidelity=False, allow_drain_subject=False, allow_rotation_removal=False,
     allow_optional_observation=False, allow_spaced_rotation=False, include_technical_tokens=False,
+    retain_standalone_notes=False,
 ):
     builder = _auto_prompt_payload_v61 if preserve_notes else _auto_prompt_payload_v60
     if procedure_fidelity:
@@ -2091,7 +2094,7 @@ def _build_source_bound_prompt(
             "punctuation and spacing. Reword matching text before returning the complete response.",
         ]
     if include_technical_tokens:
-        return _encode_prompt_with_technical_tokens(payload)
+        return _encode_prompt_with_technical_tokens(payload, retain_standalone_notes=retain_standalone_notes)
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
@@ -2235,7 +2238,16 @@ def _auto_prompt_payload_v66(document, *, context):
     return payload
 
 
-def _encode_prompt_with_technical_tokens(payload):
+def _encode_prompt_with_technical_tokens(payload, *, retain_standalone_notes=False):
+    if retain_standalone_notes:
+        labels = [slot for slot in payload["slots"] if authored_note_prefix(slot["text"]) == slot["text"]]
+        if labels:
+            for slot in labels:
+                slot["required_action"] = "retain"
+            payload["rules"].append(
+                "Keep each standalone Note: label exactly as supplied with action retain and a concrete reason. "
+                "A standalone label has no instruction to rewrite. Keep rewriting the instructions that follow labels."
+            )
     tokens_by_path = {}
     for slot in payload["slots"]:
         if slot["required_action"] != "rewrite" or "required_text" in slot:
@@ -2278,14 +2290,17 @@ def _build_auto_prompt_v65_with_technical_tokens(document, *, context):
 
 def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROFILE):
     """Identify the rules bound to the saved model attempt."""
+    if profile_version not in (PROFILE, SOURCE_BOUND_REWRITE_PROFILE):
+        return None
+    current = build_auto_prompt(document, context=context, profile_version=profile_version)
+    if sha256(current.encode()).hexdigest() == prompt_hash:
+        return json.loads(current)["prompt_version"]
     if profile_version == SOURCE_BOUND_REWRITE_PROFILE:
-        current = build_auto_prompt(document, context=context, profile_version=profile_version)
-        if sha256(current.encode()).hexdigest() == prompt_hash:
-            return json.loads(current)["prompt_version"]
-        for include_technical_tokens in (True, False):
+        for allow_spaced_rotation, include_technical_tokens in ((True, True), (False, True), (False, False)):
             prior = _build_source_bound_prompt(
                 document, preserve_notes=True, procedure_fidelity=True, allow_drain_subject=True,
                 allow_rotation_removal=True, allow_optional_observation=True,
+                allow_spaced_rotation=allow_spaced_rotation,
                 include_technical_tokens=include_technical_tokens,
             )
             if sha256(prior.encode()).hexdigest() == prompt_hash:
@@ -2300,8 +2315,6 @@ def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROF
             )
             if sha256(payload.encode()).hexdigest() == prompt_hash:
                 return json.loads(payload)["prompt_version"]
-        return None
-    if profile_version != PROFILE:
         return None
     for builder in (
         _build_auto_prompt_with_technical_tokens,
@@ -4081,6 +4094,10 @@ def _require_changes(
         if guard_note_labels:
             original_label = authored_note_prefix(original)
             replacement_label = authored_note_prefix(replacement)
+            if original_label == original:
+                if original != replacement:
+                    raise ValueError("REWRITE_NOTE_LABEL_MUTATION")
+                return
             if original_label != replacement_label or (
                 replacement_label and not replacement[len(replacement_label):]
             ):
