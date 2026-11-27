@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
@@ -16,6 +17,8 @@ import (
 const workshopEntryPath = "/workshop"
 const workshopInitialYearsMarker = "<!-- Workshop initial years -->"
 const workshopInitialYearsTimeout = 25 * time.Millisecond
+const workshopInitialMakeYearCount = 6
+const workshopInitialMakesMaxBytes = 24 << 10
 
 var workshopAssetsHandler = buildWorkshopAssetsHandler()
 
@@ -24,19 +27,20 @@ type workshopEntryOptions struct {
 	openDemo        bool
 	publicDemo      bool
 	initialYears    []byte
+	initialMakes    []byte
 }
 
-func (s *Server) workshopInitialYears(r *http.Request) []byte {
+func (s *Server) workshopInitialSelectors(r *http.Request) (yearData, makeData []byte) {
 	if (r.URL.Path != workshopEntryPath && r.URL.Path != workshopEntryPath+"/") ||
 		(r.Method != http.MethodGet && r.Method != http.MethodHead) {
-		return nil
+		return nil, nil
 	}
 	params := r.URL.Query()
 	region := params.Get("region")
 	if params.Get("sample") == "1" || params.Get("demo") == "1" || params.Get("view") == "library" ||
 		params.Has("article") || params.Has("configuration") || params.Has("order") ||
 		(region != "" && region != "US") {
-		return nil
+		return nil, nil
 	}
 	// The same anonymous snapshot backs the public year endpoint. Keep the page
 	// available during database contention and leave discovery to the API.
@@ -44,13 +48,32 @@ func (s *Server) workshopInitialYears(r *http.Request) []byte {
 	defer cancel()
 	years, err := s.readCatalogYears(ctx, Principal{})
 	if err != nil || ctx.Err() != nil || !years.Complete || len(years.Items) == 0 {
-		return nil
+		return nil, nil
 	}
-	data, err := json.Marshal(years)
+	yearData, err = json.Marshal(years)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
-	return data
+	// The initial make lists share the existing entry read deadline.
+	if store, ok := s.catalog.(interface {
+		catalogMakeLists(context.Context, []int, string, bool) (map[int][]CatalogMake, error)
+	}); ok {
+		modelYears := make([]int, 0, len(years.Items))
+		for _, item := range years.Items {
+			modelYears = append(modelYears, item.Year)
+		}
+		slices.Sort(modelYears)
+		modelYears = slices.Compact(modelYears)
+		requested := modelYears[max(0, len(modelYears)-workshopInitialMakeYearCount):]
+		lists, err := store.catalogMakeLists(ctx, requested, "US", true)
+		if err == nil && ctx.Err() == nil && len(lists) > 0 {
+			encoded, err := json.Marshal(lists)
+			if err == nil && len(encoded) <= workshopInitialMakesMaxBytes {
+				makeData = encoded
+			}
+		}
+	}
+	return yearData, makeData
 }
 
 func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, workshopEntryOptions) {
@@ -174,7 +197,7 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 			w.Header().Set("ETag", tag)
 		}
 		if path == prefix {
-			// Every browser receives shared HTML with at most a public year snapshot.
+			// The shared entry carries only anonymous selector data.
 			w.Header().Set("Cache-Control", "private, max-age=30, must-revalidate")
 			document := entryPage
 			if entry.publicDemo {
@@ -189,6 +212,9 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 			}
 			if len(entry.initialYears) != 0 {
 				data := fmt.Appendf(nil, `<script id="workshop-initial-years" type="application/json">%s</script>`, entry.initialYears)
+				if len(entry.initialMakes) != 0 {
+					data = fmt.Appendf(data, `<script id="workshop-initial-makes" type="application/json">%s</script>`, entry.initialMakes)
+				}
 				document = bytes.Replace(document, []byte(workshopInitialYearsMarker), data, 1)
 				w.Header().Set("ETag", fmt.Sprintf(`W/"%x"`, sha256.Sum256(document)))
 			}

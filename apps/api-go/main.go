@@ -237,7 +237,7 @@ func (s *Server) Handler() http.Handler {
 			publicDemo:      publicSelectors && s.workshopOpenDemoHost == workshopPublicDemoTunnelHost,
 		}
 		if publicSelectors {
-			entry.initialYears = s.workshopInitialYears(r)
+			entry.initialYears, entry.initialMakes = s.workshopInitialSelectors(r)
 		}
 		workshopAssetsHandler(w, r, entry)
 	}

@@ -119,6 +119,23 @@
               !snapshot.items.every(item => Number.isInteger(item?.year) && item.year >= 1886 && item.year <= 2100))
             return;
           const values = snapshot.items.map(item => item.year).sort((a, b) => b - a);
+          const makeSnapshots = new Map();
+          const makeSnapshotExpires = 30000;
+          const makeData = document.getElementById('workshop-initial-makes');
+          if (makeData) {
+            try {
+              const lists = JSON.parse(makeData.textContent);
+              for (const year of values) {
+                const items = lists[year];
+                if (Array.isArray(items) && items.length &&
+                    items.every(item => item && typeof item.id === 'string' && typeof item.name === 'string')) {
+                  makeSnapshots.set(String(year), { version: 'v1', complete: true, hydrating: false, items });
+                }
+              }
+            } catch {
+              // The normal make read remains available without the snapshot.
+            }
+          }
           let picker, placeholder, makeRead;
           function chooseYear() {
             if (picker.options[0] !== placeholder || location.search !== route) return;
@@ -127,6 +144,7 @@
             makeRead?.abort();
             makeRead = null;
             if (!values.includes(Number(year))) return;
+            if (makeSnapshots.has(year) && performance.now() < makeSnapshotExpires) return;
             // The embedded catalog already confirms this parent selection.
             const path = `${years}/${year}/makes?region=US`;
             const requestMake = pending.requestMake;
@@ -166,7 +184,7 @@
                 if (data?.items?.length) rememberSameOriginMake(path);
               });
             }
-            return { snapshot, makeRead };
+            return { snapshot, makeRead, makeSnapshots, makeSnapshotExpires };
           };
         }
 
