@@ -9625,6 +9625,7 @@ function selectorOptionsHarness(response) {
    if (!nodes.has(id)) nodes.set(id, {
      value:'', disabled:false, hidden:true, textContent:'', dataset:{}, options:[],
      append(...choices) { this.options.push(...choices); },
+     replaceChildren(...children) { this.children = children; },
      addEventListener(event, listener) { this[event] = listener; },
    });
    return nodes.get(id);
@@ -9636,7 +9637,9 @@ function selectorOptionsHarness(response) {
  const statuses=[], displayed=[];
  const requests=[], waits=[];
  let clock = 0;
- const context={ $, rows:{ model: [] }, Option:PickerOption, AbortController, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices',
+ const context={ $, rows:{ model: [] }, Option:PickerOption, AbortController, navigation:new NavigationGeneration(),
+  document:{ body:{dataset:{}}, createElement:() => ({ addEventListener() {} }) },
+  retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices',
   async requestJSON(path, options) {
     requests.push(path);
     if (response instanceof Error) throw response;
@@ -10365,9 +10368,9 @@ test('actual selector incomplete nonhydrating scope does not claim empty complet
  assert.equal(h.statuses.at(-1).error,true);assert.equal(typeof h.statuses.at(-1).retry,'function');
  assert.equal(h.$('retry').hidden,false);assert.equal(typeof h.context.retryAction,'function');
 });
-test('an unavailable grouped model suggests the separate choices already in its picker', async () => {
+test('an unavailable grouped model offers the separate choices already in its picker', async () => {
   const group = { id: 'sl1-sc1-sw1', name: 'SL1/SC1/SW1' };
-  const separate = ['SL1', 'SC1', 'SW1'].map(name => ({ id: name.toLowerCase(), name }));
+  const separate = ['Sl1', 'Sc1', 'Sw1'].map(name => ({ id: name.toLowerCase(), name }));
   for (const [items, complete, models, suggestsAlternatives] of [
     [[], false, separate, true],
     [[], true, separate, true],
@@ -10379,10 +10382,12 @@ test('an unavailable grouped model suggests the separate choices already in its 
     h.context.rows.model = [group, ...models];
     h.$('model').value = group.id;
     await h.load();
-    if (suggestsAlternatives)
-      assert.match(h.statuses.at(-1).text, /Choose SL1, SC1, or SW1 in Model/);
-    else
-      assert.doesNotMatch(h.statuses.at(-1).text, /in Model/);
+    assert.equal(Boolean(h.statuses[0].modelAlternatives), models.length === 3);
+    assert.equal(h.$('model-alternatives').hidden, !suggestsAlternatives);
+    if (suggestsAlternatives) {
+      assert.match(h.statuses.at(-1).text, /Choose an individual model/);
+      assert.deepEqual(h.$('model-alternatives').children.map(button => button.textContent), ['SL1', 'SC1', 'SW1']);
+    }
     assert.equal(h.$('model').value, group.id);
     assert.equal(h.$('configuration').value, '');
     assert.equal(h.$('retry').hidden, complete);
