@@ -253,6 +253,8 @@ jobs:
           go-version: "1.26.x"
       - name: Install exact browser fixture runtime
         run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xauth xvfb
           python -m pip install -r scripts/dev/requirements-workshop-browser.txt
           python -m playwright install --with-deps chromium firefox webkit
       - name: Exercise all 120 DTO browser cases over actual Go TLS assets
@@ -260,7 +262,7 @@ jobs:
         env:
           CANDIDATE_SHA: ${{ github.sha }}
         run: |
-          python - <<'PY'
+          xvfb-run -a python - <<'PY'
           import hashlib
           import importlib.util
           import json

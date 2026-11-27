@@ -56,8 +56,9 @@ compose up -d --wait --wait-timeout 60 postgres minio
 
 if [ "$engine" = simulation ]; then
     compose run --rm -T --no-deps --pull never --user "$(id -u):$(id -g)" \
-        go-test-runner sh -ec '
-            mkdir -p "$GOCACHE" "$GOTMPDIR"
+        --env HOME=/tmp/workshop-browser-home \
+        go-test-runner xvfb-run -a sh -ec '
+            mkdir -p "$HOME" "$GOCACHE" "$GOTMPDIR"
             go -C apps/api-go test -c -o /tmp/workshop-simulation.test .
             AUTODATA_REQUIRE_WORKSHOP_SIMULATION_BROWSER=1 \
             AUTODATA_WORKSHOP_SIMULATION_GO_BINARY=/tmp/workshop-simulation.test \
@@ -73,9 +74,10 @@ set -- python -m pytest -v -p no:cacheprovider \
 if [ "$engine" != all ]; then
     set -- "$@" -k "$engine"
 fi
-# Warm the Go cache before pytest starts its per-case fixture deadlines.
-compose run --rm -T --no-deps --pull never --user "$(id -u):$(id -g)" go-test-runner \
-    sh -ec 'mkdir -p "$GOCACHE" "$GOTMPDIR"
+# Give Chromium a writable home under the runner UID and warm the Go cache.
+compose run --rm -T --no-deps --pull never --user "$(id -u):$(id -g)" \
+    --env HOME=/tmp/workshop-browser-home go-test-runner \
+    xvfb-run -a sh -ec 'mkdir -p "$HOME" "$GOCACHE" "$GOTMPDIR"
         go -C apps/api-go test -run "^$" .
         AUTODATA_REQUIRE_PUBLISHED_MEDIA_HTTP=1 python -m pytest -v -p no:cacheprovider \
             --junitxml=/artifacts/workshop-published-media-http.xml \

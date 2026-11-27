@@ -21,7 +21,7 @@ RUN echo 'deb https://deb.debian.org/debian forky main' > /etc/apt/sources.list.
     && apt-get update \
     && apt-get install -y --no-install-recommends libnss3/forky libnspr4/forky \
     && rm /etc/apt/sources.list.d/browser-nss.list \
-    && apt-get install -y --no-install-recommends glib-networking \
+    && apt-get install -y --no-install-recommends glib-networking xauth xvfb \
     && python -m pip install --no-cache-dir -r /tmp/requirements-workshop-browser.txt \
     && python -m playwright install --with-deps chromium firefox webkit \
     && rm -rf /var/lib/apt/lists/*

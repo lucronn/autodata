@@ -39,7 +39,7 @@ async def exercise_simulated_payment(origin, scope, customer_account):
 
     async with async_playwright() as playwright:
         executable = os.environ.get("AUTODATA_WORKSHOP_SIMULATION_CHROMIUM")
-        browser = await playwright.chromium.launch(**({"executable_path": executable} if executable else {}))
+        browser = await playwright.chromium.launch(headless=False, **({"executable_path": executable} if executable else {}))
         try:
             owner = await browser.new_context(ignore_https_errors=True, service_workers="block")
             transport = APIFixture(origin, API_CASES[1])
