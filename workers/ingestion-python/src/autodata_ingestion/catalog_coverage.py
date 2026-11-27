@@ -8,7 +8,7 @@ from .article_lifecycle_store import _upsert_descriptor, persist_resource
 from .source_job_persistence import _result, lock_live_lease, fail_source_job, LeaseLost
 from .source_connector_client import SourceCatalogAbsence, SourceConnectorError
 from .source_article_capture import upload_envelope
-from .vehicle_identity import _extract_engine_displacement, engine_variants_from_label
+from .vehicle_identity import _extract_engine_displacement, _slug, engine_variants_from_label
 
 PROVIDERS = ("bankone", "banktwo")
 
@@ -275,7 +275,8 @@ def _configuration_candidate_matches(cur, scope, configuration, candidate):
 
 def _retained_banktwo_catalog_refs(cur, scope, region):
     rows = cur.execute(
-        """SELECT DISTINCT mapping->>'provider_id' AS ref
+        """SELECT DISTINCT mapping->>'provider_id' AS ref,
+                   nullif(btrim(o.raw_observation->>'model'),'') AS source_model
         FROM vehicle_identity_observations o
         JOIN source_snapshots snapshot USING(source_snapshot_id)
         CROSS JOIN LATERAL jsonb_array_elements(
@@ -298,7 +299,10 @@ def _retained_banktwo_catalog_refs(cur, scope, region):
           )""",
         (scope["vehicle_id"], scope["vehicle_configuration_id"], region, region, region),
     ).fetchall()
-    return {row["ref"] for row in rows}
+    references = {}
+    for row in rows:
+        references.setdefault(row["ref"], set()).add(row["source_model"])
+    return references
 
 
 def _resolve_banktwo_catalog_configuration(repo, client, scope, selector, configuration):
@@ -314,41 +318,53 @@ def _resolve_banktwo_catalog_configuration(repo, client, scope, selector, config
     if not retained:
         return None, None
 
-    query = {key: selector[key] for key in ("year", "make", "model")}
-    try:
-        catalog = client.catalog("configurations", query, timeout=6)
-    except SourceConnectorError as error:
-        if error.code != "NOT_FOUND":
-            raise
-        return None, None
-    if isinstance(catalog, SourceCatalogAbsence) or not catalog.complete:
-        return None, None
-
-    matches = {}
+    requested_model = selector["model"]
+    requested_slug = _slug(requested_model)
+    authored_models = {
+        model for names in retained.values() for model in names
+        if model and _slug(model) == requested_slug
+    }
+    preferred = next(iter(authored_models)) if len(authored_models) == 1 else requested_model
+    models = (preferred, requested_model) if preferred.casefold() != requested_model.casefold() else (requested_model,)
     drivetrain = configuration["drivetrain"]
-    model_suffix = selector["model"].strip().upper().rsplit(" ", 1)[-1]
+    model_suffix = requested_model.strip().upper().rsplit(" ", 1)[-1]
     if not drivetrain and model_suffix in {"FWD", "RWD", "AWD", "2WD", "4WD"}:
         drivetrain = model_suffix
-    for row in catalog.body["items"]:
-        ref = row["opaque_ref"]
-        if ref not in retained or row.get("year") != selector["year"]:
+    for model in models:
+        query = {"year": selector["year"], "make": selector["make"], "model": model}
+        try:
+            catalog = client.catalog("configurations", query, timeout=6)
+        except SourceConnectorError as error:
+            if error.code != "NOT_FOUND":
+                raise
             continue
-        if any((row.get(key) or "").casefold() != selector[key].casefold() for key in ("make", "model")):
+        if isinstance(catalog, SourceCatalogAbsence) or not catalog.complete:
             continue
-        if (row.get("region") or "US").upper() != region:
-            continue
-        if drivetrain and (row.get("drivetrain") or model_suffix).casefold() != drivetrain.casefold():
-            continue
-        label = row.get("configuration") or row["label"]
-        engine = row.get("engine") or label
-        if (not engine_variants_from_label(label + " " + engine)
-            and _extract_engine_displacement(label) == float(displacement)
-            and _extract_engine_displacement(engine) in {None, float(displacement)}):
-            matches[ref] = {"opaque_ref": ref, "label": label}
-    if len(matches) > 1:
-        raise SourceConnectorError("AMBIGUOUS")
-    candidate = next(iter(matches.values()), None)
-    return (candidate, catalog) if candidate is not None else (None, None)
+
+        matches = {}
+        for row in catalog.body["items"]:
+            ref = row["opaque_ref"]
+            if ref not in retained or row.get("year") != selector["year"]:
+                continue
+            if model != requested_model and model not in retained[ref]:
+                continue
+            if any((row.get(key) or "").casefold() != query[key].casefold() for key in ("make", "model")):
+                continue
+            if (row.get("region") or "US").upper() != region:
+                continue
+            if drivetrain and (row.get("drivetrain") or model_suffix).casefold() != drivetrain.casefold():
+                continue
+            label = row.get("configuration") or row["label"]
+            engine = row.get("engine") or label
+            if (not engine_variants_from_label(label + " " + engine)
+                and _extract_engine_displacement(label) == float(displacement)
+                and _extract_engine_displacement(engine) in {None, float(displacement)}):
+                matches[ref] = {"opaque_ref": ref, "label": label}
+        if len(matches) > 1:
+            raise SourceConnectorError("AMBIGUOUS")
+        if matches:
+            return next(iter(matches.values())), catalog
+    return None, None
 
 
 def run_catalog_index_job(repo, lease, *, registry, object_store):
