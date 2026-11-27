@@ -457,6 +457,15 @@ function usableEngineChoices(name, response) {
   return name === "configuration" && !response.hydrating && pickerHasChoices(name, response.items) &&
     response.items.every((item) => item.complete !== false);
 }
+function groupedModelChoices() {
+  const selected = $("model").value;
+  const group = rows.model.find((item) => item.id === selected);
+  const names = group?.name?.split("/").map((name) => name.trim().toLowerCase());
+  if (!names || names.length < 2 || names.includes("") || new Set(names).size !== names.length) return null;
+  const choices = names.map((name) =>
+    rows.model.find((item) => item.id !== selected && item.name?.toLowerCase() === name));
+  return choices.every(Boolean) ? choices.map((item) => item.name) : null;
+}
 function readStoredSelector(path, signal, timeout) {
   return requestStoredSelector(path, { signal, timeout }, requestJSON);
 }
@@ -628,7 +637,17 @@ async function loadOptions(name, g, desired = "", initial = null, { initialIsLiv
   if (result !== cached) rememberSelector(path, name, result);
   const selected = desired && result.items.some(choice);
   const choicesReady = stopWithChoices && result.items.length > 0;
-  if (!selected && (result.refreshFailed || result.timedOut || (result.complete === false && !choicesReady))) {
+  const incomplete = result.refreshFailed || result.timedOut || (result.complete === false && !choicesReady);
+  if (name === "configuration" && !desired && !pickerHasChoices(name, result.items)) {
+    const alternatives = groupedModelChoices();
+    if (alternatives) {
+      const models = new Intl.ListFormat("en", { type: "disjunction" }).format(alternatives);
+      status(`No verified engine or trim loaded for this group. Choose ${models} in Model.`,
+        { retry: incomplete ? () => restoreRoute() : null });
+      return;
+    }
+  }
+  if (!selected && incomplete) {
     if (!desired && result.items.length) {
       const message = pickerHasChoices(name, result.items)
         ? `Choose an available ${label}. Some choices could not be loaded.`
