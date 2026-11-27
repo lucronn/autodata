@@ -288,6 +288,7 @@ export async function readCollection(
     emptyProbe,
     backoffWithChoices = false,
     backoffWithoutChoices = false,
+    retryEmptyTransientRead = false,
     stopWithChoices = false,
     hasChoices = data => data.items.length > 0,
     now = () => performance.now(),
@@ -295,6 +296,7 @@ export async function readCollection(
 ) {
   let latest;
   let fastPollingSince;
+  let emptyReadRetried = false;
   let partialInterval = interval;
   const pollUntil = backoffWithChoices ? now() + DEFAULT_COLLECTION_POLL_WINDOW_MS : Infinity;
   const fastWindow = stopWithChoices ? FIRST_SELECTOR_CHOICES_FAST_WINDOW_MS : PARTIAL_SELECTOR_FAST_WINDOW_MS;
@@ -317,6 +319,15 @@ export async function readCollection(
       data = await read(backoffWithChoices ? Math.max(1, remaining) : undefined);
     } catch (error) {
       signal?.throwIfAborted();
+      // A failed stored read does not end an active lookup for the first choices.
+      if (retryEmptyTransientRead && !emptyReadRetried && latest?.items.length === 0 &&
+          latest.hydrating && error instanceof CatalogRequestError && !error.retryAfterSeconds &&
+          (error.status === 503 || (error.status === 0 && error.retryable)) &&
+          attempt < attempts - 1 && now() + interval < pollUntil) {
+        emptyReadRetried = true;
+        await wait(interval, signal);
+        continue;
+      }
       // Keep the usable list already shown for this request scope.
       if (latest?.items.length && error instanceof CatalogRequestError &&
           (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500))
