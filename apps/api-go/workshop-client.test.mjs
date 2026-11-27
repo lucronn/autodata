@@ -6011,7 +6011,7 @@ test('actual article index flow polls until explicit current completion', async 
 test('actual article index flow keeps terminal, timed out, and nonhydrating outcomes incomplete', async () => {
   for (const [response, reads, text] of [
     [indexResponse('failed'), 1, /could not be prepared/],
-    [indexResponse('pending', { hydrating: true }), 4, /still being prepared/],
+    [indexResponse('pending', { hydrating: true }), 5, /still being prepared/],
     [indexResponse('pending'), 1, /still being prepared/],
     [indexResponse(null), 1, /still being prepared/],
   ]) {
@@ -6021,7 +6021,7 @@ test('actual article index flow keeps terminal, timed out, and nonhydrating outc
     assert.equal(h.statuses.some(s => s.complete === true), false);
     assert.match(h.$('activity-text').textContent, text);
     assert.equal(h.$('completion-status').textContent, '');
-    assert.equal(h.results[0].timedOut === true, reads === 4);
+    assert.equal(h.results[0].timedOut === true, response.hydrating === true);
     assert.equal(typeof h.context.retryAction, response.progress?.status === 'failed' ? 'object' : 'function');
   }
 });

@@ -349,9 +349,11 @@ export async function readCollection(
         signal?.throwIfAborted();
         const early = await emptyProbe(timeout);
         signal?.throwIfAborted();
-        const settled = early?.discovery_instance && !early.hydrating && !early.discovering;
-        if (Array.isArray(early?.items) && (hasChoices(early) || early.complete === true || settled) &&
+        if (!Array.isArray(early?.items)) break;
+        const active = early.hydrating || early.discovering;
+        if ((hasChoices(early) || early.complete === true || (early.discovery_instance && !active)) &&
             update(early, attempt)) return latest;
+        if (!active) break;
       }
       await wait(Math.max(0, deadline - now()), signal);
     } else {
