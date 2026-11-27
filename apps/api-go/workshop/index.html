@@ -49,8 +49,8 @@
             return { path, response };
           }
           globalThis.workshopDemoIndex = {
-            ...read(base + query, 'workshop-demo-readable-index'),
-            detail: article ? read(`${base}/${article}${query}`, 'workshop-short-publication-check') : null,
+            ...(article ? {} : read(base + query, 'workshop-demo-readable-index')),
+            detail: article ? read(`${base}/${article}${query}`, 'workshop-short-publication-check, workshop-demo-fitment') : null,
             abort: () => controller.abort(), route: params.toString(),
           };
           return;

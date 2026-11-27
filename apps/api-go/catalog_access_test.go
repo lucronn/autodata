@@ -241,6 +241,15 @@ func TestOpenDemoReadsExactCatalogWithoutLoginOrGrant(t *testing.T) {
 		strings.Contains(compact.Body.String(), "private body") {
 		t.Fatalf("unexpected compact demo index: %d %s", compact.Code, compact.Body)
 	}
+	deepLink := request(root+"/"+id+"?demo=1", "localhost:3013", catalogDemoFitmentPreference)
+	var detail CatalogArticleResponse
+	if deepLink.Code != http.StatusOK || deepLink.Header().Get("Preference-Applied") != catalogDemoFitmentPreference ||
+		deepLink.Header().Get("Workshop-Reader-Session") != "" ||
+		json.Unmarshal(deepLink.Body.Bytes(), &detail) != nil || detail.Configuration == nil ||
+		*detail.Configuration != *compactIndex.Configuration || detail.Article.ID != id ||
+		detail.Article.OriginalSourceReview != nil {
+		t.Fatalf("unexpected demo detail fitment: %d %s", deepLink.Code, deepLink.Body)
+	}
 	legacy := request(root+"?demo=1", "localhost:3013")
 	if !strings.Contains(legacy.Body.String(), unavailableID) || strings.Contains(legacy.Body.String(), "indexed_count") {
 		t.Fatalf("unrequested compact response: %d %s", legacy.Code, legacy.Body)
@@ -248,6 +257,10 @@ func TestOpenDemoReadsExactCatalogWithoutLoginOrGrant(t *testing.T) {
 	unauthorized := request(root, "localhost:3013", catalogDemoReadableIndexPreference)
 	if unauthorized.Code != http.StatusUnauthorized || unauthorized.Header().Get("Preference-Applied") != "" {
 		t.Fatalf("preference granted demo access: %d %s", unauthorized.Code, unauthorized.Body)
+	}
+	unscopedDetail := request(root+"/"+id, "localhost:3013", catalogDemoFitmentPreference)
+	if unscopedDetail.Code != http.StatusUnauthorized || unscopedDetail.Header().Get("Preference-Applied") != "" {
+		t.Fatalf("preference granted demo detail access: %d %s", unscopedDetail.Code, unscopedDetail.Body)
 	}
 	search := request(root+"?demo=1&q=private", "localhost:3013")
 	if search.Code != 200 || !strings.Contains(search.Body.String(), id) || strings.Contains(search.Body.String(), unavailableID) || strings.Contains(search.Body.String(), "private body") {

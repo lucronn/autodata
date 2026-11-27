@@ -5797,28 +5797,22 @@ test('the index and search distinguish authored service schedules with a shared 
   assert.deepEqual(filterArticles([normal, severe], 'severe service'), [severe]);
 });
 
-test('a readable demo link uses the compact index to open the exact article', async () => {
+test('the saved demo fallback can still open a readable article from its index', async () => {
   const ready = { id: 'ready', title: 'Stored source', availability: 'available' };
-  const h = articleIndexHarness([{
-    ...indexResponse('completed', { complete: true, items: [ready] }), indexed_count: 2000,
-  }], { openDemo: true });
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [ready] })], { openDemo: true });
   await h.load(ready.id);
   assert.deepEqual(h.opened.map(({ id }) => id), [ready.id]);
-  assert.deepEqual(h.requests.map(({ prefer }) => prefer), ['workshop-demo-readable-index']);
+  assert.deepEqual(h.requests.map(({ prefer }) => prefer), [undefined]);
 });
 
-test('a demo link to an unreadable article stays in the index', async () => {
+test('a demo link to an unreadable article uses one full index to confirm its status', async () => {
   const waiting = { id: 'waiting', title: 'Index only', availability: 'unavailable' };
-  const compact = { ...indexResponse('completed', { complete: true, items: [] }), indexed_count: 1 };
   const full = indexResponse('completed', { complete: true, items: [waiting] });
-  for (const responses of [[compact, full], [full]]) {
-    const h = articleIndexHarness(responses, { openDemo: true });
-    await h.load(waiting.id);
-    assert.equal(h.opened.length, 0);
-    assert.deepEqual(h.requests.map(({ prefer }) => prefer),
-      responses.length === 2 ? ['workshop-demo-readable-index', undefined] : ['workshop-demo-readable-index']);
-    assert.match(h.$('activity-text').textContent, /indexed but not readable yet/);
-  }
+  const h = articleIndexHarness([full], { openDemo: true });
+  await h.load(waiting.id);
+  assert.equal(h.opened.length, 0);
+  assert.deepEqual(h.requests.map(({ prefer }) => prefer), [undefined]);
+  assert.match(h.$('activity-text').textContent, /indexed but not readable yet/);
 });
 
 test('a prefetched demo detail waits for the matching available index row', async () => {
@@ -10532,10 +10526,10 @@ test('known-owned handoffs skip the quote and Library fetches a price only if ac
   }
 });
 
-test('saved exact Firebase links try the article before fetching index or quote', async () => {
+test('saved exact Firebase and demo links try the article before fetching index or quote', async () => {
   for (const [mode, openDemo, supported, index] of [
     ['firebase', false, true, false], ['firebase', false, false, true],
-    ['local', false, true, true], ['firebase', true, true, true],
+    ['local', false, true, true], ['firebase', true, true, false], ['firebase', true, false, true],
   ]) {
     const h = selectionQuoteHarness({ enabled: true }, { openDemo });
     h.context.session.state.mode = mode;
@@ -10549,7 +10543,7 @@ test('saved exact Firebase links try the article before fetching index or quote'
     };
     await h.context.selectVehicle(h.generation, routeArticle, { savedLink: true });
     assert.equal(h.opened.length, Number(index));
-    assert.equal(direct.length, Number(mode === 'firebase' && !openDemo));
+    assert.equal(direct.length, Number(mode === 'firebase'));
     assert.equal(h.calls.length, Number(mode === 'local'));
   }
 });
@@ -11842,6 +11836,33 @@ test('open demo reads an article with GET and no session or checkout', async () 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a?region=US&demo=1');
   assert.equal(calls[0].options.method, undefined);
+});
+
+test('a directly opened demo article requires a readable body and its exact fitment', async () => {
+  const path = '/v1/catalog/vehicles/v/articles/a?region=US&demo=1';
+  const article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }], [], { content_origin: 'source' });
+  for (const scenario of ['ready', 'wrong-fitment', 'wrong-region', 'wrong-article', 'legacy', 'waiting']) {
+    let configuration = { id: 'v', region: 'US', make: 'Example', model: 'Car' };
+    if (scenario === 'wrong-fitment') configuration.id = 'other';
+    if (scenario === 'wrong-region') configuration.region = 'CA';
+    if (scenario === 'legacy') configuration = undefined;
+    const data = { configuration, article: scenario === 'wrong-article' ? { ...article, id: 'other' } : article };
+    const reply = new Response(JSON.stringify(data), { status: scenario === 'waiting' ? 202 : 200 });
+    const calls = [];
+    const h = articleRouteHarness('firebase', (resource, options) => {
+      calls.push({ resource, prefer: options.headers.Prefer });
+      assert.equal(options.method, undefined);
+      return requestArticleJSON(resource, options);
+    }, false, true);
+    h.context.vehicle.id = 'v';
+    h.context.renderPurchase = () => {};
+    const opened = await h.context.loadArticle('a', h.g, {
+      savedLink: true, initialDemoDetail: { path, response: Promise.resolve(reply) },
+    });
+    assert.equal(opened, scenario === 'ready', scenario);
+    assert.equal(h.context.currentArticle?.id, scenario === 'ready' ? 'a' : undefined, scenario);
+    assert.deepEqual(calls, [{ resource: path, prefer: 'workshop-short-publication-check, workshop-demo-fitment' }]);
+  }
 });
 
 test('the demo reader consumes a matching detail once and rereads a stale or failed prefetch', async () => {

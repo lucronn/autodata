@@ -29,6 +29,7 @@ var catalogDiscoveryInstance = rand.Text()
 const catalogStatusReadTimeout = 250 * time.Millisecond
 const ownedIndexStatusReadTimeout = 25 * time.Millisecond
 const catalogDemoReadableIndexPreference = "workshop-demo-readable-index"
+const catalogDemoFitmentPreference = "workshop-demo-fitment"
 
 type CatalogYearsResponse struct {
 	Version string        `json:"version"`
@@ -607,6 +608,13 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 	article.SourceReview = sourceReviewForArticle(article, vehicleID, article.ID)
 	if paid && !scope.openDemo {
 		article.OriginalSourceReview = view.originalSourceReview
+	}
+	if paid && scope.openDemo && status == http.StatusOK && request.Method == http.MethodGet &&
+		catalogReadPreferenceRequested(request, catalogDemoFitmentPreference) {
+		// Use the same fitment already included in the public index. This response
+		// can open a saved article before the user asks to see that index.
+		configuration = &scope.configuration
+		response.Header().Add("Preference-Applied", catalogDemoFitmentPreference)
 	}
 	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article, Configuration: configuration})
 }
