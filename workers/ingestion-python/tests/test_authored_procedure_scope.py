@@ -95,6 +95,48 @@ def test_equivalent_or_unscoped_wording_is_preserved(source, wording):
             ("Cooling System Service", "Coolant Disposal"),
         ],
     ),
+    (
+        "With a cold system, add the coolant mixture to the fill line on the radiator surge tank.",
+        "With a cold system, add enough coolant mixture to bring the level in the radiator surge tank up to its fill line.",
+        [("cold", "warm"), ("fill line", "top"), ("radiator surge tank", "radiator")],
+    ),
+    (
+        "Remove the bolts and the upper RH secondary timing chain guide.",
+        "Take out the bolts and remove the upper RH secondary timing chain guide.",
+        [("upper RH", "lower RH"), ("Take out the bolts and remove", "Remove")],
+    ),
+    (
+        "Install the upper RH secondary timing chain guide and the bolts.",
+        "Fit the upper RH secondary timing chain guide and install its bolts.",
+        [("secondary", "primary"), ("and install its bolts", "before removing its bolts")],
+    ),
+    (
+        "Install the balancer shaft lower housing and oil pump as an assembly (8).",
+        "Fit the assembly (8) that consists of the balancer shaft lower housing and oil pump.",
+        [("assembly (8)", "assembly (9)"), ("the assembly (8) that consists of", "")],
+    ),
+    (
+        "Slide the wedge of the EN-12345 balance shaft holding tool (8) to the balance shaft weights and tighten the "
+        "EN-12345 balance shaft holding tool thumb screw (9) to hold the balance shafts in position.",
+        "Move the wedge on the EN-12345 balance shaft holding tool (8) by sliding it to the balance shaft weights. "
+        "To keep the balance shafts in position, tighten the EN-12345 balance shaft holding tool thumb screw (9).",
+        [("(8)", "(9)"), ("EN-12345", "EN-45678"), ("tighten", "loosen")],
+    ),
+    (
+        "Loosen the EN-12345 balance shaft holding tool thumb screw (9), then slide the wedge of the "
+        "EN-12345 balance shaft holding tool (8) away from the balance shaft weights.",
+        "Loosen the EN-12345 balance shaft holding tool thumb screw (9) first. Afterward, slide the "
+        "EN-12345 balance shaft holding tool (8) wedge away from the balance shaft weights.",
+        [("away from", "toward"), ("first. Afterward,", "last. First,")],
+    ),
+    (
+        "For vehicles repaired under bumper-to-bumper coverage (Canada Base Warranty coverage), use the following "
+        "labor operation. Reference the Applicable Warranties section of Investigate Vehicle History (IVH) "
+        "for coverage information.",
+        "Use the labor operation below when bumper-to-bumper coverage (Canada Base Warranty coverage) applies "
+        "to the repair. For coverage information, see the Applicable Warranties section of Investigate Vehicle History (IVH).",
+        [("when", "whether or not"), ("Applicable Warranties", "Service History")],
+    ),
 ])
 def test_publication_preserves_authored_procedure_details(source, rewrite, mutations):
     original = {"blocks": [{"items": [source]}]}

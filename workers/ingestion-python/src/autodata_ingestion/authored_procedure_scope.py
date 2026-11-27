@@ -3,6 +3,7 @@
 import re
 
 from .procedure_rewrite_full import _get
+from .service_procedure_scope import service_procedure_facts
 
 
 _ACTION = re.compile(r"(remove|install|open|close)(?:\s*—\s*(\S.*))?", re.I)
@@ -135,4 +136,6 @@ def require_authored_procedure_scope(source, document, *, rewritten_paths):
         if _LIN_REFERENCE_CHECK.fullmatch(original) and not _LIN_REFERENCE_CHECK.fullmatch(wording):
             raise ValueError("REWRITE_CLAUSE_MUTATION")
         if (mixture := _coolant_concentration(original)) is not None and _coolant_concentration(wording) != mixture:
+            raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if (service := service_procedure_facts(original)) is not None and service_procedure_facts(wording) != service:
             raise ValueError("REWRITE_CLAUSE_MUTATION")

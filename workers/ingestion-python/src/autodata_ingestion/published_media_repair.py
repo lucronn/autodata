@@ -52,6 +52,7 @@ class PublishedMediaRepair:
     remapped_response: dict
     validation: ValidationResult
     provenance: dict
+    bankone_structure: dict | None = None
 
 
 def _without_media(value):

@@ -107,6 +107,7 @@ def repair_layout_reply(previous, document, corrected, *, response, prompt_versi
         projection=project_ordered_document(candidate),
         remapped_response=reply,
         validation=validation,
+        bankone_structure=options["bankone_structure"],
         provenance={
             "transformation_method": method,
             "profile_version": profile,
