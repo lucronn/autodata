@@ -17,6 +17,55 @@ def run(source, payload):
 
 
 @pytest.mark.parametrize("profile", [PROFILE, SOURCE_BOUND_REWRITE_PROFILE])
+def test_oil_filter_preparation_recasts_two_sentences_and_preserves_the_retained_procedure(profile):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    condition = "If the adapter is loose, tighten it."
+    amount = "Add up to 0.5 l of oil after installation."
+    source = document("Oil filter service",
+        "Remove the oil filter. Clean gasket seal area on oil filter mounting surface. "
+        f"{condition} Lightly oil the gasket with clean engine oil and install the filter. {amount}")
+    source["blocks"][0].update(type="heading", level=2)
+    if profile == PROFILE:
+        historical = auto._encode_prompt_with_technical_tokens(
+            auto._auto_prompt_payload_v67(source, context={}), retain_standalone_notes=True)
+    else:
+        historical = auto._build_source_bound_prompt(
+            source, preserve_notes=True, procedure_fidelity=True, allow_drain_subject=True,
+            allow_rotation_removal=True, allow_optional_observation=True, allow_spaced_rotation=True,
+            include_technical_tokens=True, retain_standalone_notes=True, recast_short_actions=True,
+        )
+    previous = json.loads(historical)
+    assert previous["slots"][0]["required_action"] == "retain"
+    assert auto._auto_prompt_version(
+        source, context={}, prompt_hash=sha256(historical.encode()).hexdigest(), profile_version=profile,
+    ) == previous["prompt_version"]
+    current = json.loads(auto.build_auto_prompt(source, context={}, profile_version=profile))
+    slot, = current["slots"]
+    version = current["prompt_version"]
+    assert version == auto._FILTER_PREPARATION_PROMPT_VERSION
+    assert slot["required_action"] == "rewrite"
+    expected = ("Remove the oil filter. Clean the part of the oil filter mounting surface that seals against the gasket. "
+                f"{condition} Coat the gasket lightly with clean engine oil. Then install the filter. {amount}")
+    assert slot["required_text"] == expected
+    payload = response("unused", expected, introduction="This article covers oil filter service.")
+    payload["replacements"].pop(0)
+    result = rewrite.rewrite_ordered_document(source, client=Draft(payload), context={}, profile_version=profile)
+    assert result.error_code is None
+    assert result.document["blocks"][2]["text"] == expected
+    assert auto.require_current_publication_checks(source, result.document, saved_prompt_version=version) is None
+
+    altered = deepcopy(result.document)
+    altered["blocks"][2]["text"] = expected.replace(amount, "Add up to 0.8 l of oil after installation.")
+    with pytest.raises(ValueError, match="REWRITE_FILTER_PREPARATION_MUTATION"):
+        auto.require_current_publication_checks(source, altered, saved_prompt_version=version)
+    warning = deepcopy(source)
+    warning["blocks"][0]["text"] = "Caution"
+    warning_prompt = json.loads(auto.build_auto_prompt(warning, context={}, profile_version=profile))
+    assert warning_prompt["slots"][0]["required_action"] == "retain"
+
+
+@pytest.mark.parametrize("profile", [PROFILE, SOURCE_BOUND_REWRITE_PROFILE])
 @pytest.mark.parametrize("marker", ["Note:", "NOTE :"])
 def test_standalone_authored_note_is_retained_without_exempting_prose(profile, marker):
     from autodata_ingestion import procedure_rewrite_auto as auto
