@@ -19,6 +19,7 @@ from .published_media_repair import PublishedMediaRepair
 
 
 BANKTWO_NOTICE_METHOD = "published-banktwo-list-notices-v1"
+BANKTWO_LIST_START_METHOD = "published-banktwo-list-starts-v1"
 BANKONE_DEFINITION_METHOD = "published-bankone-definition-headings-v1"
 BANKONE_LIST_BOUNDARY_METHOD = "published-bankone-list-boundaries-v1"
 _INVALID = "PUBLISHED_BANKTWO_NOTICE_REWRITE_INVALID"

@@ -1996,6 +1996,7 @@ def adapt_bound_article(
     keep_html_section_titles: bool = False,
     keep_bankone_html_flow: bool = False,
     keep_banktwo_list_notices: bool = False,
+    keep_banktwo_dotted_list_starts: bool = False,
     keep_bankone_definition_headings: bool = False,
     keep_bankone_list_boundaries: bool = False,
     keep_positioned_figure_labels: bool = False,
@@ -2043,6 +2044,7 @@ def adapt_bound_article(
             keep_html_section_titles=keep_html_section_titles,
             keep_bankone_html_flow=keep_bankone_html_flow and context.key.provider == "bankone",
             keep_banktwo_list_notices=keep_banktwo_list_notices and context.key.provider == "banktwo",
+            keep_banktwo_dotted_list_starts=keep_banktwo_dotted_list_starts and context.key.provider == "banktwo",
             keep_bankone_definition_headings=keep_bankone_definition_headings and context.key.provider == "bankone",
             keep_bankone_list_boundaries=(
                 keep_bankone_list_boundaries and keep_bankone_html_flow and context.key.provider == "bankone"
@@ -2103,6 +2105,7 @@ def adapt_bound_article(
             **({"positioned_figure_labels": True} if parser.bound_positioned_images else {}),
             **({"bankone_html_flow": True} if parser.bankone_html_flow else {}),
             **({"banktwo_list_notices": True} if parser.banktwo_list_notices else {}),
+            **({"banktwo_dotted_list_starts": True} if parser.banktwo_dotted_list_starts else {}),
             **({"bankone_definition_headings": True} if parser.bankone_definition_headings else {}),
             **({"bankone_list_boundaries": True} if parser.bankone_list_boundaries else {}),
             **({"handled_pdf_embeds": True} if parser.handled_pdf_embeds else {}),
@@ -2258,6 +2261,7 @@ def adapt_bound_article(
                         keep_html_section_titles=keep_html_section_titles,
                         keep_bankone_html_flow=keep_bankone_html_flow,
                         keep_banktwo_list_notices=keep_banktwo_list_notices,
+                        keep_banktwo_dotted_list_starts=keep_banktwo_dotted_list_starts,
                         keep_bankone_definition_headings=keep_bankone_definition_headings,
                         keep_bankone_list_boundaries=keep_bankone_list_boundaries,
                         keep_positioned_figure_labels=keep_positioned_figure_labels,

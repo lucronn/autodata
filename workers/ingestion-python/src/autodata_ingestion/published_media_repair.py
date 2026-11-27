@@ -238,7 +238,7 @@ def repair_published_media(
     if uses_automatic_reply:
         supported_prompts = (
             _BOUND_AUTOMATIC_PROMPTS
-            if conditional_note or introduction_repair or bankone_structure is not None else _SUPPORTED_PROMPTS
+            if ordinals or conditional_note or introduction_repair or bankone_structure is not None else _SUPPORTED_PROMPTS
         )
         if not isinstance(prompt_version, str) or prompt_version not in supported_prompts:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED")

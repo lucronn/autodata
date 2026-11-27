@@ -49,6 +49,7 @@ BANKONE_HTML_FLOW_LAYOUT = "bankone-html-flow-v1"
 BANKONE_DEFINITION_HEADING_LAYOUT = "bankone-definition-headings-v1"
 BANKONE_LIST_BOUNDARY_LAYOUT = "bankone-list-boundaries-v1"
 BANKTWO_LIST_NOTICE_LAYOUT = "banktwo-list-notices-v1"
+BANKTWO_DOTTED_LIST_START_LAYOUT = "banktwo-dotted-list-starts-v1"
 MIXED_HTML_PDF_LAYOUT = "mixed-html-pdf-v1"
 PDF_BLANK_PAGE_LAYOUT = "blank-pdf-pages-v1"
 PDF_CLIPPED_FIGURE_LAYOUT = "clipped-pdf-figures-v1"
@@ -214,6 +215,7 @@ class SourceArticleContext:
     legacy_published_positioned_label_body: str | None = None
     legacy_published_inline_article_link_body: str | None = None
     legacy_published_banktwo_list_notice_body: str | None = None
+    legacy_published_banktwo_dotted_list_start_body: str | None = None
     legacy_published_bankone_definition_heading_body: str | None = None
     legacy_published_bankone_list_boundary_body: str | None = None
     legacy_published_pdf_clipped_roots: frozenset[str] = frozenset()

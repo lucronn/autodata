@@ -18,8 +18,11 @@ from .article_document import has_only_list_ordinal_additions, validate_ordered_
 from .article_lifecycle_store import _remap_snapshot_references
 from .article_lifecycle_types import (
     ArticleKey,
+    BANKTWO_LIST_NOTICE_LAYOUT,
     CapturedSource,
     HTML_INLINE_ARTICLE_LINK_LAYOUT,
+    HTML_SECTION_TITLE_LAYOUT,
+    HTML_TABLE_CAPTION_LAYOUT,
     LEADING_DECIMAL_LAYOUT,
     RETAINED_MEDIA_REPLAY_MAX_BYTES,
     SourceArticleContext,
@@ -145,10 +148,21 @@ def _context(row) -> SourceArticleContext:
     )
 
 
-def _resource_binding(row, context, manifest, provenance, *, ordinals, table_spans=False, positioned_labels=False):
+_BANKTWO_LIST_START_LAYOUTS = {
+    "banktwo_list_notice_layout": (BANKTWO_LIST_NOTICE_LAYOUT, "keep_banktwo_list_notices"),
+    "html_section_title_layout": (HTML_SECTION_TITLE_LAYOUT, "keep_html_section_titles"),
+    "html_table_caption_layout": (HTML_TABLE_CAPTION_LAYOUT, "keep_html_table_captions"),
+}
+
+
+def _resource_binding(row, context, manifest, provenance, *, ordinals, table_spans=False, positioned_labels=False,
+                      banktwo_list_starts=False):
     minimum_resources = 1 if ordinals or table_spans else 2
+    # Existing Banktwo procedures can bind many illustrations. The aggregate
+    # byte limit and per-resource verification still apply.
+    maximum_resources = 64 if banktwo_list_starts else _MAX_RESOURCES
     supported_statuses = {"readable", "partial"} if table_spans else {"readable"}
-    if row["projection_status"] not in supported_statuses or not minimum_resources <= len(manifest) <= _MAX_RESOURCES:
+    if row["projection_status"] not in supported_statuses or not minimum_resources <= len(manifest) <= maximum_resources:
         raise ValueError("SOURCE_MEDIA_REPLAY_UNSUPPORTED")
     if len(provenance) != len(manifest):
         raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
@@ -181,6 +195,12 @@ def _resource_binding(row, context, manifest, provenance, *, ordinals, table_spa
                 if entry.get("leading_decimal_layout") == LEADING_DECIMAL_LAYOUT:
                     entry_fields |= {"leading_decimal_layout"}
                     expected_fields |= {"leading_decimal_layout"}
+            if banktwo_list_starts:
+                supported = supported and context.key.provider == "banktwo" and mime in {"text/html", "application/hal+json"}
+                for layout, (version, _) in _BANKTWO_LIST_START_LAYOUTS.items():
+                    if entry.get(layout) == version:
+                        entry_fields |= {layout}
+                        expected_fields |= {layout}
             if table_spans:
                 supported = supported and mime == "text/html" and "asset_bindings" not in owner
             if "asset_bindings" in owner:
@@ -420,7 +440,7 @@ def _source_replay_row(cur, source_revision_id):
 
 
 def load_media_replay_binding(cur, source_revision_id, *, lock=False, ordinals=False,
-                              positioned_labels=False) -> MediaReplayBinding:
+                              positioned_labels=False, banktwo_list_starts=False) -> MediaReplayBinding:
     """Select one immutable source observation and all its current snapshot rights."""
     row = _source_replay_row(cur, source_revision_id)
     if row is None:
@@ -428,7 +448,7 @@ def load_media_replay_binding(cur, source_revision_id, *, lock=False, ordinals=F
     versions = MEDIA_REPLAY_SOURCE_VERSIONS
     if ordinals:
         versions = versions | {MEDIA_REPLAY_PROJECTION_VERSION}
-    if positioned_labels:
+    if positioned_labels or banktwo_list_starts:
         versions = versions | {"source-projection-v5"}
     if row["projection_version"] not in versions:
         raise ValueError("SOURCE_MEDIA_REPLAY_UNSUPPORTED")
@@ -441,6 +461,7 @@ def load_media_replay_binding(cur, source_revision_id, *, lock=False, ordinals=F
     evidence = _rows(row["evidence_manifest"])
     snapshot_ids = _resource_binding(
         row, context, manifest, provenance, ordinals=ordinals, positioned_labels=positioned_labels,
+        banktwo_list_starts=banktwo_list_starts,
     )
     if ordinals and manifest[0]["media_type"] == "application/pdf":
         raise ValueError("SOURCE_MEDIA_REPLAY_UNSUPPORTED")
