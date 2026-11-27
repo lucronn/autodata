@@ -194,6 +194,21 @@ test('visible selector choices back off within the one-minute window', async () 
   assert.deepEqual(result.items, partial.items);
 });
 
+test('a selector awaiting its first rows reduces polling after the initial window', async () => {
+  const pending = { items: [], complete: false, hydrating: true };
+  const reads = [];
+  let clock = 0;
+  const result = await readCollection(async () => {
+    reads.push(clock);
+    return pending;
+  }, {
+    backoffWithChoices: true, backoffWithoutChoices: true,
+    now: () => clock, wait: async ms => { clock += ms; },
+  });
+  assert.deepEqual(reads, [0, 1500, 3000, 4500, 6000, 7500, 9000, 12000, 18000, 30000, 42000, 54000]);
+  assert.deepEqual(result, { ...pending, timedOut: true });
+});
+
 test('a second supplier can publish choices within the original picker cadence', async () => {
   let clock = 0;
   const rows = [{ id: 'first' }];
@@ -9960,11 +9975,36 @@ test('an empty model still polls and settles as soon as stored rows become usabl
   const responses = [empty, empty, partial];
   const h = selectorOptionsHarness(() => responses.shift());
   await h.load('', null, null, 'model');
-  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1', '/choices']);
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1', '/choices?stored_only=1']);
   assert.deepEqual(h.waits, [350, 1150]);
   assert.deepEqual(h.displayed, [[], partial.items]);
   assert.equal(h.$('model').disabled, false);
   assert.equal(h.$('retry').hidden, true);
+});
+
+test('an empty make or model stops at the first stored probe when discovery has ended', async () => {
+  for (const name of ['make', 'model']) {
+    const pending = { items: [], complete: false, hydrating: true, discovery_instance: 'one' };
+    const h = selectorOptionsHarness(path => path.includes('stored_only') ? { ...pending, hydrating: false } : pending);
+    await h.load('', null, null, name);
+    assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
+    assert.deepEqual(h.waits, [350]);
+    assert.equal(h.$(name).disabled, true);
+    assert.equal(h.$('retry').hidden, false);
+  }
+});
+
+test('a live prefetch is the only discovery request when a model list stays empty', async () => {
+  const pending = { items: [], complete: false, hydrating: true, discovery_instance: 'one' };
+  const replies = [
+    { ...pending, hydrating: false, discovery_instance: 'peer' },
+    { ...pending, hydrating: false },
+  ];
+  const h = selectorOptionsHarness(() => replies.shift());
+  await h.load('', null, Promise.resolve(pending), 'model', { initialIsLive: true });
+  assert.deepEqual(h.requests, ['/choices?stored_only=1', '/choices?stored_only=1']);
+  assert.deepEqual(h.waits, [350, 1150]);
+  assert.equal(h.$('retry').hidden, false);
 });
 
 test('an alternate model keeps polling for a missing saved model', async () => {
@@ -9974,7 +10014,7 @@ test('an alternate model keeps polling for a missing saved model', async () => {
   const responses = [partial, partial, { ...partial, items: [alternate, wanted] }];
   const h = selectorOptionsHarness(() => responses.shift());
   await h.load(wanted.id, null, null, 'model');
-  assert.deepEqual(h.requests, ['/choices', '/choices', '/choices']);
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1', '/choices?stored_only=1']);
   assert.deepEqual(h.waits, [1500, 1500]);
   assert.equal(h.$('model').value, wanted.id);
 });

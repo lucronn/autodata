@@ -37,8 +37,9 @@ type CatalogYearsResponse struct {
 	CatalogHydrationResponse
 }
 type CatalogHydrationResponse struct {
-	Complete  bool `json:"complete"`
-	Hydrating bool `json:"hydrating"`
+	Complete          bool   `json:"complete"`
+	Hydrating         bool   `json:"hydrating"`
+	DiscoveryInstance string `json:"discovery_instance,omitempty"`
 }
 type CatalogMakesResponse struct {
 	Version string        `json:"version"`
@@ -51,10 +52,9 @@ type CatalogModelsResponse struct {
 	CatalogHydrationResponse
 }
 type CatalogConfigurationsResponse struct {
-	Version           string                 `json:"version"`
-	Items             []CatalogConfiguration `json:"items"`
-	Discovering       bool                   `json:"discovering,omitempty"`
-	DiscoveryInstance string                 `json:"discovery_instance,omitempty"`
+	Version     string                 `json:"version"`
+	Items       []CatalogConfiguration `json:"items"`
+	Discovering bool                   `json:"discovering,omitempty"`
 	CatalogHydrationResponse
 }
 type CatalogArticlesResponse struct {
@@ -108,6 +108,8 @@ func (s *Server) listCatalogMakes(response http.ResponseWriter, request *http.Re
 		return
 	}
 	region := request.URL.Query().Get("region")
+	payload := map[string]any{"scope": "makes", "year": year, "region": catalogRegion(request)}
+	running := s.catalogHydrationRunning(payload)
 	// Read the marker before the rows. A concurrent completion can otherwise
 	// make an older partial row set appear complete to the caller.
 	complete, statusErr := s.catalogSelectorCoverage(request, principal, "makes", year, "", "", region)
@@ -119,16 +121,10 @@ func (s *Server) listCatalogMakes(response http.ResponseWriter, request *http.Re
 	if !s.catalogCanServeRows(response, request, len(items), statusErr) {
 		return
 	}
-	hydrating := !complete && s.ingestionClient != nil
-	if hydrating && !catalogStoredSelector(request) {
-		s.scheduleCatalogHydration(request, map[string]any{
-			"scope": "makes", "year": year, "region": catalogRegion(request),
-		})
-	}
+	hydration := s.initialSelectorHydration(request, payload, complete, running)
 	s.cacheCompleteCatalogSelector(response, request, complete && len(items) > 0)
 	writeJSON(response, http.StatusOK, CatalogMakesResponse{
-		Version: "v1", Items: items,
-		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete, Hydrating: hydrating},
+		Version: "v1", Items: items, CatalogHydrationResponse: hydration,
 	})
 }
 
@@ -140,6 +136,8 @@ func (s *Server) listCatalogModels(response http.ResponseWriter, request *http.R
 	}
 	makeName := catalogPathValue(request.PathValue("make"))
 	region := request.URL.Query().Get("region")
+	payload := map[string]any{"scope": "models", "year": year, "make": makeName, "region": catalogRegion(request)}
+	running := s.catalogHydrationRunning(payload)
 	complete, statusErr := s.catalogSelectorCoverage(request, principal, "models", year, makeName, "", region)
 	items, err := s.catalog.Models(request.Context(), principal, year, makeName, region)
 	if err != nil {
@@ -149,17 +147,21 @@ func (s *Server) listCatalogModels(response http.ResponseWriter, request *http.R
 	if !s.catalogCanServeRows(response, request, len(items), statusErr) {
 		return
 	}
-	hydrating := !complete && s.ingestionClient != nil
-	if hydrating && !catalogStoredSelector(request) {
-		s.scheduleCatalogHydration(request, map[string]any{
-			"scope": "models", "year": year, "make": makeName, "region": catalogRegion(request),
-		})
-	}
+	hydration := s.initialSelectorHydration(request, payload, complete, running)
 	s.cacheCompleteCatalogSelector(response, request, complete && len(items) > 0)
 	writeJSON(response, http.StatusOK, CatalogModelsResponse{
-		Version: "v1", Items: items,
-		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete, Hydrating: hydrating},
+		Version: "v1", Items: items, CatalogHydrationResponse: hydration,
 	})
+}
+
+func (s *Server) initialSelectorHydration(request *http.Request, payload map[string]any, complete, running bool) CatalogHydrationResponse {
+	if complete || s.ingestionClient == nil {
+		return CatalogHydrationResponse{Complete: complete}
+	}
+	if !running && !catalogStoredSelector(request) {
+		running = s.scheduleCatalogHydration(request, payload)
+	}
+	return CatalogHydrationResponse{Hydrating: running, DiscoveryInstance: catalogDiscoveryInstance}
 }
 
 func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request *http.Request, principal Principal) {
@@ -209,10 +211,10 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 	}
 	s.cacheCompleteCatalogSelector(response, request, scopeComplete && usable && !running)
 	writeJSON(response, http.StatusOK, CatalogConfigurationsResponse{
-		Version: "v1", Items: items,
-		Discovering:              usable && !scopeComplete && running,
-		DiscoveryInstance:        discoveryInstance,
-		CatalogHydrationResponse: CatalogHydrationResponse{Complete: scopeComplete, Hydrating: !usable && running},
+		Version: "v1", Items: items, Discovering: usable && !scopeComplete && running,
+		CatalogHydrationResponse: CatalogHydrationResponse{
+			Complete: scopeComplete, Hydrating: !usable && running, DiscoveryInstance: discoveryInstance,
+		},
 	})
 }
 
