@@ -10168,7 +10168,7 @@ test('a model picker refreshes stored choices only while that make is still sele
     const refreshDelay = deferredAuthOperation();
     const reads = [];
     const h = selectorOptionsHarness((_path, options) => {
-      reads.push(options.deferModelRefresh === true);
+      reads.push([options.deferModelRefresh === true, options.optionalModelRefresh === true]);
       return reads.length === 1
         ? { items: [first], complete: false, refresh_deferred: true }
         : { items: [first, late], complete: true };
@@ -10178,13 +10178,13 @@ test('a model picker refreshes stored choices only while that make is still sele
       return refreshDelay.promise;
     };
     await h.load('', null, null, 'model');
-    assert.deepEqual(reads, [true]);
+    assert.deepEqual(reads, [[true, false]]);
     assert.equal(h.$('model').disabled, false);
 
     if (leaveBeforeRefresh) h.context.cancelPickerRefreshes();
     refreshDelay.resolve();
     await new Promise(setImmediate);
-    assert.deepEqual(reads, leaveBeforeRefresh ? [true] : [true, false]);
+    assert.deepEqual(reads, leaveBeforeRefresh ? [[true, false]] : [[true, false], [false, true]]);
     assert.deepEqual(h.$('model').options.map(option => option.value),
       leaveBeforeRefresh ? [first.id] : [first.id, late.id]);
   }

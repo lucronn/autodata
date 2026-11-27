@@ -518,7 +518,7 @@ export async function requestArticleJSON(path, {
   }
 }
 const directMakePath = /^\/v1\/catalog\/years\/\d{4}\/makes\?region=US$/;
-const directModelPath = /^\/v1\/catalog\/years\/\d{4}\/makes\/[a-z0-9-]+\/models\?region=US(?:&(?:stored_only|defer_refresh)=1)?$/;
+const directModelPath = /^\/v1\/catalog\/years\/\d{4}\/makes\/[a-z0-9-]+\/models\?region=US(?:&(?:stored_only|defer_refresh|optional_refresh)=1)?$/;
 const directConfigurationPath = /^\/v1\/catalog\/years\/\d{4}\/makes\/[a-z0-9-]+\/models\/[a-z0-9-]+\/configurations\?region=US(?:&stored_only=1)?$/;
 const directMakeTimeout = 175;
 const directModelTimeout = 200;
@@ -580,6 +580,7 @@ async function fetchSelectorBeforeAbort(fetcher, resource, init) {
 
 export async function requestJSON(path, options = {}) {
   if (options.deferModelRefresh) path += '&defer_refresh=1';
+  else if (options.optionalModelRefresh) path += '&optional_refresh=1';
   const direct = directSelectorURL(path, options);
   if (!direct) return (await requestArticleJSON(path, options)).data;
   const isMake = directMakePath.test(path);

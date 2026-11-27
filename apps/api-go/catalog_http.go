@@ -136,7 +136,7 @@ func (s *Server) listCatalogMakes(response http.ResponseWriter, request *http.Re
 	if !s.catalogCanServeRows(response, request, len(items), statusErr) {
 		return
 	}
-	hydration := s.initialSelectorHydration(request, payload, complete, running)
+	hydration := s.initialSelectorHydration(request, payload, complete, running, false)
 	s.cacheCompleteCatalogSelector(response, request, complete && len(items) > 0)
 	writeJSON(response, http.StatusOK, CatalogMakesResponse{
 		Version: "v1", Items: items, CatalogHydrationResponse: hydration,
@@ -169,11 +169,14 @@ func (s *Server) listCatalogModels(response http.ResponseWriter, request *http.R
 	if !s.catalogCanServeRows(response, request, len(items), statusErr) {
 		return
 	}
-	deferRefresh := !complete && !running && len(items) > 0 && s.ingestionClient != nil &&
-		!catalogStoredSelector(request) && request.URL.Query().Get("defer_refresh") == "1"
+	query := request.URL.Query()
+	deferOptional := query.Get("defer_refresh") == "1"
+	optionalRefresh := len(items) > 0 && (deferOptional || query.Get("optional_refresh") == "1")
+	deferRefresh := !complete && !running && optionalRefresh && deferOptional && s.ingestionClient != nil &&
+		!catalogStoredSelector(request)
 	var hydration CatalogHydrationResponse
 	if !deferRefresh {
-		hydration = s.initialSelectorHydration(request, payload, complete, running)
+		hydration = s.initialSelectorHydration(request, payload, complete, running, optionalRefresh)
 	}
 	s.cacheCompleteCatalogSelector(response, request, complete && len(items) > 0)
 	writeJSON(response, http.StatusOK, CatalogModelsResponse{
@@ -181,12 +184,13 @@ func (s *Server) listCatalogModels(response http.ResponseWriter, request *http.R
 	})
 }
 
-func (s *Server) initialSelectorHydration(request *http.Request, payload map[string]any, complete, running bool) CatalogHydrationResponse {
+func (s *Server) initialSelectorHydration(request *http.Request, payload map[string]any, complete, running, optionalRefresh bool) CatalogHydrationResponse {
 	if complete || s.ingestionClient == nil {
 		return CatalogHydrationResponse{Complete: complete}
 	}
-	if !running && !catalogStoredSelector(request) {
-		running = s.scheduleCatalogHydration(request, payload)
+	// An exact model lookup may need to wait while an optional attempt for the same scope is pending.
+	if !catalogStoredSelector(request) && (!running || (payload["scope"] == "models" && !optionalRefresh)) {
+		running = s.startCatalogHydration(request, payload, optionalRefresh)
 	}
 	return CatalogHydrationResponse{Hydrating: running, DiscoveryInstance: catalogDiscoveryInstance}
 }
@@ -801,10 +805,17 @@ func (s *Server) catalogHydrationRunning(payload map[string]any) bool {
 		return false
 	}
 	_, running := catalogHydrationInFlight.Load(key)
+	if !running && payload["scope"] == "models" {
+		_, running = catalogHydrationInFlight.Load(key + ":optional")
+	}
 	return running
 }
 
 func (s *Server) scheduleCatalogHydration(request *http.Request, payload map[string]any) bool {
+	return s.startCatalogHydration(request, payload, false)
+}
+
+func (s *Server) startCatalogHydration(request *http.Request, payload map[string]any, optionalRefresh bool) bool {
 	if s.ingestionClient == nil {
 		return false
 	}
@@ -813,13 +824,20 @@ func (s *Server) scheduleCatalogHydration(request *http.Request, payload map[str
 		log.Printf("catalog hydration could not be scheduled: %v", err)
 		return false
 	}
+	if optionalRefresh {
+		if _, running := catalogHydrationInFlight.Load(key); running {
+			return true
+		}
+		// Share the supplier idempotency key and keep interactive admission independent.
+		key += ":optional"
+	}
 	if _, alreadyRunning := catalogHydrationInFlight.LoadOrStore(key, struct{}{}); alreadyRunning {
 		return true
 	}
 	backgroundRequest := request.Clone(context.Background())
 	go func() {
 		defer catalogHydrationInFlight.Delete(key)
-		if err := s.ensureCatalogHydrated(backgroundRequest, payload); err != nil {
+		if err := s.ensureCatalogHydrated(backgroundRequest, payload, optionalRefresh); err != nil {
 			log.Printf("catalog hydration %s failed: %v", key, err)
 		}
 	}()

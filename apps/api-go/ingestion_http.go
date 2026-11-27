@@ -130,7 +130,7 @@ func (s *Server) createArticleIntake(response http.ResponseWriter, request *http
 // ensureCatalogHydrated asks the ingestion boundary to fill a catalog scope
 // only after the local read has established that the scope is missing or
 // explicitly incomplete. Repeated reads share a deterministic idempotency key.
-func (s *Server) ensureCatalogHydrated(request *http.Request, payload map[string]any) error {
+func (s *Server) ensureCatalogHydrated(request *http.Request, payload map[string]any, optionalRefresh bool) error {
 	if s.ingestionClient == nil {
 		return nil
 	}
@@ -139,7 +139,7 @@ func (s *Server) ensureCatalogHydrated(request *http.Request, payload map[string
 		return err
 	}
 	scope := payload["scope"]
-	waitForAdmission := scope == "makes" || scope == "models"
+	waitForAdmission := !optionalRefresh && (scope == "makes" || scope == "models")
 	dispatch := func(request *http.Request) (time.Duration, error) {
 		status, raw, err := s.ingestionClient.Do(request, "/v1/catalog/ensure", body, key)
 		if err != nil {
