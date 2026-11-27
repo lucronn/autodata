@@ -751,6 +751,48 @@ async def retry_workshop_entry(browser, url, storage, fixture_route):
         await context.close()
 
 
+async def verify_figure_transport_retry(browser, url, storage, fixture_route, detail, digest):
+    context = await browser.new_context(ignore_https_errors=True, service_workers="block", storage_state=storage)
+    image_prefix = "/v1/catalog/images/v2."
+    reads = []
+    media = []
+    detail_path = urlsplit(detail).path
+    source_path = detail_path + "/source"
+
+    async def route_image(route):
+        media.append(route.request.url)
+        if len(media) == 1:
+            await route.abort("connectionreset")
+        else:
+            await route.fallback()
+
+    def image_response(response):
+        return response.ok and urlsplit(response.url).path.startswith(image_prefix)
+
+    try:
+        await context.route("**/*", fixture_route)
+        page = await context.new_page()
+        page.on("request", lambda request: reads.append(urlsplit(request.url).path)
+                if request.method == "GET" and urlsplit(request.url).path in (detail_path, source_path) else None)
+        await page.route(lambda url: urlsplit(url).path.startswith(image_prefix), route_image)
+        async with page.expect_response(image_response) as pending:
+            assert (await page.goto(url, wait_until="commit")).ok
+            await page.locator("#article-content img").first.scroll_into_view_if_needed()
+        await page.wait_for_function("document.querySelector('#article-content img')?.naturalWidth > 0")
+        assert len(media) == 2 and media[0] == media[1] and reads == [detail_path]
+        assert sha256(await (await pending.value).body()).hexdigest() == digest
+
+        media.clear()
+        async with page.expect_response(image_response) as pending:
+            await page.locator("#open-original").click()
+            await page.locator("#source-review-frame img").first.scroll_into_view_if_needed()
+        await page.wait_for_function("document.querySelector('#source-review-frame img')?.naturalWidth > 0")
+        assert len(media) == 2 and media[0] == media[1] and reads == [detail_path, source_path]
+        assert sha256(await (await pending.value).body()).hexdigest() == digest
+    finally:
+        await context.close()
+
+
 async def exercise_simulated_payment(origin, scope, customer_account, repair=None, table_variant=None, table_repair=None):
     from playwright.async_api import async_playwright, expect
 
@@ -1062,6 +1104,9 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                 }), flush=True)
                 if scope.get("retry_workshop_entry"):
                     storage = await owner.storage_state()
+                    await verify_figure_transport_retry(browser, page.url, storage, route_fixture, detail, cold_index["figure_sha"])
+                    print(json.dumps({"case": "workshop-figure-transport-retry", "engine": engine, "headed": True,
+                                      "reader_and_original_verified": True}), flush=True)
                     async with retry_workshop_entry(browser, page.url, storage, route_fixture) as saved:
                         await expect(saved.locator("#article-content")).to_contain_text(expected_text)
                         await saved.locator("#article-content img").first.scroll_into_view_if_needed()

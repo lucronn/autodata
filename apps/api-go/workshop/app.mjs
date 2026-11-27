@@ -1638,11 +1638,12 @@ function addImage(parent, image, reference, g, figures = null, useAltCaption = f
       size.textContent = "Full size";
       size.hidden = false;
     });
-    img.addEventListener("error", () => {
+    img.addEventListener("error", (event) => {
       size.hidden = true;
       size.textContent = "";
       if ("fullSize" in viewport.dataset) setFullSize(false);
-      if (g.current()) void renewMedia(g, img);
+      if (g.current() && (!event.isTrusted || !retryInterruptedFigure(g, img)))
+        void renewMedia(g, img);
     });
     if (figures) figures.push({ img, url });
     else img.src = url;
@@ -1670,6 +1671,24 @@ function addImage(parent, image, reference, g, figures = null, useAltCaption = f
 }
 const figureWatches = new WeakMap();
 const figureLoadTimeout = 8_000;
+function retryInterruptedFigure(g, img) {
+  if (!img.isConnected || !img.src || img.dataset.transportRetried || img.dataset.replacement) return false;
+  const url = img.src;
+  const timings = globalThis.performance?.getEntriesByName?.(url, "resource");
+  if (!timings) return false;
+  const transfer = timings.at(-1);
+  // Chromium records zero status for a failed transfer. WebKit can omit the entry.
+  // A completed HTTP request belongs to the document's normal media renewal path.
+  if (transfer && transfer.responseStatus !== 0) return false;
+  img.dataset.transportRetried = "1";
+  img.removeAttribute("src");
+  requestAnimationFrame(() => {
+    if (!g.current() || !img.isConnected || img.src) return;
+    img.src = url;
+    figureWatches.get(img)?.arm();
+  });
+  return true;
+}
 function watchFigureLoads(figures, g) {
   if (typeof IntersectionObserver !== "function") return;
   const observer = new IntersectionObserver((entries) => {
