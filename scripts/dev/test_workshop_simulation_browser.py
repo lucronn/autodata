@@ -331,6 +331,61 @@ async def verify_labelled_market_picker(page, origin, misplaced, verified):
     await expect(page.locator("#purchase")).to_be_hidden()
 
 
+async def verify_late_grouped_models(page, origin):
+    from playwright.async_api import expect
+
+    model_path = "/v1/catalog/years/2024/makes/example/models"
+    group = "base-sport-touring"
+    group_path = f"{model_path}/{group}/configurations"
+    base_path = f"{model_path}/base/configurations"
+    engine = str(uuid4())
+    group_requested = False
+    resumed_reads = []
+
+    def selector(items, *, complete=True):
+        return {"version": "v1", "items": items, "complete": complete, "hydrating": not complete}
+
+    async def models(route):
+        if group_requested:
+            resumed_reads.append(parse_qs(urlsplit(route.request.url).query).get("stored_only"))
+        complete = len(resumed_reads) >= 2
+        items = [{"id": group, "name": "Base/Sport/Touring"}]
+        if complete:
+            items.extend({"id": name.lower(), "name": name} for name in ("Base", "Sport", "Touring"))
+        await route.fulfill(json=selector(items, complete=complete))
+
+    async def group_engines(route):
+        nonlocal group_requested
+        group_requested = True
+        await route.fulfill(json=selector([]))
+
+    async def base_engines(route):
+        await route.fulfill(json=selector([{"id": engine, "year": 2024, "make": "Example",
+            "model": "Base", "engine": "2.0 L", "region": "US", "complete": True}]))
+
+    requests = {
+        model_path: models,
+        group_path: group_engines,
+        base_path: base_engines,
+    }
+    for path, handler in requests.items():
+        await page.route(f"{origin}{path}?*", handler)
+    try:
+        await page.goto(f"{origin}/workshop/?year=2024&make=example")
+        await page.locator("#model").select_option(group)
+        alternatives = page.locator("#model-alternatives")
+        await expect(alternatives.get_by_role("button")).to_have_text(["Base", "Sport", "Touring"])
+        await alternatives.get_by_role("button", name="Base", exact=True).click()
+        await expect(page.locator("#model")).to_have_value("base")
+        await expect(page.locator(f'#configuration option[value="{engine}"]')).to_have_text("2.0 L")
+        await expect(page.locator("#configuration")).to_be_enabled()
+        await expect(alternatives).to_be_hidden()
+        assert resumed_reads == [["1"], ["1"]]
+    finally:
+        for path, handler in requests.items():
+            await page.unroute(f"{origin}{path}?*", handler)
+
+
 def authored_model_index_fixture(runtime, scope, *, competing_fitment=False):
     from threading import Event, Thread
 
@@ -626,6 +681,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             market = scope.get("labelled_market")
             if market:
                 await verify_labelled_market_picker(page, origin, *market)
+            if scope.get("late_group_models"):
+                await verify_late_grouped_models(page, origin)
             if repair is None and table_variant is None:
                 picker_started = time.monotonic()
                 await page.goto(f"{origin}/workshop/")
@@ -899,7 +956,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
 
 
 @pytest.mark.parametrize("variant", [
-    "payment", "list-starts", "authored-table", "archived-table", "source-table", "labelled-market",
+    "payment", "list-starts", "authored-table", "archived-table", "source-table", "labelled-market", "late-group-models",
     "authored-model-index", "authored-model-index-competing-fitment", "authored-model-index-held-bankone",
     "authored-model-index-held-banktwo",
 ])
@@ -922,6 +979,8 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
         scope["article"] = str(runtime.article_id)
         if variant == "labelled-market":
             scope["labelled_market"] = labelled_market_fixture(runtime)
+        if variant == "late-group-models":
+            scope["late_group_models"] = True
         if variant.startswith("authored-model-index"):
             scope = authored_model_index_fixture(runtime, scope, competing_fitment=variant.endswith("-competing-fitment"))
         if variant == "authored-model-index-held-bankone":

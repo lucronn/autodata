@@ -478,14 +478,19 @@ function usableEngineChoices(name, response) {
   return name === "configuration" && !response.hydrating && pickerHasChoices(name, response.items) &&
     response.items.every((item) => item.complete !== false);
 }
-function groupedModelChoices() {
+function groupedModelNames() {
   const selected = $("model").value;
   const group = rows.model.find((item) => item.id === selected);
   const names = group?.name?.split("/").map((name) => name.trim());
   const keys = names?.map((name) => name.toLowerCase());
   if (!keys || keys.length < 2 || keys.includes("") || new Set(keys).size !== keys.length) return null;
-  const choices = keys.map((name) =>
-    rows.model.find((item) => item.id !== selected && item.name?.toLowerCase() === name));
+  return names;
+}
+function groupedModelChoices(names) {
+  if (!names) return null;
+  const selected = $("model").value;
+  const choices = names.map((name) =>
+    rows.model.find((item) => item.id !== selected && item.name?.toLowerCase() === name.toLowerCase()));
   return choices.every(Boolean) ? choices.map((item, index) => ({ id: item.id, name: names[index] })) : null;
 }
 function readStoredSelector(path, signal, timeout) {
@@ -583,7 +588,8 @@ async function loadOptions(name, g, desired = "", initial = null, {
   const choice = (item) => String(item.id ?? item.year) === desired;
   const label = name === "configuration" ? "engine / trim" : name;
   const stopWithChoices = name !== "configuration" && !desired;
-  const modelAlternatives = name === "configuration" && !desired ? groupedModelChoices() : null;
+  const groupNames = name === "configuration" && !desired ? groupedModelNames() : null;
+  let modelAlternatives = groupedModelChoices(groupNames);
   let loadingStatus = modelAlternatives
     ? "Checking engines for this group. You can choose an individual model."
     : `Loading ${label} choices…`;
@@ -677,6 +683,13 @@ async function loadOptions(name, g, desired = "", initial = null, {
   const selected = desired && result.items.some(choice);
   const choicesReady = stopWithChoices && result.items.length > 0;
   const incomplete = result.refreshFailed || result.timedOut || (result.complete === false && !choicesReady);
+  if (groupNames && !modelAlternatives && !pickerHasChoices(name, result.items) && pickerStates.get("model")?.incomplete) {
+    status("Checking available models for this group…", { busy: true });
+    // Choosing the group canceled the picker refresh. Resume stored reads if its engine list is empty.
+    await refreshPicker("model", { followDiscovery: true });
+    if (!g.current()) return;
+    modelAlternatives = groupedModelChoices(groupNames);
+  }
   if (modelAlternatives && !pickerHasChoices(name, result.items)) {
     status("No verified engine or trim loaded for this group. Choose an individual model.",
       { modelAlternatives, retry: incomplete ? retry : null });
