@@ -36,6 +36,7 @@ from .article_lifecycle_types import (
     MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V2,
     MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V3,
     PDF_BLANK_PAGE_LAYOUT,
+    PDF_CLIPPED_FIGURE_LAYOUT,
     PDF_COMPACT_FIGURE_LAYOUT,
     PDF_FAST_PNG_ENCODING,
     PDF_LEGACY_FIGURE_LAYOUT,
@@ -470,6 +471,7 @@ WORKSHOP_CAPTURE_OPTIONS = {
     "keep_html_table_image_order": True,
     "keep_repeated_pdf_figures": True,
     "keep_pdf_figures_with_margins": True,
+    "keep_clipped_pdf_figures": True,
     "keep_compact_pdf_figures": True,
     "keep_single_line_pdf_figures": True,
     "skip_blank_linked_pdf_pages": True,
@@ -506,7 +508,8 @@ def capture_source_article(
     context, *, registry, object_store, deadline_seconds=30.0,
     keep_embedded_pdf=False, keep_html_headings=False, keep_bound_pdf_iframes=False,
     keep_pdf_figure_order=False, keep_multiple_pdf_figures=False, keep_html_table_image_order=False,
-    keep_repeated_pdf_figures=False, keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False,
+    keep_repeated_pdf_figures=False, keep_pdf_figures_with_margins=False, keep_clipped_pdf_figures=False,
+    keep_compact_pdf_figures=False,
     keep_html_figure_captions=False, keep_html_table_captions=False, keep_html_flow_figure_captions=False,
     keep_html_table_spans=False,
     keep_html_media_table_headers=False,
@@ -612,6 +615,9 @@ def capture_source_article(
     def retain_repeats_with_margins(digest):
         return keep_pdf_figures_with_margins and digest not in context.legacy_published_pdf_margin_roots
 
+    def retain_clipped_figures(digest):
+        return keep_clipped_pdf_figures and digest not in context.legacy_published_pdf_clipped_roots
+
     def retain_compact_figures(digest):
         return keep_compact_pdf_figures and digest not in context.legacy_published_pdf_compact_roots
 
@@ -701,6 +707,7 @@ def capture_source_article(
                         keep_multiple_pdf_figures=keep_multiple_pdf_figures,
                         keep_repeated_pdf_figures=retain_repeats(payload.content_sha256),
                         keep_pdf_figures_with_margins=retain_repeats_with_margins(payload.content_sha256),
+                        keep_clipped_pdf_figures=retain_clipped_figures(payload.content_sha256),
                         keep_compact_pdf_figures=retain_compact_figures(payload.content_sha256),
                         keep_single_line_compact_figures=keep_single_line_pdf_figures,
                         keep_wordless_pdf_figures=keep_wordless_linked_pdf_figures,
@@ -832,6 +839,7 @@ def capture_source_article(
             keep_html_table_image_order=keep_html_table_image_order,
             keep_repeated_pdf_figures=retain_repeats(body.body["sha256"]),
             keep_pdf_figures_with_margins=retain_repeats_with_margins(body.body["sha256"]),
+            keep_clipped_pdf_figures=retain_clipped_figures(body.body["sha256"]),
             keep_compact_pdf_figures=retain_compact_figures(body.body["sha256"]),
             keep_html_table_captions=(
                 keep_html_table_captions and body.body["sha256"] != context.legacy_published_html_table_caption_body
@@ -1097,6 +1105,8 @@ def capture_source_article(
         manifest[0]["article_link_bindings"] = deepcopy(resources[0]["article_link_bindings"])
     if article.get("retained_pdf_figures_with_margins") is True:
         resources[0]["pdf_figure_layout"] = manifest[0]["pdf_figure_layout"] = PDF_REPEAT_MARGIN_LAYOUT
+    if article.get("retained_clipped_pdf_figures") is True:
+        resources[0]["pdf_clipped_figure_layout"] = manifest[0]["pdf_clipped_figure_layout"] = PDF_CLIPPED_FIGURE_LAYOUT
     if article.get("positioned_compact_pdf_figures") is True:
         resources[0]["pdf_compact_figure_layout"] = manifest[0]["pdf_compact_figure_layout"] = PDF_COMPACT_FIGURE_LAYOUT
     if html_figure_captions:
@@ -1224,6 +1234,8 @@ def capture_source_article(
                 linked_decimal_preserved |= adapted.get("preserved_leading_decimals") is True
                 if adapted.get("retained_pdf_figures_with_margins") is True:
                     resource["pdf_figure_layout"] = PDF_REPEAT_MARGIN_LAYOUT
+                if adapted.get("retained_clipped_pdf_figures") is True:
+                    resource["pdf_clipped_figure_layout"] = PDF_CLIPPED_FIGURE_LAYOUT
                 if adapted.get("positioned_compact_pdf_figures") is True:
                     resource["pdf_compact_figure_layout"] = PDF_COMPACT_FIGURE_LAYOUT
                 if adapted.get("positioned_single_line_pdf_figures") is True:
@@ -1242,7 +1254,8 @@ def capture_source_article(
             manifest.append(
                 {key: resource[key] for key in (
                     "role", "opaque_ref", "sha256", "media_type", "derived_from_sha256", "derivation_version",
-                    "pdf_figure_layout", "pdf_compact_figure_layout", "pdf_blank_page_layout", "pdf_single_line_figure_layout",
+                    "pdf_figure_layout", "pdf_clipped_figure_layout", "pdf_compact_figure_layout",
+                    "pdf_blank_page_layout", "pdf_single_line_figure_layout",
                     "pdf_wordless_figure_layout", "pdf_figure_encoding",
                 ) if key in resource}
             )

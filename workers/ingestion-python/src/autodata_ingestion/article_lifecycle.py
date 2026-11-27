@@ -15,7 +15,7 @@ from .article_lifecycle_types import (
     HTML_INLINE_ARTICLE_LINK_LAYOUT,
     HTML_FIGURE_CAPTION_LAYOUT, HTML_FLOW_FIGURE_CAPTION_LAYOUT,
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT, HTML_SECTION_TITLE_LAYOUT, HTML_TABLE_CAPTION_LAYOUT,
-    PDF_BLANK_PAGE_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT, PDF_FAST_PNG_ENCODING,
+    PDF_BLANK_PAGE_LAYOUT, PDF_CLIPPED_FIGURE_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT, PDF_FAST_PNG_ENCODING,
     PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT, SourceArticleContext,
     SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, SOURCE_PROJECTION_VERSIONS,
 )
@@ -120,6 +120,7 @@ def _capture_context(repo,lease):
         previous_pdf_roots = {previous_body} if previous_body is not None else set()
         legacy_blank_pdf_roots = set()
         compact_layout_roots = set()
+        clipped_layout_roots = set()
         margin_layout_roots = set()
         legacy_layout_roots = set()
         legacy_bankone_html = False
@@ -168,6 +169,8 @@ def _capture_context(repo,lease):
             if is_pdf or (resource.get("role") == "body" and digest == previous_body):
                 if resource.get("pdf_compact_figure_layout") == PDF_COMPACT_FIGURE_LAYOUT:
                     compact_layout_roots.add(digest)
+                if resource.get("pdf_clipped_figure_layout") == PDF_CLIPPED_FIGURE_LAYOUT:
+                    clipped_layout_roots.add(digest)
                 layout = resource.get("pdf_figure_layout")
                 if layout == PDF_REPEAT_MARGIN_LAYOUT:
                     margin_layout_roots.add(digest)
@@ -185,6 +188,7 @@ def _capture_context(repo,lease):
             ),
             published_legacy_pdf_layout_roots=frozenset(legacy_layout_roots) if previous_has_repeats else frozenset(),
             legacy_published_pdf_compact_roots=frozenset(previous_pdf_roots - compact_layout_roots),
+            legacy_published_pdf_clipped_roots=frozenset(previous_pdf_roots - clipped_layout_roots),
             legacy_published_pdf_blank_roots=frozenset(legacy_blank_pdf_roots),
             legacy_published_html_figure_body=legacy_figure_body,
             legacy_published_html_flow_figure_body=legacy_flow_figure_body,

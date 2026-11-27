@@ -873,6 +873,7 @@ def _adapt_pdf_resource(
     keep_multiple_pdf_figures: bool = False,
     keep_repeated_pdf_figures: bool = False,
     keep_pdf_figures_with_margins: bool = False,
+    keep_clipped_pdf_figures: bool = False,
     keep_compact_pdf_figures: bool = False,
     skip_blank_pages: bool = False,
     keep_single_line_compact_figures: bool = False,
@@ -885,7 +886,9 @@ def _adapt_pdf_resource(
 
     from .ocr import build_ocr_candidates
     from .article_document import segment_plain_article_text
-    from .pdf_figure_order import figure_text_gaps, is_single_wordless_figure
+    from .pdf_figure_order import (
+        clipped_figure_text_gap, figure_text_gaps, is_single_wordless_figure, normalized_native_pdf_text,
+    )
 
     pages: list[Any] = []
     native_text_pages: set[int] = set()
@@ -916,6 +919,7 @@ def _adapt_pdf_resource(
     page_image_payloads: dict[str, dict[str, Any]] = {}
     multi_figure_groups: list[list[str]] = []
     positioned_images: list[dict[str, Any]] = []
+    clipped_candidates: list[dict[str, Any]] = []
     margin_positions: dict[str, list[tuple[dict[str, Any], tuple[int, int, int]]]] = {}
     margin_pages: dict[str, set[int]] = {}
     compact_figures: list[dict[str, Any]] = []
@@ -926,9 +930,7 @@ def _adapt_pdf_resource(
             try:
                 # Keep line breaks so TSB/PDF text can be segmented into headings,
                 # steps, and notes instead of one collapsed workshop paragraph.
-                raw_text = str(page.extract_text() or "")
-                lines = [re.sub(r"[ \t]+", " ", line).strip() for line in raw_text.splitlines()]
-                text = "\n".join(line for line in lines if line)
+                text = normalized_native_pdf_text(str(page.extract_text() or ""))
             except Exception as error:
                 page_errors.append({"locator": f"page:{index}", "error": str(error)})
                 continue
@@ -1008,9 +1010,11 @@ def _adapt_pdf_resource(
                         multi_figure_groups.append([by_key[key] for key in gaps])
                     if keep_repeated_pdf_figures:
                         for image in extracted_images:
+                            digest = image["content_sha256"]
                             if image["image_id"] in figure_gaps:
-                                digest = image["content_sha256"]
                                 positioned_images.append({**image, "url": page_image_payloads[digest]["url"]})
+                            elif keep_clipped_pdf_figures and len(by_key) == 1:
+                                clipped_candidates.append({**image, "url": page_image_payloads[digest]["url"]})
 
     # Keep unique images and recurring figures with proven interior placements.
     # Use the large-image fallback only when neither kind of figure remains.
@@ -1065,6 +1069,29 @@ def _adapt_pdf_resource(
             # The legacy fallback keeps one copy of recurring artwork.
             figure_gaps.clear()
     kept_images.extend(repeats)
+    clipped_ids = set()
+    if clipped_candidates:
+        kept_ids = {image["image_id"] for image in kept_images}
+        text_by_page = dict(page_texts)
+        proven_digests = set()
+        for image in clipped_candidates:
+            digest = image["content_sha256"]
+            if len(page_image_digests[digest]) < 2:
+                continue
+            number = image["page"]
+            text = text_by_page[number]
+            segments = segment_plain_article_text(text, step_parser=step_parser)
+            gap = clipped_figure_text_gap(pages[number - 1], text, segments, image["pdf_key"], step_parser=step_parser)
+            if gap is None:
+                continue
+            image_id = image["image_id"]
+            figure_gaps[image_id] = (gap, len(segments), 0)
+            clipped_ids.add(image_id)
+            proven_digests.add(digest)
+            # Keep the previous fallback art and add any missing proven placements.
+            if image_id not in kept_ids:
+                kept_images.append(image)
+        repeated_ids.update(image["image_id"] for image in kept_images if image["content_sha256"] in proven_digests)
     if figure_gaps is not None and multi_figure_groups:
         kept_ids = {image["image_id"] for image in kept_images}
         for group in multi_figure_groups:
@@ -1115,6 +1142,7 @@ def _adapt_pdf_resource(
             "page": image["page"],
             **({"_retained_repeated_pdf_figure": True} if image["image_id"] in repeated_ids else {}),
             **({"_retained_pdf_figure_with_margins": True} if image["image_id"] in margin_ids else {}),
+            **({"_clipped_pdf_figure": True} if image["image_id"] in clipped_ids else {}),
             **({"_compact_pdf_figure": True} if image.get("_compact_pdf_figure") is True else {}),
             **({"_single_line_pdf_figure": True} if image.get("_single_line_pdf_figure") is True else {}),
         }
@@ -1974,6 +2002,7 @@ def adapt_bound_article(
     keep_pdf_figure_order: bool = False, keep_multiple_pdf_figures: bool = False,
     keep_html_table_image_order: bool = False,
     keep_repeated_pdf_figures: bool = False, keep_pdf_figures_with_margins: bool = False,
+    keep_clipped_pdf_figures: bool = False,
     keep_compact_pdf_figures: bool = False,
     keep_html_figure_captions: bool = False,
     keep_html_table_captions: bool = False,
@@ -2191,6 +2220,7 @@ def adapt_bound_article(
                         keep_multiple_pdf_figures=keep_multiple_pdf_figures,
                         keep_repeated_pdf_figures=keep_repeated_pdf_figures,
                         keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
+                        keep_clipped_pdf_figures=keep_clipped_pdf_figures,
                         keep_compact_pdf_figures=keep_compact_pdf_figures,
                         step_parser=step_parser,
                     ),
@@ -2238,6 +2268,7 @@ def adapt_bound_article(
                         keep_html_table_image_order=keep_html_table_image_order,
                         keep_repeated_pdf_figures=keep_repeated_pdf_figures,
                         keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
+                        keep_clipped_pdf_figures=keep_clipped_pdf_figures,
                         keep_compact_pdf_figures=keep_compact_pdf_figures,
                         keep_html_figure_captions=keep_html_figure_captions,
                         keep_html_table_captions=keep_html_table_captions,
@@ -2324,6 +2355,7 @@ def adapt_bound_article(
             keep_multiple_pdf_figures=keep_multiple_pdf_figures,
             keep_repeated_pdf_figures=keep_repeated_pdf_figures,
             keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
+            keep_clipped_pdf_figures=keep_clipped_pdf_figures,
             keep_compact_pdf_figures=keep_compact_pdf_figures,
             step_parser=step_parser,
             on_native_text=on_primary_pdf_text,
@@ -2344,6 +2376,7 @@ def adapt_bound_pdf_embed(
     resource: SourceResource, *, require_complete_ocr: bool = False, keep_pdf_figure_order: bool = False,
     keep_multiple_pdf_figures: bool = False, keep_repeated_pdf_figures: bool = False,
     keep_pdf_figures_with_margins: bool = False,
+    keep_clipped_pdf_figures: bool = False,
     keep_compact_pdf_figures: bool = False,
     skip_blank_pages: bool = False,
     keep_single_line_compact_figures: bool = False,
@@ -2358,6 +2391,7 @@ def adapt_bound_pdf_embed(
         keep_multiple_pdf_figures=keep_multiple_pdf_figures,
         keep_repeated_pdf_figures=keep_repeated_pdf_figures,
         keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
+        keep_clipped_pdf_figures=keep_clipped_pdf_figures,
         keep_compact_pdf_figures=keep_compact_pdf_figures,
         skip_blank_pages=skip_blank_pages,
         keep_single_line_compact_figures=keep_single_line_compact_figures,
@@ -2370,7 +2404,8 @@ def adapt_bound_pdf_embed(
 
 def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, keep_pdf_figure_order=False,
                      keep_multiple_pdf_figures=False, keep_repeated_pdf_figures=False,
-                     keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False, skip_blank_pages=False,
+                     keep_pdf_figures_with_margins=False, keep_clipped_pdf_figures=False,
+                     keep_compact_pdf_figures=False, skip_blank_pages=False,
                      keep_single_line_compact_figures=False, keep_wordless_pdf_figures=False, step_parser=None,
                      on_native_text=None, fast_png=False):
     if embedded and (resource.media_type != "application/pdf"
@@ -2385,6 +2420,7 @@ def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, ke
             keep_multiple_pdf_figures=keep_multiple_pdf_figures,
             keep_repeated_pdf_figures=keep_repeated_pdf_figures,
             keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
+            keep_clipped_pdf_figures=keep_clipped_pdf_figures,
             keep_compact_pdf_figures=keep_compact_pdf_figures,
             skip_blank_pages=skip_blank_pages,
             keep_single_line_compact_figures=keep_single_line_compact_figures,
@@ -2430,6 +2466,7 @@ def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int
     for image in images.values():
         figure = {"kind": "image", **image}
         figure.pop("_retained_pdf_figure_with_margins", None)
+        figure.pop("_clipped_pdf_figure", None)
         figure.pop("_compact_pdf_figure", None)
         figure.pop("_single_line_pdf_figure", None)
         page_number = image.get("page")
@@ -2441,6 +2478,7 @@ def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int
     blocks = []
     positioned = False
     positioned_with_margins = False
+    positioned_clipped_figures = False
     positioned_compact_figures = False
     positioned_single_line_figures = False
     legacy_asset_order = []
@@ -2460,6 +2498,7 @@ def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int
             positioned_with_margins |= any(
                 images[image_id].get("_retained_pdf_figure_with_margins") is True for image_id in gaps
             )
+            positioned_clipped_figures |= any(images[image_id].get("_clipped_pdf_figure") is True for image_id in gaps)
             positioned_compact_figures |= any(
                 images[image_id].get("_compact_pdf_figure") is True and not images[image_id].get("_single_line_pdf_figure")
                 for image_id in gaps
@@ -2479,6 +2518,7 @@ def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int
         **({"retained_repeated_pdf_figures": True}
            if any(image.get("_retained_repeated_pdf_figure") is True for image in images.values()) else {}),
         **({"retained_pdf_figures_with_margins": True} if positioned_with_margins else {}),
+        **({"retained_clipped_pdf_figures": True} if positioned_clipped_figures else {}),
         **({"positioned_compact_pdf_figures": True} if positioned_compact_figures else {}),
         **({"positioned_single_line_pdf_figures": True} if positioned_single_line_figures else {}),
     }

@@ -10,14 +10,17 @@ from random import Random
 from threading import Event
 
 from PIL import Image, ImageDraw
-from pypdf import PdfReader
+from pypdf import PdfReader, PdfWriter
+from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 import pytest
 
 from autodata_ingestion.ocr import OCRTextBlock
 from autodata_ingestion import source_adapters
-from autodata_ingestion.article_lifecycle_types import PDF_COMPACT_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT
+from autodata_ingestion.article_lifecycle_types import (
+    PDF_CLIPPED_FIGURE_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT,
+)
 from autodata_ingestion.source_adapters import SourceResource, adapt_bound_article
 from autodata_ingestion.source_article_capture import capture_source_article
 from test_source_article_capture import capture_fixture
@@ -471,6 +474,105 @@ def test_repeated_pdf_margin_art_does_not_change_published_projection():
     legacy = adapt_bound_article(resource, None, **options)
     assert [block["alt"] for block in legacy["blocks"] if block["kind"] == "image"] == ["Figure from page 3"]
     assert adapt_bound_article(resource, None, keep_repeated_pdf_figures=True, **options) == legacy
+
+
+def _clipped_repeat_pdf(layout="clear"):
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, invariant=True, pagesize=(612, 792))
+    diagram = _image(91)
+    for page in range(1, 5):
+        pdf.drawString(72, 715 if layout != "overlap" else 630, f"Inspect the connector on page {page}.")
+        if page in (2, 3):
+            pdf.saveState()
+            clip_left = 76 if layout == "narrow" else 72
+            clip_operator = "W" if page == 2 else "W*"
+            pdf.addLiteral(f"{clip_left} 390 468 260 re {clip_operator} n")
+            pdf.drawImage(diagram, 72, 390, width=468, height=260)
+            pdf.restoreState()
+            if page == 3 or layout == "annotation":
+                bottom = 500 if layout == "annotation" else 210
+                pdf.linkURL("https://fixture.invalid/ref", (72, bottom, 180, bottom + 10), thickness=0)
+        else:
+            pdf.drawImage(_image(page), 72, 745, width=35, height=35)
+        pdf.drawString(72, 350, f"Check the mounting points on page {page}.")
+        pdf.showPage()
+    pdf.save()
+    buffer.seek(0)
+    writer = PdfWriter(clone_from=PdfReader(buffer))
+    font = writer.pages[0]["/Resources"]["/Font"]["/F1"]
+    font[NameObject("/FontDescriptor")] = DictionaryObject({
+        NameObject("/FontBBox"): ArrayObject([NumberObject(value) for value in (-170, -230, 1000, 940)]),
+    })
+    result = BytesIO()
+    writer.write(result)
+    return result.getvalue()
+
+
+@pytest.mark.parametrize("container", ["pdf", "wrapped", "linked"])
+def test_clipped_repeat_keeps_page_positions_and_historical_layout(capture_fixture, container):
+    provider = "banktwo"
+    pdf = _clipped_repeat_pdf()
+    if container == "linked":
+        capture_fixture.body(
+            provider, b'<p>Read the bulletin.</p><iframe src="/fixture/bulletin.pdf"></iframe>',
+            assets=["bulletin"], asset_bindings=[{"source_url": "/fixture/bulletin.pdf", "resource_ref": "bulletin"}],
+        )
+        capture_fixture.body(provider, pdf, "application/pdf", kind="binary", ref="bulletin")
+    elif container == "wrapped":
+        capture_fixture.body(provider, json.dumps({"body": {"pdf": base64.b64encode(pdf).decode()}}).encode(),
+                             "application/json")
+    else:
+        capture_fixture.body(provider, pdf, "application/pdf", kind="binary")
+
+    context = capture_fixture.context(provider)
+    options = dict(
+        registry=capture_fixture.registry, object_store=capture_fixture.objects,
+        keep_embedded_pdf=True, keep_bound_pdf_iframes=True, keep_pdf_figure_order=True,
+        keep_repeated_pdf_figures=True, keep_multiple_pdf_figures=True,
+    )
+    legacy = capture_source_article(context, **options)
+    captured = capture_source_article(context, keep_clipped_pdf_figures=True, **options)
+    assert captured.projection_version == "source-projection-v10"
+    assert captured.source_body == legacy.source_body
+    assert captured.evidence_manifest == legacy.evidence_manifest
+    assert captured.projection_status == "readable"
+    role = "document_asset" if container == "linked" else "body"
+    parent, = [resource for resource in captured.resource_manifest if resource["role"] == role]
+    assert parent["pdf_clipped_figure_layout"] == PDF_CLIPPED_FIGURE_LAYOUT
+    historical = replace(context, legacy_published_pdf_clipped_roots=frozenset({parent["sha256"]}))
+    unchanged = capture_source_article(historical, keep_clipped_pdf_figures=True, **options)
+    assert unchanged.source_document == legacy.source_document
+    assert unchanged.source_fingerprint == legacy.source_fingerprint
+    assert unchanged.resource_manifest == legacy.resource_manifest
+
+    header, first, second, footer = captured.source_images
+    for original, retained in zip(legacy.source_images, (header, footer), strict=True):
+        assert {key: value for key, value in retained.items() if key not in ("source_order", "block_id")} == {
+            key: value for key, value in original.items() if key not in ("source_order", "block_id")
+        }
+    assert first["storage_key"] == second["storage_key"]
+    assert first["block_id"] != second["block_id"]
+    assert first["evidence_ids"] == second["evidence_ids"]
+    assets = [entry for entry in captured.resource_manifest if entry["role"] == "embedded_asset"]
+    assert len(assets) == 3
+    assert "_clipped_pdf_figure" not in repr(captured.source_document)
+    order = _layout(captured.source_document["blocks"])
+    for page in (2, 3):
+        figure = order.index(("image", f"Figure from page {page}"))
+        assert order[figure - 1:figure + 2] == [
+            ("paragraph", f"Inspect the connector on page {page}."),
+            ("image", f"Figure from page {page}"),
+            ("paragraph", f"Check the mounting points on page {page}."),
+        ]
+
+
+@pytest.mark.parametrize("layout", ["narrow", "overlap", "annotation"])
+def test_clipped_repeat_keeps_legacy_projection_when_position_is_ambiguous(layout):
+    resource = SourceResource.from_bytes("fixture:clipped-repeat", "fixture", _clipped_repeat_pdf(layout), "application/pdf")
+    options = dict(keep_pdf_figure_order=True, keep_repeated_pdf_figures=True, keep_multiple_pdf_figures=True)
+    legacy = adapt_bound_article(resource, None, **options)
+    assert [block["page"] for block in legacy["blocks"] if block["kind"] == "image"] == [1, 4]
+    assert adapt_bound_article(resource, None, keep_clipped_pdf_figures=True, **options) == legacy
 
 
 def test_proven_repeated_pdf_figures_do_not_trigger_large_recurring_art_fallback():
