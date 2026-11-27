@@ -534,7 +534,7 @@ async function refreshPicker(name) {
     if (picker.refresh === refresh) picker.refresh = null;
   }
 }
-async function loadOptions(name, g, desired = "", initial = null, { initialIsLive = false, initialSameOrigin = false } = {}) {
+async function loadOptions(name, g, desired = "", initial = null, { initialIsLive = false, initialRequest } = {}) {
   const path = selectorPath(name);
   pickerStates.get(name)?.refresh?.abort();
   const picker = { path, incomplete: false, loading: g };
@@ -576,7 +576,7 @@ async function loadOptions(name, g, desired = "", initial = null, { initialIsLiv
         g.signal.throwIfAborted();
         if (Array.isArray(response?.items)) {
           if (initialIsLive) {
-            if (initialSameOrigin && name === "model" && pickerHasChoices(name, response.items)) picker.sameOrigin = true;
+            if (initialRequest?.sameOrigin && name === "model" && pickerHasChoices(name, response.items)) picker.sameOrigin = true;
             return trackDiscovery(response);
           }
           const discoveryActive = response.hydrating || response.discovering;
@@ -3269,7 +3269,7 @@ async function restoreRoute(initialYears = null, {
           if (g.current() && selectedMake && $("make").value === selectedMake) {
             updateURL();
             await loadOptions("model", g, "", modelRead?.response, {
-              initialIsLive: Boolean(modelRead), initialSameOrigin: modelRead?.sameOrigin,
+              initialIsLive: Boolean(modelRead), initialRequest: modelRead,
             });
           }
         } finally {

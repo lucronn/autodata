@@ -101,12 +101,27 @@
         }
 
         const years = '/v1/catalog/years';
-        function read(path, cache = path === years ? 'default' : 'no-store', requestJSON) {
+        function read(path, cache = path === years ? 'default' : 'no-store', requestJSON, transportReady) {
           const controller = new AbortController();
-          const response = requestJSON
-            ? requestJSON(path, { cache, signal: controller.signal })
-            : start(path, cache, {}, 'follow', controller).response.then(reply => reply?.ok ? reply.json() : null);
-          const request = { controller, response: response.catch(() => null) };
+          const request = { controller, sameOrigin: !requestJSON };
+          function send(transport) {
+            if (controller.signal.aborted) return Promise.resolve(null);
+            request.sameOrigin = !transport;
+            return transport
+              ? transport(path, { cache, signal: controller.signal })
+              : start(path, cache, {}, 'follow', controller).response.then(reply => reply?.ok ? reply.json() : null);
+          }
+          let response;
+          if (!requestJSON && transportReady) {
+            // Let a nearly ready catalog module use the preconnected route.
+            // A slow module still leaves the main-site request available.
+            let timer;
+            const deadline = new Promise(resolve => { timer = setTimeout(resolve, 75); });
+            response = Promise.race([transportReady, deadline]).finally(() => clearTimeout(timer)).then(send);
+          } else {
+            response = send(requestJSON);
+          }
+          request.response = response.catch(() => null);
           pending.set(path, request);
           return request;
         }
@@ -119,6 +134,8 @@
               !snapshot.items.every(item => Number.isInteger(item?.year) && item.year >= 1886 && item.year <= 2100))
             return;
           const values = snapshot.items.map(item => item.year).sort((a, b) => b - a);
+          const transportReady = location.origin === 'https://autodata.cars.tk' && catalog.dataset.directSelectorOrigin
+            ? new Promise(resolve => { pending.reportPickerTransport = resolve; }) : null;
           const makeSnapshots = new Map();
           const makeSnapshotExpires = 30000;
           const makeData = document.getElementById('workshop-initial-makes');
@@ -140,12 +157,11 @@
           }
           let picker, placeholder, makePicker, makePlaceholder, makeYear, makeRead, modelRead;
           function readSelector(path, selection) {
-            const request = pending.requestMake;
-            const { controller, response } = read(path, 'default', request);
-            return { ...selection, path, sameOrigin: !request, response, abort() {
-              controller.abort();
+            const request = read(path, 'default', pending.requestMake, selection.make ? transportReady : null);
+            return Object.assign(request, selection, { path, abort() {
+              request.controller.abort();
               pending.delete(path);
-            } };
+            } });
           }
           function selectedMake() {
             if (!makePlaceholder || makePicker.options[0] !== makePlaceholder || makeYear !== picker.value) return '';

@@ -32,7 +32,7 @@ function startHeadPicker(search, publicSelectors = true, {
     dataset: { publicSelectors: String(publicSelectors), directSelectorOrigin },
   };
   const context = {
-    URL, URLSearchParams, AbortSignal, AbortController, location: { search, origin }, performance: { now },
+    URL, URLSearchParams, AbortSignal, AbortController, setTimeout, clearTimeout, location: { search, origin }, performance: { now },
     Option: function(text, value) { return { text: String(text), value: String(value) }; },
     MutationObserver: class {
       constructor(onMutation) { parsed = onMutation; }
@@ -247,6 +247,34 @@ test('the early picker enables stored makes and hands off the current model read
   assert.equal(current.options.signal.aborted, false);
   assert.deepEqual(await handoff.modelRead.response, { items: [{ path: current.path }] });
   assert.equal(makePicker.change, null);
+
+  const directYear = picker(), directMake = picker();
+  const direct = startHeadPicker('', true, {
+    origin: 'https://autodata.cars.tk', directSelectorOrigin: 'https://autodata.curtis.click',
+    initialYears: JSON.stringify({ version: 'v1', complete: true, items: [{ year: 2016 }] }),
+    initialMakes: JSON.stringify({ options: [
+      { id: 'ford-truck', name: 'Ford Truck' }, { id: 'chevy-truck', name: 'Chevy Truck' },
+    ], years: { 2016: [0, 1] } }),
+    yearPicker: directYear, makePicker: directMake,
+  });
+  direct.parseYear();
+  directYear.value = '2016';
+  directYear.change();
+  for (const make of ['chevy-truck', 'ford-truck']) {
+    directMake.value = make;
+    directMake.change();
+  }
+  const pending = direct.context.workshopPickerStartup;
+  const chosen = pending.takeYearPicker();
+  const directReads = [];
+  pending.reportPickerTransport(async path => {
+    directReads.push(path);
+    return { items: [{ id: 'expedition-4wd' }] };
+  });
+  assert.deepEqual(await chosen.modelRead.response, { items: [{ id: 'expedition-4wd' }] });
+  assert.equal(chosen.modelRead.sameOrigin, false);
+  assert.deepEqual(directReads, ['/v1/catalog/years/2016/makes/ford-truck/models?region=US']);
+  assert.equal(direct.calls.length, entrySettingsPaths.length);
 });
 
 test('entry keeps independent, private and unconfirmed paths on their ordinary reads', () => {
