@@ -14,6 +14,7 @@ const {
   articlePresentation,
   articleSearchParams,
   configurationLabel,
+  DEFAULT_COLLECTION_POLL_INTERVAL_MS,
   selectorLabel,
   delay,
   filterArticles,
@@ -509,7 +510,7 @@ async function readStoredPicker(picker, name, signal, timeout) {
   }
   return stored;
 }
-async function refreshPicker(name) {
+async function refreshPicker(name, { followDiscovery = false } = {}) {
   const picker = pickerStates.get(name);
   const select = $(name);
   if (!picker?.incomplete || select.disabled || picker.path !== selectorPath(name) ||
@@ -517,10 +518,11 @@ async function refreshPicker(name) {
   const refresh = new AbortController();
   picker.refresh = refresh;
   try {
+    if (followDiscovery) await delay(DEFAULT_COLLECTION_POLL_INTERVAL_MS, refresh.signal);
     await readCollection((timeout) => readStoredPicker(picker, name, refresh.signal, timeout), {
       signal: refresh.signal,
-      // Make and model options get one stored update when the picker reopens.
-      attempts: name === "configuration" ? undefined : 1,
+      // Reopening refreshes a partial list once. An active make discovery can keep adding rows.
+      attempts: followDiscovery || name === "configuration" ? undefined : 1,
       backoffWithChoices: true,
       hasChoices: data => pickerHasChoices(name, data.items),
       onUpdate(data) {
@@ -703,7 +705,8 @@ async function loadOptions(name, g, desired = "", initial = null, {
       ? "Choose your vehicle to continue."
       : "No choices are available for this selection. Choose another vehicle.",
   );
-  if (result === cached && picker.incomplete) void refreshPicker(name);
+  if (name === "make" && !desired && result.hydrating) void refreshPicker(name, { followDiscovery: true });
+  else if (result === cached && picker.incomplete) void refreshPicker(name);
 }
 function retryPicker(name) {
   const path = selectorPath(name);
