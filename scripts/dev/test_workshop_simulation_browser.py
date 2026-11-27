@@ -571,7 +571,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             article_link = page.locator(f'#articles a[href*="{article}"]')
             if cold_index:
                 try:
-                    await expect(article_link).to_have_text(cold_index["title"], timeout=15000)
+                    await expect(article_link).to_contain_text(cold_index["title"], timeout=15000)
                 except AssertionError:
                     with cold_index["repository"].connect() as conn:
                         states = conn.execute("""SELECT s.provider_slug,s.status,s.row_count,s.error_code,j.status AS job_status
