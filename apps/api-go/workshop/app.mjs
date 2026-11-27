@@ -2775,8 +2775,29 @@ async function renewMedia(g, failed, timedOut = false) {
       }
       const figures = deferredArticleFigures;
       const order = articleDetailOrder(g, id);
-      const response = await requestArticleDetail(order, detailPath, { signal: g.signal });
+      const canRefreshView = !openDemo && session.state.mode === "firebase" && Boolean(currentArticle.view_revision) &&
+        order.accepted?.data?.article?.view_revision === revision && !processingArticle(currentArticle);
+      const options = { signal: g.signal };
+      let response = await requestArticleDetail(order, detailPath, canRefreshView
+        ? { ...options, headers: { "X-Workshop-Article-Media-View": revision } } : options);
       if (!current()) return [];
+      if (response.data.media_refresh !== undefined) {
+        const media = response.data.media_refresh;
+        const configuration = response.data.configuration;
+        const images = indexRenderableImages(media?.images);
+        if (canRefreshView && response.status === 200 && response.data.version === "v1" &&
+            media?.article_id === id && media.view_revision === revision &&
+            configuration?.id === vehicle.id && configuration.region === vehicle.region &&
+            localImageURL(images.get(failed.dataset.assetId)?.url, location.origin, { authMode: session.state.mode })) {
+          if (order.accepted[articleDetailSequence] > response[articleDetailSequence])
+            return imageMap(order.accepted.data.article);
+          // Only a full reply can supersede an in-flight article update.
+          if (figures && deferredArticleFigures === figures) refreshPendingFigures(figures, images, failed);
+          return media.images;
+        }
+        response = await requestArticleDetail(order, detailPath, options);
+        if (!current() || !response.data.article) return [];
+      }
       const article = response.data.article;
       if (acceptArticleDetail(order, response) === response) {
         renderArticle(article, g);
