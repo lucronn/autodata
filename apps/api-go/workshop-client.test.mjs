@@ -171,6 +171,31 @@ test('a partial list with visible choices keeps the normal polling cadence', asy
   assert.deepEqual(waits, [1500]);
 });
 
+test('a second early check of an empty owned index keeps the regular poll', async () => {
+  const pending = { items: [], complete: false, hydrating: true };
+  const partial = { ...pending, items: [{ id: 'first' }] };
+  const complete = { ...partial, complete: true, hydrating: false };
+  let clock = 0;
+  const normal = [], early = [], updates = [];
+  const result = await readCollection(async () => {
+    normal.push(clock);
+    return normal.length === 1 ? pending : complete;
+  }, {
+    now: () => clock,
+    wait: async ms => { clock += ms; },
+    emptyProbeDelays: [350, 900],
+    emptyProbe: async () => {
+      early.push(clock);
+      return early.length === 1 ? pending : partial;
+    },
+    onUpdate: response => { updates.push([clock, response.items.length]); },
+  });
+  assert.equal(result, complete);
+  assert.deepEqual(early, [350, 900]);
+  assert.deepEqual(normal, [0, 1500]);
+  assert.deepEqual(updates, [[0, 0], [900, 1], [1500, 1]]);
+});
+
 test('visible selector choices back off within the one-minute window', async () => {
   const partial = { items: [{ id: 'envision-awd' }], complete: false, hydrating: true };
   let clock = 0;
@@ -5986,7 +6011,7 @@ test('actual article index flow polls until explicit current completion', async 
 test('actual article index flow keeps terminal, timed out, and nonhydrating outcomes incomplete', async () => {
   for (const [response, reads, text] of [
     [indexResponse('failed'), 1, /could not be prepared/],
-    [indexResponse('pending', { hydrating: true }), 4, /still being prepared/],
+    [indexResponse('pending', { hydrating: true }), 5, /still being prepared/],
     [indexResponse('pending'), 1, /still being prepared/],
     [indexResponse(null), 1, /still being prepared/],
   ]) {
@@ -5996,7 +6021,7 @@ test('actual article index flow keeps terminal, timed out, and nonhydrating outc
     assert.equal(h.statuses.some(s => s.complete === true), false);
     assert.match(h.$('activity-text').textContent, text);
     assert.equal(h.$('completion-status').textContent, '');
-    assert.equal(h.results[0].timedOut === true, reads === 4);
+    assert.equal(h.results[0].timedOut === true, response.hydrating === true);
     assert.equal(typeof h.context.retryAction, response.progress?.status === 'failed' ? 'object' : 'function');
   }
 });

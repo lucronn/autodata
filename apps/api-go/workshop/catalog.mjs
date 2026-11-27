@@ -286,6 +286,7 @@ export async function readCollection(
     interval = DEFAULT_COLLECTION_POLL_INTERVAL_MS,
     wait = delay,
     emptyProbe,
+    emptyProbeDelays = [EMPTY_COLLECTION_PROBE_DELAY_MS],
     backoffWithChoices = false,
     backoffWithoutChoices = false,
     retryEmptyTransientRead = false,
@@ -336,18 +337,23 @@ export async function readCollection(
     }
     if (update(data, attempt)) return latest;
     if (attempt === attempts - 1 || now() >= pollUntil) break;
-    if (attempt === 0 && emptyProbe && !hasChoices(latest) && interval > EMPTY_COLLECTION_PROBE_DELAY_MS) {
-      // Check newly stored options once without moving the regular polling schedule.
-      const deadline = now() + interval;
-      await wait(EMPTY_COLLECTION_PROBE_DELAY_MS, signal);
-      const timeout = Math.min(EMPTY_COLLECTION_PROBE_TIMEOUT_MS, Math.floor(deadline - now()));
-      if (timeout > 0) {
+    if (attempt === 0 && emptyProbe && !hasChoices(latest) && emptyProbeDelays[0] < interval) {
+      // Check for newly stored rows without moving the regular poll.
+      const started = now();
+      const deadline = started + interval;
+      for (const probeDelay of emptyProbeDelays) {
+        if (probeDelay >= interval || hasChoices(latest)) break;
+        await wait(Math.max(0, started + probeDelay - now()), signal);
+        const timeout = Math.min(EMPTY_COLLECTION_PROBE_TIMEOUT_MS, Math.floor(deadline - now()));
+        if (timeout < 1) break;
         signal?.throwIfAborted();
         const early = await emptyProbe(timeout);
         signal?.throwIfAborted();
-        const settled = early?.discovery_instance && !early.hydrating && !early.discovering;
-        if (Array.isArray(early?.items) && (hasChoices(early) || early.complete === true || settled) &&
+        if (!Array.isArray(early?.items)) break;
+        const active = early.hydrating || early.discovering;
+        if ((hasChoices(early) || early.complete === true || (early.discovery_instance && !active)) &&
             update(early, attempt)) return latest;
+        if (!active) break;
       }
       await wait(Math.max(0, deadline - now()), signal);
     } else {
