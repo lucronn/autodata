@@ -73,6 +73,136 @@ def seed_banktwo_figure(runtime, raw):
     return figure
 
 
+def test_retained_tool_label_replays_the_service_wording_archive_atomically(runtime, monkeypatch):
+    from autodata_ingestion import procedure_rewrite_recovery as recovery
+    from autodata_ingestion.published_media_publication import _publication_evidence_for_revision
+    from autodata_ingestion.retained_note_label_repair import (
+        TOOL_LABEL_PROFILE, _SERVICE_WORDING, _TOOL_LABEL, _read_tool_label_archive, _rebuild,
+        repair_retained_service_wording, repair_retained_tool_label,
+    )
+    from autodata_ingestion.source_job_persistence import publish_source_bound_first_draft, source_bound_correction_prior_attempt
+    from test_first_draft_recovery_worker import queue_article, scope_fixture_article
+
+    scope_fixture_article(runtime)
+    tool = "FW-730 Reservoir Alignment Gauge"
+    reworded_tool = "Reservoir gauge FW-730 for alignment"
+    fill = "With a cold system, add the coolant mixture to the fill line on the radiator surge tank."
+    prior_fill = "With a cold system, add to the fill line on the radiator surge tank the coolant mixture."
+    revised_fill = "With a cold system, add enough coolant mixture to bring the level in the radiator surge tank up to its fill line."
+    html = ("<dl><dt>Tools Required</dt><dd><p><i>FW-730</i> Reservoir Alignment Gauge</p></dd></dl>"
+            f"<ol><li>Remove the upper cover.</li><li>{fill}</li></ol>"
+            "<p>Note: Keep the reservoir seal in position.</p>")
+    draft = queue_article(runtime, figure=True, procedure_html=html)
+
+    class HistoricalModel:
+        _model = "fixture-tool-label"
+        calls = 0
+
+        def complete_json(self, prompt):
+            self.calls += 1
+            words = {
+                tool: reworded_tool, fill: prior_fill,
+                "Tools Required": "Equipment needed for this service",
+                "Note: Keep the reservoir seal in position.": "Note: Leave the reservoir seal where it is.",
+            }
+            return {"introduction": "This article describes service information.", "replacements": [
+                {"block_id": slot["block_id"], "path": slot["path"], "action": slot["required_action"],
+                 "text": words.get(slot["text"], slot["text"]), "reason": "Preserve the authored specification."}
+                for slot in json.loads(prompt)["slots"]
+            ]}
+
+    model = HistoricalModel()
+    with monkeypatch.context() as historical:
+        historical.setattr(auto, "build_auto_prompt",
+                           lambda source, *, context, **_: auto._build_auto_prompt_v61(source, context=context))
+        historical.setattr("autodata_ingestion.article_lifecycle_store._read_automatic_bankone_structure", lambda *_: None)
+        historical.setattr(recovery, "recover_first_draft", lambda *_args, **_kwargs: None)
+        assert run_job(runtime, draft, model, registry=runtime.registry)
+    held = runtime.read_current()
+    assert held["processing_error_code"] == "REWRITE_UNCHANGED"
+    source_id = held["source_revision_id"]
+    with runtime.repo.connect() as conn:
+        job = conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (draft,)).fetchone()
+        attempt = source_bound_correction_prior_attempt(conn, job, first_draft=True)
+    plan = recovery.recover_first_draft(
+        job["checkpoint"]["normalized_document"], attempt["response"],
+        prompt_version=attempt["guard_version"], method=recovery.FIRST_DRAFT_RECOVERY_METHOD,
+    )
+    if plan is None:
+        pytest.fail(repr((attempt["guard_version"], auto.failed_rewrite_passages(
+            job["checkpoint"]["normalized_document"], attempt["response"], prompt_version=attempt["guard_version"],
+        ))))
+    first = publish_source_bound_first_draft(
+        runtime.repo, runtime.article_id, expected_job_id=draft, expected_source_revision_id=source_id,
+        recovery_method=recovery.FIRST_DRAFT_RECOVERY_METHOD, expected_recovery_hash=plan.evidence["output_hash"],
+        actor="fixture", reason="Recover the authored procedure from the exact reply.",
+    )
+    binding = SimpleNamespace(source_revision_id=source_id)
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (runtime.article_id,)).fetchone()
+        descriptor = article["descriptor_source_snapshot_id"]
+        old, _, _, _, reply, _, _ = _publication_evidence_for_revision(
+            cur, article, binding, first.published_revision_id, fixture_mode=False, lock=False,
+        )
+        [fill_path] = [row["path"] for row in reply["replacements"] if row["text"] == prior_fill]
+        edits = {fill_path: {"source_sha256": sha256(fill.encode()).hexdigest(),
+                             "prior_sha256": sha256(prior_fill.encode()).hexdigest(), "text": revised_fill}}
+        job = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (first.job_id,)).fetchone()
+        wording = _rebuild(cur, article, job, source_id, descriptor, first.published_revision_id,
+                           old["rewrite_result_hash"], lock=False, repair=_SERVICE_WORDING, wording_edits=edits)
+    prior = repair_retained_service_wording(
+        runtime.repo, runtime.article_id, expected_job_id=first.job_id, expected_source_revision_id=source_id,
+        expected_descriptor_snapshot_id=descriptor, expected_published_revision_id=first.published_revision_id,
+        expected_published_hash=old["rewrite_result_hash"], expected_repaired_hash=digest_json(wording.document),
+        wording_edits=edits, actor="fixture", reason="Clarify the authored fill instruction.",
+    )
+    visible = runtime.read_current()
+    [tool_path] = [row["path"] for row in wording.reply["replacements"] if row["text"] == reworded_tool]
+    proof = _read_tool_label_archive(runtime.repo, runtime.article_id, source_id, descriptor, prior,
+                                     tool_path, runtime.objects)
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (runtime.article_id,)).fetchone()
+        job = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",
+                          (article["current_job_id"],)).fetchone()
+        restored = _rebuild(cur, article, job, source_id, descriptor, prior, digest_json(wording.document),
+                             lock=False, repair=_TOOL_LABEL, tool_archive=proof)
+    args = dict(expected_job_id=job["source_fetch_job_id"], expected_source_revision_id=source_id,
+                expected_descriptor_snapshot_id=descriptor, expected_published_revision_id=prior,
+                expected_published_hash=digest_json(wording.document), expected_repaired_hash=digest_json(restored.document),
+                path=tool_path, object_store=runtime.objects, actor="fixture", reason="Restore the authored tool label.")
+    before = all_rows(runtime.repo)
+
+    def interrupt(phase):
+        assert phase == "inside_publication" and runtime.read_current() == visible
+        raise RuntimeError("fixture interruption")
+
+    with pytest.raises(ValueError, match="RETAINED_TOOL_LABEL_REPAIR_STALE"):
+        repair_retained_tool_label(runtime.repo, runtime.article_id, **{**args, "expected_repaired_hash": "0" * 64})
+    with pytest.raises(RuntimeError, match="fixture interruption"):
+        repair_retained_tool_label(runtime.repo, runtime.article_id, hooks=interrupt, **args)
+    assert all_rows(runtime.repo) == before
+
+    published = repair_retained_tool_label(runtime.repo, runtime.article_id, **args)
+    current = runtime.read_current()
+    assert current["canonical_revision_id"] == published and current["source_revision_id"] == source_id
+    assert current["images"] == visible["images"] and current["document"] == restored.document
+    assert tool in current["body"] and revised_fill in current["body"]
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (runtime.article_id,)).fetchone()
+        revision, _, decision, _, reply, guard, _ = _publication_evidence_for_revision(
+            cur, article, binding, published, fixture_mode=False, lock=False,
+        )
+        assert revision["rewrite_profile_version"] == TOOL_LABEL_PROFILE and decision == "UNREVIEWED"
+        assert reply == restored.reply and guard == attempt["guard_version"]
+    assert model.calls == 1
+    assert all_rows(runtime.repo)["canonical_article_rewrite_attempts"] == before["canonical_article_rewrite_attempts"]
+    with pytest.raises(ValueError, match="RETAINED_TOOL_LABEL_REPAIR_STALE"):
+        repair_retained_tool_label(runtime.repo, runtime.article_id, **args)
+
+
 def seed_banktwo_correction_job(runtime, *, preserve_notes, first_draft=False):
     def historical_prompt(document, *, context, profile_version=AUTOMATIC_REWRITE_PROFILE):
         if profile_version == AUTOMATIC_REWRITE_PROFILE:
