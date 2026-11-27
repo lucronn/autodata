@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import json
+from math import ceil
 import os
 from pathlib import Path
 import selectors
@@ -105,6 +106,13 @@ class SelectorAdmission:
             if not complete:
                 self.cooldowns[token[1]] = now + 30
             self.active = None
+
+    def retry_after_ms(self, request):
+        with self.lock:
+            if self.active is not None:
+                return None
+            available = max(self.next_attempt, self.cooldowns.get(scope_key(request), 0.0))
+            return max(1, ceil((available - self.clock()) * 1000))
 
 
 ADMISSION = SelectorAdmission()

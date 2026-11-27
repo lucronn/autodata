@@ -19,6 +19,7 @@ const maxIngestionProxyBytes = 8 << 20
 
 const (
 	catalogAdmissionRetryInterval = 3 * time.Second
+	catalogAdmissionMinRetry      = 100 * time.Millisecond
 	catalogAdmissionWaitLimit     = 30 * time.Second
 	catalogAdmissionRunAllowance  = 24 * time.Second
 )
@@ -135,26 +136,33 @@ func (s *Server) ensureCatalogHydrated(request *http.Request, payload map[string
 	}
 	scope := payload["scope"]
 	waitForAdmission := scope == "makes" || scope == "models"
-	dispatch := func(request *http.Request) (bool, error) {
+	dispatch := func(request *http.Request) (time.Duration, error) {
 		status, raw, err := s.ingestionClient.Do(request, "/v1/catalog/ensure", body, key)
 		if err != nil {
-			return false, err
+			return 0, err
 		}
 		if status < http.StatusOK || status >= http.StatusMultipleChoices {
-			return false, fmt.Errorf("catalog hydration returned status %d", status)
+			return 0, fmt.Errorf("catalog hydration returned status %d", status)
 		}
 		if !waitForAdmission {
-			return false, nil
+			return 0, nil
 		}
 		var result struct {
-			Status     string `json:"status"`
-			StopReason string `json:"stop_reason"`
+			Status                string `json:"status"`
+			StopReason            string `json:"stop_reason"`
+			AdmissionRetryAfterMS int64  `json:"admission_retry_after_ms"`
 		}
-		return json.Unmarshal(raw, &result) == nil && result.Status == "deferred" && result.StopReason == "admission", nil
+		if json.Unmarshal(raw, &result) != nil || result.Status != "deferred" || result.StopReason != "admission" {
+			return 0, nil
+		}
+		if ms := result.AdmissionRetryAfterMS; ms > 0 && ms <= catalogAdmissionWaitLimit.Milliseconds() {
+			return max(time.Duration(ms)*time.Millisecond, catalogAdmissionMinRetry), nil
+		}
+		return catalogAdmissionRetryInterval, nil
 	}
 
-	deferred, err := dispatch(request)
-	if err != nil || !deferred {
+	retryAfter, err := dispatch(request)
+	if err != nil || retryAfter == 0 {
 		return err
 	}
 	select {
@@ -170,16 +178,16 @@ func (s *Server) ensureCatalogHydrated(request *http.Request, payload map[string
 	ctx, cancel := context.WithDeadline(request.Context(), admitUntil.Add(catalogAdmissionRunAllowance))
 	defer cancel()
 	request = request.WithContext(ctx)
-	for time.Until(admitUntil) > catalogAdmissionRetryInterval {
-		timer := time.NewTimer(catalogAdmissionRetryInterval)
+	for retryAfter < time.Until(admitUntil) {
+		timer := time.NewTimer(retryAfter)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
 			return ctx.Err()
 		case <-timer.C:
 		}
-		deferred, err = dispatch(request)
-		if err != nil || !deferred {
+		retryAfter, err = dispatch(request)
+		if err != nil || retryAfter == 0 {
 			return err
 		}
 	}

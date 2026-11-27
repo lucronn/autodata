@@ -55,6 +55,23 @@ def test_global_admission_cooldown_and_normalized_scope():
     assert gate.acquire(same)
 
 
+def test_admission_retry_hint_uses_the_later_cooldown():
+    clock = Clock()
+    gate = job.SelectorAdmission(clock=clock)
+    first = {'scope': 'models', 'year': 2024, 'make': 'Acura', 'region': 'US'}
+    same = {**first, 'make': ' ACURA ', 'region': 'us'}
+    second = {**first, 'make': 'Buick'}
+    token = gate.acquire(first)
+    assert gate.retry_after_ms(second) is None
+    gate.release(token, complete=False)
+    clock.now = 5.5
+    assert gate.retry_after_ms(second) == 500
+    assert gate.retry_after_ms(same) == 24_500
+    assert gate.acquire(second) is None
+    clock.now = 6.0
+    assert gate.acquire(second)
+
+
 @pytest.mark.parametrize('stall', ['dns', 'headers', 'trickle'])
 def test_owned_stall_is_hard_stopped_and_reaped(tmp_path, stall):
     # Synthetic process stalls before output, before headers, or after a partial
