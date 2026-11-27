@@ -9328,6 +9328,45 @@ test('reopening Original renews deferred URLs and keeps figures already decoded'
   assert.equal(reads, 3);
 });
 
+test('an expired Original figure renews the matching mounted view and its unloaded figures', async t => {
+  const blocks = Array.from({ length: 7 }, (_, n) => ({ type: 'image', asset_id: `figure-${n}` }));
+  for (const unchanged of [true, false]) {
+    await t.test(unchanged ? 'same source view' : 'new source view', async () => {
+      let now = 1000;
+      const views = [];
+      const h = articleMediaHarness({
+        Date: { now: () => now },
+        session: { state: { authenticated: true, mode: 'firebase' } },
+        async requestJSON(_path, options) {
+          views.push(options.headers['X-Workshop-Source-View']);
+          const compact = views.length === 2 && unchanged;
+          return { source: { url: mediaSourceURL }, view_revision: views.length === 1 || compact ? 'mounted' : 'updated',
+            ...(compact ? { document_unchanged: true } : { document: { blocks } }),
+            images: blocks.map(({ asset_id: id }) => ({ id, url: mediaURL(`${id}-${views.length}`) })),
+          };
+        },
+      });
+      h.render(mediaArticle(blocks, [], { source_review: { available: true, url: mediaSourceURL } }));
+      await h.context.loadSource(mediaSourceURL, h.g);
+      const frame = h.nodes.get('source-review-frame');
+      const figures = mediaDescendants(frame, 'img');
+      const [decoded, failed] = figures, deferred = figures.at(-1);
+      decoded.dispatch('load');
+      failed.complete = true;
+      now += 301_000;
+      await h.context.renewMedia(h.g, failed);
+
+      assert.deepEqual(views, [undefined, 'mounted']);
+      assert.deepEqual(mediaDescendants(frame, 'img'), figures);
+      assert.ok(decoded.src.endsWith('figure-0-1'));
+      assert.ok(failed.src.endsWith('figure-1-2'));
+      assert.equal(failed.dataset.replacement, '1');
+      assert.ok(deferred.src.endsWith(unchanged ? 'figure-6-2' : 'figure-6-1'));
+      assert.equal(deferred.dataset.replacement, undefined);
+    });
+  }
+});
+
 for (const type of ['ordered_list', 'unordered_list', 'callout']) {
   test(`article block media ${type} source evidence handler and image error obey current generation`, async () => {
     const loads = [], renewals = [];
