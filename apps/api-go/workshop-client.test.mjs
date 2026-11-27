@@ -7983,9 +7983,11 @@ test('a Library card retries the same exact vehicle and focuses its first articl
   const item = { configuration_id: routeConfiguration, library_item_id: routeOrder, label: 'Purchased engine',
     access_state: 'viewable', region: 'CA', granted_at: '2026-11-16T00:00:00Z' };
   const attempts = [];
+  const saved = [];
   let retryAction;
   const h = articleMediaHarness({
     session: { state: { authenticated: true } }, validLibrary, clearReader() {},
+    history: { replaceState(state) { saved.push(state); } },
     names: ['year', 'make', 'model', 'configuration'], populate() {}, updateURL() {},
     requestJSON: async () => ({ version: 'v1', next_cursor: '', items: [item] }),
     async selectVehicle(_g, _article, { quoteMode, focusOnShow }) {
@@ -8008,6 +8010,7 @@ test('a Library card retries the same exact vehicle and focuses its first articl
   const expected = { id: item.configuration_id, region: item.region, engine: item.label,
     quoteMode: 'if-needed', focusOnShow: true };
   assert.deepEqual(attempts, [expected, expected]);
+  assert.deepEqual(JSON.parse(JSON.stringify(saved)), [{ workshopLibrary: { visible: 1, selected: routeOrder } }]);
 });
 
 test('Library cards distinguish preparation review, temporary failure, and readable articles', async () => {
