@@ -143,6 +143,65 @@ func TestPaidCatalogMediaCodecStrictPayloadAndTime(t *testing.T) {
 	}
 }
 
+func TestPaidCatalogMediaCompactPreservesClaimsAndOldLinks(t *testing.T) {
+	now := time.Unix(1800000000, 0)
+	key := deriveCatalogImageReferenceKey(testCatalogImageSecret)
+	base := paidMediaTestReference(now)
+	base.AssetID = strings.Repeat("c", 64)
+	original := base
+	original.ProviderSlug, original.Projection = "banktwo", "source"
+	original.AnchorCanonicalRevisionID = nil
+	original.ObjectKey = "sources/" + strings.Repeat("0", 16) + "/" + strings.Repeat("e", 64)
+	original.AssetID = strings.Repeat("z", 256)
+	zeroAnchor := base
+	zeroAnchor.AnchorCanonicalRevisionID = stringPointer("00000000-0000-0000-0000-000000000000")
+	for _, ref := range []paidCatalogImageReference{base, original, zeroAnchor} {
+		raw, err := json.Marshal(ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		old := paidMediaSealRaw(t, raw, key)
+		current, err := sealPaidCatalogImageReference(ref, key, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, link := range []string{old, current} {
+			got, err := openPaidCatalogImageReference(link, key, now)
+			if err != nil || !reflect.DeepEqual(got, ref) {
+				t.Fatal("reference did not preserve every claim", err)
+			}
+		}
+		if len(current)*2 >= len(old) {
+			t.Fatalf("compact reference length %d is not less than half of %d", len(current), len(old))
+		}
+	}
+}
+
+func TestPaidCatalogMediaCompactRejectsInvalidClaims(t *testing.T) {
+	now := time.Unix(1800000000, 0)
+	key := deriveCatalogImageReferenceKey(testCatalogImageSecret)
+	ref := paidMediaTestReference(now)
+	ref.AssetID = strings.Repeat("a", 64)
+	raw, err := compactPaidImagePlaintext(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	badFlag := bytes.Clone(raw)
+	badFlag[1] |= 0x80
+	badRegion := bytes.Clone(raw)
+	badRegion[18] = 'u'
+	for name, payload := range map[string][]byte{
+		"unknown flag": badFlag, "lowercase region": badRegion, "missing claims": raw[:12],
+		"short digest": raw[:len(raw)-1], "trailing byte": append(bytes.Clone(raw), 0),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := openPaidCatalogImageReference(paidMediaSealRaw(t, payload, key), key, now); err == nil {
+				t.Fatal("invalid compact claims accepted")
+			}
+		})
+	}
+}
+
 type paidMediaCatalog struct {
 	CatalogStore
 	configuration                         CatalogConfiguration
