@@ -177,6 +177,51 @@ func TestPaidCatalogMediaCompactPreservesClaimsAndOldLinks(t *testing.T) {
 	}
 }
 
+func TestPaidCatalogMediaCompactCurrentSourcePreservesClaims(t *testing.T) {
+	now := time.Unix(1800000000, 0)
+	key := deriveCatalogImageReferenceKey(testCatalogImageSecret)
+	base := paidMediaTestReference(now)
+	base.SelectedSourceRevisionID = base.AnchorSourceRevisionID
+	digest := strings.Repeat("abcdef01", 8)
+	base.AssetID = digest
+	base.ObjectKey = "sources/" + digest[:16] + "/" + digest
+	for _, tc := range []struct {
+		name   string
+		edit   func(*paidCatalogImageReference)
+		format byte
+	}{
+		{"reader", func(*paidCatalogImageReference) {}, compactCurrentSourceImageFormat},
+		{"original", func(ref *paidCatalogImageReference) {
+			ref.Projection, ref.ProviderSlug, ref.AnchorCanonicalRevisionID = "source", "banktwo", nil
+		}, compactCurrentSourceImageFormat},
+		{"historical source", func(ref *paidCatalogImageReference) {
+			ref.Projection = "source"
+			ref.SelectedSourceRevisionID = "44444444-4444-4444-8444-444444444444"
+		}, compactPaidImageFormat},
+		{"authored asset alias", func(ref *paidCatalogImageReference) { ref.AssetID = "asset-1" }, compactPaidImageFormat},
+		{"separate digest namespace", func(ref *paidCatalogImageReference) {
+			ref.ObjectKey = "sources/" + strings.Repeat("0", 16) + "/" + digest
+		}, compactPaidImageFormat},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ref := base
+			tc.edit(&ref)
+			raw, err := compactPaidImagePlaintext(ref)
+			if err != nil || len(raw) == 0 || raw[0] != tc.format {
+				t.Fatalf("unexpected compact format: %v", err)
+			}
+			link, err := sealPaidCatalogImageReference(ref, key, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := openPaidCatalogImageReference(link, key, now)
+			if err != nil || !reflect.DeepEqual(ref, got) {
+				t.Fatalf("compact representation changed the reference: %v", err)
+			}
+		})
+	}
+}
+
 func TestPaidCatalogMediaCompactRejectsInvalidClaims(t *testing.T) {
 	now := time.Unix(1800000000, 0)
 	key := deriveCatalogImageReferenceKey(testCatalogImageSecret)
