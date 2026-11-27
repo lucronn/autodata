@@ -47,3 +47,49 @@ def test_repair_and_guard_bind_the_source_step(source, drift, expected):
 ])
 def test_equivalent_or_unscoped_wording_is_preserved(source, wording):
     assert correct_authored_procedure_step(source, wording) is None
+
+
+@pytest.mark.parametrize(("source", "rewrite", "mutations"), [
+    (
+        "Mark the timing chain link aligned with the timing mark on the left-hand exhaust VCT assembly, as shown.",
+        "Using this diagram as a guide, mark the link in the timing chain that lines up with the timing mark of the LH exhaust VCT assembly.",
+        [
+            ("lines up with", "sits next to"),
+            ("LH exhaust", "RH exhaust"),
+            ("LH exhaust", "LH intake"),
+            ("Using this diagram as a guide, mark", "Mark"),
+        ],
+    ),
+    (
+        "The LIN bus uses one wire. Typical circuit problems include open circuits, high resistance, shorts to "
+        "ground or power, poor terminal drag, or connectors that are not fully seated. Check for the listed faults "
+        "using proper terminal test probes.",
+        "The LIN bus communicates over a single wire. Inspect these potential connection and circuit faults. "
+        "Examples include opens, high resistance, shorts to ground/power, poor terminal drag, and connectors "
+        "not fully seated. Use the proper terminal test probes to check for these failures.",
+        [
+            ("a single wire", "two wires"),
+            ("ground/power", "power"),
+            ("not fully seated", "fully seated"),
+            ("Use the proper terminal test probes to check", "Check"),
+        ],
+    ),
+    (
+        "Test or monitor the LIN bus reference voltage. This can help identify the type of fault to check for.",
+        "Testing or monitoring the reference voltage on the LIN bus can help determine which fault to inspect for.",
+        [
+            ("reference voltage", "battery voltage"),
+            ("or monitoring", ""),
+        ],
+    ),
+])
+def test_publication_preserves_specific_diagnostic_facts(source, rewrite, mutations):
+    original = {"blocks": [{"items": [source]}]}
+    candidate = {"blocks": [{"text": "Introduction"}, {"items": [rewrite]}]}
+    paths = ["/blocks/0/items/0"]
+    require_authored_procedure_scope(original, candidate, rewritten_paths=paths)
+    for before, after in mutations:
+        assert before in rewrite
+        candidate["blocks"][1]["items"][0] = rewrite.replace(before, after, 1)
+        with pytest.raises(ValueError, match="REWRITE_CLAUSE_MUTATION"):
+            require_authored_procedure_scope(original, candidate, rewritten_paths=paths)
