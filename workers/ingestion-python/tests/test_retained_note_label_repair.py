@@ -201,6 +201,62 @@ def test_authored_procedure_repair_publishes_the_same_source_atomically(runtime,
     assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}
 
 
+def test_short_action_repair_replays_the_archive_and_preserves_the_figure(runtime):
+    from autodata_ingestion.retained_note_label_repair import (
+        SHORT_ACTION_CHECKPOINT, _SHORT_ACTIONS, _rebuild, repair_retained_short_actions,
+    )
+
+    original = "Start the engine and allow it to run until the fixture indicator goes off."
+    old = "Start the engine and let it run until the fixture indicator goes off."
+    args, _, source, _, _ = seed_archived_note_publication(runtime, additional={original: old})
+    prior_id = repair_retained_note_labels(runtime.repo, runtime.article_id, **args)
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (runtime.article_id,)).fetchone()
+        prior_job = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",
+                                (article["current_job_id"],)).fetchone()
+        prior = cur.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s",
+                            (prior_id,)).fetchone()
+        plan = _rebuild(cur, article, prior_job, source["source_revision_id"], article["descriptor_source_snapshot_id"],
+                        prior_id, prior["rewrite_result_hash"], lock=False, repair=_SHORT_ACTIONS)
+    [path] = plan.evidence["restored_paths"]
+    assert _get({"blocks": plan.document["blocks"][1:]}, path) == (
+        "Start the engine. Keep it running until the fixture indicator turns off."
+    )
+    args.update(
+        expected_job_id=prior_job["source_fetch_job_id"], expected_published_revision_id=prior_id,
+        expected_published_hash=prior["rewrite_result_hash"], expected_repaired_hash=digest_json(plan.document),
+        reason="Separate required actions and retain their condition.",
+    )
+    before = _state(runtime)
+    with pytest.raises(ValueError, match="^RETAINED_SHORT_ACTION_REPAIR_STALE$"):
+        repair_retained_short_actions(runtime.repo, runtime.article_id, **(args | {"expected_repaired_hash": "0" * 64}))
+    assert _state(runtime) == before
+
+    def interrupt(point):
+        assert point == "inside_publication"
+        raise RuntimeError("interrupt short action publication")
+
+    with pytest.raises(RuntimeError, match="interrupt short action publication"):
+        repair_retained_short_actions(runtime.repo, runtime.article_id, **args, hooks=interrupt)
+    assert _state(runtime) == before
+    revision = repair_retained_short_actions(runtime.repo, runtime.article_id, **args)
+    assert runtime.read_current()["canonical_revision_id"] == revision
+    assert runtime.read_current()["source_revision_id"] == source["source_revision_id"]
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (runtime.article_id,)).fetchone()
+        row, _, _, _, reply, version, _ = _publication_evidence(
+            cur, article, SimpleNamespace(source_revision_id=source["source_revision_id"]), fixture_mode=False, lock=False,
+        )
+    assert (reply, version) == (plan.reply, auto._SHORT_ACTION_PROMPT_VERSION)
+    assert row["canonical_images"] == prior["canonical_images"]
+    assert row["model_metadata"][SHORT_ACTION_CHECKPOINT]["evidence"] == plan.evidence
+    after = _state(runtime)
+    assert after["canonical_article_rewrite_attempts"] == before["canonical_article_rewrite_attempts"]
+    assert len(after["publication_events"]) == len(before["publication_events"]) + 1
+
+
 def test_retained_required_action_repair_publishes_same_source_and_rolls_back_atomically(runtime, monkeypatch):
     from autodata_ingestion.retained_required_action_repair import (
         CHECKPOINT as ACTION_CHECKPOINT, PROFILE as ACTION_PROFILE, _rebuild,

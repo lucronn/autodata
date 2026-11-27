@@ -80,9 +80,10 @@ _DRAIN_SUBJECT_PROMPT_VERSION = "full-prose-auto-prompt-v63"
 _ROTATION_REMOVAL_PROMPT_VERSION = "full-prose-auto-prompt-v64"
 _OPTIONAL_OBSERVATION_PROMPT_VERSION = "full-prose-auto-prompt-v65"
 _SPACED_ROTATION_PROMPT_VERSION = "full-prose-auto-prompt-v66"
+_SHORT_ACTION_PROMPT_VERSION = "full-prose-auto-prompt-v67"
 _PROCEDURE_FIDELITY_PROMPT_VERSIONS = (
     _PROCEDURE_FIDELITY_PROMPT_VERSION, _DRAIN_SUBJECT_PROMPT_VERSION, _ROTATION_REMOVAL_PROMPT_VERSION,
-    _OPTIONAL_OBSERVATION_PROMPT_VERSION, _SPACED_ROTATION_PROMPT_VERSION,
+    _OPTIONAL_OBSERVATION_PROMPT_VERSION, _SPACED_ROTATION_PROMPT_VERSION, _SHORT_ACTION_PROMPT_VERSION,
 )
 _AUTHORED_NOTE_PREFIX = re.compile(r"^\s*note\s*:\s*", re.IGNORECASE)
 _NUMERIC_SUPERSCRIPT = re.compile(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]|\^\([+−-]?(?:[0-9]*\.[0-9]+|[0-9]+/[0-9]+)\)")
@@ -472,6 +473,13 @@ _OBSERVATION_WORD = r"[A-Za-z]+(?:-[A-Za-z]+)*"
 _OPTIONAL_OBSERVATION = re.compile(
     rf"(?<=\s)This can be seen by the (?P<instrument>{_OBSERVATION_WORD} {_OBSERVATION_WORD}) "
     rf"on the (?P<location>{_OBSERVATION_WORD} {_OBSERVATION_WORD})\.\Z"
+)
+_ENGINE_RUN_UNTIL_INDICATOR_OFF = re.compile(
+    r"Start the engine and (?:allow it to|let it) run until the "
+    r"(?P<indicator>(?:[A-Za-z][A-Za-z-]* ){0,6}indicator) goes off\.?\Z"
+)
+_REMOVE_BOLTS_AND_PUMP_PARTS = re.compile(
+    r"Remove the bolts and the (?P<parts>(?:oil|fuel|fluid) pump screen and (?:pickup|feed|return) tube)\.\Z"
 )
 _STATE_CLAUSE = re.compile(r"\b(?:that|whether)\b[^,;.!?]*$", re.IGNORECASE)
 _ACTION_BOUNDARY = re.compile(r"[,;.!?]|\b(?:and|then|but)\b", re.IGNORECASE)
@@ -2053,21 +2061,21 @@ def _keeps_authored_note_labels(prompt_version):
 def build_auto_prompt(document, *, context, profile_version=PROFILE):
     if profile_version == PROFILE:
         return _encode_prompt_with_technical_tokens(
-            _auto_prompt_payload_v66(document, context=context), retain_standalone_notes=True,
+            _auto_prompt_payload_v67(document, context=context), retain_standalone_notes=True,
         )
     if profile_version != SOURCE_BOUND_REWRITE_PROFILE:
         raise ValueError("REWRITE_PROFILE_UNSUPPORTED")
     return _build_source_bound_prompt(
         document, preserve_notes=True, procedure_fidelity=True,
         allow_drain_subject=True, allow_rotation_removal=True, allow_optional_observation=True,
-        allow_spaced_rotation=True, include_technical_tokens=True, retain_standalone_notes=True,
+        allow_spaced_rotation=True, include_technical_tokens=True, retain_standalone_notes=True, recast_short_actions=True,
     )
 
 
 def _build_source_bound_prompt(
     document, *, preserve_notes, procedure_fidelity=False, allow_drain_subject=False, allow_rotation_removal=False,
     allow_optional_observation=False, allow_spaced_rotation=False, include_technical_tokens=False,
-    retain_standalone_notes=False,
+    retain_standalone_notes=False, recast_short_actions=False,
 ):
     builder = _auto_prompt_payload_v61 if preserve_notes else _auto_prompt_payload_v60
     if procedure_fidelity:
@@ -2078,6 +2086,8 @@ def _build_source_bound_prompt(
         builder = _auto_prompt_payload_v65
     if allow_spaced_rotation:
         builder = _auto_prompt_payload_v66
+    if recast_short_actions:
+        builder = _auto_prompt_payload_v67
     payload = builder(document, context={})
     payload.pop("context", None)
     payload["profile_version"] = SOURCE_BOUND_REWRITE_PROFILE
@@ -2238,6 +2248,28 @@ def _auto_prompt_payload_v66(document, *, context):
     return payload
 
 
+def _short_procedure_recasts(slots):
+    return {
+        slot["path"]: recast for slot in slots
+        if slot["required_action"] == "rewrite" and "required_text" not in slot
+        if (recast := recast_short_procedure(slot["text"]))
+    }
+
+
+def _auto_prompt_payload_v67(document, *, context):
+    payload = _auto_prompt_payload_v66(document, context=context)
+    if recasts := _short_procedure_recasts(payload["slots"]):
+        for slot in payload["slots"]:
+            if slot["path"] in recasts:
+                slot["required_text"] = recasts[slot["path"]]
+        payload["prompt_version"] = _SHORT_ACTION_PROMPT_VERSION
+        payload["rules"].append(
+            "Copy required_text exactly for the short procedure recasts. Keep both removal targets, or the "
+            "engine start and the condition for continuing to run, in the same order. Do not return the required_text key."
+        )
+    return payload
+
+
 def _encode_prompt_with_technical_tokens(payload, *, retain_standalone_notes=False):
     if retain_standalone_notes:
         labels = [slot for slot in payload["slots"] if authored_note_prefix(slot["text"]) == slot["text"]]
@@ -2293,8 +2325,22 @@ def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROF
     if profile_version not in (PROFILE, SOURCE_BOUND_REWRITE_PROFILE):
         return None
     current = build_auto_prompt(document, context=context, profile_version=profile_version)
+    current_version = json.loads(current)["prompt_version"]
     if sha256(current.encode()).hexdigest() == prompt_hash:
-        return json.loads(current)["prompt_version"]
+        return current_version
+    if current_version == _SHORT_ACTION_PROMPT_VERSION:
+        if profile_version == SOURCE_BOUND_REWRITE_PROFILE:
+            previous = _build_source_bound_prompt(
+                document, preserve_notes=True, procedure_fidelity=True, allow_drain_subject=True,
+                allow_rotation_removal=True, allow_optional_observation=True, allow_spaced_rotation=True,
+                include_technical_tokens=True, retain_standalone_notes=True,
+            )
+        else:
+            previous = _encode_prompt_with_technical_tokens(
+                _auto_prompt_payload_v66(document, context=context), retain_standalone_notes=True,
+            )
+        if sha256(previous.encode()).hexdigest() == prompt_hash:
+            return json.loads(previous)["prompt_version"]
     if profile_version == SOURCE_BOUND_REWRITE_PROFILE:
         for allow_spaced_rotation, include_technical_tokens in ((True, True), (False, True), (False, False)):
             prior = _build_source_bound_prompt(
@@ -2677,6 +2723,15 @@ def recast_optional_observation(text):
         return None
     instrument, location = match.group("instrument", "location")
     return text[:match.start()] + f"You can see this behavior using the {instrument} on the {location}."
+
+
+def recast_short_procedure(text):
+    """Split exact compound instructions while preserving their objects and stopping condition."""
+    if match := _ENGINE_RUN_UNTIL_INDICATOR_OFF.fullmatch(text):
+        return f"Start the engine. Keep it running until the {match['indicator']} turns off."
+    if match := _REMOVE_BOLTS_AND_PUMP_PARTS.fullmatch(text):
+        return f"Remove the bolts. Remove the {match['parts']} as well."
+    return None
 
 
 def _component_words(text):
@@ -3884,6 +3939,11 @@ def _require_changes(
     restored = {"blocks": candidate["blocks"][1:]}
     if include_cell_blocks is None:
         include_cell_blocks = _include_cell_blocks(prompt_version)
+    short_actions = {}
+    if prompt_version == _SHORT_ACTION_PROMPT_VERSION:
+        prompt = _auto_prompt_payload_v66(source, context={})
+        prompt_version = prompt["prompt_version"]
+        short_actions = _short_procedure_recasts(prompt["slots"])
     if prompt_version == _SPACED_ROTATION_PROMPT_VERSION:
         enforce_spaced_rotation = True
         prompt_version = _auto_prompt_payload_v65(source, context={})["prompt_version"]
@@ -4069,6 +4129,8 @@ def _require_changes(
     def check_slot(slot):
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
+        if slot["path"] in short_actions and replacement != short_actions[slot["path"]]:
+            raise ValueError("REWRITE_SHORT_PROCEDURE_MUTATION")
         if verified_color_notes and replacement != original:
             recast = recast_conditional_color_note(original)
             if recast is not None:
@@ -4314,6 +4376,9 @@ def _require_changes(
 
 def require_current_publication_checks(source, candidate, *, saved_prompt_version, bankone_structure=None):
     """Apply current prose rules to the saved prompt's editable slots."""
+    if saved_prompt_version == _SHORT_ACTION_PROMPT_VERSION:
+        _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure)
+        saved_prompt_version = _auto_prompt_payload_v66(source, context={})["prompt_version"]
     restored = {"blocks": candidate["blocks"][1:]}
     for slot in full.prose_slots(source, include_cell_blocks=True):
         original = slot["text"]
@@ -4537,6 +4602,7 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None, prof
             _ROTATION_REMOVAL_PROMPT_VERSION: "full-prose-auto-validator-v62",
             _OPTIONAL_OBSERVATION_PROMPT_VERSION: "full-prose-auto-validator-v63",
             _SPACED_ROTATION_PROMPT_VERSION: "full-prose-auto-validator-v64",
+            _SHORT_ACTION_PROMPT_VERSION: "full-prose-auto-validator-v65",
         }.get(prompt_version, "full-prose-auto-validator-v53")
     if verified_color_notes:
         validator_version = "full-prose-color-note-replay-validator-v1"
