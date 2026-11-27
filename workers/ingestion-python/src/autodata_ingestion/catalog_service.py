@@ -20,7 +20,7 @@ from uuid import uuid4
 
 
 from . import selector_job
-from .catalog_market import NON_US_MODEL_QUALIFIER
+from .catalog_market import NON_US_MODEL_QUALIFIER, explicit_source_region, model_visible_in_market
 from .vehicle_identity import engine_variant_for_row
 
 
@@ -1765,6 +1765,48 @@ def _stored_banktwo_make_label(request, origin):
     return label if isinstance(label, str) and catalog_selector_slug(label) == slug else None
 
 
+def _banktwo_model_make_hint(request, origin):
+    """Find a stored make spelling also observed at this supplier in a nearby year."""
+    from .catalog_sync import _conninfo
+    from .source_connector_client import catalog_selector_slug
+    import psycopg
+
+    slug = catalog_selector_slug(request.make)
+    if not slug or os.getenv("AUTODATA_SOURCE_PERSIST", "1") != "1":
+        return None
+    region = request.region.strip().upper()
+    try:
+        conninfo = _conninfo()
+        conninfo.update(connect_timeout=1, options="-c statement_timeout=300 -c default_transaction_read_only=on")
+        with psycopg.connect(**conninfo) as connection:
+            row = connection.execute("""
+                WITH snapshot AS (
+                    SELECT min(item->>'make') AS label
+                    FROM vehicle_catalog_hydration_scopes scope
+                    CROSS JOIN LATERAL jsonb_array_elements(scope.selector_rows) item
+                    WHERE scope.scope='makes' AND scope.model_year=%s AND scope.region=%s
+                      AND scope.completion_version=1
+                      AND trim(both '-' from regexp_replace(lower(item->>'make'), '[^a-z0-9]+', '-', 'g'))=%s
+                    HAVING count(DISTINCT item->>'make')=1
+                )
+                SELECT label FROM snapshot
+                WHERE EXISTS (
+                    SELECT 1 FROM vehicle_catalog_hydration_scopes scope
+                    CROSS JOIN LATERAL jsonb_array_elements(scope.provenance) proof
+                    WHERE scope.model_year BETWEEN %s AND %s AND scope.region=%s AND scope.scope IN ('makes','models')
+                      AND proof->>'provider'='autoapitwo'
+                      AND proof->'metadata'->>'coverage_basis'=%s
+                      AND proof->'metadata'->>'connector_origin'=%s
+                      AND proof->'metadata'->'exact_make_labels'->>(%s::text)=snapshot.label
+                )
+                """, (request.year, region, slug, request.year - 3, request.year + 3, region,
+                      _BANKTWO_MAKE_COVERAGE, origin, slug)).fetchone()
+    except (OSError, ValueError, psycopg.Error):
+        return None
+    label = row[0] if row else None
+    return label if isinstance(label, str) and catalog_selector_slug(label) == slug else None
+
+
 def _configured_catalog_providers(*, deepening_control: _SelectorDeepeningControl | _ConfigurationHydrationControl | None = None) -> tuple[Any, ...]:
     from .source_connector_client import source_connector_registry
 
@@ -1882,6 +1924,8 @@ class _SourceCatalogProvider:
                     if prove_model_make and cursor is None:
                         page, selector["make"] = self.client.catalog_models_with_make_proof(
                             request.year, request.make, read_control=self.deepening_control, on_make_pages=make_pages.extend,
+                            make_hint=_banktwo_model_make_hint(request, self.client.base_url),
+                            region=requested_region,
                         )
                     else:
                         page = self.client.catalog(
@@ -1954,15 +1998,17 @@ class _SourceCatalogProvider:
                     for key in fields_by_scope[scope]
                     if key in item
                 }
+                if scope == "models" and not model_visible_in_market(item, requested_region):
+                    continue
                 if scope in {"makes", "models", "configurations"}:
                     # The requested region is a placement fallback. Preserve
                     # the supplier's independently reported market separately.
-                    source_region = str(item.get("region") or "").strip().upper()
-                    if re.fullmatch(r"[A-Z]{2}", source_region) and source_region not in {"NA", "EU", "ZZ"}:
-                        if scope != "configurations" and source_region != requested_region:
+                    source_region = explicit_source_region(item.get("region"))
+                    if source_region:
+                        if scope == "makes" and source_region != requested_region:
                             continue
                         row["source_region"] = source_region
-                if (scope in {"models", "configurations"} and requested_region == "US" and
+                if (scope == "configurations" and requested_region == "US" and
                         not row.get("source_region") and re.search(NON_US_MODEL_QUALIFIER, str(row.get("model", "")))):
                     # A requested region is only a placement fallback. A
                     # country-qualified row needs independent US evidence.
