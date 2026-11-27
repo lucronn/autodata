@@ -7524,9 +7524,17 @@ test('an inline article reference preserves its sentence and the authorized demo
 
 function warmFigureHarness({ count = 7, origin = 'canonical', repeated = false } = {}) {
   const timeout = deferredAuthOperation(), printed = [];
+  const timers = new Map();
+  let timerID = 0;
   const window = Object.assign(new EventTarget(), { print() { printed.push(true); } });
   const h = articleMediaHarness({
     session: { state: { authenticated: true, mode: 'firebase' } }, window,
+    setTimeout(callback, ms) {
+      assert.equal(ms, 8_000);
+      timers.set(++timerID, callback);
+      return timerID;
+    },
+    clearTimeout(id) { timers.delete(id); },
     delay(ms, signal) {
       assert.equal(ms, 15_000);
       signal.addEventListener('abort', () => timeout.reject(signal.reason), { once: true });
@@ -7540,7 +7548,7 @@ function warmFigureHarness({ count = 7, origin = 'canonical', repeated = false }
   const images = mediaDescendants(content, 'img');
   runInNewContext(appSection('async function printArticle()', '$("print").addEventListener') +
     appSection('window.addEventListener("beforeprint"', 'window.addEventListener("popstate"'), h.context);
-  return { ...h, window, timeout, printed, images };
+  return { ...h, window, timeout, printed, images, timers };
 }
 
 test('paid documents with many distinct figures load near the viewport and keep a placeholder until decode', () => {
@@ -7587,10 +7595,44 @@ test('reader Print releases offscreen images and waits for loaded figures or a v
       }
     }
     await printing;
+    assert.equal(h.timers.size, 0, finish);
     const ready = ['loaded', 'renewed', 'marked unavailable'].includes(finish);
     assert.deepEqual(h.printed, ready ? [true] : [], finish);
     if (finish !== 'navigate') assert.equal(h.nodes.get('print-status').hidden, ready || finish === 'rerender', finish);
   }
+});
+
+test('printing renews only unfinished figures after a quiet interval', async () => {
+  const h = warmFigureHarness();
+  const renewals = [];
+  h.context.renewMedia = (g, image, timedOut) => {
+    assert.equal(g, h.g);
+    assert.equal(timedOut, true);
+    renewals.push(image);
+  };
+  const printing = h.context.printArticle();
+  const first = [...h.timers.keys()][0];
+  const [stalled, replacing, ...loaded] = h.images;
+  replacing.dataset.replacement = '1';
+  for (const image of loaded) {
+    image.complete = true;
+    image.naturalWidth = 200;
+    image.dispatch('load');
+  }
+  assert.equal(h.timers.has(first), false);
+  const [[idle, delayed]] = h.timers;
+  h.timers.delete(idle);
+  delayed();
+  assert.deepEqual(renewals, [stalled]);
+  assert.deepEqual(h.printed, []);
+  for (const image of [stalled, replacing]) {
+    image.complete = true;
+    image.naturalWidth = 200;
+    image.dispatch('load');
+  }
+  await printing;
+  assert.equal(h.timers.size, 0);
+  assert.deepEqual(h.printed, [true]);
 });
 
 test('reader refocus shows the authorized article while its open Original is still being checked', async () => {

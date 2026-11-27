@@ -1662,6 +1662,38 @@ function releaseArticleFigures(group) {
   for (const { img } of group?.figures || [])
     if (img.isConnected && img.loading === "lazy") img.loading = "eager";
 }
+async function waitForPrintFigures(pending, g, signal) {
+  let timer, renewed = false;
+  const watchForStall = () => {
+    clearTimeout(timer);
+    if (renewed || signal.aborted) return;
+    timer = setTimeout(() => {
+      renewed = true;
+      if (signal.aborted) return;
+      for (const { img } of pending)
+        if (img.isConnected && !img.complete && img.dataset.replacement !== "1")
+          void renewMedia(g, img, true);
+    }, figureLoadTimeout);
+  };
+  try {
+    watchForStall();
+    // Wait through failed URLs. Give offscreen requests the same renewal
+    // opportunity as visible figures once the batch stops making progress.
+    await Promise.race([
+      Promise.all(pending.map(({ img }) => new Promise(resolve => {
+        const settled = () => {
+          watchForStall();
+          resolve();
+        };
+        img.addEventListener("load", settled, { once: true, signal });
+        img.addEventListener("figureunavailable", settled, { once: true, signal });
+      }))),
+      delay(15_000, signal),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 function appendSource(parent, block, review, g) {
   const href = sourceReferenceURL(review, block);
   if (!href) return;
@@ -3710,14 +3742,7 @@ async function printArticle() {
     if (pending.length) {
       message.textContent = "Loading illustrations for printing…";
       message.hidden = false;
-      // An expired image can fail before its authorized replacement arrives.
-      await Promise.race([
-        Promise.all(pending.map(({ img }) => new Promise(resolve => {
-          img.addEventListener("load", resolve, { once: true, signal });
-          img.addEventListener("figureunavailable", resolve, { once: true, signal });
-        }))),
-        delay(15_000, signal),
-      ]);
+      await waitForPrintFigures(pending, g, signal);
     }
     if (!g.current() || deferred !== deferredArticleFigures || (!openDemo && !session.state.authenticated)) return;
     if (deferred.figures.some(waiting)) {
