@@ -174,6 +174,8 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 			w.Header().Set("ETag", tag)
 		}
 		if path == prefix {
+			// Every browser receives shared HTML with at most a public year snapshot.
+			w.Header().Set("Cache-Control", "private, max-age=30, must-revalidate")
 			document := entryPage
 			if entry.publicDemo {
 				document = publicDemoEntry
