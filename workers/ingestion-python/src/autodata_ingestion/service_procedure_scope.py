@@ -9,6 +9,17 @@ _WEDGE = rf"{_TOOL} \(\d+\)"
 _SCREW = rf"{_TOOL} thumb screw \(\d+\)"
 _COVERAGE = r"bumper-to-bumper coverage \(canada base warranty coverage\)"
 _WARRANTY_REFERENCE = r"applicable warranties section of investigate vehicle history \(ivh\)"
+_SERIAL_DATA = r"serial data communication"
+_LIN_MODULE = r"the master control module (?:will set|sets)"
+_LIN_CODE = r"a no communication code"
+_LIN_LOST_DEVICE = r"the (?:non-communicating lin device|lin device that lost communication)"
+_OIL_PAN_BOLT = r"the oil pan-to-bell housing bolt"
+_STARTER_POSITION = r"(?:below|under) the starter motor"
+_PAN_SIDE_NOTE = (
+    r"note: (?:lh rear (?:is )?shown[,;] rh (?:is )?similar"
+    r"|the (?:illustration|figure) shows the lh rear\. the rh side is similar)\. "
+)
+_SHOWN_PRY_PADS = r"the (?:(?:illustrated|shown) pry pads|pry pads shown)"
 
 _SERVICE_STEPS = (
     ("cold coolant fill", re.compile(
@@ -47,6 +58,21 @@ _SERVICE_STEPS = (
         rf"|apply the labor operation shown below\. consult the {_WARRANTY_REFERENCE} to confirm coverage)"
         rf"|use the labor operation below when {_COVERAGE} applies to the repair\. "
         rf"for coverage information, see the {_WARRANTY_REFERENCE})\.?"
+    )),
+    ("set code for non-communicating LIN device", re.compile(
+        rf"(?:if {_SERIAL_DATA} is lost between any (?:of the )?lin devices on the (?:lin bus(?: network)?|network), "
+        rf"{_LIN_MODULE} {_LIN_CODE} (?:against|for) {_LIN_LOST_DEVICE}"
+        rf"|a loss of {_SERIAL_DATA} between any (?:lin )?devices on the lin bus triggers {_LIN_CODE}\. "
+        rf"{_LIN_MODULE} that code for {_LIN_LOST_DEVICE})\.?"
+    )),
+    ("remove bolt below starter", re.compile(
+        rf"(?:remove {_OIL_PAN_BOLT} (?:located )?{_STARTER_POSITION}"
+        rf"|{_STARTER_POSITION}, remove {_OIL_PAN_BOLT})\.?"
+    )),
+    ("remove oil pan at illustrated pads", re.compile(
+        rf"{_PAN_SIDE_NOTE}(?:using a pry tool on {_SHOWN_PRY_PADS}, remove the oil pan"
+        rf"|use a pry tool (?:on|at) {_SHOWN_PRY_PADS} to remove the oil pan"
+        rf"|remove the oil pan by applying a pry tool (?:on|at) {_SHOWN_PRY_PADS})\.?"
     )),
 )
 

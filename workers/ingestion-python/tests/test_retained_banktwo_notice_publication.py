@@ -1,6 +1,7 @@
 """Verify a retained Banktwo notice correction through the normal publication records."""
 
 import json
+from copy import deepcopy
 from dataclasses import replace
 from hashlib import sha256
 from io import BytesIO
@@ -14,7 +15,7 @@ from autodata_ingestion import source_article_capture
 from autodata_ingestion.article_lifecycle import run_article_worker_once
 from autodata_ingestion.article_lifecycle_store import automatic_candidate_validation, load_source_revision
 from autodata_ingestion.article_lifecycle_types import RETAINED_SHORT_ACTION_REPAIR_PROFILE, digest_json
-from autodata_ingestion.procedure_rewrite_full import _get
+from autodata_ingestion.procedure_rewrite_full import _get, _set
 from autodata_ingestion.procedure_rewrite_recovery import (
     BANKONE_REFERENCED_RECOVERY_METHOD, recover_structured_bankone_first_draft,
 )
@@ -25,7 +26,9 @@ from autodata_ingestion.retained_banktwo_notice_publication import (
     preview_bankone_list_boundary_publication, publish_bankone_definition_heading,
     publish_bankone_list_boundary, publish_banktwo_notice,
 )
-from autodata_ingestion.retained_note_label_repair import _SERVICE_WORDING, _rebuild, repair_retained_service_wording
+from autodata_ingestion.retained_note_label_repair import (
+    SERVICE_WORDING_FOLLOW_UP_PROFILE, _SERVICE_WORDING, _rebuild, repair_retained_service_wording,
+)
 from autodata_ingestion.source_job_persistence import (
     publish_source_bound_first_draft, read_bankone_archive_structure, refresh_article_job,
     source_bound_correction_prior_attempt,
@@ -399,4 +402,43 @@ def test_bankone_list_repair_carries_archived_wording_and_links_atomically(runti
         for field in ("block_id", "source_revision_id", "label_sha256", "authored_id_sha256",
                       "target_ref_sha256", "body_sha256"):
             assert final_link[field] == copied[field]
+        owner_job = final["current_job_id"]
+    follow_up_document = deepcopy(revision["canonical_document"])
+    _set({"blocks": follow_up_document["blocks"][1:]}, fill_path, prior_fill)
+    follow_up = dict(
+        successor_args, follow_up=True, expected_job_id=owner_job, expected_published_revision_id=successor,
+        expected_published_hash=revision["rewrite_result_hash"], expected_repaired_hash=digest_json(follow_up_document),
+        wording_edits={fill_path: dict(edits[fill_path], prior_sha256=sha256(edited_fill.encode()).hexdigest(), text=prior_fill)},
+    )
+    before_follow_up = all_rows(runtime.repo)
+
+    def stop_follow_up(point):
+        assert point == "inside_publication" and runtime.read_current() == latest
+        raise RuntimeError("interrupt follow-up")
+
+    with pytest.raises(RuntimeError, match="interrupt follow-up"):
+        repair_retained_service_wording(runtime.repo, runtime.article_id, hooks=stop_follow_up, **follow_up)
+    assert all_rows(runtime.repo) == before_follow_up
+    follow_up_id = repair_retained_service_wording(runtime.repo, runtime.article_id, **follow_up)
+    assert runtime.read_current()["canonical_revision_id"] == follow_up_id
+    with runtime.repo.connect() as conn:
+        article = conn.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                               (runtime.article_id,)).fetchone()
+        rechecked, _, _, _, _, _, _ = _publication_evidence_for_revision(
+            conn.cursor(), article, SimpleNamespace(source_revision_id=latest["source_revision_id"]),
+            follow_up_id, fixture_mode=False, lock=False,
+        )
+        assert rechecked["rewrite_profile_version"] == SERVICE_WORDING_FOLLOW_UP_PROFILE
+        assert rechecked["canonical_document"] == follow_up_document
+        assert rechecked["canonical_images"] == revision["canonical_images"]
+        repeated_link = conn.execute("SELECT * FROM canonical_article_link_bindings WHERE canonical_article_revision_id=%s",
+                                     (follow_up_id,)).fetchone()
+        for field in ("block_id", "source_revision_id", "label_sha256", "authored_id_sha256",
+                      "target_ref_sha256", "body_sha256"):
+            assert repeated_link[field] == final_link[field]
+    after_follow_up = all_rows(runtime.repo)
+    assert after_follow_up["canonical_article_rewrite_attempts"] == before_follow_up["canonical_article_rewrite_attempts"]
+    assert len(after_follow_up["publication_events"]) == len(before_follow_up["publication_events"]) + 1
+    with pytest.raises(ValueError, match="RETAINED_SERVICE_WORDING_REPAIR_STALE"):
+        repair_retained_service_wording(runtime.repo, runtime.article_id, **follow_up)
     assert model.calls == 1

@@ -23,6 +23,7 @@ RETAINED_PROCEDURE_CONDITION_REPAIR_PROFILE = "full-prose-procedure-condition-re
 RETAINED_SHORT_ACTION_REPAIR_PROFILE = "full-prose-short-action-repair-v1"
 RETAINED_DIAGNOSTIC_WORDING_REPAIR_PROFILE = "full-prose-diagnostic-wording-repair-v1"
 RETAINED_SERVICE_WORDING_REPAIR_PROFILE = "full-prose-service-wording-repair-v1"
+RETAINED_SERVICE_WORDING_FOLLOW_UP_PROFILE = "full-prose-service-wording-repair-v2"
 RETAINED_REQUIRED_ACTION_REPAIR_METHOD = "retained-required-action-archived-reply-repair-v1"
 RETAINED_REQUIRED_ACTION_REPAIR_PROFILE = "full-prose-required-action-repair-v1"
 RETAINED_INTRODUCTION_REPAIR_PROFILE = "full-prose-introduction-repair-v1"
