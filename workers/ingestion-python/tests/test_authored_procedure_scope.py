@@ -82,8 +82,21 @@ def test_equivalent_or_unscoped_wording_is_preserved(source, wording):
             ("or monitoring", ""),
         ],
     ),
+    (
+        "For all other concentrations, use Example Concentrated Coolant and/or distilled water to achieve the "
+        "desired concentration. Refer to Cooling System Service.",
+        "For other target concentrations, adjust the mixture with Example Concentrated Coolant, distilled water, "
+        "or both. See Cooling System Service.",
+        [
+            ("other target concentrations", "all concentrations"),
+            ("Concentrated", "Prediluted"),
+            ("distilled water", "tap water"),
+            (", or both", ""),
+            ("Cooling System Service", "Coolant Disposal"),
+        ],
+    ),
 ])
-def test_publication_preserves_specific_diagnostic_facts(source, rewrite, mutations):
+def test_publication_preserves_authored_procedure_details(source, rewrite, mutations):
     original = {"blocks": [{"items": [source]}]}
     candidate = {"blocks": [{"text": "Introduction"}, {"items": [rewrite]}]}
     paths = ["/blocks/0/items/0"]

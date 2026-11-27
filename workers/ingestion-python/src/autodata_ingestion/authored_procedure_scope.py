@@ -42,6 +42,12 @@ _LIN_REFERENCE_CHECK = re.compile(
     r"(?:\. (?:the result|this))? can help (?:determine|identify) "
     r"(?:(?:what|which) type of |which |the type of )(?:failure|fault) to (?:inspect|check) for\.?"
 )
+_COOLANT_CONCENTRATION = re.compile(
+    r"for (?:all |any )?other (?:target )?concentrations?, "
+    r"(?:use|adjust the mixture with) (?P<coolant>[^,]+?)"
+    r"(?: and/or distilled water (?:to|t) (?:get to|achieve) the desired concentration|, distilled water, or both)"
+    r"\. (?:refer to|see) (?P<reference>[^.]+)\.?"
+)
 
 
 def _words(text):
@@ -109,6 +115,11 @@ def _checks_lin_wiring(text):
     )
 
 
+def _coolant_concentration(text):
+    match = _COOLANT_CONCENTRATION.fullmatch(text)
+    return (match["coolant"], match["reference"]) if match else None
+
+
 def require_authored_procedure_scope(source, document, *, rewritten_paths):
     """Check new publications without changing validation of historical replies."""
     candidate = {"blocks": document["blocks"][1:]}
@@ -122,4 +133,6 @@ def require_authored_procedure_scope(source, document, *, rewritten_paths):
         if _checks_lin_wiring(original) and not _checks_lin_wiring(wording):
             raise ValueError("REWRITE_CLAUSE_MUTATION")
         if _LIN_REFERENCE_CHECK.fullmatch(original) and not _LIN_REFERENCE_CHECK.fullmatch(wording):
+            raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if (mixture := _coolant_concentration(original)) is not None and _coolant_concentration(wording) != mixture:
             raise ValueError("REWRITE_CLAUSE_MUTATION")
