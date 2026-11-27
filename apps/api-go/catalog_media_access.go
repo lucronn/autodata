@@ -109,6 +109,11 @@ type paidCatalogAssetKey struct {
 	assetID, objectKey string
 }
 
+type paidCatalogAsset struct {
+	url        string
+	dimensions *CatalogRasterDimensions
+}
+
 // Reserved account context for short-lived media links issued by the public
 // Workshop demo. A real customer token never uses this account.
 const workshopOpenDemoImageAccountID = "00000000-0000-4000-8000-000000000001"
@@ -123,38 +128,42 @@ func (s *Server) workshopOpenDemoImageRequest(r *http.Request) bool {
 
 // Build the membership index once for this response. Its signed URLs can be
 // reused by identical placements because the account and revision anchors agree.
-func paidCatalogAssetURLs(source []CatalogImage) map[paidCatalogAssetKey]string {
-	urls := make(map[paidCatalogAssetKey]string, len(source))
+func indexPaidCatalogAssets(source []CatalogImage) map[paidCatalogAssetKey]paidCatalogAsset {
+	assets := make(map[paidCatalogAssetKey]paidCatalogAsset, len(source))
 	for _, image := range source {
 		if image.Status != "unavailable" {
-			urls[paidCatalogAssetKey{paidCatalogImageAssetID(image), image.StorageKey}] = ""
+			assets[paidCatalogAssetKey{paidCatalogImageAssetID(image), image.StorageKey}] = paidCatalogAsset{
+				dimensions: image.RasterDimensions,
+			}
 		}
 	}
-	return urls
+	return assets
 }
 
-func (s *Server) rewritePaidCatalogImages(images []CatalogImage, urls map[paidCatalogAssetKey]string, ref paidCatalogImageReference, now time.Time) {
+func (s *Server) rewritePaidCatalogImages(images []CatalogImage, assets map[paidCatalogAssetKey]paidCatalogAsset, ref paidCatalogImageReference, now time.Time) {
 	for i := range images {
 		image := &images[i]
 		image.URL = ""
+		image.RasterDimensions = nil
 		image.ID = publicCatalogAssetID(image.ID)
 		image.ImageID = publicCatalogAssetID(image.ImageID)
 		image.AssetID = publicCatalogAssetID(image.AssetID)
 		key := paidCatalogAssetKey{paidCatalogImageAssetID(*image), image.StorageKey}
-		url, permitted := urls[key]
+		asset, permitted := assets[key]
 		if image.Status == "unavailable" || !permitted {
 			continue
 		}
-		if url == "" {
+		if asset.url == "" {
 			ref.AssetID, ref.ObjectKey = key.assetID, key.objectKey
 			token, err := sealPaidCatalogImageReference(ref, s.catalogImageKey, now)
 			if err != nil {
 				continue
 			}
-			url = "/v1/catalog/images/" + token
-			urls[key] = url
+			asset.url = "/v1/catalog/images/" + token
+			assets[key] = asset
 		}
-		image.URL = url
+		image.URL = asset.url
+		image.RasterDimensions = asset.dimensions
 	}
 }
 
@@ -260,13 +269,13 @@ func (s *Server) rewritePaidCatalogArticleImagesWithAccess(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	urls := paidCatalogAssetURLs(sourceImages)
+	assets := indexPaidCatalogAssets(sourceImages)
 	now := time.Now()
 	ref := paidCatalogProjectionReference(p, configuration, identity, *view, selected, "article", now)
-	s.rewritePaidCatalogImages(view.Article.Images, urls, ref, now)
+	s.rewritePaidCatalogImages(view.Article.Images, assets, ref, now)
 	for i := range view.Article.Steps {
 		if view.Article.Steps[i].Images != nil {
-			s.rewritePaidCatalogImages(*view.Article.Steps[i].Images, urls, ref, now)
+			s.rewritePaidCatalogImages(*view.Article.Steps[i].Images, assets, ref, now)
 		}
 	}
 	return nil

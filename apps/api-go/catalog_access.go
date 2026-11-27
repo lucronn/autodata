@@ -378,7 +378,7 @@ func (projection paidSearchProjection) scopeImages(article *CatalogArticle) erro
 }
 
 func scopePaidSearchImages(article *CatalogArticle, sourceImages []CatalogImage) {
-	assets := paidCatalogAssetURLs(sourceImages)
+	assets := indexPaidCatalogAssets(sourceImages)
 	// A paid detail only mints media URLs for assets still present in the
 	// selected source. Preserve that boundary while comparing text privately.
 	clearUnproven := func(images []CatalogImage) {

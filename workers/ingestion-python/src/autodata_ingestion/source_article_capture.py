@@ -6,6 +6,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from functools import partial
 from hashlib import sha256
+from io import BytesIO
 from threading import Lock
 import json
 import time
@@ -68,6 +69,25 @@ _LEGACY_SVG_RECOVERY_INCOMPLETE = "SOURCE_LEGACY_SVG_RECOVERY_INCOMPLETE"
 
 # Keep in sync with the raster types accepted by the catalog image endpoint.
 DISPLAYABLE_RASTER_MEDIA = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
+RASTER_FORMATS = {media: media.split("/")[1].upper() for media in DISPLAYABLE_RASTER_MEDIA}
+
+
+def read_raster_dimensions(payload, media_type):
+    format_name = RASTER_FORMATS.get(media_type)
+    if format_name is None:
+        return None
+    from PIL import Image
+
+    try:
+        with Image.open(BytesIO(payload), formats=[format_name]) as image:
+            width, height = image.size
+            if not 1 <= width <= 10000 or not 1 <= height <= 10000:
+                return None
+            if image.getexif().get(274) in (5, 6, 7, 8):
+                width, height = height, width
+            return width, height
+    except (Image.DecompressionBombError, OSError, ValueError, SyntaxError, EOFError):
+        return None
 
 
 def snapshot_id(digest):
@@ -567,6 +587,9 @@ def capture_source_article(
             cache[bound] = client.read_resource(ref, timeout=remaining())
         return cache[bound]
 
+    raster_dimensions = {}
+    raster_dimensions_lock = Lock()
+
     class BoundedObjects:
         """Bound caller latency, not an adapter's already-running network request.
 
@@ -575,13 +598,13 @@ def capture_source_article(
         thread can commit lifecycle observations or publish an article.
         """
 
-        def put_object(self, *args):
+        def put_object(self, key, payload, media_type):
             timeout = deadline - time.monotonic()
             if timeout <= 0:
                 raise SourceConnectorError("CAPTURE_DEADLINE", retryable=True)
             pool = ThreadPoolExecutor(max_workers=1)
             try:
-                pool.submit(object_store.put_object, *args).result(timeout=timeout)
+                pool.submit(object_store.put_object, key, payload, media_type).result(timeout=timeout)
             except TimeoutError:
                 raise SourceConnectorError("CAPTURE_DEADLINE", retryable=True) from None
             except Exception:
@@ -591,6 +614,10 @@ def capture_source_article(
                 ) from None
             finally:
                 pool.shutdown(wait=False, cancel_futures=True)
+            dimensions = read_raster_dimensions(payload, media_type)
+            if dimensions is not None:
+                with raster_dimensions_lock:
+                    raster_dimensions[key] = dimensions
 
     bounded_objects = BoundedObjects()
 
@@ -1648,4 +1675,5 @@ def capture_source_article(
         ),
         recovered_legacy_bankone_svg=recover_legacy_bankone_svg,
         image_only=image_only,
+        raster_dimensions=raster_dimensions,
     )

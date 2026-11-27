@@ -18,6 +18,25 @@ type CatalogFigureLabel struct {
 	Lines    []string `json:"lines"`
 }
 
+type CatalogRasterDimensions struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+func parseCatalogRasterDimensions(value any) *CatalogRasterDimensions {
+	dimensions, ok := value.(map[string]any)
+	if !ok || len(dimensions) != 2 {
+		return nil
+	}
+	width, widthOK := dimensions["width"].(float64)
+	height, heightOK := dimensions["height"].(float64)
+	if !widthOK || !heightOK || width < 1 || width > 10000 || height < 1 || height > 10000 ||
+		width != float64(int(width)) || height != float64(int(height)) {
+		return nil
+	}
+	return &CatalogRasterDimensions{Width: int(width), Height: int(height)}
+}
+
 // Project the numeric placement and authored lines without passing through CSS
 // or permitting malformed placement data to make the rest of a source unreadable.
 func parseCatalogFigureLayout(value any) *CatalogFigureLayout {

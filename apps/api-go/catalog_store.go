@@ -326,17 +326,18 @@ type CatalogArticleProgress struct {
 }
 
 type CatalogImage struct {
-	AssetID           string               `json:"asset_id,omitempty"`
-	Caption           string               `json:"caption,omitempty"`
-	ID                string               `json:"id,omitempty"`
-	URL               string               `json:"url,omitempty"`
-	Alt               string               `json:"alt,omitempty"`
-	StorageKey        string               `json:"-"`
-	MediaType         string               `json:"media_type,omitempty"`
-	ImageID           string               `json:"image_id,omitempty"`
-	Status            string               `json:"status,omitempty"`
-	UnavailableReason string               `json:"unavailable_reason,omitempty"`
-	FigureLayout      *CatalogFigureLayout `json:"figure_layout,omitempty"`
+	AssetID           string                   `json:"asset_id,omitempty"`
+	Caption           string                   `json:"caption,omitempty"`
+	ID                string                   `json:"id,omitempty"`
+	URL               string                   `json:"url,omitempty"`
+	Alt               string                   `json:"alt,omitempty"`
+	StorageKey        string                   `json:"-"`
+	MediaType         string                   `json:"media_type,omitempty"`
+	ImageID           string                   `json:"image_id,omitempty"`
+	Status            string                   `json:"status,omitempty"`
+	UnavailableReason string                   `json:"unavailable_reason,omitempty"`
+	FigureLayout      *CatalogFigureLayout     `json:"figure_layout,omitempty"`
+	RasterDimensions  *CatalogRasterDimensions `json:"raster_dimensions,omitempty"`
 }
 
 // UnmarshalJSON retains the private storage locator from persisted article
@@ -345,13 +346,15 @@ func (image *CatalogImage) UnmarshalJSON(data []byte) error {
 	type publicImage CatalogImage
 	var decoded struct {
 		publicImage
-		StorageKey   string `json:"storage_key"`
-		FigureLayout any    `json:"figure_layout"`
+		StorageKey       string `json:"storage_key"`
+		FigureLayout     any    `json:"figure_layout"`
+		RasterDimensions any    `json:"raster_dimensions"`
 	}
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
 	decoded.publicImage.FigureLayout = parseCatalogFigureLayout(decoded.FigureLayout)
+	decoded.publicImage.RasterDimensions = parseCatalogRasterDimensions(decoded.RasterDimensions)
 	*image = CatalogImage(decoded.publicImage)
 	image.StorageKey = decoded.StorageKey
 	image.ImageID = publicCatalogAssetID(image.ImageID)

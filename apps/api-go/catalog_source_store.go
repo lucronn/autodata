@@ -51,7 +51,7 @@ func (s *postgresCatalogStore) paidCatalogSourceView(ctx context.Context, config
 		LEFT JOIN LATERAL (
 			SELECT sr.source_revision_id,sr.body_source_snapshot_id,snap.content_sha256,
 				COALESCE(original.body_provider_revision,`+catalogSourceObservationVersionSQL+`) AS source_version,
-				sr.source_document,sr.source_images,sr.source_body,sr.source_steps
+				sr.source_document,`+catalogSourceImagesWithDimensionsSQL+` AS source_images,sr.source_body,sr.source_steps
 			FROM canonical_article_source_revisions sr
 			JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id
 			WHERE $4 AND sr.canonical_article_id=a.canonical_article_id

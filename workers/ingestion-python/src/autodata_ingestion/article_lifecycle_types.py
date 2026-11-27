@@ -1,6 +1,6 @@
 """Shared immutable lifecycle contracts and exact provider-scoped identities."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID, NAMESPACE_URL, uuid5
@@ -244,6 +244,7 @@ class CapturedSource:
     recovered_legacy_bankone_svg: bool = False
     image_only: bool = False
     service_schedule: str | None = None
+    raster_dimensions: dict[str, tuple[int, int]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
