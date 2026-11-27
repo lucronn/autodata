@@ -525,21 +525,26 @@ const directModelTimeout = 200;
 const directConfigurationTimeout = 400;
 const directSelectorBodyTimeout = 1500;
 const makeRouteKey = 'workshop:make-same-origin:';
-const makeRouteLifetime = 30000;
+const modelRouteKey = 'workshop:model-same-origin:';
+const selectorRouteLifetime = 30000;
 let directSelectorsUnavailable = false;
 
 export function rememberSameOriginMake(path) {
   if (globalThis.location?.origin !== 'https://autodata.cars.tk' || !directMakePath.test(path)) return;
+  rememberSameOriginSelector(makeRouteKey, path);
+}
+
+function rememberSameOriginSelector(key, path) {
   try {
-    globalThis.sessionStorage?.setItem(makeRouteKey + path, String(Date.now() + makeRouteLifetime));
+    globalThis.sessionStorage?.setItem(key + path, String(Date.now() + selectorRouteLifetime));
   } catch {
     // The browser may restrict session storage.
   }
 }
 
-function hasRecentSameOriginMake(path) {
+function hasRecentSameOriginSelector(key, path) {
   try {
-    return Number(globalThis.sessionStorage?.getItem(makeRouteKey + path)) > Date.now();
+    return Number(globalThis.sessionStorage?.getItem(key + path)) > Date.now();
   } catch {
     return false;
   }
@@ -552,7 +557,7 @@ function directSelectorURL(path, { method = 'GET', headers, body, preferSameOrig
       !(directMakePath.test(path) || directModelPath.test(path) || directConfigurationPath.test(path))) return null;
   // A fast year selection on the cold page can already have cached this
   // exact list on the main origin before the catalog module was ready.
-  if (directMakePath.test(path) && hasRecentSameOriginMake(path)) return null;
+  if (directMakePath.test(path) && hasRecentSameOriginSelector(makeRouteKey, path)) return null;
   const catalog = globalThis.document?.getElementById('workshop-catalog-module');
   if (catalog?.dataset?.publicSelectors !== 'true' || !catalog.dataset.directSelectorOrigin) return null;
   return catalog.dataset.directSelectorOrigin + path;
@@ -584,17 +589,49 @@ export async function requestJSON(path, options = {}) {
   const direct = directSelectorURL(path, options);
   if (!direct) return (await requestArticleJSON(path, options)).data;
   const isMake = directMakePath.test(path);
+  const isModel = directModelPath.test(path);
   // An embedded make list can leave the model as the first direct request.
-  const connectionTimeout = isMake ? directMakeTimeout
-    : directModelPath.test(path) ? directModelTimeout : directConfigurationTimeout;
+  const connectionTimeout = isMake ? directMakeTimeout : isModel ? directModelTimeout : directConfigurationTimeout;
   const { fetcher = fetch } = options;
   const fetchSelector = (resource, init) => fetchSelectorBeforeAbort(fetcher, resource, init);
   const bodyDeadline = performance.now() + Math.max(1, Math.min(10000, options.timeout ?? 10000));
+  let timeout = options.timeout;
+  let sameOriginModelError;
+  // A quick revisit can use the route that just returned model choices.
+  if (isModel && hasRecentSameOriginSelector(modelRouteKey, path)) {
+    let explicitRetryAfter = false;
+    try {
+      const { data } = await requestArticleJSON(path, {
+        ...options,
+        async fetcher(resource, init) {
+          const response = await fetchSelector(resource, init);
+          explicitRetryAfter = response.headers.has('Retry-After');
+          return response;
+        },
+      });
+      return data;
+    } catch (error) {
+      options.signal?.throwIfAborted();
+      const remaining = Math.floor(bodyDeadline - performance.now());
+      const transient = error instanceof CatalogRequestError && !explicitRetryAfter && !error.retryAfterSeconds &&
+        ([502, 503, 504].includes(error.status) || (!error.status && (error.retryable || error.code === 'INVALID_RESPONSE')));
+      if (!transient || remaining < 1) throw error;
+      sameOriginModelError = error;
+      timeout = remaining;
+      try {
+        globalThis.sessionStorage?.removeItem(modelRouteKey + path);
+      } catch {
+        // The browser may restrict session storage.
+      }
+    }
+  }
   const connection = new AbortController();
+  let rememberModelFallback = false;
   let canRetryDirectBody = false;
   let bodyTimer;
   const read = requestArticleJSON(path, {
     ...options,
+    timeout,
     reportBodyNetworkError: true,
     async fetcher(resource, init) {
       init.signal.throwIfAborted();
@@ -628,18 +665,23 @@ export async function requestJSON(path, options = {}) {
       }
       init.signal.throwIfAborted();
       if (response?.body) void response.body.cancel().catch(() => {});
+      if (sameOriginModelError) throw sameOriginModelError;
       const fallback = await fetchSelector(resource, init);
       if (isMake && fallback.ok) rememberSameOriginMake(path);
+      rememberModelFallback = isModel && connection.signal.aborted && fallback.ok;
       return fallback;
     },
   }).finally(() => clearTimeout(bodyTimer));
   try {
-    return (await read).data;
+    const { data } = await read;
+    if (rememberModelFallback && Array.isArray(data?.items) && data.items.length)
+      rememberSameOriginSelector(modelRouteKey, path);
+    return data;
   } catch (error) {
     options.signal?.throwIfAborted();
     const remaining = Math.floor(bodyDeadline - performance.now());
     // A stalled or truncated direct body can surface as a network error or invalid JSON.
-    if (!canRetryDirectBody || !(error instanceof CatalogRequestError) ||
+    if (sameOriginModelError || !canRetryDirectBody || !(error instanceof CatalogRequestError) ||
         error.status || !(error.retryable || error.code === 'INVALID_RESPONSE') || remaining < 1) throw error;
     const fallback = await requestArticleJSON(path, { ...options, timeout: remaining, fetcher: fetchSelector });
     if (isMake) rememberSameOriginMake(path);
