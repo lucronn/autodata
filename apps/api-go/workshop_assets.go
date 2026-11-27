@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"io/fs"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -125,6 +127,7 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 	bootstrapVersion := fmt.Sprintf("v=%x", sha256.Sum256(bootstrap))
 	var entryPage []byte
 	tags := map[string]string{}
+	compressed := map[string][]byte{}
 	release := sha256.New()
 	err = fs.WalkDir(assets, ".", func(name string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil || entry.IsDir() {
@@ -137,6 +140,19 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 		if name == "index.html" {
 			entryPage = data
 			return nil
+		}
+		if strings.HasSuffix(name, ".mjs") || strings.HasSuffix(name, ".css") {
+			var encoded bytes.Buffer
+			writer := gzip.NewWriter(&encoded)
+			if _, err := writer.Write(data); err != nil {
+				return err
+			}
+			if err := writer.Close(); err != nil {
+				return err
+			}
+			if encoded.Len() < len(data) {
+				compressed[prefix+name] = encoded.Bytes()
+			}
 		}
 		// A reverse proxy can serve the same asset with a different content coding.
 		sum := sha256.Sum256(data)
@@ -219,6 +235,13 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 				w.Header().Del("X-Request-ID")
 				w.Header().Del("Traceparent")
 			}
+			if data := compressed[assetPath]; data != nil && r.Header.Get("Range") == "" &&
+				acceptsWorkshopGzip(r.Header.Values("Accept-Encoding")) {
+				w.Header().Set("ETag", tags[assetPath])
+				w.Header().Set("Content-Encoding", "gzip")
+				http.ServeContent(w, r, asset, time.Time{}, bytes.NewReader(data))
+				return
+			}
 			r = r.Clone(r.Context())
 			r.URL.Path = assetPath
 			r.URL.RawPath = ""
@@ -257,4 +280,35 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 		}
 		files.ServeHTTP(w, r)
 	}
+}
+
+func acceptsWorkshopGzip(values []string) bool {
+	quality := map[string]float64{}
+	for _, value := range values {
+		for field := range strings.SplitSeq(value, ",") {
+			coding, parameter, weighted := strings.Cut(field, ";")
+			coding = strings.ToLower(strings.TrimSpace(coding))
+			if coding != "gzip" && coding != "identity" && coding != "*" {
+				continue
+			}
+			score := 1.0
+			if weighted {
+				name, raw, valid := strings.Cut(parameter, "=")
+				parsed, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+				if !valid || !strings.EqualFold(strings.TrimSpace(name), "q") || err != nil || !(parsed >= 0 && parsed <= 1) {
+					score = 0
+				} else {
+					score = parsed
+				}
+			}
+			if previous, exists := quality[coding]; !exists || score < previous {
+				quality[coding] = score
+			}
+		}
+	}
+	gzipQuality, explicit := quality["gzip"]
+	if !explicit {
+		gzipQuality = quality["*"]
+	}
+	return gzipQuality > 0 && gzipQuality >= quality["identity"]
 }
