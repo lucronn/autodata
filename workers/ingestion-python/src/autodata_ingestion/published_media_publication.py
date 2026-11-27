@@ -121,12 +121,14 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
         DIAGNOSTIC_WORDING_METHOD, DIAGNOSTIC_WORDING_PROFILE,
         OPTIONAL_OBSERVATION_METHOD, OPTIONAL_OBSERVATION_PROFILE, PROCEDURE_CONDITION_METHOD, PROCEDURE_CONDITION_PROFILE,
         ROTATION_REMOVAL_METHOD, ROTATION_REMOVAL_PROFILE,
+        SERVICE_WORDING_METHOD, SERVICE_WORDING_PROFILE,
         SHORT_ACTION_METHOD, SHORT_ACTION_PROFILE,
         SPACED_ROTATION_METHOD, SPACED_ROTATION_PROFILE,
         resolve_retained_authored_procedure_repair, resolve_retained_conditional_note_repair, resolve_retained_note_label_repair,
         resolve_retained_diagnostic_wording_repair,
         resolve_retained_optional_observation_repair, resolve_retained_procedure_condition_repair,
         resolve_retained_rotation_removal_repair,
+        resolve_retained_service_wording_repair,
         resolve_retained_short_action_repair,
         resolve_retained_spaced_rotation_repair,
     )
@@ -162,6 +164,7 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
         PROCEDURE_CONDITION_PROFILE: (PROCEDURE_CONDITION_METHOD, resolve_retained_procedure_condition_repair),
         SHORT_ACTION_PROFILE: (SHORT_ACTION_METHOD, resolve_retained_short_action_repair),
         DIAGNOSTIC_WORDING_PROFILE: (DIAGNOSTIC_WORDING_METHOD, resolve_retained_diagnostic_wording_repair),
+        SERVICE_WORDING_PROFILE: (SERVICE_WORDING_METHOD, resolve_retained_service_wording_repair),
         INTRODUCTION_PROFILE: (INTRODUCTION_METHOD, resolve_retained_introduction_repair),
     }
     if (profile not in (*AUTOMATIC_REWRITE_PROFILES, REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2, *repaired)

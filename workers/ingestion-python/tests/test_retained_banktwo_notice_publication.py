@@ -13,7 +13,8 @@ from PIL import Image
 from autodata_ingestion import source_article_capture
 from autodata_ingestion.article_lifecycle import run_article_worker_once
 from autodata_ingestion.article_lifecycle_store import automatic_candidate_validation, load_source_revision
-from autodata_ingestion.article_lifecycle_types import RETAINED_SHORT_ACTION_REPAIR_PROFILE
+from autodata_ingestion.article_lifecycle_types import RETAINED_SHORT_ACTION_REPAIR_PROFILE, digest_json
+from autodata_ingestion.procedure_rewrite_full import _get
 from autodata_ingestion.procedure_rewrite_recovery import (
     BANKONE_REFERENCED_RECOVERY_METHOD, recover_structured_bankone_first_draft,
 )
@@ -24,6 +25,7 @@ from autodata_ingestion.retained_banktwo_notice_publication import (
     preview_bankone_list_boundary_publication, publish_bankone_definition_heading,
     publish_bankone_list_boundary, publish_banktwo_notice,
 )
+from autodata_ingestion.retained_note_label_repair import _SERVICE_WORDING, _rebuild, repair_retained_service_wording
 from autodata_ingestion.source_job_persistence import (
     publish_source_bound_first_draft, read_bankone_archive_structure, refresh_article_job,
     source_bound_correction_prior_attempt,
@@ -214,6 +216,9 @@ def test_bankone_list_repair_carries_archived_wording_and_links_atomically(runti
     configure_scoped_runtime(runtime, "bankone")
     job_id = queue_article(runtime)
     connector = runtime.servers["bankone"]
+    source_fill = "With a cold system, add the coolant mixture to the fill line on the radiator surge tank."
+    prior_fill = "With a cold system, add to the fill line on the radiator surge tank the coolant mixture."
+    edited_fill = "With a cold system, add enough coolant mixture to bring the level in the radiator surge tank up to its fill line."
     html = (
         '<h2>Fixture System Service</h2><dl><dt>Installation Procedure</dt><dd><ol>'
         '<li>Install the hinge bracket. Refer to <mtr-doc-link id="fixture-install">'
@@ -223,7 +228,8 @@ def test_bankone_list_repair_carries_archived_wording_and_links_atomically(runti
         '<li>Fill the fixture reservoir. Refer to <mtr-doc-link id="fixture-fill">'
         'Reservoir Filling Instructions.</mtr-doc-link></li></ol>'
         '<li>Install the pivot pin. Refer to <mtr-doc-link id="fixture-pin">'
-        'Pivot Pin Installation</mtr-doc-link>.</li></ol></dd></dl>'
+        'Pivot Pin Installation</mtr-doc-link>.</li>'
+        f'<li>{source_fill}</li></ol></dd></dl>'
         '<mtr-image id="71" alt="Bracket locations"></mtr-image>'
     ).encode()
     connector.body(html, assets=["figure"])
@@ -252,10 +258,15 @@ def test_bankone_list_repair_carries_archived_wording_and_links_atomically(runti
 
         def complete_json(self, prompt):
             self.calls += 1
+            wording = {
+                "Fill the fixture reservoir. Refer to Reservoir Filling Instructions.": (
+                    "The fixture reservoir must be filled. See Reservoir Filling Instructions for the procedure."
+                ),
+                source_fill: prior_fill,
+            }
             return {"introduction": "This article covers the service information that follows.", "replacements": [
                 {"block_id": slot["block_id"], "path": slot["path"], "action": slot["required_action"],
-                 "text": ("The fixture reservoir must be filled. See Reservoir Filling Instructions for the procedure."
-                          if slot["text"].startswith("Fill the fixture reservoir.") else slot["text"]),
+                 "text": wording.get(slot["text"], slot["text"]),
                  "reason": "Preserve the authored parameter."}
                 for slot in json.loads(prompt)["slots"]
             ]}
@@ -332,4 +343,60 @@ def test_bankone_list_repair_carries_archived_wording_and_links_atomically(runti
         assert automatic_candidate_validation(conn, job, candidate, require_current=True).passed
     assert model.calls == 1
     assert all_rows(runtime.repo)["canonical_article_rewrite_attempts"] == before["canonical_article_rewrite_attempts"]
+
+    # A second publication keeps the remapped Bankone reply and its bound reference.
+    with runtime.repo.connect() as conn:
+        article = conn.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                               (runtime.article_id,)).fetchone()
+        cur = conn.cursor()
+        _, _, _, _, reply, _, _ = _publication_evidence_for_revision(
+            cur, article, SimpleNamespace(source_revision_id=current["source_revision_id"]),
+            result["canonical_revision_id"], fixture_mode=False, lock=False,
+        )
+        [fill_path] = [row["path"] for row in reply["replacements"] if row["text"] == prior_fill]
+        assert _get(candidate["normalized_source_document"], fill_path) == source_fill
+        edits = {fill_path: {
+            "source_sha256": sha256(source_fill.encode()).hexdigest(),
+            "prior_sha256": sha256(prior_fill.encode()).hexdigest(), "text": edited_fill,
+        }}
+        plan = _rebuild(
+            cur, article, job, current["source_revision_id"], article["descriptor_source_snapshot_id"],
+            result["canonical_revision_id"], candidate["rewrite_result_hash"], lock=False, repair=_SERVICE_WORDING,
+            wording_edits=edits,
+        )
+    successor_args = dict(
+        expected_job_id=job["source_fetch_job_id"], expected_source_revision_id=current["source_revision_id"],
+        expected_descriptor_snapshot_id=article["descriptor_source_snapshot_id"],
+        expected_published_revision_id=result["canonical_revision_id"],
+        expected_published_hash=candidate["rewrite_result_hash"], expected_repaired_hash=digest_json(plan.document),
+        wording_edits=edits, actor="fixture", reason="Clarify the exact fill instruction.",
+    )
+    before_successor = all_rows(runtime.repo)
+
+    def stop_successor(point):
+        assert point == "inside_publication" and runtime.read_current() == current
+        raise RuntimeError("fixture interruption")
+
+    with pytest.raises(RuntimeError, match="fixture interruption"):
+        repair_retained_service_wording(runtime.repo, runtime.article_id, hooks=stop_successor, **successor_args)
+    assert all_rows(runtime.repo) == before_successor
+    successor = repair_retained_service_wording(runtime.repo, runtime.article_id, **successor_args)
+    latest = runtime.read_current()
+    assert latest["canonical_revision_id"] == successor
+    assert edited_fill in latest["body"]
+    assert latest["source_revision_id"] == current["source_revision_id"]
+    assert latest["images"] == current["images"]
+    with runtime.repo.connect() as conn:
+        final = conn.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                             (runtime.article_id,)).fetchone()
+        revision, _, _, _, replayed, _, _ = _publication_evidence_for_revision(
+            conn.cursor(), final, SimpleNamespace(source_revision_id=current["source_revision_id"]),
+            final["current_canonical_revision_id"], fixture_mode=False, lock=False,
+        )
+        assert replayed == plan.reply and revision["canonical_document"] == plan.document
+        final_link = conn.execute("SELECT * FROM canonical_article_link_bindings WHERE canonical_article_revision_id=%s",
+                                  (revision["canonical_article_revision_id"],)).fetchone()
+        for field in ("block_id", "source_revision_id", "label_sha256", "authored_id_sha256",
+                      "target_ref_sha256", "body_sha256"):
+            assert final_link[field] == copied[field]
     assert model.calls == 1
