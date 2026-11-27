@@ -3241,6 +3241,13 @@ test('the entry starts an exact saved article and session while app assets load'
       },
     };
     runVM(script, context);
+    if (suffix === '&view=library') {
+      assert.deepEqual(fetches.map(({ path }) => path),
+        ['/auth/config', '/auth/session', '/workshop/purchase-config.json']);
+      assert.equal(fetches[1].options.headers.Prefer, 'workshop-session-mode, workshop-session-library');
+      assert.equal(context.workshopPickerStartup.retainedReader, undefined);
+      continue;
+    }
     if (suffix) {
       assert.deepEqual(fetches, []);
       continue;
