@@ -31,6 +31,7 @@ FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD = "source-bound-first-draft-diagnostic-v1
 FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD = "source-bound-first-draft-brake-applicability-v1"
 FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD = "source-bound-first-draft-reservoir-filling-v1"
 FIRST_DRAFT_WHEEL_SERVICE_RECOVERY_METHOD = "source-bound-first-draft-wheel-service-v1"
+FIRST_DRAFT_VEHICLE_LIFTING_RECOVERY_METHOD = "source-bound-first-draft-vehicle-lifting-v1"
 FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD = "source-bound-positioned-figure-first-draft-v1"
 FIRST_DRAFT_SINGLE_USE_PARTS_RECOVERY_METHOD = "source-bound-single-use-parts-first-draft-v1"
 NEUTRAL_INTRODUCTION = "This article describes the service information that follows."
@@ -43,6 +44,7 @@ FIRST_DRAFT_RECOVERY_METHODS = (
     FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
     FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD, FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD,
     FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD, FIRST_DRAFT_WHEEL_SERVICE_RECOVERY_METHOD,
+    FIRST_DRAFT_VEHICLE_LIFTING_RECOVERY_METHOD,
 )
 BANKONE_STRUCTURAL_RECOVERY_METHOD = "source-bound-bankone-first-draft-v1"
 BANKONE_LINKED_RECOVERY_METHOD = "source-bound-bankone-first-draft-v2"
@@ -264,6 +266,7 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
                       FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD,
                       FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD,
                       FIRST_DRAFT_WHEEL_SERVICE_RECOVERY_METHOD,
+                      FIRST_DRAFT_VEHICLE_LIFTING_RECOVERY_METHOD,
                       FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD,
                       FIRST_DRAFT_SINGLE_USE_PARTS_RECOVERY_METHOD,
                       *BANKONE_ARCHIVE_STRUCTURE_VERSIONS):
@@ -402,6 +405,16 @@ def _recover_wheel_service_draft(source, raw, slots, invalid, *, prompt_version,
         source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
         method=FIRST_DRAFT_WHEEL_SERVICE_RECOVERY_METHOD, errors=_WHEEL_SERVICE_ERRORS,
         recast=recast_wheel_service_passage,
+    )
+
+
+def _recover_vehicle_lifting_draft(source, raw, slots, invalid, *, prompt_version, original_error):
+    from .vehicle_lifting_recovery import recast_vehicle_lifting_passage
+
+    return _recover_statement_draft(
+        source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
+        method=FIRST_DRAFT_VEHICLE_LIFTING_RECOVERY_METHOD, errors={"REWRITE_UNCHANGED"},
+        recast=recast_vehicle_lifting_passage,
     )
 
 
@@ -708,6 +721,10 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
         return _recover_wheel_service_draft(
             source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
         )
+    if method == FIRST_DRAFT_VEHICLE_LIFTING_RECOVERY_METHOD:
+        return _recover_vehicle_lifting_draft(
+            source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
+        )
     if method == FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD or original_error == _LUBRICATION_MUTATION:
         if method not in (None, FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD):
             return None
@@ -752,7 +769,12 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
     )
     if maintenance is not None or original_error not in _WHEEL_SERVICE_ERRORS:
         return maintenance
-    return _recover_wheel_service_draft(
+    wheel = _recover_wheel_service_draft(
+        source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
+    )
+    if wheel is not None or original_error != "REWRITE_UNCHANGED":
+        return wheel
+    return _recover_vehicle_lifting_draft(
         source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
     )
 
