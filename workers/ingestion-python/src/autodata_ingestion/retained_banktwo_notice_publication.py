@@ -105,13 +105,13 @@ def _link_successors(links, previous, corrected, *, body_sha256):
     return tuple(sorted(result, key=lambda link: link["block_id"]))
 
 
-def _make_plan(cur, article, binding, captured, previous_id, *, schema, lock=False):
+def _make_plan(cur, article, binding, captured, previous_id, *, schema, lock=False, expected_profile=None):
     layout = _LAYOUTS[schema]
     if binding.canonical_article_id != article["canonical_article_id"]:
         raise ValueError(_INVALID)
     layout.validate_capture(binding, captured)
     row, review, decision, attempt, response, prompt, authors = _publication_evidence_for_revision(
-        cur, article, binding, previous_id, fixture_mode=False, lock=lock,
+        cur, article, binding, previous_id, fixture_mode=False, lock=lock, expected_profile=expected_profile,
     )
     links = _retained_link_rows(cur, row)
     if (review is not None or decision != "UNREVIEWED" or attempt is None or not prompt
@@ -256,7 +256,9 @@ def _resolve_layout_publication(cur, job, article, candidate, *, schema, lock=Fa
         raise ValueError(_INVALID)
     binding = layout.load_binding(cur, source_id, lock=lock)
     captured = _captured_revision(cur, candidate["source_revision_id"])
-    plan, attempt = _make_plan(cur, article, binding, captured, previous_id, schema=schema)
+    # A successor can change the article target while the layout repair keeps its original rewrite profile.
+    plan, attempt = _make_plan(cur, article, binding, captured, previous_id, schema=schema,
+                               expected_profile=candidate["rewrite_profile_version"])
     key = _key(article_id, captured, plan.manifest)
     if schema == BANKONE_LIST_BOUNDARY_SCHEMA and _retained_link_rows(cur, candidate) != plan.retained_links:
         raise ValueError(_INVALID)

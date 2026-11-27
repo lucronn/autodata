@@ -4,6 +4,7 @@ import json
 from dataclasses import replace
 from hashlib import sha256
 from io import BytesIO
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -12,10 +13,12 @@ from PIL import Image
 from autodata_ingestion import source_article_capture
 from autodata_ingestion.article_lifecycle import run_article_worker_once
 from autodata_ingestion.article_lifecycle_store import automatic_candidate_validation, load_source_revision
+from autodata_ingestion.article_lifecycle_types import RETAINED_SHORT_ACTION_REPAIR_PROFILE
 from autodata_ingestion.procedure_rewrite_recovery import (
     BANKONE_REFERENCED_RECOVERY_METHOD, recover_structured_bankone_first_draft,
 )
 from autodata_ingestion.procedure_rewrite_auto import PROFILE, failed_rewrite_passages
+from autodata_ingestion.published_media_publication import _publication_evidence_for_revision
 from autodata_ingestion.retained_banktwo_notice_publication import (
     preview_bankone_definition_heading_publication, preview_banktwo_notice_publication,
     preview_bankone_list_boundary_publication, publish_bankone_definition_heading,
@@ -130,6 +133,19 @@ def test_notice_repair_switches_source_and_publication_together(runtime, monkeyp
                                  (result["canonical_revision_id"],)).fetchone()
         job = conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (result["job_id"],)).fetchone()
         assert automatic_candidate_validation(conn, job, candidate, require_current=True).passed
+        article = conn.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                               (runtime.article_id,)).fetchone()
+        article["target_rewrite_profile_version"] = RETAINED_SHORT_ACTION_REPAIR_PROFILE
+        binding = SimpleNamespace(source_revision_id=candidate["source_revision_id"])
+        with pytest.raises(ValueError, match="PUBLISHED_MEDIA_REPAIR_PROFILE_UNSUPPORTED"):
+            _publication_evidence_for_revision(
+                conn, article, binding, candidate["canonical_article_revision_id"], fixture_mode=False, lock=False,
+            )
+        retained, *_ = _publication_evidence_for_revision(
+            conn, article, binding, candidate["canonical_article_revision_id"], fixture_mode=False, lock=False,
+            expected_profile=PROFILE,
+        )
+        assert retained == candidate
 
 
 def test_definition_heading_repair_preserves_existing_steps_and_media(runtime, monkeypatch):
