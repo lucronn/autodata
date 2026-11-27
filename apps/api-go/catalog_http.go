@@ -73,6 +73,20 @@ type CatalogArticleResponse struct {
 	Configuration *CatalogConfiguration `json:"configuration,omitempty"`
 }
 
+const catalogArticleMediaViewHeader = "X-Workshop-Article-Media-View"
+
+type CatalogArticleMediaRefreshResponse struct {
+	Version       string                     `json:"version"`
+	Configuration CatalogConfiguration       `json:"configuration"`
+	MediaRefresh  CatalogArticleMediaRefresh `json:"media_refresh"`
+}
+
+type CatalogArticleMediaRefresh struct {
+	ArticleID    string         `json:"article_id"`
+	ViewRevision string         `json:"view_revision"`
+	Images       []CatalogImage `json:"images"`
+}
+
 func (s *Server) readCatalogYears(ctx context.Context, principal Principal) (CatalogYearsResponse, error) {
 	items, coverage, err := s.catalog.Years(ctx, principal)
 	if err != nil {
@@ -575,6 +589,10 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 	} else {
 		rewriteCatalogImageURLs(&article, s.catalogImageKey)
 	}
+	if configuration != nil && status == http.StatusOK && request.Method == http.MethodGet &&
+		writeCatalogArticleMediaRefresh(response, request, *configuration, article) {
+		return
+	}
 	if current := article.Processing; current != nil {
 		preference := current.shortReadPreference
 		applicable := preference == shortSourceCheckPreference && status == http.StatusAccepted ||
@@ -626,6 +644,41 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 		response.Header().Add("Preference-Applied", catalogDemoFitmentPreference)
 	}
 	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article, Configuration: configuration})
+}
+
+// Called only after exact grant, article identity, and image policy checks.
+func writeCatalogArticleMediaRefresh(w http.ResponseWriter, r *http.Request, configuration CatalogConfiguration, article CatalogArticle) bool {
+	requested := r.Header.Values(catalogArticleMediaViewHeader)
+	if len(requested) != 1 || article.ViewRevision == nil || *article.ViewRevision == "" ||
+		requested[0] != *article.ViewRevision || article.SourceRevisionID == nil || article.SourceBodyPreview {
+		return false
+	}
+	if processing := article.Processing; processing != nil && processing.State != "completed" &&
+		processing.State != "needs_review" && (processing.State != "failed" || processing.Retryable) {
+		return false
+	}
+	images := make([]CatalogImage, 0, len(article.Images))
+	appendURLs := func(rows []CatalogImage) {
+		for _, image := range rows {
+			if image.URL != "" && image.Status != "unavailable" {
+				images = append(images, CatalogImage{ID: image.ID, ImageID: image.ImageID, AssetID: image.AssetID, URL: image.URL})
+			}
+		}
+	}
+	appendURLs(article.Images)
+	for _, step := range article.Steps {
+		if step.Images != nil {
+			appendURLs(*step.Images)
+		}
+	}
+	if len(images) == 0 {
+		return false
+	}
+	writeJSON(w, http.StatusOK, CatalogArticleMediaRefreshResponse{
+		Version: "v1", Configuration: configuration,
+		MediaRefresh: CatalogArticleMediaRefresh{ArticleID: article.ID, ViewRevision: *article.ViewRevision, Images: images},
+	})
+	return true
 }
 
 const catalogImageMaxBytes = 12 << 20

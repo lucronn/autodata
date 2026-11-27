@@ -188,6 +188,16 @@
             "description": "Requests an acknowledgement when a paid canonical article is readable and publication processing has finished."
           },
           {
+            "name": "X-Workshop-Article-Media-View",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^view-[a-f0-9]{64}$"
+            },
+            "description": "A matching displayed view revision can request a media-only response after the same exact article authorization. A changed view receives the ordinary article response."
+          },
+          {
             "name": "region",
             "in": "query",
             "required": false,
@@ -200,11 +210,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Normalized article; internal object keys and provider URLs are omitted.",
+            "description": "Normalized article or a media renewal for a matching view. Internal object keys and provider URLs are omitted.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CatalogArticleResponse"
+                  "oneOf": [
+                    { "$ref": "#/components/schemas/CatalogArticleResponse" },
+                    { "$ref": "#/components/schemas/CatalogArticleMediaRefreshResponse" }
+                  ]
                 },
                 "examples": {
                   "source-rewriting": {
@@ -3330,6 +3343,48 @@
           },
           "configuration": {
             "$ref": "#/components/schemas/CatalogConfiguration"
+          }
+        }
+      },
+      "CatalogArticleMediaRefreshResponse": {
+        "type": "object",
+        "required": [
+          "version",
+          "configuration",
+          "media_refresh"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "configuration": {
+            "$ref": "#/components/schemas/CatalogConfiguration"
+          },
+          "media_refresh": {
+            "type": "object",
+            "required": [
+              "article_id",
+              "view_revision",
+              "images"
+            ],
+            "properties": {
+              "article_id": {
+                "type": "string"
+              },
+              "view_revision": {
+                "type": "string",
+                "pattern": "^view-[a-f0-9]{64}$"
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CatalogImage"
+                }
+              }
+            }
           }
         }
       },
