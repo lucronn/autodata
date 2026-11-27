@@ -23,6 +23,7 @@ from .article_lifecycle_types import (
     HTML_FIGURE_CAPTION_LAYOUT,
     HTML_FLOW_FIGURE_CAPTION_LAYOUT,
     HTML_MEDIA_TABLE_HEADER_LAYOUT,
+    HTML_TABLE_CELL_HEADER_LAYOUT,
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT,
     HTML_NESTED_TABLE_LAYOUT,
     HTML_NUMERIC_SUPERSCRIPT_LAYOUT,
@@ -514,6 +515,7 @@ def capture_source_article(
     keep_html_figure_captions=False, keep_html_table_captions=False, keep_html_flow_figure_captions=False,
     keep_html_table_spans=False,
     keep_html_media_table_headers=False,
+    keep_html_table_cell_headers=False,
     keep_html_nested_tables=False,
     keep_html_multiline_figure_captions=False,
     skip_blank_linked_pdf_pages=False,
@@ -848,6 +850,9 @@ def capture_source_article(
             ),
             keep_html_table_spans=keep_html_table_spans,
             keep_html_media_table_headers=keep_html_media_table_headers,
+            keep_html_table_cell_headers=(
+                keep_html_table_cell_headers and body_digest != context.legacy_published_html_table_cell_header_body
+            ),
             keep_html_nested_tables=keep_html_nested_tables,
             keep_html_numeric_superscripts=keep_html_numeric_superscripts,
             keep_html_document_links=(
@@ -1047,6 +1052,7 @@ def capture_source_article(
     html_table_captions = article.get("html_table_captions") is True
     html_table_spans = article.get("html_table_spans") is True
     html_media_table_headers = article.get("html_media_table_headers") is True
+    html_table_cell_headers = article.get("html_table_cell_headers") is True
     html_nested_tables = article.get("html_nested_tables") is True
     html_numeric_superscripts = article.get("html_numeric_superscripts") is True
     positioned_figure_labels = article.get("positioned_figure_labels") is True
@@ -1085,7 +1091,8 @@ def capture_source_article(
     )
     new_structure = (
         structured_table_columns or structured_table_cell_order or step_layout or html_table_captions or html_flow_figure_captions
-        or html_table_spans or html_media_table_headers or html_nested_tables or html_numeric_superscripts or image_only_headings
+        or html_table_spans or html_media_table_headers or html_table_cell_headers or html_nested_tables
+        or html_numeric_superscripts or image_only_headings
         or html_bound_images or html_document_links or html_section_titles or bankone_html_flow or banktwo_list_notices
         or positioned_figure_labels or bankone_definition_headings or bankone_list_boundaries or banktwo_dotted_list_starts
         or article.get("embedded_pdf")
@@ -1127,6 +1134,8 @@ def capture_source_article(
         resources[0]["html_table_span_layout"] = manifest[0]["html_table_span_layout"] = HTML_TABLE_SPAN_LAYOUT
     if html_media_table_headers:
         resources[0]["html_media_table_header_layout"] = manifest[0]["html_media_table_header_layout"] = HTML_MEDIA_TABLE_HEADER_LAYOUT
+    if html_table_cell_headers:
+        resources[0]["html_table_cell_header_layout"] = manifest[0]["html_table_cell_header_layout"] = HTML_TABLE_CELL_HEADER_LAYOUT
     if html_nested_tables:
         resources[0]["html_nested_table_layout"] = manifest[0]["html_nested_table_layout"] = HTML_NESTED_TABLE_LAYOUT
     if html_numeric_superscripts:
@@ -1402,6 +1411,8 @@ def capture_source_article(
     for node in _walk(blocks):
         if not html_table_spans:
             node.pop("_html_table_cell_spans", None)
+        if not html_table_cell_headers:
+            node.pop("_html_table_cell_header", None)
         if not html_nested_tables:
             node.pop("_html_literal_table_text", None)
         # No executable/provider URLs or upstream-supplied source_original enter the projection.

@@ -1835,7 +1835,14 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = nul
           if (placement) cellMissingImages.add(placement);
         }
       };
-      const renderCell = (cell, value) => {
+      const renderCell = (cell, value, columnHeader = false) => {
+        if (value?.table_header === true) {
+          const scope = value.header_scope;
+          if (["col", "row", "colgroup", "rowgroup"].includes(scope))
+            cell.scope = scope;
+        } else if (columnHeader) {
+          cell.scope = "col";
+        }
         const rowspan = value?.rowspan, colspan = value?.colspan;
         if (Number.isInteger(rowspan) && rowspan > 1 && rowspan <= 65534)
           cell.rowSpan = rowspan;
@@ -1851,8 +1858,7 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = nul
           head = element("thead");
         for (const c of block.columns) {
           const th = element("th");
-          th.scope = "col";
-          renderCell(th, c);
+          renderCell(th, c, true);
           row.append(th);
         }
         head.append(row);
@@ -1864,7 +1870,7 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = nul
         if (!Array.isArray(cells)) continue;
         const row = element("tr");
         for (const value of cells) {
-          const cell = element("td");
+          const cell = element(value?.table_header === true ? "th" : "td");
           renderCell(cell, value);
           row.append(cell);
         }
