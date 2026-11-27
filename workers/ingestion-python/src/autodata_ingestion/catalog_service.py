@@ -498,6 +498,9 @@ def _ensure_initial_selector(request, key):
     token = selector_job.ADMISSION.acquire(request)
     if token is None:
         result["stop_reason"] = "admission"
+        retry_after_ms = selector_job.ADMISSION.retry_after_ms(request)
+        if retry_after_ms is not None:
+            result["admission_retry_after_ms"] = retry_after_ms
         return result
     provider_deadline = time.monotonic() + 20
     # Keep a write allowance for evidence the owned child returns on time.
