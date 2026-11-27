@@ -6,11 +6,13 @@ import json
 
 import pytest
 
+from autodata_ingestion import procedure_rewrite_auto as auto, procedure_rewrite_full as full
 from autodata_ingestion.article_lifecycle_types import digest_json
 from autodata_ingestion.procedure_rewrite_correction import correction_recovery_for_method
 from autodata_ingestion.procedure_rewrite_sentence_correction import (
     MAX_SENTENCE_CORRECTION_CALLS, SENTENCE_CORRECTION_METHOD, SENTENCE_INSTRUCTION_RECOVERY_METHOD,
-    SENTENCE_RECOVERY_METHOD, SENTENCE_TOOL_RECOVERY_METHOD, _instruction_equivalent,
+    SENTENCE_RECOVERY_METHOD, SENTENCE_SERVICE_PROCEDURE_RECOVERY_METHOD, SENTENCE_TOOL_RECOVERY_METHOD,
+    _instruction_equivalent, _service_procedure_equivalent, _statement_options,
     _tool_installation_equivalent, correct_sentence_draft, recover_numbered_sentence_instructions,
     recover_sentence_correction,
 )
@@ -273,6 +275,76 @@ def test_tool_installation_recovery_preserves_action_and_reference_in_saved_draf
 ])
 def test_tool_installation_recovery_declines_other_instruction_forms(text):
     assert _tool_installation_equivalent(text) is None
+
+
+@pytest.mark.parametrize("side", ("LH", "RH"))
+def test_service_procedure_recovers_the_removal_action_and_side_from_source(side):
+    authored = f"Remove the bolts, pin-type retainer and the {side} cowl cover."
+    rejected = authored.replace("Remove", "Detach", 1)
+    source, previous = document(authored), response(rejected)
+    replies = Replies(lambda _: [[rejected] * 3], lambda _: [[rejected] * 3])
+    rounds = []
+
+    def record(prompt):
+        reply = replies.complete(prompt)
+        rounds.append({**replies.exchanges[-1], "response": reply})
+        return reply
+
+    held = correct_sentence_draft(source, previous, complete_json=record, model_call_budget=2)
+    assert held.document is None and held.error_code == "REWRITE_DIRECTION_MUTATION"
+    older = correction_recovery_for_method(SENTENCE_CORRECTION_METHOD, archived_method=SENTENCE_TOOL_RECOVERY_METHOD)
+    assert older(source, previous, model_call_budget=2, attempts=rounds).document is None
+
+    recover = correction_recovery_for_method(SENTENCE_CORRECTION_METHOD)
+    repaired = recover(source, previous, model_call_budget=2, attempts=rounds)
+    restored = repaired.document["blocks"][1]["text"]
+    assert restored == f"The bolts and pin-type retainer must be removed along with the {side} cowl cover."
+    assert auto._direction_scope(restored) == auto._direction_scope(authored)
+    assert repaired.evidence["method"] == SENTENCE_SERVICE_PROCEDURE_RECOVERY_METHOD
+    assert repaired.evidence["original_error_code"] == held.error_code
+    assert repaired.evidence["exchanges"] == replies.exchanges
+    replay = correction_recovery_for_method(SENTENCE_CORRECTION_METHOD, archived_method=repaired.evidence["method"])
+    assert replay(source, previous, model_call_budget=2, attempts=rounds) == repaired
+
+
+ENGINE_SUPPORT = (
+    "Using the feet from 681-P314 and the car bar adapters 681-N212-45 assemble them on the 681-X476 "
+    "engine support bar and support the engine. Install Special Service Tool: 681-X476 Support Bar, Engine. "
+    "Install Suggested Tool: 681-N212-45 Adapter, Car-Bar. Tool shown or a commercially available equivalent "
+    "can be used., 681-P314 Support Bar, Engine. Tool shown or a commercially available equivalent can be used."
+)
+
+
+@pytest.mark.parametrize(("text", "preserves"), [
+    ("Disconnect the controller harness pin-type retainers, remove the fasteners and bracket.",
+     "First disconnect the pin-type retainers for the controller harness."),
+    (ENGINE_SUPPORT, "For the suggested tool, install the 681-N212-45 Adapter, Car-Bar."),
+    ("Make sure that the mating surface is clean and free of foreign material. Refer to: Seal Surface Care "
+     "and Preparation (270-15 Transmission Assembly - General Information, General Procedures).",
+     "Seal Surface Care and Preparation (270-15 Transmission Assembly - General Information, General Procedures)"),
+    ("Install the air inlet grille. Refer to: Air Inlet Grille (501-22 Cooling Air Ducts, Removal and Installation).",
+     "Follow the steps in Air Inlet Grille (501-22 Cooling Air Ducts, Removal and Installation)"),
+    ("NOTE: Only tighten the bolts finger tight at this stage. Install the oil pan and the bolts.",
+     "NOTE: Limit bolt tightening to finger tight at this stage."),
+])
+def test_service_procedure_keeps_technical_values_action_order_and_scope(text, preserves):
+    wording = _service_procedure_equivalent(text)
+    assert preserves in wording
+    assert full._technical_tokens(wording) == full._technical_tokens(text)
+    assert auto._execution_order(wording) == auto._execution_order(text)
+    assert auto._direction_scope(wording) == auto._direction_scope(text)
+    assert wording in _statement_options(text, [wording])
+
+
+@pytest.mark.parametrize("text", [
+    ENGINE_SUPPORT.replace("Install Suggested Tool: 681-N212-45", "Install Suggested Tool: 681-P314"),
+    ENGINE_SUPPORT.replace("681-P314", "681-X476"),
+    "Install the air inlet grille. Refer to: Air Outlet Grille (501-22 Cooling Air Ducts, Removal and Installation).",
+    "NOTE: Tighten the bolts firmly at this stage. Install the oil pan and the bolts.",
+    "Remove the bolts, pin-type retainer and the LH cowl cover. Do not scratch the panel.",
+])
+def test_service_procedure_recovery_declines_unmatched_evidence(text):
+    assert _service_procedure_equivalent(text) is None
 
 
 def test_single_call_budget_keeps_unresolved_source():

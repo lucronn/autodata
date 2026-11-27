@@ -19,6 +19,7 @@ SENTENCE_CORRECTION_METHOD = "source-bound-sentence-correction-v1"
 SENTENCE_RECOVERY_METHOD = "source-bound-sentence-recovery-v1"
 SENTENCE_INSTRUCTION_RECOVERY_METHOD = "source-bound-sentence-recovery-v2"
 SENTENCE_TOOL_RECOVERY_METHOD = "source-bound-sentence-recovery-v3"
+SENTENCE_SERVICE_PROCEDURE_RECOVERY_METHOD = "source-bound-sentence-recovery-v4"
 MAX_SENTENCE_CORRECTION_CALLS = 2
 _MAX_STATEMENTS = 60
 _MAX_COMBINATIONS = 27
@@ -56,6 +57,35 @@ _TOOL_INSTALLATION = re.compile(
     rf"Install the (?P<tool>(?:{_PART} )?(?:wrench|socket)) (?P<reference>{_REFERENCE}) "
     rf"to the (?P<target>{_PART})\.",
     re.I,
+)
+_COVER_REMOVAL = re.compile(
+    r"Remove the bolts, pin-type retainer and the (?P<cover>(?:LH|RH) cowl cover)\."
+)
+_HARNESS_RETAINER_REMOVAL = re.compile(
+    rf"Disconnect the (?P<harness>{_PART} harness) pin-type retainers, remove the fasteners and bracket\."
+)
+_SERVICE_TOOL_ID = r"[0-9]{3}-[A-Z0-9]{2,8}(?:-[0-9]{2,3})?"
+_ENGINE_SUPPORT = re.compile(
+    rf"Using the feet from (?P<feet>{_SERVICE_TOOL_ID}) and the car bar adapters "
+    rf"(?P<adapters>{_SERVICE_TOOL_ID}) assemble them on the (?P<bar>{_SERVICE_TOOL_ID}) "
+    r"engine support bar and support the engine\. "
+    r"Install Special Service Tool: (?P=bar) (?P<bar_label>Support Bar, Engine)\. "
+    r"Install Suggested Tool: (?P=adapters) (?P<adapter_label>Adapter, Car-Bar)\. "
+    r"Tool shown or a commercially available equivalent can be used\., (?P=feet) (?P=bar_label)\. "
+    r"Tool shown or a commercially available equivalent can be used\."
+)
+_SECTION_REFERENCE = (
+    r"(?P<reference>(?P<title>[A-Za-z0-9][A-Za-z0-9 -]{0,96}) "
+    r"\([0-9]{3}-[0-9]{2} [A-Za-z0-9 -]{1,96}, (?:General Procedures|Removal and Installation)\))"
+)
+_CLEAN_SURFACE_REFERENCE = re.compile(
+    rf"Make sure that the mating surface is clean and free of foreign material\. Refer to: {_SECTION_REFERENCE}\."
+)
+_INSTALLATION_REFERENCE = re.compile(
+    rf"Install the (?P<part>{_PART})\. Refer to: {_SECTION_REFERENCE}\."
+)
+_FINGER_TIGHT_OIL_PAN = re.compile(
+    r"(?P<note>(?i:note):) Only tighten the bolts finger tight at this stage\. Install the oil pan and the bolts\."
 )
 _COPY_REJECTIONS = {"REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR"}
 
@@ -381,6 +411,47 @@ def recover_tool_installation_sentence(source, previous, *, model_call_budget, a
         source, previous, baseline, preserve_notes=preserve_notes,
         errors=_COPY_REJECTIONS | {"REWRITE_ACTION_MUTATION"},
         equivalent=_tool_installation_equivalent, method=SENTENCE_TOOL_RECOVERY_METHOD,
+    )
+
+
+def _service_procedure_equivalent(statement):
+    if match := _COVER_REMOVAL.fullmatch(statement):
+        return f'The bolts and pin-type retainer must be removed along with the {match["cover"]}.'
+    if (match := _HARNESS_RETAINER_REMOVAL.fullmatch(statement)) and _plain_label(match["harness"]):
+        return (
+            f'First disconnect the pin-type retainers for the {match["harness"]}. '
+            "Then remove both the fasteners and bracket."
+        )
+    if match := _ENGINE_SUPPORT.fullmatch(statement):
+        feet, adapters, bar, bar_label, adapter_label = match.groups()
+        if len({feet, adapters, bar}) == 3:
+            return (
+                f"Fit the feet from {feet} and the car bar adapters {adapters} onto the {bar} engine support bar. "
+                f"Support the engine with the assembled bar. The special service tool to install is the {bar} {bar_label}. "
+                f"For the suggested tool, install the {adapters} {adapter_label}. "
+                "The illustrated adapter or a commercially available equivalent is acceptable. "
+                f"For {feet} {bar_label}, use the illustrated tool or a commercially available equivalent."
+            )
+    if match := _CLEAN_SURFACE_REFERENCE.fullmatch(statement):
+        return f'Confirm the mating surface is clean and clear of any foreign material. Follow the method in {match["reference"]}.'
+    if (match := _INSTALLATION_REFERENCE.fullmatch(statement)) and (
+        _plain_label(match["part"]) and match["part"].casefold() == match["title"].casefold()
+    ):
+        return f'The {match["part"]} must be fitted. Follow the steps in {match["reference"]} to fit it.'
+    if match := _FINGER_TIGHT_OIL_PAN.fullmatch(statement):
+        return f'{match["note"]} Limit bolt tightening to finger tight at this stage. Fit the oil pan together with its bolts.'
+    return None
+
+
+def recover_service_procedure_sentences(source, previous, *, model_call_budget, attempts, preserve_notes=False):
+    """Recast held service steps with the same actions, tools and manual references."""
+    baseline = recover_tool_installation_sentence(
+        source, previous, model_call_budget=model_call_budget, attempts=attempts, preserve_notes=preserve_notes,
+    )
+    return _recover_sentence_passages(
+        source, previous, baseline, preserve_notes=preserve_notes,
+        errors=_COPY_REJECTIONS | {"REWRITE_ACTION_MUTATION", "REWRITE_DIRECTION_MUTATION"},
+        equivalent=_service_procedure_equivalent, method=SENTENCE_SERVICE_PROCEDURE_RECOVERY_METHOD,
     )
 
 
