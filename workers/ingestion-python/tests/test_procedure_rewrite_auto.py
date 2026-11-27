@@ -65,6 +65,37 @@ def test_oil_filter_preparation_recasts_two_sentences_and_preserves_the_retained
     assert warning_prompt["slots"][0]["required_action"] == "retain"
 
 
+def test_archived_oil_filter_repair_preserves_the_original_introduction_identity():
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    from autodata_ingestion.retained_note_label_repair import _FILTER_PREPARATION
+
+    source = document("Oil filter service",
+        "Remove the oil filter. Clean gasket seal area on oil filter mounting surface. "
+        "Lightly oil the gasket with clean engine oil and install the filter. Refit the cover.")
+    source["blocks"][0].update(type="heading", level=2)
+    archived = response("unused", source["blocks"][1]["text"], introduction="This article covers oil filter service.")
+    archived["replacements"].pop(0)
+    archived["replacements"][0].update(action="retain", reason="Keep the service sequence intact.")
+    prior_version = auto._auto_prompt_payload_v67(source, context={})["prompt_version"]
+    prior = auto.render_auto(source, archived, prompt_version=prior_version, profile_version=PROFILE)
+    saved_reply = deepcopy(archived)
+    successor, validation, revised, paths = _FILTER_PREPARATION.edit_reply(
+        source, source, prior, archived, prompt_version=_FILTER_PREPARATION.successor_guard, profile_version=PROFILE,
+    )
+    assert validation.passed and paths == ["/blocks/1/text"] and archived == saved_reply
+    assert successor["blocks"][:2] == prior["blocks"][:2]
+    assert revised["replacements"][0]["action"] == "rewrite"
+    assert successor["blocks"][2]["text"] == auto.recast_oil_filter_preparation(source["blocks"][1]["text"])
+
+    mismatched = deepcopy(prior)
+    mismatched["blocks"][2]["text"] = "Refit only the cover."
+    with pytest.raises(ValueError, match="RETAINED_FILTER_PREPARATION_REPAIR_INVALID"):
+        _FILTER_PREPARATION.edit_reply(
+            source, source, mismatched, archived, prompt_version=_FILTER_PREPARATION.successor_guard,
+            profile_version=PROFILE,
+        )
+
+
 @pytest.mark.parametrize("profile", [PROFILE, SOURCE_BOUND_REWRITE_PROFILE])
 @pytest.mark.parametrize("marker", ["Note:", "NOTE :"])
 def test_standalone_authored_note_is_retained_without_exempting_prose(profile, marker):
