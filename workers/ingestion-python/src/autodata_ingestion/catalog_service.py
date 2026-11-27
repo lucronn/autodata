@@ -20,7 +20,8 @@ from uuid import uuid4
 
 
 from . import selector_job
-from .vehicle_identity import NON_US_MODEL_QUALIFIER, engine_variant_for_row
+from .catalog_market import NON_US_MODEL_QUALIFIER
+from .vehicle_identity import engine_variant_for_row
 
 
 _LOG = logging.getLogger(__name__)

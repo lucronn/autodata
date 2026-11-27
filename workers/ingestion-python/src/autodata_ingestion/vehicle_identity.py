@@ -32,8 +32,6 @@ _DRIVETRAIN_ALIASES = {
     "rwd": "RWD",
 }
 _KNOWN_TRIMS = {"lt", "ltz"}
-# Keep this qualifier in sync with the public catalog's nonUSModelQualifier.
-NON_US_MODEL_QUALIFIER = r"(?i)(\s(Canada|Mexico)|\((Canada|Mexico)\))\s*$"
 _ENGINE_VARIANTS = {
     "CNG": re.compile(r"\b(?:cng|compressed[ -]+natural[ -]+gas)\b", re.IGNORECASE),
     "LNG": re.compile(r"\b(?:lng|liquefied[ -]+natural[ -]+gas)\b", re.IGNORECASE),

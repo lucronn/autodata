@@ -14,8 +14,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
+from .catalog_market import NON_US_MODEL_QUALIFIER
 from .purchase_config import PurchaseConfig, parse_purchase_config
-from .vehicle_identity import NON_US_MODEL_QUALIFIER
 
 PRODUCT = "workshop-configuration-v1"
 TERMS = "workshop-v1"
