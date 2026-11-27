@@ -1638,11 +1638,12 @@ function addImage(parent, image, reference, g, figures = null, useAltCaption = f
       size.textContent = "Full size";
       size.hidden = false;
     });
-    img.addEventListener("error", () => {
+    img.addEventListener("error", (event) => {
       size.hidden = true;
       size.textContent = "";
       if ("fullSize" in viewport.dataset) setFullSize(false);
-      if (g.current() && !retryInterruptedFigure(g, img)) void renewMedia(g, img);
+      if (g.current() && (!event.isTrusted || !retryInterruptedFigure(g, img)))
+        void renewMedia(g, img);
     });
     if (figures) figures.push({ img, url });
     else img.src = url;
