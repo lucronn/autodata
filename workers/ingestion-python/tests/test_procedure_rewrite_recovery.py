@@ -4,12 +4,14 @@ import json
 import pytest
 
 from autodata_ingestion.article_lifecycle_types import digest_json
+from autodata_ingestion.bankone_brake_recovery import recast_brake_applicability
 from autodata_ingestion.procedure_rewrite_auto import build_auto_prompt, render_auto
 from autodata_ingestion.procedure_rewrite_cooling_recovery import recast_cooling_passage
 from autodata_ingestion.procedure_rewrite_diagnostic_recovery import recast_diagnostic_passage
 from autodata_ingestion.procedure_rewrite_full import prose_slots
 from autodata_ingestion.procedure_rewrite_maintenance_recovery import recast_maintenance_passage
 from autodata_ingestion.procedure_rewrite_recovery import (
+    FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD,
     FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD,
@@ -29,6 +31,53 @@ from autodata_ingestion.procedure_rewrite_recovery import (
     recover_first_draft,
 )
 from test_procedure_rewrite_full import document, response
+
+
+@pytest.mark.parametrize(("modal", "strength"), (("should", "recommended"), ("must", "required")))
+def test_brake_applicability_recast_keeps_either_condition_and_modality(modal, strength):
+    scope = (
+        f"This process {modal} be followed whenever the rear brake rotors are resurfaced or replaced, "
+        "and/or whenever the rear brake pads are replaced."
+    )
+    assert recast_brake_applicability(scope) == (
+        f"This procedure is {strength} after rear brake rotor resurfacing or replacement, "
+        "after rear brake pad replacement, or after both kinds of work."
+    )
+    assert recast_brake_applicability(scope.replace("and/or", "and")) is None
+    assert recast_brake_applicability(scope[:-1] + " unless the vehicle is stationary.") is None
+
+
+def test_archived_brake_applicability_repairs_only_the_rejected_intro_and_scope():
+    scope = (
+        "This process should be followed whenever the rear brake rotors are resurfaced or replaced, "
+        "and/or whenever the rear brake pads are replaced."
+    )
+    specification = "Tighten the sample bracket bolt to 18 N·m."
+    source = document(scope, specification)
+    raw = response(
+        scope.replace("be followed", "be carried out"),
+        specification,
+        introduction="This article covers the 18 N·m specification.",
+    )
+    raw["replacements"][1].update(action="retain", reason="Keep the exact bolt torque.")
+    saved = deepcopy(raw)
+    guard = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    method = FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD
+    result = recover_first_draft(source, raw, prompt_version=guard, method=method)
+    assert result is not None and result.error_code is None
+    assert raw == saved
+    assert result.response["introduction"] == NEUTRAL_INTRODUCTION
+    assert result.response["replacements"][0]["text"] == recast_brake_applicability(scope)
+    assert result.response["replacements"][1:] == saved["replacements"][1:]
+    assert result.evidence["corrected_paths"] == ["/blocks/0/text"] and result.evidence["introduction_replaced"]
+    attempt = {"response": saved, "guard_version": guard, "error_code": "REWRITE_SPEC_SCOPE_MUTATION",
+               "rewrite_attempt_id": "fixture-attempt", "prompt_hash": "fixture-prompt"}
+    archived = recover_archived_first_draft(source, attempt, method=method, expected_hash=result.evidence["output_hash"])
+    assert archived.response == result.response and archived.evidence["first_draft_recovery"] == result.evidence
+
+    unsafe = deepcopy(saved)
+    unsafe["replacements"][1].update(action="rewrite", text=specification.replace("18", "19"), reason="")
+    assert recover_first_draft(source, unsafe, prompt_version=guard, method=method) is None
 
 
 def test_diagnostic_recovery_preserves_conditions_readings_and_referrals():
