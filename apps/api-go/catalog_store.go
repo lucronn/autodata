@@ -224,6 +224,16 @@ func catalogJSONTableSpan(attribute string, value any) (int32, bool) {
 	return number, ok && number > 1 && number <= limit
 }
 
+func catalogTableHeaderScope(value any) string {
+	scope, _ := value.(string)
+	switch scope {
+	case "col", "row", "colgroup", "rowgroup":
+		return scope
+	default:
+		return ""
+	}
+}
+
 func catalogNestedBlocks(value any) []CatalogDocumentBlock {
 	if value == nil {
 		return nil

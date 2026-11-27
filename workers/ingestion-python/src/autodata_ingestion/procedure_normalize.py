@@ -22,6 +22,7 @@ from .article_lifecycle_types import (
     HTML_DOCUMENT_LINK_LAYOUT,
     HTML_INLINE_ARTICLE_LINK_LAYOUT,
     HTML_MEDIA_TABLE_HEADER_LAYOUT,
+    HTML_TABLE_CELL_HEADER_LAYOUT,
     HTML_NESTED_TABLE_LAYOUT,
     HTML_NUMERIC_SUPERSCRIPT_LAYOUT,
     HTML_SECTION_TITLE_LAYOUT,
@@ -68,6 +69,7 @@ def normalize_procedure_article(
         entry.get("role") == "body" and (
             entry.get("html_table_caption_layout") == HTML_TABLE_CAPTION_LAYOUT
             or entry.get("html_media_table_header_layout") == HTML_MEDIA_TABLE_HEADER_LAYOUT
+            or entry.get("html_table_cell_header_layout") == HTML_TABLE_CELL_HEADER_LAYOUT
             or entry.get("html_nested_table_layout") == HTML_NESTED_TABLE_LAYOUT
             or entry.get("html_numeric_superscript_layout") == HTML_NUMERIC_SUPERSCRIPT_LAYOUT
             or entry.get("html_document_link_layout") == HTML_DOCUMENT_LINK_LAYOUT

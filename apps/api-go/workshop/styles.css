@@ -843,14 +843,16 @@ footer {
 .article-table th {
   background: #f0f2ed;
   color: var(--quiet);
+}
+.article-table thead th {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-.article-table td figure {
+.article-table :is(td, th) figure {
   margin: 0 0 8px;
 }
-.article-table td img {
+.article-table :is(td, th) img {
   max-width: 130px;
   max-height: 130px;
 }

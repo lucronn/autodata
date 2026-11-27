@@ -161,6 +161,7 @@ class _EnclosingTable:
     row: list
     cell: list
     cell_spans: dict | None
+    cell_header: str | None
     row_group_boundaries: list[int]
     has_candidate_spans: bool
     in_head: bool
@@ -197,7 +198,7 @@ class ArticleParser(HTMLParser):
         keep_bound_pdf_iframes=False, keep_html_table_image_order=False, keep_html_figure_captions=False,
         keep_html_table_captions=False, keep_html_flow_figure_captions=False,
         keep_html_multiline_figure_captions=False,
-        keep_html_table_spans=False, keep_html_media_table_headers=False,
+        keep_html_table_spans=False, keep_html_media_table_headers=False, keep_html_table_cell_headers=False,
         keep_html_nested_tables=False, keep_html_numeric_superscripts=False, resolved_pdf_refs=frozenset(),
         include_untyped_pdf_positions=False, keep_bound_html_images=False, skip_noscript_images=frozenset(),
         declared_image_refs=frozenset(), lazy_image_alts=None, keep_html_document_links=False,
@@ -259,6 +260,7 @@ class ArticleParser(HTMLParser):
         self._keep_html_multiline_figure_captions = keep_html_multiline_figure_captions
         self._keep_html_table_spans = keep_html_table_spans
         self._keep_html_media_table_headers = keep_html_media_table_headers
+        self._keep_html_table_cell_headers = keep_html_table_cell_headers
         self._keep_html_nested_tables = keep_html_nested_tables
         self._keep_html_numeric_superscripts = keep_html_numeric_superscripts
         self._superscript_start = 0
@@ -279,6 +281,7 @@ class ArticleParser(HTMLParser):
         self.html_table_captions = False
         self.html_table_spans = False
         self.html_media_table_headers = False
+        self.html_table_cell_headers = False
         self.html_nested_tables = False
         self.html_numeric_superscripts = False
         self._figures: list[_FigureFrame] = []
@@ -288,6 +291,7 @@ class ArticleParser(HTMLParser):
         self._table_row = None
         self._table_cell = None
         self._table_cell_spans = None
+        self._table_cell_header = None
         self._table_row_group_boundaries = [0]
         self._table_has_candidate_spans = False
         self._table_in_head = False
@@ -504,6 +508,9 @@ class ArticleParser(HTMLParser):
             if self._table_cell_spans:
                 cell["_html_table_cell_spans"] = self._table_cell_spans
                 self._table_has_candidate_spans = True
+            if self._table_cell_header is not None:
+                cell["_html_table_cell_header"] = self._table_cell_header
+                self.html_table_cell_headers = True
             if self._keep_html_table_image_order or self.html_nested_tables:
                 kinds = [block["kind"] for block in self._table_cell]
                 has_nested_table = self.html_nested_tables and "table" in kinds
@@ -521,6 +528,7 @@ class ArticleParser(HTMLParser):
             self._table_row.append(cell)
         self._table_cell = None
         self._table_cell_spans = None
+        self._table_cell_header = None
         self._table_column_header = None
 
     def _flush_row(self):
@@ -543,6 +551,7 @@ class ArticleParser(HTMLParser):
             row=self._table_row,
             cell=self._table_cell,
             cell_spans=self._table_cell_spans,
+            cell_header=self._table_cell_header,
             row_group_boundaries=self._table_row_group_boundaries,
             has_candidate_spans=self._table_has_candidate_spans,
             in_head=self._table_in_head,
@@ -560,6 +569,7 @@ class ArticleParser(HTMLParser):
         self._table_row = parent.row
         self._table_cell = parent.cell
         self._table_cell_spans = parent.cell_spans
+        self._table_cell_header = parent.cell_header
         self._table_row_group_boundaries = parent.row_group_boundaries
         self._table_has_candidate_spans = parent.has_candidate_spans
         self._table_in_head = parent.in_head
@@ -856,6 +866,7 @@ class ArticleParser(HTMLParser):
             self._table_row = None
             self._table_cell = None
             self._table_cell_spans = None
+            self._table_cell_header = None
             self._table_row_group_boundaries = [0]
             self._table_has_candidate_spans = False
             self._table_in_head = False
@@ -889,8 +900,10 @@ class ArticleParser(HTMLParser):
                 spans = _table_spans(attrs) if self._keep_html_table_spans or self._table_in_head else None
                 if self._keep_html_table_spans:
                     self._table_cell_spans = spans
+                scope = (attrs.get("scope") or "").strip().casefold()
+                if tag == "th" and self._keep_html_table_cell_headers:
+                    self._table_cell_header = scope if scope in {"col", "row", "colgroup", "rowgroup"} else ""
                 if self._table_in_head:
-                    scope = (attrs.get("scope") or "").strip().casefold()
                     # Columns can represent an explicit horizontal span with column scope.
                     supported_span = not spans or (
                         scope == "col" and self._keep_html_table_spans and spans.keys() == {"colspan"}

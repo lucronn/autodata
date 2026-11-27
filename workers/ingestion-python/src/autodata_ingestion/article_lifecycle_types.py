@@ -38,6 +38,7 @@ HTML_FLOW_FIGURE_CAPTION_LAYOUT = "html-flow-figure-caption-v1"
 HTML_MULTILINE_FIGURE_CAPTION_LAYOUT = "html-multiline-figure-caption-v1"
 HTML_TABLE_CAPTION_LAYOUT = "html-table-caption-v1"
 HTML_MEDIA_TABLE_HEADER_LAYOUT = "html-media-table-header-v1"
+HTML_TABLE_CELL_HEADER_LAYOUT = "html-table-cell-headers-v1"
 HTML_NESTED_TABLE_LAYOUT = "html-nested-tables-v1"
 HTML_NUMERIC_SUPERSCRIPT_LAYOUT = "html-numeric-superscript-v1"
 HTML_DOCUMENT_LINK_LAYOUT = "html-document-link-labels-v1"
@@ -206,6 +207,7 @@ class SourceArticleContext:
     legacy_published_html_flow_figure_body: str | None = None
     legacy_published_html_multiline_figure_body: str | None = None
     legacy_published_html_table_caption_body: str | None = None
+    legacy_published_html_table_cell_header_body: str | None = None
     legacy_published_html_document_link_body: str | None = None
     legacy_published_html_section_title_body: str | None = None
     legacy_published_bankone_flow_body: str | None = None

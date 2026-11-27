@@ -975,6 +975,11 @@ def _table_cell(
         return _clean_text(value)
     spans = value.get("_html_table_cell_spans")
     layout = {}
+    header = value.get("_html_table_cell_header")
+    if isinstance(header, str) and header in {"", "col", "row", "colgroup", "rowgroup"}:
+        layout["table_header"] = True
+        if header:
+            layout["header_scope"] = header
     if isinstance(spans, Mapping):
         for name, maximum in (("rowspan", 65_534), ("colspan", 1_000)):
             span = spans.get(name)

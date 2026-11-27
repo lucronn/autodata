@@ -10,7 +10,7 @@ import signal
 import subprocess
 import sys
 import time
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 from uuid import UUID, uuid4
 
 import pytest
@@ -130,7 +130,79 @@ async def verify_list_start_reader(page, owner, detail, expected, pins, *, origi
     return digest
 
 
-async def exercise_simulated_payment(origin, scope, customer_account, repair=None):
+def authored_table_fixture(runtime):
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion.procedure_rewrite_auto import PROFILE
+    from autodata_ingestion.source_job_persistence import refresh_article_job
+    from test_retained_banktwo_notice_publication import NoticeModel
+
+    markup = (
+        '<p>Remove the pump.</p><table><caption>Service check</caption>'
+        '<thead><tr><th rowspan="2">Assembly</th><th scope="colgroup" colspan="2">Inspection</th></tr>'
+        '<tr><th scope="col">Item</th><th scope="col">Illustration</th></tr></thead>'
+        '<tbody><tr><th scope="row">Pump</th><td>Seal</td>'
+        '<td><img data-resource-ref="figure" alt="Pump figure"></td></tr></tbody></table>'
+    )
+    runtime.servers["banktwo"].body(
+        json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode(),
+        "application/hal+json", assets=["figure"],
+    )
+    model = NoticeModel()
+    refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="capture authored table",
+                        rewrite_profile_version=PROFILE)
+    assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+                                   object_store=runtime.objects, model_client=model)
+    assert runtime.read_current()["content_origin"] == "canonical" and model.calls == 1, runtime.diagnostics()
+
+
+async def verify_authored_table(page, detail):
+    from playwright.async_api import expect
+
+    expected = [
+        [["TH", 2, 1, None, "Assembly"], ["TH", 1, 2, "colgroup", "Inspection"]],
+        [["TH", 1, 1, "col", "Item"], ["TH", 1, 1, "col", "Illustration"]],
+        [["TH", 1, 1, "row", "Pump"], ["TD", 1, 1, None, "Seal"], ["TD", 1, 1, None, ""]],
+    ]
+
+    async def check(content):
+        table = content.locator("table")
+        await expect(table.locator("caption")).to_have_text("Service check")
+        assert await table.evaluate("""table => [...table.rows].map(row => [...row.cells].map(cell => {
+            const text = [...cell.childNodes].filter(node => node.tagName !== 'FIGURE')
+                .map(node => node.textContent).join('').trim();
+            return [cell.tagName, cell.rowSpan, cell.colSpan, cell.getAttribute('scope'), text];
+        }))""") == expected
+        image = table.locator("tr:last-child td:last-child figure img")
+        await expect(image).to_have_attribute("alt", "Pump figure")
+        assert await image.evaluate("(node) => node.decode().then(() => node.naturalWidth > 0)")
+        asset = await page.context.request.get(await image.evaluate("(node) => node.currentSrc"))
+        assert asset.ok
+        return sha256(await asset.body()).hexdigest()
+
+    await page.set_viewport_size({"width": 320, "height": 850})
+    reader = page.locator("#article-content")
+    reader_asset = await check(reader)
+    assert await reader.locator(".table-scroll").evaluate(
+        "node => node.getBoundingClientRect().right <= document.documentElement.clientWidth"
+    )
+    async with page.expect_response(lambda response: urlsplit(response.url).path == urlsplit(detail).path + "/source") as pending:
+        await page.locator("#open-original").click()
+    response = await pending.value
+    assert response.ok
+    source = (await response.json())["source"]
+    assert await check(page.locator("#source-review-frame")) == reader_asset
+    raw_page = await page.context.new_page()
+    try:
+        raw = await raw_page.goto(urljoin(detail, source["url"]))
+        assert raw.ok
+        assert await check(raw_page.locator("body")) == reader_asset
+    finally:
+        await raw_page.close()
+    await page.locator("#back-to-article").click()
+    return reader_asset
+
+
+async def exercise_simulated_payment(origin, scope, customer_account, repair=None, authored_table=False):
     from playwright.async_api import async_playwright, expect
 
     configuration = scope["configuration"]
@@ -213,7 +285,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             await page.reload()
             await expect(page.locator("#library-items > li")).to_have_count(1)
             await expect(page.locator("#library-items h3")).to_contain_text("Paid selected")
-            if repair is None:
+            if repair is None and not authored_table:
                 await api_control(owner, origin, "control/start-workers")
             await page.get_by_role("button", name="Open articles", exact=True).click()
             await page.locator(f'#articles a[href*="{article}"]').click()
@@ -230,6 +302,10 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                 print(json.dumps({"case": "banktwo-list-starts", "engine": engine, "headed": True,
                                   "starts": [1, 7], "figure_sha256": corrected_reader,
                                   "publication_retry_and_rollback_verified": True}), flush=True)
+            if authored_table:
+                digest = await verify_authored_table(page, detail)
+                print(json.dumps({"case": "authored-table", "engine": engine, "headed": True,
+                                  "header_cells": 5, "spans": 2, "figure_sha256": digest}), flush=True)
             await expect(page.locator("#article-content")).to_contain_text("Take off the pump.")
             image = page.locator("#article-content img").first
             await expect(image).to_be_visible()
@@ -264,7 +340,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             await browser.close()
 
 
-@pytest.mark.parametrize("variant", ["payment", "list-starts"])
+@pytest.mark.parametrize("variant", ["payment", "list-starts", "authored-table"])
 def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_database, monkeypatch, tmp_path, variant):
     from autodata_ingestion.http_service import make_handler
 
@@ -283,6 +359,8 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
         scope = configure_scoped_runtime(runtime, provider)
         scope["article"] = str(runtime.article_id)
         repair = retained_list_start_fixture(runtime, monkeypatch) if variant == "list-starts" else None
+        if variant == "authored-table":
+            authored_table_fixture(runtime)
         bridge = Bridge(runtime, GO_NAMES[0])
         for name, value in {
             **runtime.env,
@@ -345,6 +423,7 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
             assert metadata["kind"] == "api-fixture" and metadata["scope"]["article"] == scope["article"]
             asyncio.run(asyncio.wait_for(exercise_simulated_payment(
                 fixture_origin(metadata["origin"]), scope, account, repair=repair,
+                authored_table=variant == "authored-table",
             ), 45))
             assert go.wait(timeout=5) == 0
             with repo.connect() as conn:

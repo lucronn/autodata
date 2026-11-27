@@ -564,15 +564,22 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 		case "table":
 			cellImages := map[figurePlacement]bool{}
 			writeCell := func(tag string, value any) {
-				output.WriteString("<" + tag)
+				fields, _ := value.(map[string]any)
+				scope := ""
 				if tag == "th" {
-					output.WriteString(" scope=\"col\"")
+					scope = "col"
 				}
-				if fields, ok := value.(map[string]any); ok {
-					for _, attribute := range [...]string{"rowspan", "colspan"} {
-						if span, valid := catalogJSONTableSpan(attribute, fields[attribute]); valid {
-							output.WriteString(" " + attribute + "=\"" + strconv.Itoa(int(span)) + "\"")
-						}
+				if fields["table_header"] == true {
+					tag = "th"
+					scope = catalogTableHeaderScope(fields["header_scope"])
+				}
+				output.WriteString("<" + tag)
+				if scope != "" {
+					output.WriteString(" scope=\"" + scope + "\"")
+				}
+				for _, attribute := range [...]string{"rowspan", "colspan"} {
+					if span, valid := catalogJSONTableSpan(attribute, fields[attribute]); valid {
+						output.WriteString(" " + attribute + "=\"" + strconv.Itoa(int(span)) + "\"")
 					}
 				}
 				output.WriteString(">")

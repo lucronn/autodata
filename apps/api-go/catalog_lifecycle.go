@@ -741,6 +741,14 @@ func projectCatalogDocument(raw []byte, links catalogArticleLinkProjection) *Cat
 					if _, ok := catalogJSONTableSpan(key, child); ok {
 						out[key] = child
 					}
+				case "table_header":
+					if child == true {
+						out[key] = true
+					}
+				case "header_scope":
+					if node["table_header"] == true && catalogTableHeaderScope(child) != "" {
+						out[key] = child
+					}
 				case "asset_id", "image_id":
 					if text, ok := child.(string); ok {
 						out[key] = publicCatalogAssetID(text)
