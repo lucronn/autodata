@@ -29,7 +29,7 @@ from .article_lifecycle_types import (
     digest_json, transformation_key,
 )
 from .authored_procedure_scope import (
-    _checks_lin_wiring, _LIN_REFERENCE_CHECK, _timing_mark_target, _words,
+    _checks_lin_wiring, _coolant_concentration, _LIN_REFERENCE_CHECK, _timing_mark_target, _words,
     correct_authored_procedure_step, require_authored_procedure_scope,
 )
 from .procedure_rewrite_auto import (
@@ -254,7 +254,8 @@ def _restore_diagnostic_wording_reply(source, retained, old_document, old_reply,
         edit = wording_edits[path]
         if (not isinstance(edit, dict) or set(edit) != {"source_sha256", "prior_sha256", "text"}
             or not isinstance(edit["text"], str) or edit["text"] in (original, published)
-            or not (_timing_mark_target(wording) or _checks_lin_wiring(wording) or _LIN_REFERENCE_CHECK.fullmatch(wording))
+            or not (_timing_mark_target(wording) or _checks_lin_wiring(wording) or _LIN_REFERENCE_CHECK.fullmatch(wording)
+                    or _coolant_concentration(wording))
             or row["action"] != "rewrite" or row["text"] != published or original != _get(retained, path)
             or sha256(original.encode()).hexdigest() != edit["source_sha256"]
             or sha256(published.encode()).hexdigest() != edit["prior_sha256"]):
@@ -331,9 +332,9 @@ _SHORT_ACTIONS = _Repair(
 )
 _DIAGNOSTIC_WORDING = _Repair(
     DIAGNOSTIC_WORDING_PROFILE, DIAGNOSTIC_WORDING_METHOD, DIAGNOSTIC_WORDING_CHECKPOINT,
-    (BANKONE_DEFINITION_METHOD, REQUIRED_ACTION_METHOD), _DIAGNOSTIC_WORDING_INVALID,
+    (BANKONE_DEFINITION_METHOD, REQUIRED_ACTION_METHOD, PROCEDURE_CONDITION_METHOD), _DIAGNOSTIC_WORDING_INVALID,
     "RETAINED_DIAGNOSTIC_WORDING_REPAIR_STALE", _restore_diagnostic_wording_reply,
-    provider=None, prior_profiles=(OPTIONAL_OBSERVATION_PROFILE, REQUIRED_ACTION_PROFILE),
+    provider=None, prior_profiles=(OPTIONAL_OBSERVATION_PROFILE, REQUIRED_ACTION_PROFILE, PROCEDURE_CONDITION_PROFILE),
 )
 
 
