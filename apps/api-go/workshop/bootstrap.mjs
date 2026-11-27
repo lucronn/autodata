@@ -45,7 +45,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
     ? Promise.resolve({ openDemo: true })
     : readDemoMode();
   const preview = wantsDemo ? null : import('./catalog.mjs')
-    .then(({ requestJSON, requestInitialYears, startSavedSelectorReads }) => {
+    .then(({ rememberSameOriginMake, requestJSON, requestInitialYears, startSavedSelectorReads }) => {
       if (pickerStartup?.takeYearPicker) pickerStartup.requestMake = requestJSON;
       const request = (path, options) => {
         const pending = pickerStartup?.get(path);
@@ -66,7 +66,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
         return pending.response;
       };
       const selectors = startSavedSelectorReads(params, request);
-      return { request, selectors, years: selectors ? null : requestInitialYears(params, request) };
+      return { request, selectors, rememberSameOriginMake, years: selectors ? null : requestInitialYears(params, request) };
     })
     .catch(() => null);
   const initialAccount = wantsDemo ? undefined : Promise.all([import('./auth.mjs'), preview])
@@ -93,7 +93,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
       ? initial?.request(purchasePath) : null;
     await bootstrap(initial?.years, initialAccount, {
       initialSelectors: initial?.selectors,
-      initialYearPicker: pickerStartup?.takeYearPicker?.(),
+      initialYearPicker: pickerStartup?.takeYearPicker?.(initial?.rememberSameOriginMake),
       initialPurchaseConfig,
       initialReaderRequest: pickerStartup?.retainedReader,
       testCheckout: wantsDemo ? undefined : modeRequest.then(mode => mode.testCheckout === true),
