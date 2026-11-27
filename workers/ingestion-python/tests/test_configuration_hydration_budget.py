@@ -131,6 +131,34 @@ def test_genuine_upstream_failure_with_remaining_budget_keeps_supplier_diagnosti
     assert service._persist_hydration_scope.call_args.args[1].complete is False
 
 
+def test_first_supplier_timeout_leaves_budget_to_persist_peer_rows(monkeypatch, caplog):
+    clock = [1.0]
+    calls = []
+    monkeypatch.setattr(service.time, "monotonic", lambda: clock[0])
+
+    def stalled(req, timeout):
+        calls.append("bankone")
+        assert 0 < timeout <= 10
+        clock[0] += timeout + 0.01
+        raise TimeoutError()
+
+    def usable(req, timeout):
+        calls.append("banktwo")
+        assert 8 < timeout <= 10
+        return Response(req, envelope("banktwo", "configurations", items=[{
+            "year": 2024, "make": "Acura", "model": "Integra", "engine": "1.5L", "region": "US",
+            "opaque_ref": "exact-integra", "label": "1.5L",
+        }]))
+
+    configure(monkeypatch, {"bankone": stalled, "banktwo": usable})
+    result = service.ensure_catalog_hydration(json.dumps(request()))
+    assert calls == ["bankone", "banktwo"]
+    assert len(result["rows"]) == 1 and result["complete"] is False
+    assert result["rows"][0]["provider_mappings"][0]["source_provider"] == "banktwo"
+    assert service._persist_hydration_scope.call_args.args[1].complete is False
+    assert "provider=bankone stage=provider_resolution outcome=incomplete" in caplog.text
+
+
 def test_rate_limit_stops_without_retry_or_second_bank(monkeypatch,caplog):
     calls=[]
     def limited(req,timeout):calls.append('bankone');return Response(req,{},429)

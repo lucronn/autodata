@@ -78,7 +78,7 @@ def _configuration_diagnostic(request, *, provider="aggregate", stage, outcome, 
                 "TimeoutError", "ConnectionError", "OSError", "ValueError", "TypeError", "KeyError",
                 "SourceConnectorError", "S3Error", "OperationalError", "InterfaceError", "IntegrityError",
                 "ReadOnlySqlTransaction", "InsufficientPrivilege", "UndefinedTable", "UndefinedColumn",
-                "_ConfigurationHydrationStopped",
+                "_ConfigurationHydrationStopped", "_ConfigurationProviderBudgetExhausted",
             }:
                 error_type = "OtherError"
         row_count = row_count if type(row_count) is int and row_count >= -1 else -1
@@ -166,6 +166,10 @@ class CacheFirstCatalogService:
                 payload = _call_provider(provider, request)
             except (_SelectorDeepeningStopped, selector_job.SelectorJobStopped):
                 raise
+            except _ConfigurationProviderBudgetExhausted as error:
+                _configuration_diagnostic(request, provider=provider, stage="provider_resolution", outcome="incomplete", error=error)
+                missing.add("provider")
+                continue
             except Exception as error:  # noqa: BLE001 - one source may be unavailable while another is usable
                 _configuration_diagnostic(request, provider=provider, stage="provider_resolution", outcome="failed", error=error)
                 missing.add("provider")
@@ -627,6 +631,36 @@ class _ConfigurationHydrationControl:
             self.stop("request_limit")
         self.remaining_attempts -= 1
         return remaining
+
+
+class _ConfigurationProviderBudgetExhausted(Exception):
+    """The first provider's share ended while the overall lookup can continue."""
+
+
+class _ConfigurationProviderBudget:
+    configuration_budget = True
+
+    def __init__(self, control):
+        self._control = control
+        # Reserve half the shared time and attempts for the independent provider.
+        self._deadline = (control.started_at + control.deadline) / 2
+        self._reserved_attempts = control.remaining_attempts // 2
+
+    def remaining(self):
+        overall = self._control.remaining()
+        provider = self._deadline - time.monotonic()
+        if provider <= 0:
+            raise _ConfigurationProviderBudgetExhausted()
+        return min(overall, provider)
+
+    def before_request(self):
+        remaining = self.remaining()
+        if self._control.remaining_attempts <= self._reserved_attempts:
+            raise _ConfigurationProviderBudgetExhausted()
+        return min(remaining, self._control.before_request())
+
+    def stop(self, reason):
+        self._control.stop(reason)
 
 
 class _SelectorDeepeningControl:
@@ -1734,8 +1768,12 @@ def _stored_banktwo_make_label(request, origin):
 def _configured_catalog_providers(*, deepening_control: _SelectorDeepeningControl | _ConfigurationHydrationControl | None = None) -> tuple[Any, ...]:
     from .source_connector_client import source_connector_registry
 
-    clients = source_connector_registry()
-    return tuple(_SourceCatalogProvider(client, deepening_control=deepening_control) for client in clients.values())
+    clients = tuple(source_connector_registry().values())
+    if len(clients) == 2 and getattr(deepening_control, "configuration_budget", False):
+        first, second = clients
+        return (_SourceCatalogProvider(first, deepening_control=_ConfigurationProviderBudget(deepening_control)),
+                _SourceCatalogProvider(second, deepening_control=deepening_control))
+    return tuple(_SourceCatalogProvider(client, deepening_control=deepening_control) for client in clients)
 
 
 def _resolve_initial_catalog(request, control, *, on_progress=None):
@@ -1854,11 +1892,11 @@ class _SourceCatalogProvider:
                 except SourceConnectorError as error:
                     if (getattr(self.deepening_control, "configuration_budget", False)
                             or getattr(self.deepening_control, "initial_selector_budget", False)):
+                        if error.status == 429:
+                            self.deepening_control.stop("rate_limited")
                         # Deadline body errors are wrapped by the connector;
                         # classify expired/cancelled work before supplier errors.
                         self.deepening_control.remaining()
-                        if error.status == 429:
-                            self.deepening_control.stop("rate_limited")
                     if error.status == 429:
                         raise _SelectorDeepeningStopped() from error
                     raise
