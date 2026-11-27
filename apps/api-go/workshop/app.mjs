@@ -158,23 +158,34 @@ function status(
 ) {
   $("activity-text").textContent = text;
   const alternatives = $("model-alternatives");
-  if (modelAlternatives && alternatives.hidden) {
+  if (modelAlternatives) {
     const model = $("model");
     const group = model.value;
-    alternatives.replaceChildren(...modelAlternatives.map(({ id, name }) => {
+    const path = selectorPath("configuration");
+    if (alternatives.hidden || alternatives.dataset.path !== path) {
+      alternatives.replaceChildren();
+      alternatives.dataset.path = path;
+    }
+    const remaining = new Map(modelAlternatives.map(({ id, name }) => [id, name]));
+    for (const button of Array.from(alternatives.children)) {
+      if (remaining.get(button.value) === button.textContent) remaining.delete(button.value);
+      else button.remove();
+    }
+    for (const [id, name] of remaining) {
       const button = document.createElement("button");
       button.type = "button";
+      button.value = id;
       button.className = "text-button";
       button.textContent = name;
       button.addEventListener("click", () => {
-        if (model.disabled || model.value !== group ||
+        if (model.disabled || model.value !== group || selectorPath("configuration") !== path ||
             !Array.from(model.options).some(option => option.value === id && !option.disabled)) return;
         model.value = id;
         model.focus();
         model.dispatchEvent(new Event("change", { bubbles: true }));
       });
-      return button;
-    }));
+      alternatives.append(button);
+    }
   }
   if (alternatives) alternatives.hidden = !modelAlternatives;
   $("activity").dataset.tone = error ? "error" : busy ? "loading" : "ready";
@@ -489,9 +500,11 @@ function groupedModelNames() {
 function groupedModelChoices(names) {
   if (!names) return null;
   const selected = $("model").value;
-  const choices = names.map((name) =>
-    rows.model.find((item) => item.id !== selected && item.name?.toLowerCase() === name.toLowerCase()));
-  return choices.every(Boolean) ? choices.map((item, index) => ({ id: item.id, name: names[index] })) : null;
+  const choices = names.flatMap((name) => {
+    const model = rows.model.find((item) => item.id !== selected && item.name?.toLowerCase() === name.toLowerCase());
+    return model ? [{ id: model.id, name }] : [];
+  });
+  return choices.length ? choices : null;
 }
 function readStoredSelector(path, signal, timeout) {
   return requestStoredSelector(path, { signal, timeout }, requestJSON);
@@ -515,7 +528,7 @@ async function readStoredPicker(picker, name, signal, timeout) {
   }
   return stored;
 }
-async function refreshPicker(name, { followDiscovery = false, waitForDiscovery = false, startDiscovery = false } = {}) {
+async function refreshPicker(name, { followDiscovery = false, waitForDiscovery = false, startDiscovery = false, onChoices } = {}) {
   const picker = pickerStates.get(name);
   const select = $(name);
   if (!picker?.incomplete || select.disabled || picker.path !== selectorPath(name) ||
@@ -562,13 +575,13 @@ async function refreshPicker(name, { followDiscovery = false, waitForDiscovery =
         }
         const known = new Set(rows[name].map((item) => String(item.id ?? item.year)));
         const additional = data.items.filter((item) => !known.has(String(item.id ?? item.year)));
-        if (!additional.length) return;
-        if (name === "year") {
+        if (additional.length && name === "year") {
           populate(name, [...rows[name], ...additional]);
-          return;
+        } else if (additional.length) {
+          rows[name] = [...rows[name], ...additional];
+          select.append(...additional.map((item) => pickerOption(pickerChoice(name, item))));
         }
-        rows[name] = [...rows[name], ...additional];
-        select.append(...additional.map((item) => pickerOption(pickerChoice(name, item))));
+        onChoices?.();
       },
     });
   } catch {
@@ -683,12 +696,24 @@ async function loadOptions(name, g, desired = "", initial = null, {
   const selected = desired && result.items.some(choice);
   const choicesReady = stopWithChoices && result.items.length > 0;
   const incomplete = result.refreshFailed || result.timedOut || (result.complete === false && !choicesReady);
-  if (groupNames && !modelAlternatives && !pickerHasChoices(name, result.items) && pickerStates.get("model")?.incomplete) {
-    status("Checking available models for this group…", { busy: true });
+  if (groupNames && modelAlternatives?.length !== groupNames.length &&
+      !pickerHasChoices(name, result.items) && pickerStates.get("model")?.incomplete) {
+    let announcedChoices;
+    const showAvailableModels = () => {
+      if (!g.current()) return;
+      modelAlternatives = groupedModelChoices(groupNames);
+      const choices = modelAlternatives?.map(({ id }) => id).join("/") ?? "";
+      if (announcedChoices === choices) return;
+      announcedChoices = choices;
+      const message = modelAlternatives
+        ? "Checking for more individual models. You can choose an available model."
+        : "Checking available models for this group…";
+      status(message, { busy: true, modelAlternatives });
+    };
+    showAvailableModels();
     // Choosing the group canceled the picker refresh. Resume stored reads if its engine list is empty.
-    await refreshPicker("model", { followDiscovery: true });
+    await refreshPicker("model", { followDiscovery: true, onChoices: showAvailableModels });
     if (!g.current()) return;
-    modelAlternatives = groupedModelChoices(groupNames);
   }
   if (modelAlternatives && !pickerHasChoices(name, result.items)) {
     status("No verified engine or trim loaded for this group. Choose an individual model.",

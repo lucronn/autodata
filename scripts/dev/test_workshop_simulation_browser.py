@@ -341,6 +341,7 @@ async def verify_late_grouped_models(page, origin):
     engine = str(uuid4())
     group_requested = False
     resumed_reads = []
+    release_siblings = asyncio.Event()
 
     def selector(items, *, complete=True):
         return {"version": "v1", "items": items, "complete": complete, "hydrating": not complete}
@@ -350,8 +351,11 @@ async def verify_late_grouped_models(page, origin):
             resumed_reads.append(parse_qs(urlsplit(route.request.url).query).get("stored_only"))
         complete = len(resumed_reads) >= 2
         items = [{"id": group, "name": "Base/Sport/Touring"}]
+        if resumed_reads:
+            items.append({"id": "base", "name": "Base"})
         if complete:
-            items.extend({"id": name.lower(), "name": name} for name in ("Base", "Sport", "Touring"))
+            await release_siblings.wait()
+            items.extend({"id": name.lower(), "name": name} for name in ("Sport", "Touring"))
         await route.fulfill(json=selector(items, complete=complete))
 
     async def group_engines(route):
@@ -374,14 +378,20 @@ async def verify_late_grouped_models(page, origin):
         await page.goto(f"{origin}/workshop/?year=2024&make=example")
         await page.locator("#model").select_option(group)
         alternatives = page.locator("#model-alternatives")
+        base = alternatives.get_by_role("button", name="Base", exact=True)
+        await expect(alternatives.get_by_role("button")).to_have_text(["Base"])
+        await base.focus()
+        release_siblings.set()
         await expect(alternatives.get_by_role("button")).to_have_text(["Base", "Sport", "Touring"])
-        await alternatives.get_by_role("button", name="Base", exact=True).click()
+        await expect(base).to_be_focused()
+        await base.click()
         await expect(page.locator("#model")).to_have_value("base")
         await expect(page.locator(f'#configuration option[value="{engine}"]')).to_have_text("2.0 L")
         await expect(page.locator("#configuration")).to_be_enabled()
         await expect(alternatives).to_be_hidden()
         assert resumed_reads == [["1"], ["1"]]
     finally:
+        release_siblings.set()
         for path, handler in requests.items():
             await page.unroute(f"{origin}{path}?*", handler)
 

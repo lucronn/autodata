@@ -9864,8 +9864,8 @@ function selectorOptionsHarness(response) {
  const nodes = new Map();
  const $ = id => {
    if (!nodes.has(id)) nodes.set(id, {
-     value:'', disabled:false, hidden:true, textContent:'', dataset:{}, options:[],
-     append(...choices) { this.options.push(...choices); },
+     value:'', disabled:false, hidden:true, textContent:'', dataset:{}, options:[], children:[],
+     append(...choices) { this.options.push(...choices); this.children.push(...choices); },
      replaceChildren(...children) { this.children = children; },
      addEventListener(event, listener) { this[event] = listener; },
    });
@@ -10669,22 +10669,22 @@ test('actual selector incomplete nonhydrating scope does not claim empty complet
 test('an unavailable grouped model offers the separate choices already in its picker', async () => {
   const group = { id: 'sl1-sc1-sw1', name: 'SL1/SC1/SW1' };
   const separate = ['Sl1', 'Sc1', 'Sw1'].map(name => ({ id: name.toLowerCase(), name }));
-  for (const [items, complete, models, suggestsAlternatives] of [
-    [[], false, separate, true],
-    [[], true, separate, true],
-    [[{ id: 'unresolved', configuration_unresolved: true }], true, separate, true],
-    [[], false, separate.slice(0, 2), false],
-    [[{ id: 'verified' }], true, separate, false],
+  for (const [items, complete, models, expectedAlternatives] of [
+    [[], false, separate, ['SL1', 'SC1', 'SW1']],
+    [[], true, separate, ['SL1', 'SC1', 'SW1']],
+    [[{ id: 'unresolved', configuration_unresolved: true }], true, separate, ['SL1', 'SC1', 'SW1']],
+    [[], false, separate.slice(0, 2), ['SL1', 'SC1']],
+    [[], true, [{ id: 'sl', name: 'SL' }], []],
+    [[{ id: 'verified' }], true, separate, []],
   ]) {
     const h = selectorOptionsHarness({ items, complete });
     h.context.rows.model = [group, ...models];
     h.$('model').value = group.id;
     await h.load();
-    assert.equal(Boolean(h.statuses[0].modelAlternatives), models.length === 3);
-    assert.equal(h.$('model-alternatives').hidden, !suggestsAlternatives);
-    if (suggestsAlternatives) {
+    assert.equal(h.$('model-alternatives').hidden, expectedAlternatives.length === 0);
+    if (expectedAlternatives.length) {
       assert.match(h.statuses.at(-1).text, /Choose an individual model/);
-      assert.deepEqual(h.$('model-alternatives').children.map(button => button.textContent), ['SL1', 'SC1', 'SW1']);
+      assert.deepEqual(h.$('model-alternatives').children.map(button => button.textContent), expectedAlternatives);
     }
     assert.equal(h.$('model').value, group.id);
     assert.equal(h.$('configuration').value, '');
