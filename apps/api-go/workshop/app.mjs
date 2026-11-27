@@ -3266,17 +3266,18 @@ async function confirmedSavedYear(desired, initial, region) {
     ? { year } : null;
 }
 
-async function finishSavedYears(g, pending, confirmed) {
+async function finishSavedYears(pending, confirmed) {
   const picker = pickerStates.get("year");
-  const current = () => g.current() && pickerStates.get("year") === picker &&
+  const current = () => pickerStates.get("year") === picker &&
     $("year").value === String(confirmed.year);
-  // The year dropdown can already be used. Its existing read owns the refresh.
-  if (picker) picker.loading = g;
+  // Make, model, and engine changes leave this year picker in place.
+  const refresh = { current };
+  if (picker) picker.loading = refresh;
   try {
     const path = selectorPath("year");
     let response = await pending;
     if (!current()) return;
-    response ??= await requestJSON(path, { signal: g.signal });
+    response ??= await requestJSON(path);
     if (!current() || !Array.isArray(response?.items)) return;
     const includesYear = response.items.some((item) => item?.year === confirmed.year);
     populate("year", includesYear ? response.items : [...response.items, confirmed]);
@@ -3285,7 +3286,7 @@ async function finishSavedYears(g, pending, confirmed) {
   } catch {
     // The exact stored branch remains available if the broader year list fails.
   } finally {
-    if (picker?.loading === g) picker.loading = null;
+    if (picker?.loading === refresh) picker.loading = null;
   }
 }
 
@@ -3434,7 +3435,7 @@ async function restoreRoute(initialYears = null, {
         for (const name of names) {
           const path = selectorPath(name, desired);
           if (!initial[name] && !cachedSelector(path, desired[name])) {
-            const pending = name === "year" ? requestJSON(path, { signal: g.signal }) : readStoredSelector(path, g.signal);
+            const pending = name === "year" ? requestJSON(path) : readStoredSelector(path, g.signal);
             initial[name] = pending.catch(() => null);
           }
           if (!desired[name]) break;
@@ -3455,7 +3456,7 @@ async function restoreRoute(initialYears = null, {
           if (name !== "year" && !desired[name]) retry = retryPicker(name);
           await loadOptions(name, g, desired[name], initial[name], { retry });
           if (!g.current() || !desired[name]) return;
-          if (name === "year" && confirmed) yearsRefresh = finishSavedYears(g, fullYears, confirmed);
+          if (name === "year" && confirmed) yearsRefresh = finishSavedYears(fullYears, confirmed);
         }
         const configuration = rows.configuration.find(
           (item) => item.id === $("configuration").value,

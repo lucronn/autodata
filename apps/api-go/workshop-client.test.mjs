@@ -2893,7 +2893,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
       calls.selections.push({ configuration: context.vehicle.id, region: context.vehicle.region, article });
       calls.selectionOptions.push(options);
     },
-    async requestJSON(path, options) {
+    async requestJSON(path, options = {}) {
       calls.selectorReads.push({ path, signal: options.signal });
       return selectorRead?.(path, options);
     },
@@ -3434,7 +3434,8 @@ test('returning to the displayed year and make overlaps reads but hides models u
     '/v1/catalog/years', '/v1/catalog/years/2020/makes?region=US&stored_only=1',
     '/v1/catalog/years/2020/makes/toyota/models?region=US&stored_only=1',
   ]);
-  assert.equal(new Set(h.calls.selectorReads.map(({ signal }) => signal)).size, 1);
+  assert.equal(h.calls.selectorReads[0].signal, undefined);
+  assert.equal(new Set(h.calls.selectorReads.slice(1).map(({ signal }) => signal)).size, 1);
   assert.equal(h.element('model').disabled, true);
   assert.equal(h.element('configuration').disabled, true);
   assert.equal(h.context.vehicle, null);
@@ -3486,12 +3487,13 @@ const savedPickerRows = [
 test('startup starts each saved picker read once and restores the hierarchy in parent order', async () => {
   const year = deferredAuthOperation();
   const earlyCalls = [];
-  const initialSelectors = startSavedSelectorReads(new URLSearchParams(savedPickerRoute), async (path, { signal }) => {
+  const initialSelectors = startSavedSelectorReads(new URLSearchParams(savedPickerRoute), async (path, { signal } = {}) => {
     const index = earlyCalls.push({ path, signal }) - 1;
     return index === 0 ? year.promise : savedPickerRows[index];
   });
   assert.deepEqual(earlyCalls.map(({ path }) => path), savedPickerPaths);
-  assert.equal(new Set(earlyCalls.map(({ signal }) => signal)).size, 1);
+  assert.equal(earlyCalls[0].signal, undefined);
+  assert.equal(new Set(earlyCalls.slice(1).map(({ signal }) => signal)).size, 1);
   const h = loginRouteHarness(savedPickerRoute);
   h.context.rows.configuration = [];
   h.element('configuration').disabled = true;
@@ -3505,7 +3507,7 @@ test('startup starts each saved picker read once and restores the hierarchy in p
   assert.deepEqual(h.context.names.map(name => h.element(name).value), ['2024', 'buick-truck', 'envision-awd', '']);
   assert.equal(h.element('configuration').disabled, false);
   assert.equal(h.context.rows.configuration[0].id, routeConfiguration);
-  assert.equal(earlyCalls[0].signal.aborted, true);
+  assert.equal(earlyCalls[1].signal.aborted, true);
 });
 
 const storedPickerConfiguration = {
@@ -3608,6 +3610,20 @@ test('a late year list cannot update a superseded saved picker', async () => {
   assert.deepEqual(h.calls.selectorReads, []);
 });
 
+test('the saved year list finishes after choosing an engine', async () => {
+  const h = setupSlowSavedYears(savedPickerRoute);
+  await new Promise(setImmediate);
+  assert.equal(h.element('configuration').disabled, false);
+  h.context.invalidate();
+  h.element('configuration').value = routeConfiguration;
+
+  h.year.resolve(fullPickerYears);
+  await h.opening;
+  assert.deepEqual(h.element('year').children.slice(1).map(option => option.value), ['2026', '2024', '2022']);
+  assert.deepEqual(h.context.names.map(name => h.element(name).value), ['2024', 'buick-truck', 'envision-awd', routeConfiguration]);
+  assert.deepEqual(h.calls.selectorReads, []);
+});
+
 test('the pending saved year list owns the dropdown refresh until its rows arrive', async () => {
   const h = setupSlowSavedYears(savedPickerRoute);
   const picker = { path: '/v1/catalog/years', incomplete: true };
@@ -3679,11 +3695,11 @@ test('other stored years are visible while waiting for a missing saved year', as
   assert.equal(h.$('year').value, '2024');
 });
 
-test('superseding a saved picker restore aborts every early request and leaves stale choices hidden', async () => {
+test('superseding a saved picker restore aborts early descendant requests and leaves stale choices hidden', async () => {
   const response = deferredAuthOperation();
   let signal;
   const initialSelectors = startSavedSelectorReads(new URLSearchParams(savedPickerRoute), async (_path, options) => {
-    signal = options.signal;
+    if (options?.signal) signal = options.signal;
     return response.promise;
   });
   const h = loginRouteHarness(savedPickerRoute);
@@ -3700,7 +3716,7 @@ test('superseding a saved picker restore aborts every early request and leaves s
 test('a changed startup route discards early selector rows and reads only its own hierarchy', async () => {
   let signal;
   const initialSelectors = startSavedSelectorReads(new URLSearchParams(savedPickerRoute), async (_path, options) => {
-    signal = options.signal;
+    if (options?.signal) signal = options.signal;
     return null;
   });
   const h = loginRouteHarness('?year=2025', { selectorRead(path) {
@@ -3729,7 +3745,8 @@ test('a complete saved vehicle overlaps public reads but validates parents befor
     '/v1/catalog/years/2020/makes/toyota/models?region=US&stored_only=1',
     '/v1/catalog/years/2020/makes/toyota/models/rav4/configurations?region=US&stored_only=1',
   ]);
-  assert.equal(new Set(h.calls.selectorReads.map(r => r.signal)).size, 1);
+  assert.equal(h.calls.selectorReads[0].signal, undefined);
+  assert.equal(new Set(h.calls.selectorReads.slice(1).map(({ signal }) => signal)).size, 1);
   await new Promise(setImmediate);
   assert.deepEqual(h.calls.selections, []);
   assert.equal(h.element('configuration').disabled, true);

@@ -606,10 +606,8 @@ export function startSavedSelectorReads(params, request = requestJSON) {
   const reads = {};
   for (const name of ['year', 'make', 'model', 'configuration']) {
     const path = vehicleSelectorPath(name, selection);
-    const options = { signal: controller.signal };
-    // Years have no parent to verify. One read can return stored years and
-    // start hydration. Descendants wait for their parents before scheduling.
-    reads[name] = (name === 'year' ? request(path, options) : requestStoredSelector(path, options, request))
+    // Years can continue loading while a selection changes below the year picker.
+    reads[name] = (name === 'year' ? request(path) : requestStoredSelector(path, { signal: controller.signal }, request))
       .catch(() => null);
     const value = selection[name];
     if (!value || value.length > 128 || value === '.' || value === '..') break;
