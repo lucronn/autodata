@@ -646,6 +646,7 @@ async function loadOptions(name, g, desired = "", initial = null, {
       desired,
       backoffWithChoices: true,
       backoffWithoutChoices: name !== "year",
+      retryEmptyTransientRead: name === "model",
       stopWithChoices,
       hasChoices: data => pickerHasChoices(name, data.items),
       async emptyProbe(timeout) {
