@@ -499,12 +499,34 @@ const directSelectorPath = /^\/v1\/catalog\/years\/\d{4}\/makes\/[a-z0-9-]+\/mod
 const directMakePath = /^\/v1\/catalog\/years\/\d{4}\/makes\?region=US$/;
 const directSelectorTimeout = 400;
 const directMakeTimeout = 175;
+const makeRouteKey = 'workshop:make-same-origin:';
+const makeRouteLifetime = 30000;
 let directSelectorsUnavailable = false;
+
+export function rememberSameOriginMake(path) {
+  if (globalThis.location?.origin !== 'https://autodata.cars.tk' || !directMakePath.test(path)) return;
+  try {
+    globalThis.sessionStorage?.setItem(makeRouteKey + path, String(Date.now() + makeRouteLifetime));
+  } catch {
+    // The browser may restrict session storage.
+  }
+}
+
+function hasRecentSameOriginMake(path) {
+  try {
+    return Number(globalThis.sessionStorage?.getItem(makeRouteKey + path)) > Date.now();
+  } catch {
+    return false;
+  }
+}
 
 function directSelectorURL(path, { method = 'GET', headers, body }) {
   if (directSelectorsUnavailable || method !== 'GET' || headers || body !== undefined ||
       globalThis.location?.origin !== 'https://autodata.cars.tk' ||
       typeof path !== 'string' || !(directMakePath.test(path) || directSelectorPath.test(path))) return null;
+  // A fast year selection on the cold page can already have cached this
+  // exact list on the main origin before the catalog module was ready.
+  if (directMakePath.test(path) && hasRecentSameOriginMake(path)) return null;
   const catalog = globalThis.document?.getElementById('workshop-catalog-module');
   if (catalog?.dataset?.publicSelectors !== 'true' || !catalog.dataset.directSelectorOrigin) return null;
   return catalog.dataset.directSelectorOrigin + path;
@@ -534,7 +556,9 @@ export async function requestJSON(path, options = {}) {
         // The first lookup can outrun the connection hint. A short make timeout
         // still lets subsequent selectors use a connection that has since warmed.
         if (!isMake || !connection.signal.aborted) directSelectorsUnavailable = true;
-        return fetcher(resource, init);
+        const response = await fetcher(resource, init);
+        if (isMake && response.ok) rememberSameOriginMake(path);
+        return response;
       } finally {
         clearTimeout(deadline);
       }

@@ -150,6 +150,25 @@ test('the public entry offers stored years and passes the latest early make requ
   assert.equal(yearPicker.change, null);
 });
 
+test('the app remembers the origin of a usable make read that started before its modules', async () => {
+  const yearPicker = {
+    disabled: true, options: [{ value: '' }], value: '2024',
+    replaceChildren(...options) { this.options = options; },
+    addEventListener(_event, listener) { this.change = listener; },
+    removeEventListener() {},
+  };
+  const { context, parseYear, calls } = startHeadPicker('', true, {
+    initialYears: JSON.stringify({ version: 'v1', complete: true, items: [{ year: 2024 }] }), yearPicker,
+  });
+  parseYear();
+  yearPicker.change();
+  const remembered = [];
+  const { makeRead } = context.workshopPickerStartup.takeYearPicker(path => remembered.push(path));
+  await makeRead.response;
+  assert.deepEqual(remembered, [calls.at(-1).path]);
+  assert.equal(calls.length, entrySettingsPaths.length + 1);
+});
+
 test('entry keeps independent, private and unconfirmed paths on their ordinary reads', () => {
   const completeSnapshot = JSON.stringify({ version: 'v1', complete: true, items: [{ year: 2024 }] });
   for (const search of ['?view=library', '?order=returning', '?article=saved', '?configuration=selected',

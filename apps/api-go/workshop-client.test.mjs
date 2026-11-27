@@ -247,12 +247,14 @@ const enginePath = '/v1/catalog/years/2024/makes/buick-truck/models/envision-awd
 function usePublicSelectorEntry(t) {
   const original = Object.getOwnPropertyDescriptors(globalThis);
   const entry = { dataset: { publicSelectors: 'true', directSelectorOrigin: selectorOrigin } };
+  const storage = new Map();
   Object.defineProperties(globalThis, {
     location: { configurable: true, value: { origin: 'https://autodata.cars.tk' } },
     document: { configurable: true, value: { getElementById: () => entry } },
+    sessionStorage: { configurable: true, value: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) } },
   });
   t.after(() => {
-    for (const name of ['location', 'document']) {
+    for (const name of ['location', 'document', 'sessionStorage']) {
       if (original[name]) Object.defineProperty(globalThis, name, original[name]);
       else Reflect.deleteProperty(globalThis, name);
     }
@@ -320,9 +322,31 @@ test('the direct selector transport honors cancellation and rate limits before f
     return Response.json(payload);
   } }), payload);
   assert.deepEqual(calls.splice(0), [selectorOrigin + makePath, makePath, selectorOrigin + modelPath]);
+  assert.deepEqual(await read(makePath, { fetcher }), payload);
+  assert.deepEqual(calls.splice(0), [makePath]);
   assert.deepEqual(await read(modelPath, { fetcher }), payload);
   assert.deepEqual(await read(enginePath, { fetcher }), payload);
   assert.deepEqual(calls, [selectorOrigin + modelPath, modelPath, enginePath]);
+});
+
+test('the cold same-origin make read stays on that route for a repeat of the same year', async t => {
+  usePublicSelectorEntry(t);
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  const { rememberSameOriginMake } = await import('./workshop/catalog.mjs?remember-origin');
+  rememberSameOriginMake(makePath);
+  const { requestJSON: reopened } = await import('./workshop/catalog.mjs?reopened-origin');
+  const complete = { items: [{ id: 'buick-truck' }], complete: true };
+  const send = expected => async url => {
+    assert.equal(url, expected);
+    return Response.json(complete);
+  };
+  await reopened(makePath, { fetcher: send(makePath) });
+  const anotherYear = makePath.replace('2024', '2023');
+  await reopened(anotherYear, { fetcher: send(selectorOrigin + anotherYear) });
+  await reopened(modelPath, { fetcher: send(selectorOrigin + modelPath) });
+  now += 30001;
+  await reopened(makePath, { fetcher: send(selectorOrigin + makePath) });
 });
 
 test('procedure order and illustrations are retained; empty legacy steps use full text', () => {

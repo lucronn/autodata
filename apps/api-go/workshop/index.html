@@ -129,8 +129,9 @@
             if (!values.includes(Number(year))) return;
             // The embedded catalog already confirms this parent selection.
             const path = `${years}/${year}/makes?region=US`;
-            const { controller, response } = read(path, 'default', pending.requestMake);
-            makeRead = { year, response, abort() {
+            const requestMake = pending.requestMake;
+            const { controller, response } = read(path, 'default', requestMake);
+            makeRead = { year, path, sameOrigin: !requestMake, response, abort() {
               controller.abort();
               pending.delete(path);
             } };
@@ -148,7 +149,7 @@
             picker.disabled = false;
           });
           observer.observe(document, { childList: true, subtree: true });
-          pending.takeYearPicker = () => {
+          pending.takeYearPicker = rememberSameOriginMake => {
             observer.disconnect();
             picker?.removeEventListener('change', chooseYear);
             if (!picker || picker.options[0] !== placeholder || location.search !== route) {
@@ -158,6 +159,12 @@
             if (makeRead && makeRead.year !== picker.value) {
               makeRead.abort();
               makeRead = null;
+            }
+            if (makeRead?.sameOrigin && rememberSameOriginMake) {
+              const { path, response } = makeRead;
+              void response.then(data => {
+                if (data?.items?.length) rememberSameOriginMake(path);
+              });
             }
             return { snapshot, makeRead };
           };
