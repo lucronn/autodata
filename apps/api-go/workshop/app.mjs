@@ -2595,7 +2595,7 @@ function refreshPendingSourceFigures(images, selected) {
   }
 }
 
-async function loadSource(value, g, blockID = null, { focusSource = false } = {}) {
+async function loadSource(value, g, blockID = null, { focusSource = false, forceDocument = false } = {}) {
   const requested = validSourceURL(value);
   if (!requested) throw new Error("This source reference is unavailable.");
   const query = new URLSearchParams(requested.search);
@@ -2604,16 +2604,20 @@ async function loadSource(value, g, blockID = null, { focusSource = false } = {}
   query.delete("source_locator");
   query.sort();
   const key = `${requested.pathname}?${query}`;
+  const sameMountedSource = () => !openDemo && session.state.mode === "firebase" && mountedSource?.key === key &&
+    mountedSource.signal === g.signal && mountedSource.articleRevision === renderedRevision;
+  const sourceView = !forceDocument && sameMountedSource() ? mountedSource.revision : "";
   const selected = ++sourceRevision;
   setSourceLoading(true);
   let pending;
   try {
-    if (sourceDocumentRequest?.key !== key || sourceDocumentRequest.signal !== g.signal) {
+    if (sourceDocumentRequest?.key !== key || sourceDocumentRequest.signal !== g.signal ||
+        sourceDocumentRequest.sourceView !== sourceView) {
       const response = requestJSON(demoPath(requested.pathname + requested.search), {
         signal: g.signal,
-        headers: sourceDocumentHeaders,
+        headers: sourceView ? { ...sourceDocumentHeaders, "X-Workshop-Source-View": sourceView } : sourceDocumentHeaders,
       });
-      sourceDocumentRequest = { key, signal: g.signal, response };
+      sourceDocumentRequest = { key, signal: g.signal, sourceView, response };
     }
     pending = sourceDocumentRequest;
     const data = await pending.response;
@@ -2629,16 +2633,20 @@ async function loadSource(value, g, blockID = null, { focusSource = false } = {}
     const blocks = data.document?.blocks;
     const images = indexRenderableImages(data.images);
     const revision = data.view_revision;
-    const stable = !openDemo && session.state.mode === "firebase" && blocks?.length &&
+    const unchanged = data.document_unchanged === true && sourceView === revision;
+    const stable = !openDemo && session.state.mode === "firebase" && (blocks?.length || unchanged) &&
       typeof revision === "string" && revision;
     const assets = stable && JSON.stringify([...images].map(([id, image]) => [
       id, Boolean(localImageURL(image.url, location.origin, { authMode: session.state.mode })),
     ]));
     // After a fresh authorized read, keep images already fetching for the same
     // source projection. Media URLs rotate even when the displayed view agrees.
-    const keep = stable && mountedSource?.key === key &&
-      mountedSource.signal === g.signal && mountedSource.articleRevision === renderedRevision &&
-      mountedSource.revision === revision && mountedSource.assets === assets;
+    const keep = stable && sameMountedSource() && mountedSource.revision === revision && mountedSource.assets === assets;
+    if (data.document_unchanged === true && (!unchanged || !keep)) {
+      // The mounted view may have changed while this request was in flight.
+      if (sourceView) return loadSource(value, g, blockID, { focusSource, forceDocument: true });
+      throw new Error("The stored source response is incomplete. Try again.");
+    }
     let targets = mountedSource?.targets;
     if (!keep) {
       const fragment = document.createDocumentFragment();

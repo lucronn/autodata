@@ -9221,14 +9221,18 @@ test('fresh citation authorization keeps pending figures and focuses the new exa
 test('reopening Original checks access and keeps figures only for the same approved view', async () => {
   const blocks = [{ type: 'image', block_id: 'diagram', asset_id: 'diagram', caption: 'Stored diagram' }];
   const calls = [];
+  const pendingReopen = deferredAuthOperation();
   const h = articleMediaHarness({
     session: { state: { authenticated: true, mode: 'firebase' } },
     async requestJSON(path, options) {
-      calls.push({ path, signal: options.signal });
-      if (calls.length === 5) throw Object.assign(new Error('Source access revoked'), { status: 403 });
+      calls.push({ path, signal: options.signal, view: options.headers['X-Workshop-Source-View'] });
+      if (calls.length === 6) throw Object.assign(new Error('Source access revoked'), { status: 403 });
+      if (calls.length === 4) await pendingReopen.promise;
+      const unchanged = [2, 4].includes(calls.length);
       return {
         source: { url: mediaSourceURL }, view_revision: calls.length <= 2 ? 'original-view' : 'changed-view',
-        document: { blocks }, images: [{ id: 'diagram', url: mediaURL(`diagram-${calls.length}`) }],
+        ...(unchanged ? { document_unchanged: true } : { document: { blocks } }),
+        images: [{ id: 'diagram', url: mediaURL(`diagram-${calls.length}`) }],
       };
     },
   });
@@ -9249,15 +9253,17 @@ test('reopening Original checks access and keeps figures only for the same appro
   const [changed] = mediaDescendants(frame, 'img');
   assert.notEqual(changed, first);
   assert.equal(changed.src, 'https://cars.example/v1/catalog/images/v2.diagram-3');
+  const pending = reopen();
   h.context.showUnavailableImage(changed);
-  await reopen();
-  assert.equal(mediaDescendants(frame, 'img')[0].src, 'https://cars.example/v1/catalog/images/v2.diagram-4');
+  pendingReopen.resolve();
+  await pending;
+  assert.equal(mediaDescendants(frame, 'img')[0].src, 'https://cars.example/v1/catalog/images/v2.diagram-5');
 
   await reopen().catch(error => h.context.handleSourceError(error, h.g));
   assert.equal(frame.hidden, true);
   assert.equal(frame.children.length, 0);
   assert.deepEqual(h.shows, ['welcome']);
-  assert.equal(calls.length, 5);
+  assert.deepEqual(calls.map(({ view }) => view), [undefined, 'original-view', 'original-view', 'changed-view', undefined, 'changed-view']);
   assert.ok(calls.every(({ path, signal }) => path === mediaSourceURL && signal === h.g.signal));
 });
 

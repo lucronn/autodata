@@ -657,14 +657,16 @@ func TestPaidCatalogHistoricalImageRejectsChangedCurrentSource(t *testing.T) {
 func TestPaidCatalogSourceProjectsPinnedHTMLJSONWithoutMutation(t *testing.T) {
 	const preference = "workshop-source-document"
 	for _, tc := range []struct {
-		name, accept, prefer string
-		documentOnly         bool
+		name, accept, prefer, view string
+		documentOnly, unchanged    bool
 	}{
 		{name: "ordinary JSON", accept: "application/json"},
 		{name: "document-only JSON", accept: "application/json", prefer: preference, documentOnly: true},
+		{name: "matching mounted view", accept: "application/json", prefer: preference, view: "source-view", documentOnly: true, unchanged: true},
+		{name: "outdated mounted view", accept: "application/json", prefer: preference, view: "earlier-view", documentOnly: true},
 		{name: "inexact preference", accept: "application/json", prefer: preference + ", return=representation"},
 		{name: "ordinary HTML", accept: "text/html"},
-		{name: "HTML ignores preference", accept: "text/html", prefer: preference},
+		{name: "HTML ignores preference and mounted view", accept: "text/html", prefer: preference, view: "source-view"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, c, _, _, p, ref := paidMediaFixture()
@@ -675,12 +677,15 @@ func TestPaidCatalogSourceProjectsPinnedHTMLJSONWithoutMutation(t *testing.T) {
 			c.source.ViewRevision = stringPointer("source-view")
 			original := c.source.Images[0].URL
 			path := catalogPinnedSourceURL(ref.ConfigurationID, ref.CanonicalArticleID, c.source.SourceRevisionID)
-			read := func(accept, prefer string) *httptest.ResponseRecorder {
+			read := func(accept, prefer, view string) *httptest.ResponseRecorder {
 				t.Helper()
 				request := httptest.NewRequest(http.MethodGet, path, nil)
 				request.SetPathValue("vehicle_id", ref.ConfigurationID)
 				request.SetPathValue("article_id", ref.CanonicalArticleID)
 				request.Header.Set("Accept", accept)
+				if view != "" {
+					request.Header.Set(catalogSourceViewRequestHeader, view)
+				}
 				if prefer != "" {
 					request.Header.Set("Prefer", prefer)
 				}
@@ -691,7 +696,7 @@ func TestPaidCatalogSourceProjectsPinnedHTMLJSONWithoutMutation(t *testing.T) {
 				}
 				return w
 			}
-			w := read(tc.accept, tc.prefer)
+			w := read(tc.accept, tc.prefer, tc.view)
 			var applied string
 			if tc.documentOnly {
 				applied = preference
@@ -711,7 +716,8 @@ func TestPaidCatalogSourceProjectsPinnedHTMLJSONWithoutMutation(t *testing.T) {
 				wantSource := CatalogSourceReview{Available: true, SnapshotID: c.source.SnapshotID, Version: c.source.Version,
 					ContentSHA256: c.source.ContentSHA256, Format: "html", URL: path}
 				if body.Version != "v1" || body.Source != wantSource || !samePaidCatalogID(body.ViewRevision, c.source.ViewRevision) ||
-					body.Document == nil || len(body.Document.Blocks) != 1 || len(body.Images) != 1 {
+					body.DocumentUnchanged != tc.unchanged || len(body.Images) != 1 ||
+					(tc.unchanged && body.Document != nil) || (!tc.unchanged && (body.Document == nil || len(body.Document.Blocks) != 1)) {
 					t.Fatal("source JSON did not retain the pinned v1 document and metadata")
 				}
 				token = strings.TrimPrefix(body.Images[0].URL, "/v1/catalog/images/")
@@ -720,7 +726,7 @@ func TestPaidCatalogSourceProjectsPinnedHTMLJSONWithoutMutation(t *testing.T) {
 					if err := json.Unmarshal(w.Body.Bytes(), &fields); err != nil || string(fields["content"]) != `""` {
 						t.Fatal("document-only JSON needs an explicit empty content string")
 					}
-					full := read("application/json", "")
+					full := read("application/json", "", "")
 					var recovered CatalogSourceContentResponse
 					if err := json.Unmarshal(full.Body.Bytes(), &recovered); err != nil || len(recovered.Images) != 1 ||
 						!strings.Contains(recovered.Content, "<img") {
@@ -734,6 +740,10 @@ func TestPaidCatalogSourceProjectsPinnedHTMLJSONWithoutMutation(t *testing.T) {
 					// New capabilities are randomized for each response.
 					body.Images[0].URL = ""
 					recovered.Content, recovered.Images[0].URL = "", ""
+					if tc.unchanged {
+						recovered.Document = nil
+						recovered.DocumentUnchanged = true
+					}
 					if !reflect.DeepEqual(body, recovered) {
 						t.Fatal("document-only JSON changed fields other than the rendered content")
 					}
@@ -774,6 +784,7 @@ func TestPaidCatalogSourceDeniedBeforeReadAndRawSanitizerOmission(t *testing.T) 
 	request.SetPathValue("article_id", ref.CanonicalArticleID)
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Prefer", "workshop-source-document")
+	request.Header.Set(catalogSourceViewRequestHeader, "source-view")
 	w := httptest.NewRecorder()
 	s.serveCatalogSource(w, request, p)
 	if w.Code != 403 || w.Header().Get("Preference-Applied") != "" || c.identityCalls.Load() != 0 || c.viewCalls.Load() != 0 || c.sourceCalls.Load() != 0 {
