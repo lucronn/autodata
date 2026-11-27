@@ -510,7 +510,7 @@ async function readStoredPicker(picker, name, signal, timeout) {
   }
   return stored;
 }
-async function refreshPicker(name, { followDiscovery = false, waitForDiscovery = false } = {}) {
+async function refreshPicker(name, { followDiscovery = false, waitForDiscovery = false, startDiscovery = false } = {}) {
   const picker = pickerStates.get(name);
   const select = $(name);
   if (!picker?.incomplete || select.disabled || picker.path !== selectorPath(name) ||
@@ -519,7 +519,13 @@ async function refreshPicker(name, { followDiscovery = false, waitForDiscovery =
   picker.refresh = refresh;
   try {
     if (waitForDiscovery) await delay(DEFAULT_COLLECTION_POLL_INTERVAL_MS, refresh.signal);
-    await readCollection((timeout) => readStoredPicker(picker, name, refresh.signal, timeout), {
+    await readCollection(async (timeout) => {
+      if (!startDiscovery) return readStoredPicker(picker, name, refresh.signal, timeout);
+      startDiscovery = false;
+      const data = await requestJSON(picker.path, { signal: refresh.signal, timeout });
+      if (data.hydrating || data.discovering) picker.discoveryInstance = data.discovery_instance;
+      return data;
+    }, {
       signal: refresh.signal,
       // Reopening checks a partial list once. A discovery in progress can keep adding rows.
       attempts: followDiscovery || name === "configuration" ? undefined : 1,
@@ -640,7 +646,9 @@ async function loadOptions(name, g, desired = "", initial = null, {
       const cache = canCachePublicSelectors() ? "default" : "no-store";
       const modelPicker = pickerStates.get("model");
       const preferSameOrigin = name === "configuration" && modelPicker?.sameOrigin && modelPicker.path === selectorPath("model");
-      const response = await requestJSON(path, { signal: g.signal, timeout, cache, preferSameOrigin });
+      const response = await requestJSON(path, {
+        signal: g.signal, timeout, cache, preferSameOrigin, deferModelRefresh: name === "model" && !desired,
+      });
       return trackDiscovery(response);
     },
     {
@@ -705,7 +713,10 @@ async function loadOptions(name, g, desired = "", initial = null, {
       ? "Choose your vehicle to continue."
       : "No choices are available for this selection. Choose another vehicle.",
   );
-  if (result === cached && picker.incomplete) {
+  if (name === "model" && !desired && result.refresh_deferred) {
+    // Let a new empty lookup start first when the customer can already choose a model.
+    void refreshPicker(name, { followDiscovery: true, waitForDiscovery: true, startDiscovery: true });
+  } else if (result === cached && picker.incomplete) {
     void refreshPicker(name, { followDiscovery: name === "model" && !desired });
   } else if ((name === "make" || name === "model") && !desired && result.hydrating) {
     void refreshPicker(name, { followDiscovery: true, waitForDiscovery: true });

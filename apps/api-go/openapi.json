@@ -1307,6 +1307,17 @@
           },
           {
             "$ref": "#/components/parameters/StoredSelectorOnly"
+          },
+          {
+            "name": "defer_refresh",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "Return stored models before starting optional refresh when no discovery is active."
           }
         ],
         "responses": {
@@ -1350,6 +1361,10 @@
                     },
                     "hydrating": {
                       "type": "boolean"
+                    },
+                    "refresh_deferred": {
+                      "type": "boolean",
+                      "description": "Usable stored models were returned and optional discovery may be started by a regular read."
                     }
                   }
                 }

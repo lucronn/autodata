@@ -227,7 +227,7 @@ test('the early picker enables stored makes and hands off the current model read
   for (const make of ['ford-truck', 'chevy-truck']) {
     makePicker.value = make;
     makePicker.change();
-    assert.equal(calls.at(-1).path, `/v1/catalog/years/2016/makes/${make}/models?region=US`);
+    assert.equal(calls.at(-1).path, `/v1/catalog/years/2016/makes/${make}/models?region=US&defer_refresh=1`);
   }
   assert.equal(calls.at(-2).options.signal.aborted, true);
   const stale = calls.at(-1);
@@ -273,7 +273,7 @@ test('the early picker enables stored makes and hands off the current model read
   });
   assert.deepEqual(await chosen.modelRead.response, { items: [{ id: 'expedition-4wd' }] });
   assert.equal(chosen.modelRead.sameOrigin, false);
-  assert.deepEqual(directReads, ['/v1/catalog/years/2016/makes/ford-truck/models?region=US']);
+  assert.deepEqual(directReads, ['/v1/catalog/years/2016/makes/ford-truck/models?region=US&defer_refresh=1']);
   assert.equal(direct.calls.length, entrySettingsPaths.length);
 });
 

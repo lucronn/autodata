@@ -47,8 +47,9 @@ type CatalogMakesResponse struct {
 	CatalogHydrationResponse
 }
 type CatalogModelsResponse struct {
-	Version string         `json:"version"`
-	Items   []CatalogModel `json:"items"`
+	Version         string         `json:"version"`
+	Items           []CatalogModel `json:"items"`
+	RefreshDeferred bool           `json:"refresh_deferred,omitempty"`
 	CatalogHydrationResponse
 }
 type CatalogConfigurationsResponse struct {
@@ -168,10 +169,15 @@ func (s *Server) listCatalogModels(response http.ResponseWriter, request *http.R
 	if !s.catalogCanServeRows(response, request, len(items), statusErr) {
 		return
 	}
-	hydration := s.initialSelectorHydration(request, payload, complete, running)
+	deferRefresh := !complete && !running && len(items) > 0 && s.ingestionClient != nil &&
+		!catalogStoredSelector(request) && request.URL.Query().Get("defer_refresh") == "1"
+	var hydration CatalogHydrationResponse
+	if !deferRefresh {
+		hydration = s.initialSelectorHydration(request, payload, complete, running)
+	}
 	s.cacheCompleteCatalogSelector(response, request, complete && len(items) > 0)
 	writeJSON(response, http.StatusOK, CatalogModelsResponse{
-		Version: "v1", Items: items, CatalogHydrationResponse: hydration,
+		Version: "v1", Items: items, RefreshDeferred: deferRefresh, CatalogHydrationResponse: hydration,
 	})
 }
 

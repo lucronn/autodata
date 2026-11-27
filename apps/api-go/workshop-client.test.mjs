@@ -10159,6 +10159,35 @@ test('a model picker follows active discovery while keeping its first option ava
   assert.equal(h.context.pickerStates.get('model').incomplete, false);
 });
 
+test('a model picker refreshes stored choices only while that make is still selected', async () => {
+  const first = { id: 'aura' };
+  const late = { id: 'sky' };
+  for (const leaveBeforeRefresh of [true, false]) {
+    const refreshDelay = deferredAuthOperation();
+    const reads = [];
+    const h = selectorOptionsHarness((_path, options) => {
+      reads.push(options.deferModelRefresh === true);
+      return reads.length === 1
+        ? { items: [first], complete: false, refresh_deferred: true }
+        : { items: [first, late], complete: true };
+    });
+    h.context.delay = ms => {
+      assert.equal(ms, DEFAULT_COLLECTION_POLL_INTERVAL_MS);
+      return refreshDelay.promise;
+    };
+    await h.load('', null, null, 'model');
+    assert.deepEqual(reads, [true]);
+    assert.equal(h.$('model').disabled, false);
+
+    if (leaveBeforeRefresh) h.context.cancelPickerRefreshes();
+    refreshDelay.resolve();
+    await new Promise(setImmediate);
+    assert.deepEqual(reads, leaveBeforeRefresh ? [true] : [true, false]);
+    assert.deepEqual(h.$('model').options.map(option => option.value),
+      leaveBeforeRefresh ? [first.id] : [first.id, late.id]);
+  }
+});
+
 test('a refreshed make or model displays the current market label in place', async () => {
   for (const [name, id, label] of [
     ['make', 'buick-truck', 'Buick Truck'],
