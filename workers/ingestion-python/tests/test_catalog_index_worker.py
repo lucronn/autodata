@@ -32,18 +32,28 @@ class Repository:
 
 
 @pytest.mark.parametrize('job_id', [None, uuid4()])
-def test_exact_dispatch_after_selection_connection_closes(monkeypatch, job_id):
+@pytest.mark.parametrize('provider', [None, 'banktwo'])
+def test_exact_dispatch_after_selection_connection_closes(monkeypatch, job_id, provider):
     repo = Repository(job_id)
-    def dispatch(actual, **kwargs):
+    lease = object()
+
+    def claim(actual, **kwargs):
         assert actual is repo and not repo.open
         assert kwargs['job_id'] == job_id
-        assert kwargs['model_client'] is None
-        return True
-    run = Mock(side_effect=dispatch)
-    monkeypatch.setattr(worker, 'run_article_worker_once', run)
-    assert worker.dispatch_next(repo, worker_id=uuid4(), registry={}, object_store=None) is (job_id is not None)
+        assert kwargs['model_ready'] is False
+        return lease
+
+    run = Mock()
+    monkeypatch.setattr(worker, 'claim_source_job', claim)
+    monkeypatch.setattr(worker, 'run_catalog_index_job', run)
+    assert worker.dispatch_next(
+        repo, worker_id=uuid4(), registry={}, object_store=None, provider=provider
+    ) is (job_id is not None)
     assert run.call_count == (job_id is not None)
-    assert repo.params == ('catalog_index', ['bankone', 'banktwo'])
+    if job_id is not None:
+        run.assert_called_once_with(repo, lease, registry={}, object_store=None,
+                                    yield_for_waiting_job=provider is not None)
+    assert repo.params == ('catalog_index', [provider] if provider else ['bankone', 'banktwo'])
 
 
 def test_stop_after_select_prevents_dispatch(monkeypatch):
@@ -53,7 +63,7 @@ def test_stop_after_select_prevents_dispatch(monkeypatch):
         return uuid4()
     monkeypatch.setattr(worker, 'select_next_catalog_job', select)
     run = Mock()
-    monkeypatch.setattr(worker, 'run_article_worker_once', run)
+    monkeypatch.setattr(worker, 'claim_source_job', run)
     assert not worker.dispatch_next(None, worker_id=uuid4(), registry={}, object_store=None, stop=stop)
     run.assert_not_called()
 
