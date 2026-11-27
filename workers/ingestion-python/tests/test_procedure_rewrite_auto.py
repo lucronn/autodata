@@ -71,13 +71,18 @@ def test_archived_oil_filter_repair_preserves_the_original_introduction_identity
 
     source = document("Oil filter service",
         "Remove the oil filter. Clean gasket seal area on oil filter mounting surface. "
-        "Lightly oil the gasket with clean engine oil and install the filter. Refit the cover.")
+        "If the adapter is loose, tighten it. Lightly oil the gasket with clean engine oil "
+        "and install the filter. Add up to 0.5 l of oil after installation.")
     source["blocks"][0].update(type="heading", level=2)
     archived = response("unused", source["blocks"][1]["text"], introduction="This article covers oil filter service.")
     archived["replacements"].pop(0)
     archived["replacements"][0].update(action="retain", reason="Keep the service sequence intact.")
-    prior_version = auto._auto_prompt_payload_v67(source, context={})["prompt_version"]
-    prior = auto.render_auto(source, archived, prompt_version=prior_version, profile_version=PROFILE)
+    historical = auto._encode_prompt_with_technical_tokens(
+        auto._auto_prompt_payload_v67(source, context={}), retain_standalone_notes=True,
+    )
+    prior_prompt = json.loads(historical)
+    assert prior_prompt["slots"][0]["required_action"] == "retain"
+    prior = auto.render_auto(source, archived, prompt_version=prior_prompt["prompt_version"], profile_version=PROFILE)
     saved_reply = deepcopy(archived)
     successor, validation, revised, paths = _FILTER_PREPARATION.edit_reply(
         source, source, prior, archived, prompt_version=_FILTER_PREPARATION.successor_guard, profile_version=PROFILE,
