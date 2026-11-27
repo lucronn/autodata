@@ -417,6 +417,7 @@ def authored_model_index_fixture(runtime, scope):
     scope.update(configuration=str(configuration), article=str(identifier), authored_index={
         "vehicle": vehicle, "configuration": configuration, "repository": runtime.repo, "title": title,
         "model": authored, "queries": model_queries, "pending": pending_page, "release": allow_page,
+        "body_sha": sha256(banktwo.resources["cold-body"][0]).hexdigest(),
         "figure_sha": sha256(banktwo.resources["figure"][0]).hexdigest(),
     })
     return scope
@@ -632,6 +633,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             image = page.locator("#article-content img").first
             await expect(image).to_be_visible()
             assert await image.evaluate("(node) => node.decode().then(() => node.naturalWidth > 0)")
+            reader_ms = round((time.monotonic() - article_started) * 1000)
             assert (await owner.request.get(detail)).status == 200
             media = await image.evaluate("(node) => node.currentSrc")
             assert urlsplit(media).netloc == urlsplit(origin).netloc
@@ -645,12 +647,15 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                 await expect(page.locator("#article-content")).not_to_contain_text("Remove the pump.")
                 rendered = await page.locator("#article-content").inner_text()
                 assert rendered.index("Do not reuse the seal.") < rendered.index("Take off the pump.") < rendered.index("Fit the replacement unit.")
-                reader_ms = round((time.monotonic() - article_started) * 1000)
+                figure_step = "(node) => node.closest('.procedure-step, li')?.textContent ?? ''"
+                assert "Take off the pump." in await image.evaluate(figure_step)
                 await page.locator("#open-original").click()
                 await expect(page.locator("#source-review-frame")).to_contain_text("Remove the pump.")
                 await expect(page.locator("#source-review-frame")).to_contain_text("Do not reuse the seal.")
+                await expect(page.locator("#reference-data")).to_contain_text(cold_index["body_sha"])
                 source_image = page.locator("#source-review-frame img").first
                 assert await source_image.evaluate("(img) => img.decode().then(() => img.naturalWidth > 0)")
+                assert "Remove the pump." in await source_image.evaluate(figure_step)
                 original_image = await owner.request.get(await source_image.evaluate("(img) => img.currentSrc"))
                 assert original_image.ok and sha256(await original_image.body()).hexdigest() == cold_index["figure_sha"]
                 async def wait_complete():
@@ -664,14 +669,32 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                         await asyncio.sleep(.05)
                     raise AssertionError(finished)
                 await wait_complete()
+
+                warm_started = time.monotonic()
+                await page.locator("#my-vehicles").click()
+                await expect(page.locator("#library-items h3")).to_contain_text("Escalade")
+                warm_library_ms = round((time.monotonic() - warm_started) * 1000)
+                warm_started = time.monotonic()
+                await page.get_by_role("button", name="Open articles", exact=True).click()
+                await expect(article_link).to_contain_text(cold_index["title"])
+                warm_index_ms = round((time.monotonic() - warm_started) * 1000)
+                warm_started = time.monotonic()
+                await article_link.click()
+                await expect(page.locator("#article-kind")).to_have_text("Workshop article")
+                await expect(page.locator("#article-content")).to_contain_text(expected_text)
+                await expect(image).to_be_visible()
+                assert await image.evaluate("(node) => node.decode().then(() => node.naturalWidth > 0)")
+                warm_reader_ms = round((time.monotonic() - warm_started) * 1000)
+                assert "Take off the pump." in await image.evaluate(figure_step)
                 print("WORKSHOP_AUTHORED_MODEL_INDEX " + json.dumps({
                     "engine": engine, "headed": True, "scope": configuration, "article": article,
                     "revision": os.environ.get("AUTODATA_R3_CANDIDATE_SHA"),
                     "picker_ms": picker_ms, "checkout_ms": checkout_ms,
                     "library_ms": library_ms, "library_reload_ms": library_reload_ms,
                     "first_index_ms": first_index_ms, "reader_ms": reader_ms,
+                    "warm_library_ms": warm_library_ms, "warm_index_ms": warm_index_ms, "warm_reader_ms": warm_reader_ms,
                     "stored_page_before_completion": True, "complete_rows": 2,
-                    "source_prose_warning_order_and_asset_matched": True,
+                    "source_prose_warning_order_and_asset_matched": True, "figure_placement_and_source_sha_matched": True,
                 }), flush=True)
 
             other = await browser.new_context(ignore_https_errors=True, service_workers="block")
