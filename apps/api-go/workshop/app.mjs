@@ -437,7 +437,7 @@ function cachedSelector(path, desired = "") {
   selectorCache.delete(path);
   return null;
 }
-function rememberSelector(path, name, response) {
+function rememberSelector(path, name, response, expires) {
   if (!canCachePublicSelectors() || !response.items.length || response.refreshFailed || response.timedOut) return;
   const complete = !response.hydrating &&
     (response.complete === true || (name === "year" && response.complete === undefined));
@@ -445,7 +445,7 @@ function rememberSelector(path, name, response) {
   const partialChoices = (name === "make" || name === "model") && response.complete === false;
   if (!complete && !partialChoices) return;
   selectorCache.delete(path);
-  selectorCache.set(path, { response, expires: performance.now() + selectorCacheLifetime });
+  selectorCache.set(path, { response, expires: expires ?? performance.now() + selectorCacheLifetime });
   if (selectorCache.size > selectorCacheSize) selectorCache.delete(selectorCache.keys().next().value);
 }
 function pickerHasChoices(name, items) {
@@ -3240,9 +3240,14 @@ async function restoreRoute(initialYears = null, {
     async (g) => {
       if (early) g.signal.addEventListener("abort", early.abort, { once: true });
       if (initialYearPicker) {
-        const { snapshot, makeRead } = initialYearPicker;
+        const { snapshot, makeRead, makeSnapshots, makeSnapshotExpires } = initialYearPicker;
         populate("year", snapshot.items);
         rememberSelector(selectorPath("year"), "year", snapshot);
+        if (performance.now() < makeSnapshotExpires) {
+          for (const [year, makes] of makeSnapshots) {
+            rememberSelector(selectorPath("make", { year }), "make", makes, makeSnapshotExpires);
+          }
+        }
         if (!$("year").value) {
           stage("year");
           status("Choose your vehicle to continue.");

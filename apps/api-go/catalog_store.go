@@ -636,38 +636,65 @@ func (s *postgresCatalogStore) Years(ctx context.Context, _ Principal) ([]Catalo
 }
 
 func (s *postgresCatalogStore) Makes(ctx context.Context, _ Principal, year int, region string) ([]CatalogMake, error) {
+	lists, err := s.catalogMakeLists(ctx, []int{year}, region, false)
+	if err != nil {
+		return nil, err
+	}
+	if items := lists[year]; items != nil {
+		return items, nil
+	}
+	return []CatalogMake{}, nil
+}
+
+func (s *postgresCatalogStore) catalogMakeLists(ctx context.Context, years []int, region string, completeOnly bool) (map[int][]CatalogMake, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT make, reviewer_state = 'approved' AS market_known FROM vehicle_identity_bases
-		WHERE model_year = $1 AND ($2 = '' OR region = $2) AND reviewer_state <> 'rejected'
+		WITH selected_years AS (
+			SELECT year FROM unnest($1::integer[]) AS requested(year)
+			WHERE NOT $3 OR EXISTS (
+				SELECT 1 FROM vehicle_catalog_hydration_scopes
+				WHERE scope = 'makes' AND model_year = requested.year AND completion_version = 1
+				  AND ($2 = '' OR region = $2)
+			)
+		)
+		SELECT DISTINCT model_year, make, reviewer_state = 'approved' AS market_known FROM vehicle_identity_bases
+		WHERE model_year IN (SELECT year FROM selected_years)
+		  AND ($2 = '' OR region = $2) AND reviewer_state <> 'rejected'
 		UNION
-		SELECT item->>'make' AS make, COALESCE(item->>'source_region', '') = hydration.region
+		SELECT model_year, item->>'make' AS make, COALESCE(item->>'source_region', '') = hydration.region
 		FROM vehicle_catalog_hydration_scopes hydration,
 		     jsonb_array_elements(hydration.selector_rows) AS item
-		WHERE hydration.scope = 'makes' AND hydration.model_year = $1
+		WHERE hydration.scope = 'makes' AND hydration.model_year IN (SELECT year FROM selected_years)
 		  AND ($2 = '' OR hydration.region = $2)
 		  AND COALESCE(item->>'source_region', '') IN ('', hydration.region)
 		  AND COALESCE(item->>'make', '') <> ''
-		ORDER BY make, market_known DESC`, year, region)
+		ORDER BY model_year, make, market_known DESC`, years, region, completeOnly)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	result := []CatalogMake{}
+	result := make(map[int][]CatalogMake)
 	seen := map[string]int{}
+	lastYear := 0
 	for rows.Next() {
+		var year int
 		var name string
 		var marketKnown bool
-		if err := rows.Scan(&name, &marketKnown); err != nil {
+		if err := rows.Scan(&year, &name, &marketKnown); err != nil {
 			return nil, err
+		}
+		if year != lastYear {
+			clear(seen)
+			lastYear = year
 		}
 		name = catalogMakeLabel(name)
 		key := catalogSlug(name)
+		items := result[year]
 		if index, duplicate := seen[key]; duplicate {
-			result[index].MarketUnverified = result[index].MarketUnverified && !marketKnown
+			items[index].MarketUnverified = items[index].MarketUnverified && !marketKnown
 			continue
 		}
-		seen[key] = len(result)
-		result = append(result, CatalogMake{ID: key, Name: name, MarketUnverified: region != "" && !marketKnown})
+		seen[key] = len(items)
+		result[year] = append(items, CatalogMake{ID: key, Name: name, MarketUnverified: region != "" && !marketKnown})
 	}
 	return result, rows.Err()
 }

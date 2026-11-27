@@ -21,7 +21,8 @@ const headPickerCode = source('index.html').match(/<script>([\s\S]+?)<\/script>/
 const entrySettingsPaths = ['/auth/config', '/auth/session', '/workshop/purchase-config.json'];
 
 function startHeadPicker(search, publicSelectors = true, {
-  entry = {}, origin = 'https://workshop.example', initialYears = null, directSelectorOrigin, yearPicker,
+  entry = {}, origin = 'https://workshop.example', initialYears = null, initialMakes = null,
+  directSelectorOrigin, yearPicker, now = () => 0,
   reply = path => ({ ok: true, json: async () => ({ items: [{ path }] }) }),
 } = {}) {
   const calls = [], hints = [];
@@ -31,7 +32,7 @@ function startHeadPicker(search, publicSelectors = true, {
     dataset: { publicSelectors: String(publicSelectors), directSelectorOrigin },
   };
   const context = {
-    URL, URLSearchParams, AbortSignal, AbortController, location: { search, origin },
+    URL, URLSearchParams, AbortSignal, AbortController, location: { search, origin }, performance: { now },
     Option: function(text, value) { return { text: String(text), value: String(value) }; },
     MutationObserver: class {
       constructor(onMutation) { parsed = onMutation; }
@@ -45,6 +46,7 @@ function startHeadPicker(search, publicSelectors = true, {
       getElementById(id) {
         if (id === 'workshop-catalog-module') return catalogLink;
         if (id === 'workshop-initial-years') return initialYears === null ? null : { textContent: initialYears };
+        if (id === 'workshop-initial-makes') return initialMakes === null ? null : { textContent: initialMakes };
         if (id === 'year') return yearPicker;
         return {};
       },
@@ -167,6 +169,37 @@ test('the app remembers the origin of a usable make read that started before its
   await makeRead.response;
   assert.deepEqual(remembered, [calls.at(-1).path]);
   assert.equal(calls.length, entrySettingsPaths.length + 1);
+});
+
+test('the early picker skips only fresh stored lists for existing years', () => {
+  const yearPicker = {
+    disabled: true, options: [{ value: '' }], value: '2024',
+    replaceChildren(...options) { this.options = options; },
+    addEventListener(_event, listener) { this.change = listener; },
+    removeEventListener() {},
+  };
+  const years = [2023, 2024].map(year => ({ year }));
+  const items = [{ id: 'buick-truck', name: 'Buick Truck' }];
+  let timestamp = 0;
+  const { context, parseYear, calls } = startHeadPicker('', true, {
+    initialYears: JSON.stringify({ version: 'v1', complete: true, items: years }),
+    initialMakes: JSON.stringify({ 2024: items, 2026: items, 2023: [{ id: 'malformed' }] }),
+    yearPicker, now: () => timestamp,
+  });
+  parseYear();
+  yearPicker.change();
+  assert.equal(calls.length, entrySettingsPaths.length);
+  yearPicker.value = '2023';
+  yearPicker.change();
+  assert.equal(calls.at(-1).path, '/v1/catalog/years/2023/makes?region=US');
+  yearPicker.value = '2024';
+  timestamp = 30000;
+  yearPicker.change();
+  assert.equal(calls.at(-1).path, '/v1/catalog/years/2024/makes?region=US');
+  const handoff = context.workshopPickerStartup.takeYearPicker();
+  assert.deepEqual([...handoff.makeSnapshots.keys()], ['2024']);
+  assert.equal(handoff.makeSnapshotExpires, timestamp);
+  assert.equal(handoff.makeRead.year, '2024');
 });
 
 test('entry keeps independent, private and unconfirmed paths on their ordinary reads', () => {

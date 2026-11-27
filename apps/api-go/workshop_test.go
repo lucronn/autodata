@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -142,6 +143,46 @@ func TestWorkshopEntryCarriesOnlyCompletePublicYears(t *testing.T) {
 	legacy := request(http.MethodGet, entry, "")
 	if legacy.Code != http.StatusOK || strings.Contains(legacy.Body.String(), yearData) || years.reads != reads {
 		t.Fatal("legacy private catalog did not keep its normal entry")
+	}
+}
+
+type workshopInitialMakesStore struct {
+	*workshopInitialYearsStore
+	requestedYears []int
+}
+
+func (s *workshopInitialMakesStore) catalogMakeLists(_ context.Context, years []int, region string, completeOnly bool) (map[int][]CatalogMake, error) {
+	s.requestedYears = years
+	if region != "US" || !completeOnly {
+		return nil, fmt.Errorf("expected only complete US make lists")
+	}
+	return map[int][]CatalogMake{2024: {{ID: "quoted", Name: "A < B", MarketUnverified: true}}}, nil
+}
+
+func TestWorkshopEntryCarriesBoundedPublicMakeLists(t *testing.T) {
+	server, store, _ := paidHTTPServer()
+	initial := &workshopInitialMakesStore{workshopInitialYearsStore: &workshopInitialYearsStore{
+		CatalogStore: store, complete: true,
+		items: []CatalogYear{{Year: 2027}, {Year: 2021}, {Year: 2022}, {Year: 2023}, {Year: 2024}, {Year: 2025}, {Year: 2026}},
+	}}
+	server.catalog = initial
+	handler := server.Handler()
+	get := func(path string) string {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s returned %d", path, w.Code)
+		}
+		return w.Body.String()
+	}
+	const marker = `<script id="workshop-initial-makes" type="application/json">`
+	if body := get("/workshop"); !strings.Contains(body, marker+`{"2024":[{"id":"quoted","name":"A \u003c B","market_unverified":true}]}</script>`) ||
+		!slices.Equal(initial.requestedYears, []int{2022, 2023, 2024, 2025, 2026, 2027}) {
+		t.Fatalf("unexpected public make lists for %v", initial.requestedYears)
+	}
+	initial.requestedYears = nil
+	if body := get("/workshop?view=library"); strings.Contains(body, marker) || initial.requestedYears != nil {
+		t.Fatal("Library requested public make lists")
 	}
 }
 

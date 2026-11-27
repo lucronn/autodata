@@ -80,6 +80,19 @@ func TestPostgresSparseSelectorVisibilityAndLegacyRecovery(t *testing.T) {
 	if makes.Items[0].ID != "ford" || !makes.Items[0].MarketUnverified || makes.Items[1].ID != "saab" || makes.Items[1].MarketUnverified {
 		t.Fatalf("sparse make market evidence lost: %s", response.Body.String())
 	}
+	exec(`INSERT INTO vehicle_catalog_hydration_scopes(scope_key,scope,model_year,region,selector_rows,completion_version) VALUES
+ ('complete-2015','makes',2015,'US','[{"make":"Saab"},{"make":"saab","source_region":"US"}]',1),
+ ('partial-2016','makes',2016,'US','[{"make":"Saab"}]',0),
+ ('canada-2016','makes',2016,'CA','[{"make":"Saab","source_region":"CA"}]',1)`)
+	lists, err := store.catalogMakeLists(ctx, []int{2016, 2015, 2014}, "US", true)
+	if err != nil || len(lists) != 2 || len(lists[2014]) != 2 || lists[2014][0] != makes.Items[0] ||
+		lists[2014][1] != makes.Items[1] || len(lists[2015]) != 1 ||
+		lists[2015][0].ID != "saab" || lists[2015][0].MarketUnverified {
+		t.Fatalf("complete make snapshots drifted from public results: %v, %v", lists, err)
+	}
+	if partial, err := store.Makes(ctx, Principal{}, 2016, "US"); err != nil || len(partial) != 1 || !partial[0].MarketUnverified {
+		t.Fatalf("regular make read lost its partial row: %v, %v", partial, err)
+	}
 	response = catalogRequest(server, "/v1/catalog/years/2020/makes/ford/models?region=US")
 	var models CatalogModelsResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &models); err != nil {
