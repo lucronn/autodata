@@ -3775,7 +3775,7 @@ test('My vehicles activation clears the previous vehicle search and selector opt
   const location = { pathname: '/workshop/', search: '?view=library&q=old+vehicle+only' };
   seedPriorRoute(h);
   const makeElement = (tag, text) => ({
-    tag, textContent: text, children: [], events: {},
+    tag, textContent: text, children: [], dataset: {}, events: {},
     append(...nodes) { this.children.push(...nodes); },
     addEventListener(name, callback) { this.events[name] = callback; },
   });
@@ -3786,7 +3786,10 @@ test('My vehicles activation clears the previous vehicle search and selector opt
   h.context.$ = id => id === 'library-items' ? list : get(id);
   Object.assign(h.context, {
     location, URLSearchParams, validLibrary, element: makeElement,
-    history: { pushState(_state, _title, url) { location.search = new URL(url, 'https://workshop.example').search; } },
+    history: {
+      pushState(_state, _title, url) { location.search = new URL(url, 'https://workshop.example').search; },
+      replaceState(state) { this.state = state; },
+    },
     currentOrder: '', libraryPageRequest: null, libraryCursor: null, clearReader() {},
     session: { state: { authenticated: true } },
     async requestJSON(path, options) {
