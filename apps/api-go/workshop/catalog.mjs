@@ -603,9 +603,9 @@ export async function requestJSON(path, options = {}) {
   } catch (error) {
     options.signal?.throwIfAborted();
     const remaining = Math.floor(bodyDeadline - performance.now());
-    // A successful direct response can lose its connection while reading the JSON.
+    // A truncated direct body can surface as a network error or invalid JSON.
     if (!canRetryDirectBody || !(error instanceof CatalogRequestError) ||
-        error.status || !error.retryable || remaining < 1) throw error;
+        error.status || !(error.retryable || error.code === 'INVALID_RESPONSE') || remaining < 1) throw error;
     const fallback = await requestArticleJSON(path, { ...options, timeout: remaining });
     if (isMake) rememberSameOriginMake(path);
     return fallback.data;
