@@ -189,7 +189,7 @@
             modelRead?.abort();
             modelRead = null;
             if (!make || performance.now() >= makeSnapshotExpires) return;
-            const path = `${years}/${makeYear}/makes/${encodeURIComponent(make)}/models?region=US`;
+            const path = `${years}/${makeYear}/makes/${encodeURIComponent(make)}/models?region=US&defer_refresh=1`;
             modelRead = readSelector(path, { year: makeYear, make });
           }
           function chooseYear() {
