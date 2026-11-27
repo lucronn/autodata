@@ -510,7 +510,7 @@ async function readStoredPicker(picker, name, signal, timeout) {
   }
   return stored;
 }
-async function refreshPicker(name, { followDiscovery = false } = {}) {
+async function refreshPicker(name, { followDiscovery = false, waitForDiscovery = false } = {}) {
   const picker = pickerStates.get(name);
   const select = $(name);
   if (!picker?.incomplete || select.disabled || picker.path !== selectorPath(name) ||
@@ -518,10 +518,10 @@ async function refreshPicker(name, { followDiscovery = false } = {}) {
   const refresh = new AbortController();
   picker.refresh = refresh;
   try {
-    if (followDiscovery) await delay(DEFAULT_COLLECTION_POLL_INTERVAL_MS, refresh.signal);
+    if (waitForDiscovery) await delay(DEFAULT_COLLECTION_POLL_INTERVAL_MS, refresh.signal);
     await readCollection((timeout) => readStoredPicker(picker, name, refresh.signal, timeout), {
       signal: refresh.signal,
-      // Reopening refreshes a partial list once. An active make discovery can keep adding rows.
+      // Reopening checks a partial list once. A discovery in progress can keep adding rows.
       attempts: followDiscovery || name === "configuration" ? undefined : 1,
       backoffWithChoices: true,
       hasChoices: data => pickerHasChoices(name, data.items),
@@ -607,7 +607,7 @@ async function loadOptions(name, g, desired = "", initial = null, {
   $(name).disabled = true;
   const result = await readCollection(
     async (timeout) => {
-      if (cached && (!desired || cached.items.some(choice))) return cached;
+      if (cached && (!desired || cached.items.some(choice))) return trackDiscovery(cached);
       if (initial) {
         const response = await initial;
         initial = null;
@@ -705,8 +705,11 @@ async function loadOptions(name, g, desired = "", initial = null, {
       ? "Choose your vehicle to continue."
       : "No choices are available for this selection. Choose another vehicle.",
   );
-  if (result === cached && picker.incomplete) void refreshPicker(name);
-  else if (name === "make" && !desired && result.hydrating) void refreshPicker(name, { followDiscovery: true });
+  if (result === cached && picker.incomplete) {
+    void refreshPicker(name, { followDiscovery: name === "model" && !desired });
+  } else if ((name === "make" || name === "model") && !desired && result.hydrating) {
+    void refreshPicker(name, { followDiscovery: true, waitForDiscovery: true });
+  }
 }
 function retryPicker(name) {
   const path = selectorPath(name);
