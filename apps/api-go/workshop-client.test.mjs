@@ -5310,7 +5310,7 @@ function articleIndexHarness(responses, { wait = async () => {}, now = () => per
   runInNewContext(
     appSection('function status(', 'function stage(') +
     appSection('function clearProtected()', 'function updateURL(') +
-    appSection('async function loadSavedSearch(', 'const assetID =') +
+    appSection('function hasSettledPartialSearch(', 'const assetID =') +
     appSection('function clearReader()', 'async function checkOrder(') +
     appSection('$("search").addEventListener("input"', '$("retry").addEventListener') +
     appSection('function rememberIndexArticleReadiness(', '$("print").addEventListener') +
@@ -5831,6 +5831,38 @@ test('partial saved search displays matches while waiting for the full index', a
     '/v1/catalog/vehicles/B/articles?region=US',
     '/v1/catalog/vehicles/B/articles?q=pump&region=US',
   ]);
+});
+
+test('a saved search on a settled partial index loads the full index only when cleared', async () => {
+  const configuration = { id: 'B', region: 'US' };
+  const hit = { id: 'a', title: 'Pump repair', availability: 'available' };
+  const failed = { status: 'failed', processed: 1, total: 2, retryable: false };
+  for (const items of [[hit], []]) {
+    const h = articleIndexHarness([
+      { ...indexResponse('failed', { items }), progress: failed, configuration },
+      { ...indexResponse('failed', { items: [hit] }), progress: failed, configuration },
+    ]);
+    h.$('search').value = 'pump';
+    assert.equal(await h.context.loadSavedSearch(h.navigation.next(), 'pump'), true);
+    assert.equal(h.context.indexLoaded, false);
+    assert.equal(h.context.indexFailed, true);
+    assert.deepEqual(h.requests.map(({ path }) => path), ['/v1/catalog/vehicles/B/articles?q=pump&region=US']);
+    assert.match(h.$('catalog-count').textContent, /from available sources/);
+    if (!items.length) {
+      assert.equal(h.$('no-results').textContent, 'No articles from available sources match this search.');
+      assert.match(h.statuses.at(-1).text, /Some sources could not be reached/);
+    }
+
+    h.$('search').value = '';
+    h.$('search').events.input();
+    await new Promise(setImmediate);
+    assert.equal(h.context.indexLoaded, true);
+    assert.equal(h.$('articles').children[0].children.length, 1);
+    assert.deepEqual(h.requests.map(({ path }) => path), [
+      '/v1/catalog/vehicles/B/articles?q=pump&region=US',
+      '/v1/catalog/vehicles/B/articles?region=US',
+    ]);
+  }
 });
 
 test('open demo requests the real index and shows only readable articles', async () => {
