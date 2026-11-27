@@ -25,6 +25,8 @@ function runInNewContext(code, context) {
   context.vehicleSelectorPath ??= vehicleSelectorPath;
   context.sourceDocumentRequest ??= null;
   context.mountedSource ??= null;
+  context.sourceFigureLoads ??= null;
+  context.deferredArticleFigures ??= null;
   context.paidOrder ??= null;
   context.articleIndexOrigin ??= null;
   context.articlePage ??= 0;
@@ -9445,6 +9447,53 @@ test('media renewal replaces failed figures within their scoped responses only',
   ]);
   assert.deepEqual([failedArticle, healthyArticle, healthySource, failedSource].map(img => img.dataset.replacement),
     ['1', undefined, undefined, '1']);
+});
+
+test('a stalled visible figure renews once and then shows an unavailable message', async () => {
+  const timers = new Map();
+  let observe, nextTimer = 0, reads = 0, disconnected = 0;
+  const h = articleMediaHarness({
+    session: { state: { mode: 'firebase', authenticated: true } },
+    IntersectionObserver: class {
+      constructor(callback) { observe = callback; }
+      observe() {}
+      disconnect() { disconnected++; }
+    },
+    setTimeout(callback, delay) {
+      assert.equal(delay, 8000);
+      timers.set(++nextTimer, callback);
+      return nextTimer;
+    },
+    clearTimeout: id => timers.delete(id),
+    requestArticleJSON: async () => { reads++; return renewedArticle(); },
+  });
+  const parent = h.render(renewalFixture());
+  const [near, far] = mediaDescendants(parent, 'img');
+  const expire = async () => {
+    assert.equal(timers.size, 1);
+    const [id, callback] = [...timers][0];
+    timers.delete(id);
+    callback();
+    await new Promise(setImmediate);
+  };
+  observe([{ target: far, isIntersecting: false }, { target: near, isIntersecting: true }]);
+  await expire();
+  assert.equal(reads, 1);
+  assert.equal(near.dataset.replacement, '1');
+  assert.match(near.src, /new-list/);
+  assert.match(far.src, /old-callout/);
+  await expire();
+  assert.equal(reads, 1);
+  assert.match(parent.textContent, /Illustration unavailable/);
+  observe([{ target: far, isIntersecting: true }]);
+  assert.equal(timers.size, 1);
+  far.complete = true;
+  far.naturalWidth = 600;
+  far.dispatch('load');
+  assert.equal(timers.size, 0);
+  h.navigation.clear();
+  h.context.resetReaderContent();
+  assert.equal(disconnected, 1);
 });
 
 for (const changed of [false, true]) {

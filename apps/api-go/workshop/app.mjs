@@ -110,6 +110,7 @@ let quote = null,
   retryAction = null,
   articleImageRefresh = null,
   deferredArticleFigures = null,
+  sourceFigureLoads = null,
   sourceImageRefresh = null,
   sourceDocumentRequest = null,
   mountedSource = null,
@@ -227,6 +228,8 @@ function setSourceLoading(loading) {
   if (loading) $("original-error").hidden = true;
 }
 function resetSourceReview({ keepControls = false } = {}) {
+  sourceFigureLoads?.stopWatching?.();
+  sourceFigureLoads = null;
   sourceImageRefresh = null;
   sourceDocumentRequest = null;
   mountedSource = null;
@@ -250,6 +253,7 @@ function resetReaderContent() {
   currentArticle = null;
   renderedRevision = "";
   articleImageRefresh = null;
+  deferredArticleFigures?.stopWatching?.();
   deferredArticleFigures = null;
   resetSourceReview();
   $("article-content").replaceChildren();
@@ -1521,7 +1525,58 @@ function addImage(parent, image, reference, g, figures = null, useAltCaption = f
     figure.append(element("figcaption", visibleCaption));
   parent.append(figure);
 }
-function startArticleFigures(figures) {
+const figureWatches = new WeakMap();
+const figureLoadTimeout = 8_000;
+function watchFigureLoads(figures, g) {
+  if (typeof IntersectionObserver !== "function") return;
+  const observer = new IntersectionObserver((entries) => {
+    for (const { target, isIntersecting } of entries) {
+      const watch = figureWatches.get(target);
+      if (watch) {
+        watch.visible = isIntersecting;
+        watch.arm();
+      }
+    }
+  });
+  for (const { img } of figures) {
+    let timer;
+    const clear = () => clearTimeout(timer);
+    const watch = {
+      visible: false,
+      clear,
+      arm() {
+        clear();
+        if (!watch.visible || !g.current() || !img.isConnected || img.complete) return;
+        timer = setTimeout(() => {
+          if (!img.complete) void renewMedia(g, img, true);
+        }, figureLoadTimeout);
+      },
+    };
+    figureWatches.set(img, watch);
+    img.addEventListener("load", clear);
+    img.addEventListener("error", clear);
+    observer.observe(img);
+  }
+  let stopped = false;
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    observer.disconnect();
+    for (const { img } of figures) {
+      const watch = figureWatches.get(img);
+      watch.clear();
+      img.removeEventListener("load", watch.clear);
+      img.removeEventListener("error", watch.clear);
+      figureWatches.delete(img);
+    }
+    g.signal.removeEventListener("abort", stop);
+  };
+  g.signal.addEventListener("abort", stop, { once: true });
+  return stop;
+}
+
+function startArticleFigures(figures, g) {
+  if (!figures.length) return null;
   const loadNearViewport = new Set(figures.map(({ url }) => url)).size >= 7;
   for (const { img, url } of figures) {
     if (loadNearViewport) {
@@ -1531,7 +1586,7 @@ function startArticleFigures(figures) {
     }
     img.src = url;
   }
-  return figures.length ? { figures, printing: false } : null;
+  return { figures, printing: false, stopWatching: watchFigureLoads(figures, g) };
 }
 function releaseArticleFigures(group) {
   for (const { img } of group?.figures || [])
@@ -1844,6 +1899,7 @@ function retryImage(img, images) {
   if (!url || img.src === url) return false;
   img.dataset.replacement = "1";
   img.src = url;
+  figureWatches.get(img)?.arm();
   return true;
 }
 function showUnavailableImage(img) {
@@ -1918,11 +1974,12 @@ function renderArticle(article, g, redraw = false) {
   }
   if (rebuildArticle) {
     const fragment = document.createDocumentFragment();
-    const figures = !openDemo && session.state.mode === "firebase" && article.document?.blocks?.length ? [] : null;
+    const figures = (openDemo || session.state.mode === "firebase") && article.document?.blocks?.length ? [] : null;
     renderContent(fragment, article, g, figures);
     if (!g.current()) return;
+    deferredArticleFigures?.stopWatching?.();
     $("article-content").replaceChildren(fragment);
-    deferredArticleFigures = figures ? startArticleFigures(figures) : null;
+    deferredArticleFigures = figures ? startArticleFigures(figures, g) : null;
     $("print-status").hidden = true;
     articleImageRefresh = null;
     sourceImageRefresh = null;
@@ -2409,6 +2466,7 @@ function refreshPendingSourceFigures(images, selected) {
     if (!url || img.src === url) continue;
     delete img.dataset.replacement;
     img.src = url;
+    figureWatches.get(img)?.arm();
   }
 }
 
@@ -2459,15 +2517,16 @@ async function loadSource(value, g, blockID = null, { focusSource = false } = {}
     let targets = mountedSource?.targets;
     if (!keep) {
       const fragment = document.createDocumentFragment();
-      const figures = !openDemo && session.state.mode === "firebase" ? [] : null;
+      const figures = openDemo || session.state.mode === "firebase" ? [] : null;
       targets = stable || blockID !== null ? new Map() : null;
       if (blocks?.length)
         renderBlocks(fragment, blocks, images, null, g, targets, figures, articleHeadingOutline(blocks, 4));
       else if (data.source?.format === "json")
         fragment.append(element("pre", data.content ?? ""));
       else fragment.append(element("p", "Stored source is unavailable."));
+      sourceFigureLoads?.stopWatching?.();
       $("source-review-frame").replaceChildren(fragment);
-      if (figures) startArticleFigures(figures);
+      sourceFigureLoads = figures ? startArticleFigures(figures, g) : null;
       mountedSource = stable ? {
         key, signal: g.signal, articleRevision: renderedRevision, revision, assets, targets, figures,
         imagesRefreshedAt: Date.now(),
@@ -2510,13 +2569,14 @@ function recentImageRefresh(previous, refresh) {
   return previous && recentMediaURLs(previous.startedAt, startedAt)
     ? previous : { startedAt, images: refresh() };
 }
-async function renewMedia(g, failed) {
+async function renewMedia(g, failed, timedOut = false) {
   if (!g.current() || !currentArticle || !failed.isConnected) return;
   if (failed.dataset.replacement === "1") {
     showUnavailableImage(failed);
     return;
   }
   const stored = $("source-review-frame").contains(failed);
+  const attemptedURL = failed.src;
   const revision = renderedRevision;
   const sourceSelection = displayedSourceRevision;
   const selectedSourceURL = sourceURL;
@@ -2573,10 +2633,11 @@ async function renewMedia(g, failed) {
     ? (sourceImageRefresh = recentImageRefresh(sourceImageRefresh, refresh))
     : (articleImageRefresh = recentImageRefresh(articleImageRefresh, refresh));
   const images = await pending.images;
-  if (!visible() || failed.dataset.replacement === "1") return;
+  if (!visible() || failed.dataset.replacement === "1" || failed.src !== attemptedURL ||
+      timedOut && failed.complete && failed.naturalWidth) return;
   if (!current()) {
     // Media issued for the pre-publication view has a stale anchor.
-    if (stored) return renewMedia(g, failed);
+    if (stored) return renewMedia(g, failed, timedOut);
     return;
   }
   if (!retryImage(failed, images)) showUnavailableImage(failed);
@@ -3551,7 +3612,7 @@ async function printArticle() {
         delay(15_000, g.signal),
       ]);
     }
-    if (!g.current() || deferred !== deferredArticleFigures || !session.state.authenticated) return;
+    if (!g.current() || deferred !== deferredArticleFigures || (!openDemo && !session.state.authenticated)) return;
     if (deferred.figures.some(({ img }) => img.isConnected && (!img.complete || !img.naturalWidth))) {
       message.textContent = "Some illustrations are still unavailable. Try printing again.";
       message.hidden = false;
