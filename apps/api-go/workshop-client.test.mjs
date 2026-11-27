@@ -309,7 +309,7 @@ test('the direct connection sends eligible public US selector reads without cred
     } });
     assert.deepEqual(data, payload);
   }
-  assert.deepEqual(deadlines, [175, 200, 400, 200]);
+  assert.deepEqual(deadlines, [175, 1500, 200, 1500, 400, 1500, 200, 1500]);
   const sameOrigin = path => async (url, request) => {
     assert.equal(url, path);
     assert.equal(request.credentials, 'same-origin');

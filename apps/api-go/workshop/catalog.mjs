@@ -517,6 +517,7 @@ const directConfigurationPath = /^\/v1\/catalog\/years\/\d{4}\/makes\/[a-z0-9-]+
 const directMakeTimeout = 175;
 const directModelTimeout = 200;
 const directConfigurationTimeout = 400;
+const directSelectorBodyTimeout = 1500;
 const makeRouteKey = 'workshop:make-same-origin:';
 const makeRouteLifetime = 30000;
 let directSelectorsUnavailable = false;
@@ -560,13 +561,14 @@ export async function requestJSON(path, options = {}) {
     : directModelPath.test(path) ? directModelTimeout : directConfigurationTimeout;
   const { fetcher = fetch } = options;
   const bodyDeadline = performance.now() + Math.max(1, Math.min(10000, options.timeout ?? 10000));
+  const connection = new AbortController();
   let canRetryDirectBody = false;
+  let bodyTimer;
   const read = requestArticleJSON(path, {
     ...options,
     reportBodyNetworkError: true,
     async fetcher(resource, init) {
       init.signal.throwIfAborted();
-      const connection = new AbortController();
       const deadline = setTimeout(() => connection.abort(), connectionTimeout);
       let response;
       try {
@@ -589,6 +591,10 @@ export async function requestJSON(path, options = {}) {
       // Preserve any explicit wait from the direct selector.
       if (response && (![502, 503, 504].includes(response.status) || response.headers.has('Retry-After'))) {
         canRetryDirectBody = response.ok && !response.headers.has('Retry-After');
+        if (canRetryDirectBody) {
+          // Keep part of the overall budget available if the direct body stalls.
+          bodyTimer = setTimeout(() => connection.abort(), directSelectorBodyTimeout);
+        }
         return response;
       }
       init.signal.throwIfAborted();
@@ -597,13 +603,13 @@ export async function requestJSON(path, options = {}) {
       if (isMake && fallback.ok) rememberSameOriginMake(path);
       return fallback;
     },
-  });
+  }).finally(() => clearTimeout(bodyTimer));
   try {
     return (await read).data;
   } catch (error) {
     options.signal?.throwIfAborted();
     const remaining = Math.floor(bodyDeadline - performance.now());
-    // A truncated direct body can surface as a network error or invalid JSON.
+    // A stalled or truncated direct body can surface as a network error or invalid JSON.
     if (!canRetryDirectBody || !(error instanceof CatalogRequestError) ||
         error.status || !(error.retryable || error.code === 'INVALID_RESPONSE') || remaining < 1) throw error;
     const fallback = await requestArticleJSON(path, { ...options, timeout: remaining });
