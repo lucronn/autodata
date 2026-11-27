@@ -242,10 +242,11 @@ def test_complete_cache_never_admits_child_even_cold_years(monkeypatch):
     assert result['complete'] and result['status']=='cache_hit'
 
 
-def test_banktwo_hidden_repair_charged_to_same_request_bytes_rows_control():
+def test_banktwo_make_proof_and_model_read_share_one_request_budget(monkeypatch):
     from urllib.parse import urlsplit, parse_qs
     from autodata_ingestion.source_connector_client import SourceConnectorClient
     from test_source_connector_client import _Response, _envelope
+    monkeypatch.setattr(catalog, '_stored_banktwo_make_label', lambda *_: None)
     dispatched=[]
     def opener(request, **kwargs):
         dispatched.append(request.full_url)
@@ -261,8 +262,10 @@ def test_banktwo_hidden_repair_charged_to_same_request_bytes_rows_control():
     result=catalog._SourceCatalogProvider(client,deepening_control=control).resolve_catalog(
         catalog.CatalogRequest(2024,'authored','unknown',scope='models'))
     assert result['complete'] and len(result['rows'])==1
-    assert len(dispatched)==control.requests==3
-    assert control.rows==2 and control.bytes>0  # includes hidden makes, not just final models
+    assert len(dispatched) == control.requests == 2
+    assert [urlsplit(url).path for url in dispatched] == ['/v1/catalog/makes', '/v1/catalog/models']
+    assert parse_qs(urlsplit(dispatched[1]).query)['make'] == ['Authored']
+    assert control.rows == 2 and control.bytes > 0
 
 
 def test_page_response_and_decoded_rows_are_bounded_in_connector():
