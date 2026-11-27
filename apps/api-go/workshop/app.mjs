@@ -928,6 +928,14 @@ async function selectVehicle(g, articleID = "", {
     throw error;
   }
 }
+
+function hasSettledPartialSearch(result) {
+  const progress = result.progress;
+  return result.complete !== true && result.hydrating !== true && result.discovering !== true &&
+    progress?.status === "failed" && progress.retryable === false &&
+    Number.isSafeInteger(progress.processed) && progress.processed > 0;
+}
+
 async function loadSavedSearch(g, query, focusArticle = "") {
   $("completion-status").textContent = "";
   stage("articles");
@@ -947,13 +955,14 @@ async function loadSavedSearch(g, query, focusArticle = "") {
   searchComplete = result.complete === true;
   indexComplete = searchComplete;
   indexCatalogEmpty = searchComplete && result.items.length === 0 && result.progress?.catalog_empty === true;
-  indexHydrating = !searchComplete;
+  indexFailed = hasSettledPartialSearch(result);
+  indexHydrating = !searchComplete && !indexFailed;
   access = "owned";
   renderPurchase();
   show("catalog");
   renderArticles();
   if (focusArticle) focusArticleIndex(focusArticle);
-  if (searchComplete) showArticleIndexStatus();
+  if (searchComplete || indexFailed) showArticleIndexStatus();
   else await loadArticles(g);
   return true;
 }
@@ -1148,11 +1157,12 @@ function showArticleIndexStatus(articleID = "", refreshFailed = false) {
       !indexLoaded && searchItems ? "Article search ready." : "Article index ready.";
     status(ready, { complete: true, announceOnly: indexCatalogEmpty });
   } else if (indexFailed) {
-    status(articles.length
-      ? "You can open the articles below. Some sources could not be reached."
-      : "Your article index could not be prepared.", {
-      complete: false,
-    });
+    let message = "Your article index could not be prepared.";
+    if ((searchItems ?? articles).length)
+      message = "You can open the articles below. Some sources could not be reached.";
+    else if (articles.length || (!indexLoaded && searchItems))
+      message = "Some sources could not be reached.";
+    status(message, { complete: false });
   } else {
     status(refreshFailed
       ? "You can open the articles below. The index update couldn’t load."
@@ -1216,15 +1226,19 @@ function scheduleArticleSearch({ fromIndex = false, immediate = false, restoreFo
       searchItems = searchRefreshPending ? searchHitsOnCurrentIndex(items) : items;
       searchComplete = result.complete === true;
       if (!indexLoaded) {
+        const exact = result.configuration?.id === vehicleID && result.configuration.region === region;
         indexComplete = searchComplete;
+        indexFailed = exact && hasSettledPartialSearch(result);
+        indexHydrating = !searchComplete && result.hydrating === true;
         indexCatalogEmpty = searchComplete && items.length === 0 && result.progress?.catalog_empty === true &&
-          result.configuration?.id === vehicleID && result.configuration.region === region;
+          exact;
         renderPurchase();
       }
       searchPending = false;
       if (searchRefreshPending) scheduleArticleSearch({ fromIndex: true, restoreFocus });
       else {
         renderArticles();
+        if (!indexLoaded && (indexComplete || indexFailed)) showArticleIndexStatus();
         restoreFocus?.();
       }
     }).catch((error) => {
@@ -1370,7 +1384,7 @@ function renderArticles({ keepFocus = true } = {}) {
   const articleCount = `${total} ${total === 1 ? "article" : "articles"}`;
   const resultsComplete = indexComplete && (indexCatalogEmpty || !searching || searchComplete);
   const indexedCount = demoIndexedCount ?? articles.length;
-  const indexUnavailable = indexFailed && !articles.length;
+  const indexUnavailable = indexFailed && !articles.length && (indexLoaded || !searchItems);
   const noPartialMatches = searching && indexFailed && !indexUnavailable && !items.length;
   let countText = searching && searchPending
     ? "Searching articles…"
@@ -3538,7 +3552,10 @@ $("search").addEventListener("input", (event) => {
   }
   updateURL({ replace: true });
   const loadIndex = !query && !indexLoaded && access === "owned";
-  if (loadIndex) indexComplete = false;
+  if (loadIndex) {
+    indexComplete = false;
+    indexFailed = false;
+  }
   const immediate = !event?.isComposing &&
     ["insertFromPaste", "insertFromDrop", "insertReplacementText"].includes(event?.inputType);
   scheduleArticleSearch({ immediate });
