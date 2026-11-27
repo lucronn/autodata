@@ -26,6 +26,7 @@ from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from uuid import UUID
 
+from .catalog_market import model_visible_in_market
 from .source_adapters import SourceResource
 
 
@@ -276,6 +277,7 @@ class SourceConnectorClient:
     def catalog_models_with_make_proof(
         self, year: int, make: str, *, read_control: Any,
         on_make_pages: Callable[[tuple[SourceEnvelopeV1, ...]], None],
+        make_hint: str | None = None, region: str = "US",
     ) -> tuple[SourceEnvelopeV1 | SourceCatalogAbsence, str]:
         """Resolve an unknown Banktwo make before spending a model dispatch."""
         if self.provider != "banktwo" or not getattr(read_control, "initial_selector_budget", False):
@@ -299,6 +301,31 @@ class SourceConnectorClient:
         def read_models(label):
             page = self.catalog("models", {**selector, "make": label}, read_control=read_control, recover_labels=False)
             return page, label
+
+        if make_hint and catalog_selector_slug(make_hint) == catalog_selector_slug(make):
+            now = read_control.clock()
+            dispatch = max(now, read_control.next_dispatch)
+            # The positive probe may skip parent enumeration. Leave enough time
+            # for both normal dispatches if the spelling is rejected.
+            hint_deadline = proof_deadline - read_control.dispatch_interval
+            if dispatch < hint_deadline:
+                try:
+                    page = self.catalog(
+                        "models", {**selector, "make": make_hint},
+                        timeout=min(hint_deadline, dispatch + 2) - now,
+                        read_control=read_control, recover_labels=False,
+                    )
+                except SourceConnectorError as error:
+                    if error.status == 429:
+                        raise
+                else:
+                    items = page.body["items"]
+                    if page.complete and any(model_visible_in_market(item, region) for item in items) and all(
+                        item.get("year") == year
+                        and catalog_selector_slug(item.get("make", "")) == catalog_selector_slug(make)
+                        for item in items
+                    ):
+                        return page, make_hint
 
         try:
             proved = self._catalog_label(

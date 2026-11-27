@@ -705,6 +705,63 @@ class SourceConnectorClientTests(unittest.TestCase):
         self.assertEqual(calls, [("models", ["Toyota"])])
         self.assertEqual(second["rows"][0]["make"], "Toyota")
 
+    def test_stored_make_hint_requires_positive_in_scope_models_and_preserves_fallback(self):
+        from autodata_ingestion.selector_job import SelectorJobControl
+
+        for response_shape in ("matching", "not_found", "empty", "wrong_year", "wrong_market", "insufficient_time"):
+            with self.subTest(response_shape=response_shape):
+                now = [0.0]
+                calls = []
+                proofs = []
+
+                def opener(request, timeout):
+                    parsed = urlsplit(request.full_url)
+                    scope = parsed.path.rsplit("/", 1)[1]
+                    label = parse_qs(parsed.query).get("make", [""])[0]
+                    calls.append((now[0], scope, label))
+                    if scope == "makes":
+                        items = [{"opaque_ref": "make", "label": "Example-Motors", "year": 2020,
+                                  "make": "Example-Motors"}]
+                    else:
+                        items = [{"opaque_ref": "model", "label": "Roadster", "year": 2020,
+                                  "make": label, "model": "Roadster", "region": "US"}]
+                    if label == "Example Motors":
+                        if response_shape == "not_found":
+                            return _Response({}, url=request.full_url, status=404)
+                        if response_shape == "empty":
+                            items = []
+                        if response_shape == "wrong_year":
+                            items[0]["year"] = 2019
+                        if response_shape == "wrong_market":
+                            items[0]["region"] = "CA"
+                    return _Response(_envelope("banktwo", scope=scope, complete=True, items=items),
+                                     url=request.full_url)
+
+                control = SelectorJobControl(20, clock=lambda: now[0],
+                                             sleep=lambda seconds: now.__setitem__(0, now[0] + seconds))
+                control.before_request()
+                if response_shape == "insufficient_time":
+                    now[0] = 9
+                client = SourceConnectorClient("https://banktwo.test", provider="banktwo", opener=opener)
+                page, label = client.catalog_models_with_make_proof(
+                    2020, "example-motors", make_hint="Example Motors", read_control=control,
+                    on_make_pages=proofs.extend, region="US",
+                )
+                self.assertEqual(page.body["items"][0]["region"], "US")
+                self.assertEqual(page.body["items"][0]["year"], 2020)
+                if response_shape == "matching":
+                    self.assertEqual(label, "Example Motors")
+                    self.assertEqual(calls, [(6, "models", "Example Motors")])
+                    self.assertFalse(proofs)
+                else:
+                    self.assertEqual(label, "Example-Motors")
+                    self.assertEqual(calls, [(9, "makes", ""), (15, "models", "Example-Motors")] if
+                                     response_shape == "insufficient_time" else [
+                                         (6, "models", "Example Motors"), (12, "makes", ""),
+                                         (18, "models", "Example-Motors"),
+                                     ])
+                    self.assertEqual(len(proofs), 1)
+
     def test_complete_parent_absence_retains_original_paginated_evidence(self):
         calls = []
         payloads = []
