@@ -709,11 +709,24 @@ func (s *postgresCatalogStore) catalogMakeLists(ctx context.Context, years []int
 	return result, rows.Err()
 }
 
+// Make-only records can seed the make picker. Older imports also normalized
+// their reserved _make_ model field to Make. Use the linked raw observation
+// to distinguish those records from authored model names.
+const catalogModelIdentityFilter = `
+	vib.model NOT LIKE '\_%'
+	AND (vib.model <> 'Make' OR NOT EXISTS (
+		SELECT 1 FROM vehicle_identity_observations observation
+		WHERE observation.vehicle_id = vib.vehicle_id
+		  AND observation.source_snapshot_id = vib.source_snapshot_id
+		  AND observation.extraction_evidence_id = vib.extraction_evidence_id
+		  AND observation.raw_observation->>'model' = '_make_'
+	))`
+
 func (s *postgresCatalogStore) Models(ctx context.Context, _ Principal, year int, makeName, region string) ([]CatalogModel, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT model, reviewer_state = 'approved' AS market_known FROM vehicle_identity_bases
+		SELECT DISTINCT model, reviewer_state = 'approved' AS market_known FROM vehicle_identity_bases vib
 		WHERE model_year = $1 AND (LOWER(make) = LOWER($2) OR ($4 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(make), '[^a-z0-9]+', '-', 'g')) = $4)) AND ($3 = '' OR region = $3) AND reviewer_state <> 'rejected'
-		  AND model NOT LIKE '\_%'
+		  AND `+catalogModelIdentityFilter+`
 		UNION
 		SELECT item->>'model' AS model, COALESCE(item->>'source_region', '') = hydration.region
 		FROM vehicle_catalog_hydration_scopes hydration,
@@ -798,6 +811,7 @@ func (s *postgresCatalogStore) Configurations(ctx context.Context, _ Principal, 
 		  AND (LOWER(vib.model) = LOWER($3) OR ($6 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(vib.model), '[^a-z0-9]+', '-', 'g')) = $6))
 		  AND ($4 = '' OR vib.region = $4)
 		  AND vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
+		  AND `+catalogModelIdentityFilter+`
 		ORDER BY vc.vehicle_configuration_id`, year, makeName, model, region, catalogSlug(makeName), catalogSlug(model))
 	if err != nil {
 		return nil, err
