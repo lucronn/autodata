@@ -19,6 +19,7 @@ from .article_lifecycle_types import (
     RETAINED_OPTIONAL_OBSERVATION_REPAIR_PROFILE as OPTIONAL_OBSERVATION_PROFILE,
     RETAINED_PROCEDURE_CONDITION_REPAIR_PROFILE as PROCEDURE_CONDITION_PROFILE,
     RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE as ROTATION_REMOVAL_PROFILE,
+    RETAINED_SHORT_ACTION_REPAIR_PROFILE as SHORT_ACTION_PROFILE,
     RETAINED_SPACED_ROTATION_REPAIR_PROFILE as SPACED_ROTATION_PROFILE,
     SOURCE_BOUND_CORRECTION_PROFILE, ValidationResult,
     digest_json, transformation_key,
@@ -26,9 +27,9 @@ from .article_lifecycle_types import (
 from .authored_procedure_scope import correct_authored_procedure_step
 from .procedure_rewrite_auto import (
     _OPTIONAL_OBSERVATION_PROMPT_VERSION, _PROCEDURE_FIDELITY_PROMPT_VERSION, _ROTATION_REMOVAL_PROMPT_VERSION,
-    _SPACED_ROTATION_PROMPT_VERSION, _auto_prompt_payload_v62, _procedure_condition,
+    _SHORT_ACTION_PROMPT_VERSION, _SPACED_ROTATION_PROMPT_VERSION, _auto_prompt_payload_v62, _procedure_condition,
     authored_note_prefix, failed_rewrite_passages, recast_authored_rotation_removal, recast_optional_observation,
-    recast_spaced_rotation_removal, render_auto, require_current_publication_checks, validate_auto,
+    recast_short_procedure, recast_spaced_rotation_removal, render_auto, require_current_publication_checks, validate_auto,
 )
 from .procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
 from .procedure_rewrite_fidelity import recast_conditional_color_note
@@ -38,6 +39,7 @@ from .procedure_rewrite_sentence_correction import (
     SENTENCE_CORRECTION_METHOD, SENTENCE_INSTRUCTION_RECOVERY_METHOD, SENTENCE_TOOL_RECOVERY_METHOD,
 )
 from .retained_bankone_order_reply import BANKONE_ORDER_METHOD
+from .retained_banktwo_notice_reply import BANKTWO_NOTICE_METHOD
 from .retained_procedure_repair import _valid_audit
 from .source_job_persistence import _lease_from_row, source_bound_rewrite_source_allowed
 from .source_media_replay import _check_review_quarantine, _load_snapshots, _source_replay_row
@@ -67,6 +69,9 @@ _AUTHORED_PROCEDURE_INVALID = "RETAINED_AUTHORED_PROCEDURE_REPAIR_INVALID"
 PROCEDURE_CONDITION_METHOD = "retained-procedure-condition-archived-reply-repair-v1"
 PROCEDURE_CONDITION_CHECKPOINT = "retained_procedure_condition_repair"
 _PROCEDURE_CONDITION_INVALID = "RETAINED_PROCEDURE_CONDITION_REPAIR_INVALID"
+SHORT_ACTION_METHOD = "retained-short-action-archived-reply-repair-v1"
+SHORT_ACTION_CHECKPOINT = "retained_short_action_repair"
+_SHORT_ACTION_INVALID = "RETAINED_SHORT_ACTION_REPAIR_INVALID"
 _CONDITION_RETENTION_REASON = "Preserve the exact authored equipment or timing condition."
 _HASH = re.compile(r"[a-f0-9]{64}")
 
@@ -218,6 +223,11 @@ def _correct_spaced_rotation(original, published):
     return None
 
 
+def _correct_short_procedure(original, published):
+    wording = recast_short_procedure(original)
+    return wording if wording != published else None
+
+
 @dataclass(frozen=True)
 class _Repair:
     profile: str
@@ -268,6 +278,14 @@ _PROCEDURE_CONDITION = _Repair(
     _PROCEDURE_CONDITION_INVALID, "RETAINED_PROCEDURE_CONDITION_REPAIR_STALE",
     _restore_procedure_condition_reply, successor_guard=_PROCEDURE_FIDELITY_PROMPT_VERSION,
     prior_profiles=(AUTHORED_PROCEDURE_PROFILE,),
+)
+_SHORT_ACTIONS = _Repair(
+    SHORT_ACTION_PROFILE, SHORT_ACTION_METHOD, SHORT_ACTION_CHECKPOINT,
+    (ARCHIVED_FIRST_DRAFT_METHOD, BANKTWO_NOTICE_METHOD, RECOVERY_METHOD, AUTHORED_PROCEDURE_METHOD, METHOD),
+    _SHORT_ACTION_INVALID, "RETAINED_SHORT_ACTION_REPAIR_STALE",
+    partial(_restore_authored_procedure_reply, recast=_correct_short_procedure, invalid=_SHORT_ACTION_INVALID),
+    successor_guard=_SHORT_ACTION_PROMPT_VERSION,
+    prior_profiles=(SOURCE_BOUND_CORRECTION_PROFILE, AUTHORED_PROCEDURE_PROFILE, PROFILE),
 )
 
 
@@ -330,7 +348,7 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
         or prior["rewrite_result_hash"] != old_hash):
         raise ValueError(repair.stale)
     bound_source = _source_evidence(cur, article, source_id, descriptor_id, lock=lock)
-    if lock and repair in (_ROTATION_REMOVAL, _AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION):
+    if lock and repair in (_ROTATION_REMOVAL, _AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION, _SHORT_ACTIONS):
         _require_source_bound_rewrite_rights(cur, prior_job, article)
     prior_profile = prior_job["rewrite_profile_version"]
     prior, review, decision, attempt, archived_reply, version, _ = _publication_evidence_for_revision(
@@ -353,7 +371,7 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
             WHERE canonical_article_revision_id=%s LIMIT 1""", (prior_revision_id,)).fetchone():
             raise ValueError(repair.invalid)
         archive = {"archived_order_evidence_hash": digest_json(prior["model_metadata"])}
-    elif repair in (_AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION):
+    elif repair in (_AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION, _SHORT_ACTIONS):
         if cur.execute("""SELECT 1 FROM canonical_article_link_bindings WHERE canonical_article_revision_id=%s
             UNION ALL SELECT 1 FROM canonical_article_inline_link_bindings WHERE canonical_article_revision_id=%s LIMIT 1""",
             (prior_revision_id, prior_revision_id)).fetchone():
@@ -429,6 +447,11 @@ def resolve_retained_authored_procedure_repair(cur, job, article, candidate, *, 
 
 def resolve_retained_procedure_condition_repair(cur, job, article, candidate, *, publishing=False):
     return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_PROCEDURE_CONDITION)
+
+
+def resolve_retained_short_action_repair(cur, job, article, candidate, *, publishing=False):
+    """Rebuild the same two-action wording from the pinned archive."""
+    return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_SHORT_ACTIONS)
 
 
 def _resolve_repair(cur, job, article, candidate, *, publishing, repair):
@@ -563,6 +586,19 @@ def repair_retained_procedure_condition(
         expected_descriptor_snapshot_id=expected_descriptor_snapshot_id, expected_published_revision_id=expected_published_revision_id,
         expected_published_hash=expected_published_hash, expected_repaired_hash=expected_repaired_hash,
         actor=actor, reason=reason, hooks=hooks, repair=_PROCEDURE_CONDITION,
+    )
+
+
+def repair_retained_short_actions(
+    repo, article_id, *, expected_job_id, expected_source_revision_id, expected_descriptor_snapshot_id,
+    expected_published_revision_id, expected_published_hash, expected_repaired_hash, actor, reason, hooks=None,
+):
+    """Publish a clearer rendition of the same ordered instructions and source."""
+    return _repair_retained_note(
+        repo, article_id, expected_job_id=expected_job_id, expected_source_revision_id=expected_source_revision_id,
+        expected_descriptor_snapshot_id=expected_descriptor_snapshot_id, expected_published_revision_id=expected_published_revision_id,
+        expected_published_hash=expected_published_hash, expected_repaired_hash=expected_repaired_hash,
+        actor=actor, reason=reason, hooks=hooks, repair=_SHORT_ACTIONS,
     )
 
 
