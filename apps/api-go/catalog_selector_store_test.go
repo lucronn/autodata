@@ -17,6 +17,38 @@ func (s completeEmptySelectorStore) CatalogScopeComplete(context.Context, Princi
 	return true, nil
 }
 
+type namedMarketModelStore struct{ completeEmptySelectorStore }
+
+func (s namedMarketModelStore) Models(context.Context, Principal, int, string, string) ([]CatalogModel, error) {
+	return []CatalogModel{
+		{ID: "wave-canada", Name: "Wave (CANADA)", MarketUnverified: true},
+		{ID: "enclave-awd", Name: "Enclave AWD", MarketUnverified: true},
+		{ID: "proved", Name: "Proved model (Canada)", MarketUnverified: false},
+	}, nil
+}
+
+func TestUSModelsExcludeUnverifiedExplicitCanadianLabels(t *testing.T) {
+	server := catalogServer(namedMarketModelStore{completeEmptySelectorStore{newMemoryCatalogStore()}})
+	for _, test := range []struct {
+		region   string
+		wantWave bool
+	}{{"US", false}, {"CA", true}, {"", true}} {
+		response := catalogRequest(server, "/v1/catalog/years/2008/makes/pontiac/models?region="+test.region)
+		var models CatalogModelsResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &models); err != nil {
+			t.Fatal(err)
+		}
+		ids := map[string]bool{}
+		for _, model := range models.Items {
+			ids[model.ID] = true
+		}
+		if response.Code != http.StatusOK || !models.Complete || ids["wave-canada"] != test.wantWave ||
+			!ids["enclave-awd"] || !ids["proved"] {
+			t.Fatalf("region %q: %s", test.region, response.Body.String())
+		}
+	}
+}
+
 func TestCompleteEmptySelectorsDoNotHydrateAgain(t *testing.T) {
 	server := NewServerWithCatalogStore(staticReadiness{}, &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}, newMemoryRequestStore(), completeEmptySelectorStore{newMemoryCatalogStore()})
 	// A complete empty enumeration must not schedule any ingestion request.

@@ -144,6 +144,13 @@ func (s *Server) listCatalogModels(response http.ResponseWriter, request *http.R
 		s.writeCatalogError(response, request, err)
 		return
 	}
+	if strings.EqualFold(region, "US") {
+		// Some supplier rows put their market only in the model name.
+		// Keep rows backed by independent US evidence.
+		items = slices.DeleteFunc(slices.Clone(items), func(model CatalogModel) bool {
+			return model.MarketUnverified && strings.HasSuffix(strings.ToUpper(strings.TrimSpace(model.Name)), "(CANADA)")
+		})
+	}
 	if !s.catalogCanServeRows(response, request, len(items), statusErr) {
 		return
 	}
