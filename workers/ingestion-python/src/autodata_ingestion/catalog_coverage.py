@@ -1,12 +1,13 @@
 """Independent durable bank enumeration. Index browsing never reads article bodies."""
 
+from typing import NamedTuple
 from uuid import UUID, uuid4
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from .article_lifecycle_types import ArticleKey, scope_key
 from .article_lifecycle_store import _upsert_descriptor, persist_resource
 from .source_job_persistence import _result, lock_live_lease, fail_source_job, LeaseLost
-from .source_connector_client import SourceCatalogAbsence, SourceConnectorError
+from .source_connector_client import SourceCatalogAbsence, SourceConnectorError, SourceEnvelopeV1
 from .source_article_capture import upload_envelope
 from .vehicle_identity import _extract_engine_displacement, _slug, engine_variants_from_label
 
@@ -305,66 +306,149 @@ def _retained_banktwo_catalog_refs(cur, scope, region):
     return references
 
 
-def _resolve_banktwo_catalog_configuration(repo, client, scope, selector, configuration):
-    """Confirm a retained reference against the supplier's current selector catalog."""
-    if configuration is None or configuration["trim"] or configuration["engine_variant"]:
-        return None, None
-    displacement = configuration["engine_displacement_l"]
-    if displacement is None:
-        return None, None
-    region = configuration["region"]
+def _retained_catalog_refs(repo, scope, configuration):
+    if (configuration is None or configuration["trim"] or configuration["engine_variant"]
+        or configuration["engine_displacement_l"] is None):
+        return {}
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
-        retained = _retained_banktwo_catalog_refs(cur, scope, region)
-    if not retained:
-        return None, None
+        return _retained_banktwo_catalog_refs(cur, scope, configuration["region"])
 
-    requested_model = selector["model"]
+
+def _banktwo_catalog_models(retained, requested_model):
     requested_slug = _slug(requested_model)
     authored_models = {
         model for names in retained.values() for model in names
         if model and _slug(model) == requested_slug
     }
     preferred = next(iter(authored_models)) if len(authored_models) == 1 else requested_model
-    models = (preferred, requested_model) if preferred.casefold() != requested_model.casefold() else (requested_model,)
+    return (preferred, requested_model) if preferred.casefold() != requested_model.casefold() else (requested_model,)
+
+
+def _read_banktwo_configuration_catalog(client, selector, model):
+    query = {"year": selector["year"], "make": selector["make"], "model": model}
+    try:
+        catalog = client.catalog("configurations", query, timeout=6)
+    except SourceConnectorError as error:
+        if error.code != "NOT_FOUND":
+            raise
+        return None
+    return catalog if not isinstance(catalog, SourceCatalogAbsence) and catalog.complete else None
+
+
+def _banktwo_catalog_candidate(catalog, retained, selector, configuration, model, *, require_unique=False):
+    if catalog is None:
+        return None
+    displacement = float(configuration["engine_displacement_l"])
+    requested_model = selector["model"]
     drivetrain = configuration["drivetrain"]
     model_suffix = requested_model.strip().upper().rsplit(" ", 1)[-1]
     if not drivetrain and model_suffix in {"FWD", "RWD", "AWD", "2WD", "4WD"}:
         drivetrain = model_suffix
-    for model in models:
-        query = {"year": selector["year"], "make": selector["make"], "model": model}
-        try:
-            catalog = client.catalog("configurations", query, timeout=6)
-        except SourceConnectorError as error:
-            if error.code != "NOT_FOUND":
-                raise
+    matches = {}
+    for row in catalog.body["items"]:
+        if row.get("year") != selector["year"] or (
+            (row.get("make") or "").casefold() != selector["make"].casefold()
+            or (row.get("model") or "").casefold() != model.casefold()
+        ):
             continue
-        if isinstance(catalog, SourceCatalogAbsence) or not catalog.complete:
+        if (row.get("region") or "US").upper() != configuration["region"]:
             continue
+        if drivetrain and (row.get("drivetrain") or model_suffix).casefold() != drivetrain.casefold():
+            continue
+        label = row.get("configuration") or row["label"]
+        engine = row.get("engine") or label
+        if (engine_variants_from_label(label + " " + engine)
+            or _extract_engine_displacement(label) != displacement
+            or _extract_engine_displacement(engine) not in {None, displacement}):
+            continue
+        ref = row["opaque_ref"]
+        if ref not in retained or (model != requested_model and model not in retained[ref]):
+            if require_unique:
+                # An independently bound reference cannot rule out a second live fitment.
+                return None
+                continue
+        matches[ref] = {"opaque_ref": ref, "label": label}
+    if len(matches) > 1:
+        raise SourceConnectorError("AMBIGUOUS")
+    return next(iter(matches.values()), None)
 
-        matches = {}
-        for row in catalog.body["items"]:
-            ref = row["opaque_ref"]
-            if ref not in retained or row.get("year") != selector["year"]:
-                continue
-            if model != requested_model and model not in retained[ref]:
-                continue
-            if any((row.get(key) or "").casefold() != query[key].casefold() for key in ("make", "model")):
-                continue
-            if (row.get("region") or "US").upper() != region:
-                continue
-            if drivetrain and (row.get("drivetrain") or model_suffix).casefold() != drivetrain.casefold():
-                continue
-            label = row.get("configuration") or row["label"]
-            engine = row.get("engine") or label
-            if (not engine_variants_from_label(label + " " + engine)
-                and _extract_engine_displacement(label) == float(displacement)
-                and _extract_engine_displacement(engine) in {None, float(displacement)}):
-                matches[ref] = {"opaque_ref": ref, "label": label}
-        if len(matches) > 1:
-            raise SourceConnectorError("AMBIGUOUS")
-        if matches:
-            return next(iter(matches.values())), catalog
+
+def _resolve_banktwo_catalog_configuration(repo, client, scope, selector, configuration, *, retained=None, models=None):
+    """Confirm a retained reference against the supplier's current selector catalog."""
+    if retained is None:
+        retained = _retained_catalog_refs(repo, scope, configuration)
+    if not retained:
+        return None, None
+    if models is None:
+        models = _banktwo_catalog_models(retained, selector["model"])
+    for model in models:
+        catalog = _read_banktwo_configuration_catalog(client, selector, model)
+        candidate = _banktwo_catalog_candidate(catalog, retained, selector, configuration, model)
+        if candidate:
+            return candidate, catalog
     return None, None
+
+
+class _CatalogVehicleResolution(NamedTuple):
+    candidate: dict | None
+    evidence: SourceEnvelopeV1
+    ambiguous: bool = False
+    catalog: bool = False
+    authored_model: str | None = None
+
+
+def _unique_retained_model(retained, model):
+    return len(retained) == 1 and next(iter(retained.values())) == {model}
+
+
+def _resolve_catalog_vehicle(repo, client, scope, selector, configuration):
+    retained = _retained_catalog_refs(repo, scope, configuration) if scope["provider_slug"] == "banktwo" else {}
+    models = _banktwo_catalog_models(retained, selector["model"]) if retained else ()
+    early_model = models[0] if len(models) == 2 and _unique_retained_model(retained, models[0]) else None
+    early_catalog, early_error = None, None
+    if early_model:
+        # Use the authored selector first when both the saved identity and the live catalog bind one exact reference.
+        try:
+            early_catalog = _read_banktwo_configuration_catalog(client, selector, early_model)
+        except SourceConnectorError as error:
+            if error.retry_after_seconds or error.code in {"RATE_LIMITED", "UNAUTHORIZED"}:
+                raise
+            early_error = error
+        candidate = _banktwo_catalog_candidate(
+            early_catalog, retained, selector, configuration, early_model, require_unique=True
+        )
+        if candidate:
+            return _CatalogVehicleResolution(candidate, early_catalog, catalog=True, authored_model=early_model)
+
+    resolution = client.resolve_vehicle(selector)
+    candidates = resolution.body["candidates"]
+    if candidates or not retained:
+        return _CatalogVehicleResolution(
+            candidates[0] if len(candidates) == 1 else None, resolution, ambiguous=len(candidates) > 1
+        )
+    if early_model:
+        if early_error:
+            raise early_error
+        candidate = _banktwo_catalog_candidate(early_catalog, retained, selector, configuration, early_model)
+        if candidate:
+            return _CatalogVehicleResolution(candidate, early_catalog, catalog=True)
+        models = models[1:]
+    candidate, catalog = _resolve_banktwo_catalog_configuration(
+        repo, client, scope, selector, configuration, retained=retained, models=models
+    )
+    return _CatalogVehicleResolution(candidate, catalog or resolution, catalog=catalog is not None)
+
+
+def _verified_catalog_mapping(cur, scope):
+    mappings = cur.execute(
+        """SELECT provider_id,source_snapshot_id FROM vehicle_provider_mappings
+           WHERE vehicle_id=%s AND vehicle_configuration_id IS NOT DISTINCT FROM %s
+             AND provider=%s AND entity_type='car' AND mapping_status='verified'""",
+        (scope["vehicle_id"], scope["vehicle_configuration_id"], scope["provider_slug"]),
+    ).fetchall()
+    if len({row["provider_id"] for row in mappings}) > 1:
+        raise SourceConnectorError("AMBIGUOUS")
+    return mappings[0] if mappings else None
 
 
 def run_catalog_index_job(repo, lease, *, registry, object_store):
@@ -437,41 +521,36 @@ def run_catalog_index_job(repo, lease, *, registry, object_store):
         ambiguous = False
         if not ref:
             candidate = None
-            catalog_evidence = None
+            resolution = None
+            resolution_resource = None
             with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
-                mappings = cur.execute(
-                    "SELECT provider_id,source_snapshot_id FROM vehicle_provider_mappings WHERE vehicle_id=%s AND vehicle_configuration_id IS NOT DISTINCT FROM %s AND provider=%s AND entity_type='car' AND mapping_status='verified'",
-                    (scope["vehicle_id"], scope["vehicle_configuration_id"], provider),
-                ).fetchall()
-            unique = {r["provider_id"] for r in mappings}
-            if len(unique) > 1:
-                raise SourceConnectorError("AMBIGUOUS")
-            if len(unique) == 1:
-                ref = next(iter(unique))
-                resolution_snapshot = mappings[0]["source_snapshot_id"]
-                resolution_resource = None
+                mapping = _verified_catalog_mapping(cur, scope)
+            if mapping:
+                ref = mapping["provider_id"]
+                resolution_snapshot = mapping["source_snapshot_id"]
             else:
                 if configuration_unresolved:
                     raise SourceConnectorError("UNRESOLVED_CONFIGURATION")
-                resolution = client.resolve_vehicle(selector)
-                candidates = resolution.body["candidates"]
-                ambiguous = len(candidates) > 1
-                candidate = candidates[0] if len(candidates) == 1 else None
-                if provider == "banktwo" and not candidates:
-                    candidate, catalog_evidence = _resolve_banktwo_catalog_configuration(
-                        repo, client, scope, selector, configuration
-                    )
+                resolution = _resolve_catalog_vehicle(repo, client, scope, selector, configuration)
+                candidate, ambiguous = resolution.candidate, resolution.ambiguous
                 resolution_resource = upload_envelope(
-                    catalog_evidence or resolution, "vehicle_resolution", object_store
+                    resolution.evidence, "vehicle_resolution", object_store
                 )
                 ref = candidate["opaque_ref"] if candidate is not None else None
             with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
                 scope = _lock_scope(cur, lease)
-                if catalog_evidence is not None and ref not in _retained_banktwo_catalog_refs(
-                    cur, scope, configuration["region"]
-                ):
-                    ref = None
-                    configuration_unresolved = True
+                if resolution is not None and resolution.catalog:
+                    authored_model = resolution.authored_model
+                    mapping = _verified_catalog_mapping(cur, scope) if authored_model else None
+                    if mapping:
+                        ref = mapping["provider_id"]
+                        resolution_snapshot = mapping["source_snapshot_id"]
+                        candidate = resolution_resource = None
+                    else:
+                        retained = _retained_banktwo_catalog_refs(cur, scope, configuration["region"])
+                        if ref not in retained or (authored_model and not _unique_retained_model(retained, authored_model)):
+                            ref = None
+                            configuration_unresolved = True
                 if (
                     candidate is not None
                     and configuration is not None

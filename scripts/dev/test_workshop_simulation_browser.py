@@ -331,7 +331,7 @@ async def verify_labelled_market_picker(page, origin, misplaced, verified):
     await expect(page.locator("#purchase")).to_be_hidden()
 
 
-def authored_model_index_fixture(runtime, scope):
+def authored_model_index_fixture(runtime, scope, *, competing_fitment=False):
     from threading import Event, Thread
 
     from psycopg.types.json import Jsonb
@@ -383,9 +383,16 @@ def authored_model_index_fixture(runtime, scope):
     runtime.stack.callback(allow_page.set)
     original_response = banktwo.response
     model_queries = []
+    resolution_queries = []
 
     def response(path, payload=None):
         parsed = urlsplit(path)
+        if (parsed.path == "/v1/vehicle-resolutions" and payload
+            and payload.get("year") == 2005 and payload.get("make") == make
+            and payload.get("model") == model and payload.get("configuration") == "6.0L"):
+            resolution_queries.append(model)
+            candidates = [{"opaque_ref": ref, "label": "V8-6.0L VIN N", "confidence": 1.0}] if competing_fitment else []
+            return 200, banktwo.envelope(selector=payload, candidates=candidates)
         if parsed.path == "/v1/catalog/configurations":
             query = parse_qs(parsed.query)
             if query.get("year") != ["2005"] or query.get("make") != [make]:
@@ -393,6 +400,8 @@ def authored_model_index_fixture(runtime, scope):
             model_queries.extend(query["model"])
             rows = [{"opaque_ref": ref, "year": 2005, "make": make, "model": authored, "region": "US",
                      "drivetrain": "AWD", "label": "V8-6.0L VIN N"}] if query["model"] == [authored] else []
+            if rows and competing_fitment:
+                rows.append({**rows[0], "opaque_ref": "vehicle:unbound-cadillac-6"})
             return 200, banktwo.envelope(scope="configurations", complete=True, items=rows)
         if parsed.path.endswith("/articles") and parse_qs(parsed.query).get("cursor") == ["1"]:
             pending_page.set()
@@ -417,6 +426,7 @@ def authored_model_index_fixture(runtime, scope):
     scope.update(configuration=str(configuration), article=str(identifier), authored_index={
         "vehicle": vehicle, "configuration": configuration, "repository": runtime.repo, "title": title,
         "model": authored, "queries": model_queries, "pending": pending_page, "release": allow_page,
+        "resolution_queries": resolution_queries, "expected_resolution_queries": [model] if competing_fitment else [],
         "body_sha": sha256(banktwo.resources["cold-body"][0]).hexdigest(),
         "figure_sha": sha256(banktwo.resources["figure"][0]).hexdigest(),
     })
@@ -586,6 +596,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                 first_index_ms = round((time.monotonic() - index_started) * 1000)
                 assert await asyncio.to_thread(cold_index["pending"].wait, 3)
                 assert cold_index["queries"] == [cold_index["model"]]
+                assert cold_index["resolution_queries"] == cold_index["expected_resolution_queries"]
                 with cold_index["repository"].connect() as conn:
                     rows = conn.execute("""SELECT s.status,s.row_count,p.complete,b.adapter_name
                         FROM catalog_article_provider_scopes s
@@ -693,6 +704,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                     "library_ms": library_ms, "library_reload_ms": library_reload_ms,
                     "first_index_ms": first_index_ms, "reader_ms": reader_ms,
                     "warm_library_ms": warm_library_ms, "warm_index_ms": warm_index_ms, "warm_reader_ms": warm_reader_ms,
+                    "generic_resolution_reads": len(cold_index["resolution_queries"]),
                     "stored_page_before_completion": True, "complete_rows": 2,
                     "source_prose_warning_order_and_asset_matched": True, "figure_placement_and_source_sha_matched": True,
                 }), flush=True)
@@ -722,7 +734,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
 
 @pytest.mark.parametrize("variant", [
     "payment", "list-starts", "authored-table", "archived-table", "source-table", "labelled-market",
-    "authored-model-index",
+    "authored-model-index", "authored-model-index-competing-fitment",
 ])
 def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_database, monkeypatch, tmp_path, variant):
     from autodata_ingestion.http_service import make_handler
@@ -743,8 +755,8 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
         scope["article"] = str(runtime.article_id)
         if variant == "labelled-market":
             scope["labelled_market"] = labelled_market_fixture(runtime)
-        if variant == "authored-model-index":
-            scope = authored_model_index_fixture(runtime, scope)
+        if variant.startswith("authored-model-index"):
+            scope = authored_model_index_fixture(runtime, scope, competing_fitment=variant.endswith("-competing-fitment"))
         repair = retained_list_start_fixture(runtime, monkeypatch) if variant == "list-starts" else None
         table_variant = variant if variant in ("authored-table", "archived-table", "source-table") else None
         table_repair = authored_table_fixture(runtime, monkeypatch, tmp_path, table_variant) if table_variant else None
