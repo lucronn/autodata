@@ -2124,7 +2124,7 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(value['results'][0]['provider'],'bankone')
             self.assertEqual(value['results'][0]['observations']['publication'],'written')
             self.assertEqual(value['results'][0]['observations']['status'],'passed')
-            self.assertEqual(calls,[{}]);self.assertTrue(browser.closed)
+        self.assertEqual(calls,[{'headless': False}]);self.assertTrue(browser.closed)
             self.assertEqual(result,value)
 
     async def test_capacity_failure_does_not_prevent_context_cleanup(self):
