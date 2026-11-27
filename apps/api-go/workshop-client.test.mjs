@@ -209,6 +209,18 @@ test('a selector awaiting its first rows reduces polling after the initial windo
   assert.deepEqual(result, { ...pending, timedOut: true });
 });
 
+test('a make or model picker waiting for its first choice keeps the fast cadence through a supplier job', async () => {
+  const pending = { items: [], complete: false, hydrating: true };
+  const first = { ...pending, items: [{ id: 'enclave-awd' }] };
+  let clock = 0;
+  const result = await readCollection(async () => clock >= 16_000 ? first : pending, {
+    backoffWithChoices: true, backoffWithoutChoices: true, stopWithChoices: true,
+    now: () => clock, wait: async ms => { clock += ms; },
+  });
+  assert.equal(clock, 16_500);
+  assert.deepEqual(result, first);
+});
+
 test('a second supplier can publish choices within the original picker cadence', async () => {
   let clock = 0;
   const rows = [{ id: 'first' }];

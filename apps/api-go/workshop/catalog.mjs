@@ -269,6 +269,7 @@ const DEFAULT_COLLECTION_POLL_ATTEMPTS = Math.ceil(
 );
 const EMPTY_COLLECTION_PROBE_DELAY_MS = 350;
 const EMPTY_COLLECTION_PROBE_TIMEOUT_MS = 500;
+const FIRST_SELECTOR_CHOICES_FAST_WINDOW_MS = 22_000;
 const PARTIAL_SELECTOR_FAST_WINDOW_MS = 8000;
 const ENGINE_DISCOVERY_INTERVAL_MS = 4000;
 const MAX_PARTIAL_SELECTOR_INTERVAL_MS = 12_000;
@@ -296,6 +297,7 @@ export async function readCollection(
   let fastPollingSince;
   let partialInterval = interval;
   const pollUntil = backoffWithChoices ? now() + DEFAULT_COLLECTION_POLL_WINDOW_MS : Infinity;
+  const fastWindow = stopWithChoices ? FIRST_SELECTOR_CHOICES_FAST_WINDOW_MS : PARTIAL_SELECTOR_FAST_WINDOW_MS;
   function update(data, attempt) {
     signal?.throwIfAborted();
     if (!Array.isArray(data?.items)) throw new Error('The catalog returned an unreadable list. Try again.');
@@ -339,13 +341,13 @@ export async function readCollection(
       await wait(Math.max(0, deadline - now()), signal);
     } else {
       const checkedAt = now();
-      // The second supplier may follow the first by six seconds. Keep the
-      // initial cadence through that interval, then slow optional refreshes.
+      // An empty make or model picker gates the next step. Check for its
+      // first rows at the normal cadence through one bounded supplier job.
       if (backoffWithChoices && ((!desired && hasChoices(latest)) || backoffWithoutChoices)) {
         fastPollingSince ??= checkedAt;
         if (!desired && latest.discovering && !latest.hydrating)
           partialInterval = Math.max(partialInterval, ENGINE_DISCOVERY_INTERVAL_MS);
-        if (checkedAt - fastPollingSince >= PARTIAL_SELECTOR_FAST_WINDOW_MS)
+        if (checkedAt - fastPollingSince >= fastWindow)
           partialInterval = Math.min(partialInterval * 2, MAX_PARTIAL_SELECTOR_INTERVAL_MS);
       } else {
         fastPollingSince = undefined;
