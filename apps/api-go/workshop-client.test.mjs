@@ -5797,28 +5797,22 @@ test('the index and search distinguish authored service schedules with a shared 
   assert.deepEqual(filterArticles([normal, severe], 'severe service'), [severe]);
 });
 
-test('a readable demo link uses the compact index to open the exact article', async () => {
+test('the saved demo fallback can still open a readable article from its index', async () => {
   const ready = { id: 'ready', title: 'Stored source', availability: 'available' };
-  const h = articleIndexHarness([{
-    ...indexResponse('completed', { complete: true, items: [ready] }), indexed_count: 2000,
-  }], { openDemo: true });
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [ready] })], { openDemo: true });
   await h.load(ready.id);
   assert.deepEqual(h.opened.map(({ id }) => id), [ready.id]);
-  assert.deepEqual(h.requests.map(({ prefer }) => prefer), ['workshop-demo-readable-index']);
+  assert.deepEqual(h.requests.map(({ prefer }) => prefer), [undefined]);
 });
 
-test('a demo link to an unreadable article stays in the index', async () => {
+test('a demo link to an unreadable article uses one full index to confirm its status', async () => {
   const waiting = { id: 'waiting', title: 'Index only', availability: 'unavailable' };
-  const compact = { ...indexResponse('completed', { complete: true, items: [] }), indexed_count: 1 };
   const full = indexResponse('completed', { complete: true, items: [waiting] });
-  for (const responses of [[compact, full], [full]]) {
-    const h = articleIndexHarness(responses, { openDemo: true });
-    await h.load(waiting.id);
-    assert.equal(h.opened.length, 0);
-    assert.deepEqual(h.requests.map(({ prefer }) => prefer),
-      responses.length === 2 ? ['workshop-demo-readable-index', undefined] : ['workshop-demo-readable-index']);
-    assert.match(h.$('activity-text').textContent, /indexed but not readable yet/);
-  }
+  const h = articleIndexHarness([full], { openDemo: true });
+  await h.load(waiting.id);
+  assert.equal(h.opened.length, 0);
+  assert.deepEqual(h.requests.map(({ prefer }) => prefer), [undefined]);
+  assert.match(h.$('activity-text').textContent, /indexed but not readable yet/);
 });
 
 test('a prefetched demo detail waits for the matching available index row', async () => {

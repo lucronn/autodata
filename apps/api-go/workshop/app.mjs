@@ -946,7 +946,8 @@ async function loadArticles(g, articleID = "", {
   if (demoDetail) g.signal.addEventListener("abort", initialDemoIndex.abort, { once: true });
   let offerPaging = !openDemo && !articleID && (!focusArticle || indexAnchor) &&
     !trimArticleSearch($("search").value);
-  let compactDemo = openDemo;
+  // A saved-link fallback needs the requested descriptor even when its body is unavailable.
+  const compactDemo = openDemo && !articleID;
   let showedAvailable = false;
   const pageQuery = indexAnchor ? { anchor: indexAnchor } : offset !== null ? { offset } : undefined;
   const previousFocus = focusArticle ? document.activeElement : null;
@@ -975,21 +976,10 @@ async function loadArticles(g, articleID = "", {
         if (!response) throw new TypeError("The initial article index request did not return a response.");
         return response;
       } : undefined;
-    const read = requestJSON(path, {
+    return requestJSON(path, {
       ...options,
       fetcher,
       headers: prefer ? { Prefer: prefer } : undefined,
-    });
-    if (!compactDemo || !articleID) return read;
-    return read.then((result) => {
-      // A filtered response can omit the requested descriptor while the body
-      // is unavailable. Read the full index to restore that article's status.
-      if (Array.isArray(result?.items) && Number.isSafeInteger(result.indexed_count) &&
-          result.indexed_count > result.items.length && !result.items.some((item) => item.id === articleID)) {
-        compactDemo = false;
-        return requestJSON(path, options);
-      }
-      return result;
     });
   };
   const indexRead = await readCollection(
