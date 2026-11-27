@@ -10,7 +10,7 @@ import signal
 import subprocess
 import sys
 import time
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qs, urljoin, urlsplit
 from uuid import UUID, uuid4
 
 import pytest
@@ -320,7 +320,24 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             assert (await owner.request.get(detail)).status == 401
             guest_quote = await owner.request.get(quote)
             assert guest_quote.ok and (await guest_quote.json())["purchasable"] is False
-            await page.goto(route)
+            if repair is None and table_variant is None:
+                await page.goto(f"{origin}/workshop/")
+                for field, value in (("year", "2024"), ("make", "example"), ("model", "car"),
+                                     ("configuration", configuration)):
+                    await page.locator(f"#{field}").select_option(value)
+                expected = {"year": ["2024"], "make": ["example"], "model": ["car"],
+                            "configuration": [configuration], "region": ["US"]}
+                assert parse_qs(urlsplit(page.url).query) == expected
+                await page.go_back()
+                await expect(page.locator("#configuration")).to_have_value("")
+                await expect(page.locator("#purchase")).to_be_hidden()
+                assert parse_qs(urlsplit(page.url).query) == {
+                    field: expected[field] for field in ("year", "make", "model")
+                }
+                await page.go_forward()
+                assert parse_qs(urlsplit(page.url).query) == expected
+            else:
+                await page.goto(route)
             await expect(page.locator("#purchase-message")).to_have_text(
                 "Sign in with Google to simulate purchase. No payment is collected."
             )
