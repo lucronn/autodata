@@ -28,6 +28,7 @@ FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD = "source-bound-first-draft-recover
 FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v8"
 FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD = "source-bound-first-draft-introduction-v1"
 FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD = "source-bound-first-draft-diagnostic-v1"
+FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD = "source-bound-first-draft-brake-applicability-v1"
 FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD = "source-bound-positioned-figure-first-draft-v1"
 FIRST_DRAFT_SINGLE_USE_PARTS_RECOVERY_METHOD = "source-bound-single-use-parts-first-draft-v1"
 NEUTRAL_INTRODUCTION = "This article describes the service information that follows."
@@ -38,7 +39,7 @@ FIRST_DRAFT_RECOVERY_METHODS = (
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD, FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD, FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
     FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
-    FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD,
+    FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD, FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD,
 )
 BANKONE_STRUCTURAL_RECOVERY_METHOD = "source-bound-bankone-first-draft-v1"
 BANKONE_LINKED_RECOVERY_METHOD = "source-bound-bankone-first-draft-v2"
@@ -256,6 +257,7 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
                       FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD, FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD,
                       FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
                       FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD,
+                      FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD,
                       FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD,
                       FIRST_DRAFT_SINGLE_USE_PARTS_RECOVERY_METHOD,
                       *BANKONE_ARCHIVE_STRUCTURE_VERSIONS):
@@ -278,7 +280,8 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
            if method in (FIRST_DRAFT_COOLING_RECOVERY_METHOD, FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
                          FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
                          FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD, FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD,
-                         FIRST_DRAFT_SINGLE_USE_PARTS_RECOVERY_METHOD) else {}),
+                         FIRST_DRAFT_SINGLE_USE_PARTS_RECOVERY_METHOD,
+                         FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD) else {}),
         **({"validation_prompt_version": validation_prompt_version} if validation_prompt_version else {}),
         **({"bankone_structure_hash": digest_json(bankone_structure)} if bankone_structure is not None else {}),
     }, bankone_structure=bankone_structure)
@@ -330,6 +333,38 @@ def _recover_required_action_draft(source, raw, slots, *, prompt_version):
         source, raw, draft, corrected, prompt_version=prompt_version,
         method=FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD, original_error=REQUIRED_ACTION_WEAKENED,
     )
+
+
+def _recover_brake_applicability_draft(source, raw, slots, *, prompt_version, original_error):
+    from .bankone_brake_recovery import recast_brake_applicability
+
+    if original_error != "REWRITE_SPEC_SCOPE_MUTATION":
+        return None
+    try:
+        auto.check_automatic_introduction(source, raw["introduction"])
+    except ValueError as error:
+        if str(error) != original_error:
+            return None
+    else:
+        return None
+    failures = auto.failed_rewrite_passages(source, raw, prompt_version=prompt_version)
+    if len(failures) != 1 or failures[0]["code"] != "REWRITE_PROSE_TOO_SIMILAR":
+        return None
+    path = failures[0]["path"]
+    draft = deepcopy(raw)
+    for slot, row in zip(slots, draft["replacements"], strict=True):
+        if slot["path"] != path:
+            continue
+        wording = recast_brake_applicability(slot["text"])
+        if row["action"] != "rewrite" or wording is None:
+            return None
+        row["text"] = wording
+        draft["introduction"] = NEUTRAL_INTRODUCTION
+        return _validate_first_draft(
+            source, raw, draft, [path], prompt_version=prompt_version, original_error=original_error,
+            method=FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD,
+        )
+    return None
 
 
 def _recover_diagnostic_draft(source, raw, slots, *, prompt_version, original_error):
@@ -579,6 +614,11 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
         return None
     if method == FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD:
         return None
+    if method in (None, FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD):
+        brake = _recover_brake_applicability_draft(source, raw, slots, prompt_version=prompt_version,
+                                                  original_error=original_error)
+        if brake is not None or method == FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD:
+            return brake
     if method in (None, FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD):
         diagnostic = _recover_diagnostic_draft(source, raw, slots, prompt_version=prompt_version, original_error=original_error)
         if diagnostic is not None or method == FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD:

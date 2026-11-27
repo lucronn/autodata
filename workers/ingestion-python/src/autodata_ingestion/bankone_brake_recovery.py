@@ -30,6 +30,20 @@ _PEDAL_TRAVEL = re.compile(
     r"With the engine OFF, gradually apply the brake pedal to approximately (?P<distance>[0-9]+/[0-9]+) "
     r"of its travel distance\.",
 )
+_BRAKE_APPLICABILITY = re.compile(
+    r"This (?:procedure|process) (?P<modal>should|must) be (?:performed|followed) whenever "
+    rf"the (?P<rotor>{_NOUN} rotor)s (?:have been|are) (?:refinished|resurfaced) or replaced, "
+    rf"and/or whenever the (?P<pad>{_NOUN} pad)s (?:have been|are) replaced\."
+)
+
+
+def recast_brake_applicability(text):
+    """Keep both service conditions and their original modality."""
+    if match := _BRAKE_APPLICABILITY.fullmatch(text):
+        modality = {"should": "recommended", "must": "required"}[match["modal"]]
+        return (f"This procedure is {modality} after {match['rotor']} resurfacing or replacement, "
+                f"after {match['pad']} replacement, or after both kinds of work.")
+    return None
 
 
 def recast_brake_passage(text, error):
