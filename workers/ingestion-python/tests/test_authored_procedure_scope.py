@@ -137,6 +137,26 @@ def test_equivalent_or_unscoped_wording_is_preserved(source, wording):
         "to the repair. For coverage information, see the Applicable Warranties section of Investigate Vehicle History (IVH).",
         [("when", "whether or not"), ("Applicable Warranties", "Service History")],
     ),
+    (
+        "If serial data communication is lost between any LIN devices on the LIN bus, the master control module "
+        "will set a no communication code for the non-communicating LIN device.",
+        "A loss of serial data communication between any LIN devices on the LIN bus triggers a no communication code. "
+        "The master control module will set that code for the LIN device that lost communication.",
+        [("serial data communication", "supply voltage"), ("master control module", "body control module"),
+         ("no communication code", "low-voltage code"), ("that lost communication", "that answered")],
+    ),
+    (
+        "Remove the oil pan-to-bell housing bolt under the starter motor.",
+        "Under the starter motor, remove the oil pan-to-bell housing bolt.",
+        [("Under", "Above"), ("remove", "tighten"), ("oil pan-to-bell housing", "starter mounting")],
+    ),
+    (
+        "NOTE: LH rear shown; RH similar. Using a pry tool on the shown pry pads, remove the oil pan.",
+        "NOTE: The figure shows the LH rear. The RH side is similar. "
+        "Remove the oil pan by applying a pry tool on the illustrated pry pads.",
+        [("NOTE: ", ""), ("LH rear", "LH front"), ("RH side is similar. ", ""), ("pry tool", "chisel"),
+         ("illustrated pry pads", "sealing flange")],
+    ),
 ])
 def test_publication_preserves_authored_procedure_details(source, rewrite, mutations):
     original = {"blocks": [{"items": [source]}]}

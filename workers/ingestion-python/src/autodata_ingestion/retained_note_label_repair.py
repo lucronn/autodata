@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from hashlib import sha256
 import re
@@ -23,6 +23,7 @@ from .article_lifecycle_types import (
     RETAINED_REQUIRED_ACTION_REPAIR_METHOD as REQUIRED_ACTION_METHOD,
     RETAINED_REQUIRED_ACTION_REPAIR_PROFILE as REQUIRED_ACTION_PROFILE,
     RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE as ROTATION_REMOVAL_PROFILE,
+    RETAINED_SERVICE_WORDING_FOLLOW_UP_PROFILE as SERVICE_WORDING_FOLLOW_UP_PROFILE,
     RETAINED_SERVICE_WORDING_REPAIR_PROFILE as SERVICE_WORDING_PROFILE,
     RETAINED_SHORT_ACTION_REPAIR_PROFILE as SHORT_ACTION_PROFILE,
     RETAINED_SPACED_ROTATION_REPAIR_PROFILE as SPACED_ROTATION_PROFILE,
@@ -101,6 +102,7 @@ class _Plan:
     attempt: dict
     reply: dict
     retained_links: tuple[dict, ...] = ()
+    bankone_structure: dict | None = None
 
 
 def _restore_reply(source, retained, old_document, old_reply, *, prompt_version):
@@ -357,6 +359,15 @@ _SERVICE_WORDING = _Repair(
     partial(_restore_wording_reply, recognizes=service_procedure_facts, invalid=_SERVICE_WORDING_INVALID),
     provider=None, prior_profiles=(SOURCE_BOUND_CORRECTION_PROFILE, AUTHORED_PROCEDURE_PROFILE, DIAGNOSTIC_WORDING_PROFILE),
 )
+_SERVICE_WORDING_FOLLOW_UP = replace(
+    _SERVICE_WORDING,
+    profile=SERVICE_WORDING_FOLLOW_UP_PROFILE,
+    prior_methods=(DIAGNOSTIC_WORDING_METHOD, SERVICE_WORDING_METHOD),
+    prior_profiles=(DIAGNOSTIC_WORDING_PROFILE, SERVICE_WORDING_PROFILE),
+)
+_SERVICE_WORDING_REPAIRS = {
+    repair.profile: repair for repair in (_SERVICE_WORDING, _SERVICE_WORDING_FOLLOW_UP)
+}
 
 
 def _source_evidence(cur, article, source_id, descriptor_id, *, lock):
@@ -412,19 +423,25 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
         or prior_job["status"] != "completed" or prior_job["phase"] != "completed" or prior_job["retryable"]
         or prior_job["lease_owner"] is not None or prior_job["lease_expires_at"] is not None):
         raise ValueError(repair.stale)
-    prior = cur.execute("""SELECT transformation_key,rewrite_result_hash,model_metadata->>'transformation_method' AS method
+    prior = cur.execute("""SELECT transformation_key,rewrite_result_hash,model_metadata->>'transformation_method' AS method,
+               model_metadata->(%s::text)->'evidence'->>'bankone_structure_hash' AS bankone_structure_hash
         FROM canonical_article_revisions WHERE canonical_article_revision_id=%s AND canonical_article_id=%s
-          AND source_revision_id=%s AND status='published'""", (prior_revision_id, article["canonical_article_id"], source_id)).fetchone()
+          AND source_revision_id=%s AND status='published'""",
+        (SERVICE_WORDING_CHECKPOINT, prior_revision_id, article["canonical_article_id"], source_id)).fetchone()
     if (prior is None or prior["method"] not in repair.prior_methods or prior["transformation_key"] != prior_job["transformation_key"]
         or prior["rewrite_result_hash"] != old_hash):
         raise ValueError(repair.stale)
-    bankone_layout = repair is _SERVICE_WORDING and prior["method"] == BANKONE_LIST_BOUNDARY_METHOD
+    direct_bankone_layout = repair is _SERVICE_WORDING and prior["method"] == BANKONE_LIST_BOUNDARY_METHOD
+    inherited_bankone_layout = (repair is _SERVICE_WORDING_FOLLOW_UP and prior["method"] == SERVICE_WORDING_METHOD
+                                and prior["bankone_structure_hash"] is not None)
+    bankone_layout = direct_bankone_layout or inherited_bankone_layout
+    service_wording = repair.profile in _SERVICE_WORDING_REPAIRS
+    wording_repair = service_wording or repair is _DIAGNOSTIC_WORDING
     bound_source = _source_evidence(cur, article, source_id, descriptor_id, lock=lock)
     # The layout publisher has its own capture proof, replayed under lock below.
-    if lock and not bankone_layout and repair in (
-        _ROTATION_REMOVAL, _AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION, _SHORT_ACTIONS, _DIAGNOSTIC_WORDING,
-        _SERVICE_WORDING,
-    ):
+    if lock and not direct_bankone_layout and (wording_repair or repair in (
+        _ROTATION_REMOVAL, _AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION, _SHORT_ACTIONS,
+    )):
         _require_source_bound_rewrite_rights(cur, prior_job, article)
     prior_profile = prior_job["rewrite_profile_version"]
     prior, review, decision, attempt, archived_reply, version, _ = _publication_evidence_for_revision(
@@ -447,8 +464,7 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
             WHERE canonical_article_revision_id=%s LIMIT 1""", (prior_revision_id,)).fetchone():
             raise ValueError(repair.invalid)
         archive = {"archived_order_evidence_hash": digest_json(prior["model_metadata"])}
-    elif repair in (_AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION, _SHORT_ACTIONS, _DIAGNOSTIC_WORDING,
-                    _SERVICE_WORDING):
+    elif wording_repair or repair in (_AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION, _SHORT_ACTIONS):
         if cur.execute("""SELECT 1 FROM canonical_article_link_bindings WHERE canonical_article_revision_id=%s
             AND NOT %s
             UNION ALL SELECT 1 FROM canonical_article_inline_link_bindings WHERE canonical_article_revision_id=%s LIMIT 1""",
@@ -461,18 +477,24 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
     source = prior["normalized_source_document"]
     guard = repair.successor_guard or version
     options = {"verified_color_notes": prior_profile == CONDITIONAL_PROFILE} if repair is _AUTHORED_PROCEDURE else {}
-    if repair in (_DIAGNOSTIC_WORDING, _SERVICE_WORDING):
+    if wording_repair:
         options["wording_edits"] = wording_edits
-    if repair is _SERVICE_WORDING:
+    if service_wording:
         options["profile_version"] = prior["validation_report"]["profile_version"]
     bankone_structure = None
-    if bankone_layout:
+    if direct_bankone_layout:
         from .retained_banktwo_notice_publication import resolve_bankone_list_boundary_publication
 
         layout, _, layout_version = resolve_bankone_list_boundary_publication(cur, prior_job, article, prior, lock=lock)
         bankone_structure = layout.bankone_structure
         if (bankone_structure is None or layout.remapped_response != archived_reply or layout_version != version):
             raise ValueError(repair.invalid)
+    elif inherited_bankone_layout:
+        layout = _resolve_repair(cur, prior_job, article, prior, publishing=False, repair=_SERVICE_WORDING)
+        bankone_structure = layout.bankone_structure
+        if (bankone_structure is None or layout.reply != archived_reply or layout.evidence["guard_version"] != version):
+            raise ValueError(repair.invalid)
+    if bankone_layout:
         options["bankone_structure"] = bankone_structure
     document, validation, reply, paths = repair.edit_reply(
         source, bound_source["source_document"], prior["canonical_document"], archived_reply, prompt_version=guard, **options,
@@ -510,13 +532,13 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
     }
     if repair.successor_guard is not None:
         facts["archived_guard_version"] = version
-    if repair in (_DIAGNOSTIC_WORDING, _SERVICE_WORDING):
+    if wording_repair:
         facts["wording_edits"] = wording_edits
     key = transformation_key(
         article["canonical_article_id"], bound_source["source_fingerprint"], prior["normalization_version"],
         repair.profile, projection_version=bound_source["projection_version"],
     )
-    return _Plan(source, document, validation, facts, key, attempt, reply, retained_links)
+    return _Plan(source, document, validation, facts, key, attempt, reply, retained_links, bankone_structure)
 
 
 def resolve_retained_note_label_repair(cur, job, article, candidate, *, publishing=False):
@@ -562,7 +584,10 @@ def resolve_retained_diagnostic_wording_repair(cur, job, article, candidate, *, 
 
 
 def resolve_retained_service_wording_repair(cur, job, article, candidate, *, publishing=False):
-    return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_SERVICE_WORDING)
+    repair = _SERVICE_WORDING_REPAIRS.get(job["rewrite_profile_version"])
+    if repair is None:
+        raise ValueError(_SERVICE_WORDING_INVALID)
+    return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=repair)
 
 
 def _resolve_repair(cur, job, article, candidate, *, publishing, repair):
@@ -736,14 +761,15 @@ def repair_retained_diagnostic_wording(
 def repair_retained_service_wording(
     repo, article_id, *, expected_job_id, expected_source_revision_id, expected_descriptor_snapshot_id,
     expected_published_revision_id, expected_published_hash, expected_repaired_hash,
-    wording_edits, actor, reason, hooks=None,
+    wording_edits, actor, reason, hooks=None, follow_up=False,
 ):
     """Publish checked service wording and retain source-bound links."""
+    repair = _SERVICE_WORDING_FOLLOW_UP if follow_up else _SERVICE_WORDING
     return _repair_retained_note(
         repo, article_id, expected_job_id=expected_job_id, expected_source_revision_id=expected_source_revision_id,
         expected_descriptor_snapshot_id=expected_descriptor_snapshot_id, expected_published_revision_id=expected_published_revision_id,
         expected_published_hash=expected_published_hash, expected_repaired_hash=expected_repaired_hash,
-        actor=actor, reason=reason, hooks=hooks, repair=_SERVICE_WORDING, wording_edits=wording_edits,
+        actor=actor, reason=reason, hooks=hooks, repair=repair, wording_edits=wording_edits,
     )
 
 
