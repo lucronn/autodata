@@ -307,9 +307,9 @@
     <script>
       (() => {
         const params = new URLSearchParams(location.search);
-        if (['article', 'configuration', 'demo', 'order', 'q', 'sample', 'view'].some(key => params.has(key)))
-          return;
-        if (params.has('region') && params.get('region') !== 'US') return;
+        if (params.get('sample') === '1' && params.get('demo') !== '1') return;
+        const plainPicker = !['article', 'configuration', 'demo', 'order', 'q', 'sample', 'view']
+          .some(key => params.has(key)) && (!params.has('region') || params.get('region') === 'US');
 
         const deadline = setTimeout(recover, 10000);
         let retry;
@@ -321,7 +321,9 @@
         function finish() {
           stopWatchingFailures();
           window.removeEventListener('workshop-picker-started', finish);
-          document.removeEventListener('DOMContentLoaded', showRetry);
+          document.removeEventListener('readystatechange', showRetry);
+          const recovery = document.getElementById('workshop-startup-recovery');
+          if (recovery) recovery.hidden = true;
           if (retry) {
             retry.removeEventListener('click', reloadPicker);
             retry.hidden = true;
@@ -337,7 +339,7 @@
           const year = document.getElementById('year');
           const make = document.getElementById('make');
           // The entry can show these choices before the app can put them in the URL.
-          if (!url.searchParams.has('year') && year?.value) {
+          if (plainPicker && !url.searchParams.has('year') && year?.value) {
             url.searchParams.set('year', year.value);
             if (make?.value && !make.disabled) url.searchParams.set('make', make.value);
           }
@@ -346,20 +348,26 @@
           location.reload();
         }
         function showRetry() {
-          document.getElementById('activity-text').textContent = 'Workshop could not load the vehicle picker.';
-          retry = document.getElementById('retry');
+          if (plainPicker) {
+            document.getElementById('activity-text').textContent = 'Workshop could not load the vehicle picker.';
+            retry = document.getElementById('retry');
+            retry.hidden = false;
+          } else {
+            const recovery = document.getElementById('workshop-startup-recovery');
+            retry = recovery.querySelector('button');
+            recovery.hidden = false;
+          }
           retry.addEventListener('click', reloadPicker, { once: true });
-          retry.hidden = false;
         }
         function recover() {
           stopWatchingFailures();
-          if (!history.state?.workshopPickerStartupRetry) {
+          if (plainPicker && !history.state?.workshopPickerStartupRetry) {
             window.removeEventListener('workshop-picker-started', finish);
             reloadPicker();
             return;
           }
           if (document.readyState === 'loading')
-            document.addEventListener('DOMContentLoaded', showRetry, { once: true });
+            document.addEventListener('readystatechange', showRetry, { once: true });
           else showRetry();
         }
         function failedEntry(event) {
@@ -404,6 +412,11 @@
           ><button id="signout" type="button" hidden>Sign out</button>
         </nav>
       </header>
+
+      <div id="workshop-startup-recovery" class="activity" data-tone="error" hidden>
+        <span role="alert">Workshop could not open this page.</span>
+        <button class="text-button" type="button">Try again</button>
+      </div>
 
       <section id="test-unavailable" role="alert" hidden>
         <h1>Real-data demo unavailable</h1>

@@ -1,7 +1,7 @@
 """Exercise simulated checkout through the normal Workshop on the isolated API fixture."""
 
 import asyncio
-from contextlib import ExitStack
+from contextlib import ExitStack, asynccontextmanager
 from hashlib import sha256
 from io import BytesIO
 import json
@@ -719,6 +719,38 @@ async def verify_reserved_figure(image, gate, dimensions):
     assert all(abs(before - after) <= 4 for before, after in zip(reserved, loaded, strict=True)), (reserved, loaded)
 
 
+@asynccontextmanager
+async def retry_workshop_entry(browser, url, storage, fixture_route):
+    from playwright.async_api import expect
+
+    context = await browser.new_context(ignore_https_errors=True, service_workers="block", storage_state=storage)
+    attempts = []
+
+    def app_request(url):
+        path = urlsplit(url)
+        return path.path.endswith("/app.mjs") and not path.query
+
+    async def block_app(route):
+        attempts.append(route.request.url)
+        await route.abort()
+
+    try:
+        await context.route("**/*", fixture_route)
+        page = await context.new_page()
+        await page.route(app_request, block_app)
+        await page.goto(url, wait_until="commit")
+        recovery = page.locator("#workshop-startup-recovery")
+        await expect(recovery).to_be_visible(timeout=5000)
+        assert attempts and page.url == url
+        async with page.expect_request(lambda request: request.is_navigation_request() and request.url == url):
+            await recovery.get_by_role("button", name="Try again").click()
+        await page.wait_for_function("!history.state?.workshopPickerStartupRetry")
+        await expect(recovery).to_be_hidden()
+        yield page
+    finally:
+        await context.close()
+
+
 async def exercise_simulated_payment(origin, scope, customer_account, repair=None, table_variant=None, table_repair=None):
     from playwright.async_api import async_playwright, expect
 
@@ -1028,6 +1060,22 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                     "source_prose_warning_order_and_asset_matched": True, "figure_placement_and_source_sha_matched": True,
                     "reader_and_original_reserved_figure_space": True,
                 }), flush=True)
+                if scope.get("retry_workshop_entry"):
+                    storage = await owner.storage_state()
+                    async with retry_workshop_entry(browser, page.url, storage, route_fixture) as saved:
+                        await expect(saved.locator("#article-content")).to_contain_text(expected_text)
+                        await saved.locator("#article-content img").first.scroll_into_view_if_needed()
+                        await saved.wait_for_function("document.querySelector('#article-content img')?.naturalWidth > 0")
+                        recovered_url = await saved.locator("#article-content img").first.evaluate("node => node.currentSrc")
+                        recovered_image = await saved.request.get(recovered_url)
+                        assert recovered_image.ok and sha256(await recovered_image.body()).hexdigest() == cold_index["figure_sha"]
+                    await page.locator("#my-vehicles").click()
+                    await expect(page.locator("#library-items > li")).to_have_count(1)
+                    async with retry_workshop_entry(browser, page.url, storage, route_fixture) as saved:
+                        await expect(saved.locator("#library-items > li")).to_have_count(1)
+                        await expect(saved.locator("#library-items h3")).to_contain_text("Escalade")
+                    print(json.dumps({"case": "workshop-entry-recovery", "engine": engine, "headed": True,
+                                      "protected_article_and_library_verified": True}), flush=True)
 
             other = await browser.new_context(ignore_https_errors=True, service_workers="block")
             other_transport = APIFixture(origin, API_CASES[1])
@@ -1082,6 +1130,8 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
             scope["pending_saved_reader"] = True
         if variant.startswith("authored-model-index"):
             scope = authored_model_index_fixture(runtime, scope, competing_fitment=variant.endswith("-competing-fitment"))
+        if variant == "authored-model-index":
+            scope["retry_workshop_entry"] = True
         if variant == "authored-model-index-held-bankone":
             scope["bankone_hold"] = hold_unrelated_bankone_catalog(runtime)
         if variant == "authored-model-index-held-banktwo":
