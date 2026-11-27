@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -439,6 +441,84 @@ func TestWorkshopPublicAssetsRevalidateByContent(t *testing.T) {
 	missing := request(http.MethodGet, "/workshop/missing.mjs", "*")
 	if missing.Code != http.StatusNotFound || missing.Header().Get("ETag") != "" {
 		t.Fatalf("missing file read = %d, tag %q", missing.Code, missing.Header().Get("ETag"))
+	}
+}
+
+func TestWorkshopVersionedAssetEncoding(t *testing.T) {
+	request := func(method, path string, headers http.Header) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, nil)
+		r.Header = headers
+		w := httptest.NewRecorder()
+		workshopAssetsHandler(w, r, workshopEntryOptions{})
+		return w
+	}
+	entry := request(http.MethodGet, "/workshop", nil)
+	root := regexp.MustCompile(`/workshop/assets/[a-f0-9]{64}/`).FindString(entry.Body.String())
+	if root == "" {
+		t.Fatal("entry is missing the asset release path")
+	}
+	for _, name := range []string{"app.mjs", "styles.css", "fonts/InstrumentSans.woff2"} {
+		path := root + name
+		identity := request(http.MethodGet, path, nil)
+		for _, tc := range []struct {
+			name     string
+			accepted []string
+			encoding string
+		}{
+			{"implicit identity", nil, ""},
+			{"listed gzip", []string{"br, GZip"}, "gzip"},
+			{"wildcard gzip", []string{"custom;q=1, *;q=0.4"}, "gzip"},
+			{"gzip veto", []string{"gzip;q=0", "*;q=1"}, ""},
+			{"identity preferred", []string{"identity; q=1, gzip;q=0.3"}, ""},
+			{"invalid weight", []string{"gzip;q=NaN"}, ""},
+		} {
+			t.Run(name+"/"+tc.name, func(t *testing.T) {
+				want := tc.encoding
+				if strings.HasSuffix(name, ".woff2") {
+					want = ""
+				}
+				headers := http.Header{"Accept-Encoding": tc.accepted}
+				body := request(http.MethodGet, path, headers)
+				if body.Code != http.StatusOK || body.Header().Get("Content-Encoding") != want {
+					t.Fatalf("encoding response %d %q, want 200 %q", body.Code, body.Header().Get("Content-Encoding"), want)
+				}
+				for _, key := range []string{"Content-Type", "ETag", "Vary", "Cache-Control", "Vercel-CDN-Cache-Control"} {
+					if body.Header().Get(key) != identity.Header().Get(key) {
+						t.Errorf("unexpected %s %q", key, body.Header().Get(key))
+					}
+				}
+				var payload io.Reader = body.Body
+				if want == "gzip" {
+					if body.Body.Len() >= identity.Body.Len() {
+						t.Fatal("compressed asset did not shrink")
+					}
+					decoder, err := gzip.NewReader(body.Body)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer decoder.Close()
+					payload = decoder
+				}
+				decoded, err := io.ReadAll(payload)
+				if err != nil || !bytes.Equal(identity.Body.Bytes(), decoded) {
+					t.Fatalf("decoded asset mismatch: %v", err)
+				}
+				head := request(http.MethodHead, path, headers)
+				if head.Code != http.StatusOK || head.Body.Len() != 0 || head.Header().Get("Content-Encoding") != want {
+					t.Fatal("HEAD representation did not match GET")
+				}
+				headers.Set("If-None-Match", identity.Header().Get("ETag"))
+				cached := request(http.MethodGet, path, headers)
+				if cached.Code != http.StatusNotModified || cached.Body.Len() != 0 || cached.Header().Get("Vary") != "Accept-Encoding" {
+					t.Fatal("asset revalidation lost its shared validator or negotiation")
+				}
+			})
+		}
+	}
+	part := request(http.MethodGet, root+"app.mjs", http.Header{"Accept-Encoding": {"gzip"}, "Range": {"bytes=0-15"}})
+	if part.Code != http.StatusPartialContent || part.Body.Len() != 16 || part.Header().Get("Content-Encoding") != "" ||
+		part.Header().Get("Vercel-CDN-Cache-Control") != "" {
+		t.Fatal("identity range contract changed")
 	}
 }
 
