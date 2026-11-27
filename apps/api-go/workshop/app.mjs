@@ -2178,6 +2178,11 @@ function renderArticle(article, g, redraw = false) {
     const activeReads = [sourceURL, sourceDocumentRequest?.key].filter(Boolean);
     if (sourceChanged || !pins.length || activeReads.some((url) => !pins.includes(revisionForURL(url)))) {
       resetSourceReview();
+    } else if (originalURL === previousOriginalURL && mountedSource?.signal === g.signal &&
+        mountedSource.articleRevision === renderedRevision) {
+      // Publication changed the reader, while Original kept the same pin.
+      // Reopening still checks access and the source projection on the server.
+      mountedSource.articleRevision = revision;
     }
   }
   if (rebuildArticle) {
