@@ -7290,6 +7290,7 @@ class ArticleMediaNode {
     this.handlers.set(name, (this.handlers.get(name) || []).filter(value => value !== handler));
   }
   dispatch(name, event = {}) { for (const handler of this.handlers.get(name) || []) handler(event); }
+  dispatchEvent(event) { this.dispatch(event.type, event); }
   querySelectorAll(selector) {
     if (selector === '[data-pending-source-image]')
       return mediaDescendants(this, 'p').filter(node => 'pendingSourceImage' in node.dataset);
@@ -7323,7 +7324,7 @@ function articleMediaHarness(overrides = {}) {
   const navigation = new NavigationGeneration(), searchNavigation = new NavigationGeneration(), g = navigation.next();
   const shows = [], statuses = [];
   const context = {
-    URL, URLSearchParams, AbortController, AbortSignal, uuid, articlePresentation, configurationLabel, localImageURL, sourceReferenceURL,
+    URL, URLSearchParams, AbortController, AbortSignal, Event, uuid, articlePresentation, configurationLabel, localImageURL, sourceReferenceURL,
     awaitingArticleRewrite, processingArticle, readableArticle, readyReprojectedSource,
     session: { state: { mode: null } }, sessionRequest: null,
     document: { body, title: '', createElement: tag => new ArticleMediaNode(tag),
@@ -7559,32 +7560,36 @@ test('paid documents with many distinct figures load near the viewport and keep 
 });
 
 test('reader Print releases offscreen images and waits for loaded figures or a visible failure marker', async () => {
-  for (const finish of ['decoded', 'marked unavailable', 'failed', 'timeout', 'navigate']) {
+  for (const finish of ['loaded', 'renewed', 'marked unavailable', 'timeout', 'navigate', 'rerender']) {
     const h = warmFigureHarness();
-    const decoding = deferredAuthOperation();
-    for (const image of h.images) image.decode = () => decoding.promise;
+    if (finish === 'renewed') h.images[0].complete = true;
     const printing = h.context.printArticle();
     assert.ok(h.images.every(image => image.loading === 'eager'), finish);
     assert.deepEqual(h.printed, [], finish);
     assert.match(h.nodes.get('print-status').textContent, /Loading illustrations/, finish);
     if (finish === 'navigate') h.navigation.clear();
+    else if (finish === 'rerender') h.render(mediaArticle([{ type: 'paragraph', text: 'Another article' }], [],
+      { view_revision: 'new-projection' }));
     else if (finish === 'timeout') h.timeout.resolve();
-    else if (finish === 'failed') decoding.reject(new Error('Image could not be decoded'));
     else {
-      for (const image of h.images) {
+      if (finish === 'renewed') {
+        await new Promise(setImmediate);
+        assert.deepEqual(h.printed, []);
+        assert.match(h.nodes.get('print-status').textContent, /Loading illustrations/);
+      }
+      for (const [index, image] of h.images.entries()) {
         image.complete = true;
-        image.naturalWidth = 200;
+        if (index === 0 && finish === 'marked unavailable') h.context.showUnavailableImage(image);
+        else {
+          image.naturalWidth = 200;
+          image.dispatch('load');
+        }
       }
-      if (finish === 'marked unavailable') {
-        h.images[0].naturalWidth = 0;
-        h.context.showUnavailableImage(h.images[0]);
-      }
-      decoding.resolve();
     }
     await printing;
-    const ready = finish === 'decoded' || finish === 'marked unavailable';
+    const ready = ['loaded', 'renewed', 'marked unavailable'].includes(finish);
     assert.deepEqual(h.printed, ready ? [true] : [], finish);
-    if (finish !== 'navigate') assert.equal(h.nodes.get('print-status').hidden, ready, finish);
+    if (finish !== 'navigate') assert.equal(h.nodes.get('print-status').hidden, ready || finish === 'rerender', finish);
   }
 });
 

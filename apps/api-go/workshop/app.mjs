@@ -1649,7 +1649,14 @@ function startArticleFigures(figures, g) {
     }
     img.src = url;
   }
-  return { figures, printing: false, stopWatching: watchFigureLoads(figures, g) };
+  const stopWatching = watchFigureLoads(figures, g);
+  return {
+    figures, printing: null,
+    stopWatching() {
+      stopWatching?.();
+      this.printing?.abort();
+    },
+  };
 }
 function releaseArticleFigures(group) {
   for (const { img } of group?.figures || [])
@@ -1986,6 +1993,7 @@ function showUnavailableImage(img) {
     for (const label of placement.querySelectorAll(".figure-label")) label.removeAttribute("style");
     img.remove();
   } else img.replaceWith(placeholder);
+  img.dispatchEvent(new Event("figureunavailable"));
 }
 const articleDetailOrders = new WeakMap();
 const articleDetailSequence = Symbol();
@@ -3691,21 +3699,28 @@ async function printArticle() {
   if (deferred.printing) return;
   const g = viewGeneration;
   if (!g?.current()) return;
-  deferred.printing = true;
+  const printing = new AbortController();
+  deferred.printing = printing;
+  const signal = AbortSignal.any([g.signal, printing.signal]);
   const message = $("print-status");
+  const waiting = ({ img }) => img.isConnected && (!img.complete || !img.naturalWidth);
   try {
     releaseArticleFigures(deferred);
-    const pending = deferred.figures.filter(({ img }) => img.isConnected && !img.complete);
+    const pending = deferred.figures.filter(waiting);
     if (pending.length) {
       message.textContent = "Loading illustrations for printing…";
       message.hidden = false;
+      // An expired image can fail before its authorized replacement arrives.
       await Promise.race([
-        Promise.allSettled(pending.map(({ img }) => img.decode())),
-        delay(15_000, g.signal),
+        Promise.all(pending.map(({ img }) => new Promise(resolve => {
+          img.addEventListener("load", resolve, { once: true, signal });
+          img.addEventListener("figureunavailable", resolve, { once: true, signal });
+        }))),
+        delay(15_000, signal),
       ]);
     }
     if (!g.current() || deferred !== deferredArticleFigures || (!openDemo && !session.state.authenticated)) return;
-    if (deferred.figures.some(({ img }) => img.isConnected && (!img.complete || !img.naturalWidth))) {
+    if (deferred.figures.some(waiting)) {
       message.textContent = "Some illustrations are still unavailable. Try printing again.";
       message.hidden = false;
       return;
@@ -3713,9 +3728,10 @@ async function printArticle() {
     message.hidden = true;
     window.print();
   } catch (error) {
-    if (!g.signal.aborted) throw error;
+    if (!signal.aborted) throw error;
   } finally {
-    deferred.printing = false;
+    printing.abort();
+    deferred.printing = null;
   }
 }
 $("print").addEventListener("click", printArticle);
