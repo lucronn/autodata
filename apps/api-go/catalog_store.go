@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -722,9 +723,33 @@ const catalogModelIdentityFilter = `
 		  AND observation.raw_observation->>'model' = '_make_'
 	))`
 
+// The provider can put a country qualifier in the model label instead of a
+// structured region. Normalized identities may omit the original parentheses.
+const nonUSModelQualifier = `(?i)(\s(Canada|Mexico)|\((Canada|Mexico)\))\s*$`
+
+var nonUSModelLabel = regexp.MustCompile(nonUSModelQualifier)
+
+const catalogConfigurationMarketEvidence = `(
+	vc.engine_variant_market_verified OR EXISTS (
+		SELECT 1 FROM vehicle_identity_observations observation
+		WHERE observation.vehicle_id = vc.vehicle_id
+		  AND observation.vehicle_configuration_id = vc.vehicle_configuration_id
+		  AND observation.reviewer_state <> 'rejected'
+		  AND observation.raw_observation->>'source_region' = vib.region
+	)
+)`
+
 func (s *postgresCatalogStore) Models(ctx context.Context, _ Principal, year int, makeName, region string) ([]CatalogModel, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT model, reviewer_state = 'approved' AS market_known FROM vehicle_identity_bases vib
+		SELECT DISTINCT model, (
+			reviewer_state = 'approved' OR (
+				vib.region = 'US' AND vib.model ~ '`+nonUSModelQualifier+`' AND EXISTS (
+					SELECT 1 FROM vehicle_configurations vc
+					WHERE vc.vehicle_id = vib.vehicle_id AND vc.vehicle_identity_base_id = vib.vehicle_identity_base_id
+					  AND vc.reviewer_state <> 'rejected' AND `+catalogConfigurationMarketEvidence+`
+				)
+			)
+		) AS market_known FROM vehicle_identity_bases vib
 		WHERE model_year = $1 AND (LOWER(make) = LOWER($2) OR ($4 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(make), '[^a-z0-9]+', '-', 'g')) = $4)) AND ($3 = '' OR region = $3) AND reviewer_state <> 'rejected'
 		  AND `+catalogModelIdentityFilter+`
 		UNION
@@ -765,7 +790,9 @@ func (s *postgresCatalogStore) Models(ctx context.Context, _ Principal, year int
 const catalogConfigurationFields = `vc.vehicle_configuration_id::text, vc.vehicle_id::text,
 		       vib.model_year, vib.make, vib.model, vib.region,
 		       COALESCE(vc.trim, ''), COALESCE(vc.engine_displacement_l::text, ''), COALESCE(vc.engine_variant, ''),
-		       vc.engine_variant IS NOT NULL AND NOT vc.engine_variant_market_verified,
+		       (vc.engine_variant IS NOT NULL AND NOT vc.engine_variant_market_verified)
+		       OR (vib.region = 'US' AND vib.model ~ '` + nonUSModelQualifier + `'
+		         AND vib.reviewer_state <> 'approved' AND NOT ` + catalogConfigurationMarketEvidence + `),
 		       COALESCE(btrim(vib.body_style), ''), COALESCE(btrim(vib.drivetrain), ''),
 		       vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected',
 		       CASE

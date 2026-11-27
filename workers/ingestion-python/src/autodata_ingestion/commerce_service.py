@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
+from .catalog_market import NON_US_MODEL_QUALIFIER
 from .purchase_config import PurchaseConfig, parse_purchase_config
 
 PRODUCT = "workshop-configuration-v1"
@@ -25,6 +26,16 @@ _CONFIGURATION_LABEL_SQL = (
     "concat_ws(' ',b.model_year::text,b.make,b.model,c.trim,c.engine_displacement_l::text || ' L',c.engine_variant,"
     "NULLIF(btrim(b.body_style),''),NULLIF(btrim(b.drivetrain),''))"
 )
+# Match the catalog's exact configuration evidence for a conflicting model label.
+_MODEL_MARKET_UNVERIFIED_SQL = f"""
+    b.region='US' AND b.model ~ '{NON_US_MODEL_QUALIFIER}'
+    AND b.reviewer_state<>'approved' AND NOT c.engine_variant_market_verified
+    AND NOT EXISTS (
+        SELECT 1 FROM vehicle_identity_observations observation
+        WHERE observation.vehicle_id=c.vehicle_id AND observation.vehicle_configuration_id=c.vehicle_configuration_id
+          AND observation.reviewer_state<>'rejected' AND observation.raw_observation->>'source_region'=b.region
+    )
+"""
 # Match the catalog selector and bound article evidence probes to this scope.
 _CONFIGURATION_RESOLVED_SQL = """
     CASE WHEN c.trim ~ '[^[:space:]]' OR c.engine_displacement_l IS NOT NULL
@@ -236,7 +247,8 @@ class CommerceService:
 
     def _scope(self, cursor, configuration_id, region, *, for_offer=False):
         validate_uuid(configuration_id); validate_region(region)
-        offer = f', ({_CONFIGURATION_RESOLVED_SQL}) AS configuration_resolved' if for_offer else ''
+        offer = (f', ({_CONFIGURATION_RESOLVED_SQL}) AS configuration_resolved,'
+                 f' ({_MODEL_MARKET_UNVERIFIED_SQL}) AS model_market_unverified') if for_offer else ''
         cursor.execute(f"""SELECT c.vehicle_configuration_id, {_CONFIGURATION_LABEL_SQL} AS label,
             c.engine_variant IS NOT NULL AND NOT c.engine_variant_market_verified AS engine_variant_market_unverified
             {offer}
@@ -266,6 +278,8 @@ class CommerceService:
 
     def _quote(self, cursor, configuration_id, region, *, purchasable):
         scope = self._scope(cursor, configuration_id, region, for_offer=True)
+        if scope['model_market_unverified']:
+            raise CommerceError('CONFIGURATION_NOT_FOUND', 404)
         self._product(cursor)
         market_unverified = scope['engine_variant_market_unverified']
         resolved = scope['configuration_resolved']
@@ -383,7 +397,7 @@ class CommerceService:
             order = self._order(cursor, live['order_id'])
         else:
             configuration = self._scope(cursor, configuration_id, region, for_offer=True)
-            if configuration['engine_variant_market_unverified']:
+            if configuration['model_market_unverified'] or configuration['engine_variant_market_unverified']:
                 raise CommerceError('CONFIGURATION_MARKET_UNVERIFIED', 409)
             if not configuration['configuration_resolved']:
                 raise CommerceError('CONFIGURATION_UNRESOLVED', 409)

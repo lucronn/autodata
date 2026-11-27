@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "workers/ingestion-python/tests"))
 
 from autodata_ingestion.commerce_service import configured_commerce
-from lifecycle_support import LifecycleRuntime, fresh_database
+from lifecycle_support import LifecycleRuntime, fresh_database, seed_configuration
 from test_catalog_api_integration import Bridge, GO_NAMES, serve
 from test_paid_catalog_api_integration import configure_scoped_runtime
 from workshop_browser_smoke import API_CASES, APIFixture, api_control, api_measure, api_signin, fixture_origin
@@ -282,6 +282,55 @@ async def verify_authored_table(page, detail, *, restored=True):
     return reader_asset
 
 
+def labelled_market_fixture(runtime):
+    misplaced = seed_configuration(runtime.repo, runtime.vehicle, engine_displacement_l="5.3")
+    verified = seed_configuration(runtime.repo, runtime.vehicle, engine_displacement_l="3.6")
+    with runtime.repo.connect() as connection:
+        for identifier, label in ((misplaced, "Cheyenne 2WD Mexico"), (verified, "Verified model (Mexico)")):
+            connection.execute("""
+                UPDATE vehicle_identity_bases SET model=%s, reviewer_state='pending'
+                WHERE vehicle_identity_base_id=(
+                    SELECT vehicle_identity_base_id FROM vehicle_configurations WHERE vehicle_configuration_id=%s
+                )
+            """, (label, identifier))
+        connection.execute("""
+            INSERT INTO vehicle_identity_observations(observation_key, vehicle_id, vehicle_identity_base_id,
+              vehicle_configuration_id, source_snapshot_id, extraction_evidence_id, source_locator,
+              evidence_locator, evidence_confidence, reviewer_state, raw_observation, canonical_observation,
+              resolution_status)
+            SELECT 'market-fixture', vehicle_id, vehicle_identity_base_id, vehicle_configuration_id,
+              source_snapshot_id, extraction_evidence_id, 'fixture', 'fixture', 1, 'pending',
+              '{"region":"US","source_region":"US"}'::jsonb, '{}'::jsonb, 'matched'
+            FROM vehicle_configurations WHERE vehicle_configuration_id=%s
+        """, (verified,))
+    return str(misplaced), str(verified)
+
+
+async def verify_labelled_market_picker(page, origin, misplaced, verified):
+    from playwright.async_api import expect
+
+    base = origin + "/v1/catalog/years/2024/makes/example/models"
+    await page.goto(origin + "/workshop/?year=2024&make=example")
+    await expect(page.locator('#model option[value="verified-model-mexico"]')).to_be_attached()
+    await expect(page.locator('#model option[value="cheyenne-2wd-mexico"]')).to_have_count(0)
+    for model, identifier, market_unverified in (
+        ("cheyenne-2wd-mexico", misplaced, True), ("verified-model-mexico", verified, False)
+    ):
+        reply = await page.evaluate("""async path => {
+            const response = await fetch(path);
+            if (!response.ok) throw new Error(String(response.status));
+            return response.json();
+        }""", f"{base}/{model}/configurations?region=US&stored_only=1")
+        row, = reply["items"]
+        assert row["id"] == identifier
+        assert row.get("engine_variant_market_unverified", False) is market_unverified
+    await page.goto(f"{origin}/workshop/?configuration={misplaced}&region=US")
+    await expect(page.locator("#activity-text")).to_have_text(
+        "This saved vehicle choice is unavailable in the selected region."
+    )
+    await expect(page.locator("#purchase")).to_be_hidden()
+
+
 async def exercise_simulated_payment(origin, scope, customer_account, repair=None, table_variant=None, table_repair=None):
     from playwright.async_api import async_playwright, expect
 
@@ -320,6 +369,9 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             assert (await owner.request.get(detail)).status == 401
             guest_quote = await owner.request.get(quote)
             assert guest_quote.ok and (await guest_quote.json())["purchasable"] is False
+            market = scope.get("labelled_market")
+            if market:
+                await verify_labelled_market_picker(page, origin, *market)
             if repair is None and table_variant is None:
                 await page.goto(f"{origin}/workshop/")
                 for field, value in (("year", "2024"), ("make", "example"), ("model", "car"),
@@ -342,6 +394,28 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                 "Sign in with Google to simulate purchase. No payment is collected."
             )
             await api_signin(page)
+            if market:
+                misplaced, verified = market
+                for identifier, expected in ((misplaced, 404), (verified, 200)):
+                    offer = await owner.request.get(f"{origin}/v1/workshop/quote?configuration_id={identifier}&region=US")
+                    assert offer.status == expected
+                    if expected == 200:
+                        assert (await offer.json())["purchasable"] is True
+                refused = await page.evaluate("""async ([configuration, key]) => {
+                    const session = await fetch('/auth/session');
+                    if (!session.ok) throw new Error(String(session.status));
+                    const {csrf_token} = await session.json();
+                    const response = await fetch('/v1/workshop/checkout-sessions', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'Idempotency-Key': key,
+                                  'X-CSRF-Token': csrf_token},
+                        body: JSON.stringify({configuration_id: configuration, region: 'US',
+                            expected_mode: 'simulation', terms_version: 'workshop-v1'}),
+                    });
+                    return [response.status, (await response.json()).error?.code];
+                }""", [misplaced, str(uuid4())])
+                assert refused == [409, "CONFIGURATION_MARKET_UNVERIFIED"]
+                print(f"WORKSHOP_LABELLED_MARKET headed={engine} refused={refused[0]} verified_offer=200", flush=True)
             assert (await owner.request.get(detail)).status == 403
             owner_quote = await owner.request.get(quote)
             assert owner_quote.ok and (await owner_quote.json())["purchasable"] is True
@@ -452,7 +526,9 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             await browser.close()
 
 
-@pytest.mark.parametrize("variant", ["payment", "list-starts", "authored-table", "archived-table", "source-table"])
+@pytest.mark.parametrize("variant", [
+    "payment", "list-starts", "authored-table", "archived-table", "source-table", "labelled-market",
+])
 def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_database, monkeypatch, tmp_path, variant):
     from autodata_ingestion.http_service import make_handler
 
@@ -470,6 +546,8 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
         provider = "banktwo"
         scope = configure_scoped_runtime(runtime, provider)
         scope["article"] = str(runtime.article_id)
+        if variant == "labelled-market":
+            scope["labelled_market"] = labelled_market_fixture(runtime)
         repair = retained_list_start_fixture(runtime, monkeypatch) if variant == "list-starts" else None
         table_variant = variant if variant in ("authored-table", "archived-table", "source-table") else None
         table_repair = authored_table_fixture(runtime, monkeypatch, tmp_path, table_variant) if table_variant else None

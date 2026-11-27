@@ -20,6 +20,7 @@ from uuid import uuid4
 
 
 from . import selector_job
+from .catalog_market import NON_US_MODEL_QUALIFIER
 from .vehicle_identity import engine_variant_for_row
 
 
@@ -1923,6 +1924,11 @@ class _SourceCatalogProvider:
                         if scope != "configurations" and source_region != requested_region:
                             continue
                         row["source_region"] = source_region
+                if (scope in {"models", "configurations"} and requested_region == "US" and
+                        not row.get("source_region") and re.search(NON_US_MODEL_QUALIFIER, str(row.get("model", "")))):
+                    # A requested region is only a placement fallback. A
+                    # country-qualified row needs independent US evidence.
+                    continue
                 if scope == "configurations":
                     row.setdefault("region", item.get("region") or request.region)
                 if scope == "configurations" and "configuration" in item:
