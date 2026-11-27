@@ -9624,6 +9624,7 @@ function selectorOptionsHarness(response) {
    if (!nodes.has(id)) nodes.set(id, {
      value:'', disabled:false, hidden:true, textContent:'', dataset:{}, options:[],
      append(...choices) { this.options.push(...choices); },
+     addEventListener(event, listener) { this[event] = listener; },
    });
    return nodes.get(id);
  };
@@ -9671,6 +9672,44 @@ test('the early live make response keeps usable partial rows without scheduling 
   assert.equal(h.$('make').disabled, false);
   assert.deepEqual(h.displayed, [items]);
   assert.deepEqual(h.requests, []);
+});
+
+test('retrying a model picker after a make change leaves its parent selectors alone', async () => {
+  const choices = [{ id: 'available', name: 'Available model' }];
+  let discoveryReads = 0;
+  const h = selectorOptionsHarness(path => {
+    assert.equal(path, '/2010/buick-truck/models');
+    if (++discoveryReads === 1) return { items: [], complete: false, hydrating: false };
+    return { items: choices, complete: true, hydrating: false };
+  });
+  h.$('year').value = '2010';
+  h.$('make').value = 'buick-truck';
+  const { operation } = h.context;
+  let pending;
+  Object.assign(h.context, {
+    names: ['year', 'make', 'model', 'configuration'],
+    operation(...args) { return pending = operation(...args); },
+    selectorPath(name) {
+      assert.equal(name, 'model');
+      return `/${h.$('year').value}/${h.$('make').value}/models`;
+    },
+    invalidate() { h.context.navigation.clear(); },
+    show() {}, updateURL() {},
+    restoreRoute() { assert.fail('The model retry reloaded the full vehicle route'); },
+  });
+  runInNewContext(appSection('for (const [index, name] of names.entries())', '$("signin").addEventListener'), h.context);
+  h.$('make').change();
+  await pending;
+  assert.equal(h.$('retry').hidden, false);
+  const retry = h.context.retryAction;
+  await retry();
+  assert.equal(h.$('year').value, '2010');
+  assert.equal(h.$('make').value, 'buick-truck');
+  assert.deepEqual(h.context.rows.model, choices);
+  assert.equal(h.$('retry').hidden, true);
+  h.$('make').value = 'cadillac-truck';
+  await retry();
+  assert.deepEqual(h.requests, ['/2010/buick-truck/models', '/2010/buick-truck/models']);
 });
 
 test('a delayed unverified engine variant appends disabled and keeps the exact selected option', async () => {
