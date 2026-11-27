@@ -2764,7 +2764,9 @@ async function renewMedia(g, failed, timedOut = false) {
   }
   if (!retryImage(failed, images)) showUnavailableImage(failed);
 }
-async function library(g, append = false, { focusOnShow = false, initialAccountCheck = null } = {}) {
+async function library(g, append = false, {
+  focusOnShow = false, initialAccountCheck = null, restorePrevious = false, pageSize = 20,
+} = {}) {
   if (!append) $("purchase").hidden = true;
   let initialPage;
   const accountCheck = initialAccountCheck ?? sessionRequest;
@@ -2787,9 +2789,12 @@ async function library(g, append = false, { focusOnShow = false, initialAccountC
   show("library");
   status(append ? "Loading more vehicles…" : "Opening My vehicles…", { busy: true });
   const cursor = append ? libraryCursor : null;
+  const previous = !append && restorePrevious ? history.state?.workshopLibrary : null;
+  const restoreCount = Number.isSafeInteger(previous?.visible) && previous.visible > 0 ? previous.visible : 0;
+  const limit = Math.min(50, Math.max(pageSize, restoreCount));
   const more = $("library-more");
   const request = initialPage ? Promise.resolve(initialPage) : requestJSON(
-    `/v1/workshop/library?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+    `/v1/workshop/library?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
     { signal: g.signal, headers: { Prefer: "workshop-library-catalog-empty" } },
   );
   libraryPageRequest = request;
@@ -2811,6 +2816,7 @@ async function library(g, append = false, { focusOnShow = false, initialAccountC
   let firstHeading;
   for (const item of data.items) {
     const li = element("li");
+    li.dataset.libraryItemId = item.library_item_id;
     const heading = element("h3", `${item.label} / ${item.region}`);
     firstHeading ??= heading;
     const catalogUnavailable = item.catalog_available === false;
@@ -2836,6 +2842,10 @@ async function library(g, append = false, { focusOnShow = false, initialAccountC
       const button = element("button", item.catalog_empty ? "Check article availability" : "Open articles");
       button.type = "button";
       button.addEventListener("click", () => {
+        // Keep only the position. A return fetches the Library with current authorization.
+        history.replaceState({
+          ...history.state, workshopLibrary: { visible: list.children.length, selected: item.library_item_id },
+        }, "");
         // A library item is an exact configuration/region route. A previous
         // browse hierarchy can belong to a different vehicle and must be cleared.
         for (const name of names) populate(name, []);
@@ -2869,6 +2879,21 @@ async function library(g, append = false, { focusOnShow = false, initialAccountC
   $("library-message").textContent = list.children.length
     ? ""
     : "No vehicles purchased yet. Browse to choose a vehicle.";
+  if (restoreCount) {
+    while (g.current() && libraryCursor && list.children.length < restoreCount) {
+      const loaded = list.children.length;
+      await library(g, true, { pageSize: restoreCount - loaded });
+      if (list.children.length === loaded) break;
+    }
+    if (!g.current()) return;
+    const restored = Array.from(list.children).find(card => card.dataset.libraryItemId === previous.selected);
+    const heading = restored?.children[0];
+    if (heading) {
+      heading.setAttribute("tabindex", "-1");
+      heading.focus({ preventScroll: true });
+      heading.scrollIntoView({ behavior: "instant", block: "nearest" });
+    }
+  }
   if (!append && focusOnShow) {
     const title = $("library-title");
     title.focus({ preventScroll: true });
@@ -3411,7 +3436,7 @@ async function restoreRoute(initialYears = null, {
         return;
       }
       if (!openDemo && params.get("view") === "library") {
-        await library(g, false, { initialAccountCheck });
+        await library(g, false, { initialAccountCheck, restorePrevious: true });
         return;
       }
       const articleID = params.get("article") || "";
