@@ -2254,7 +2254,7 @@ class DTOPlaywrightLifecycle:
         from playwright.async_api import async_playwright
         self.manager=async_playwright()
         self.playwright=await self.manager.start()
-    async def launch(self,engine,timeout):return await getattr(self.playwright,engine).launch(timeout=timeout)
+    async def launch(self,engine,timeout):return await getattr(self.playwright,engine).launch(headless=False,timeout=timeout)
     async def case(self,browser,name,output):return await run_dto_case(browser,self.args.base_url,name,output)
     async def close(self,browser):await browser.close()
     async def stop(self):
@@ -2332,7 +2332,7 @@ async def run(args):
         from playwright.async_api import async_playwright
         async with async_playwright() as playwright:
             stage='browser-launch';observations.note_lifecycle('setup','browser-launch','requested')
-            browser=await getattr(playwright,engines[0]).launch()
+            browser=await getattr(playwright,engines[0]).launch(headless=False)
             observations.note_lifecycle('setup','browser-launch','completed')
             stage='case';start=time.monotonic()
             try:
@@ -2629,11 +2629,11 @@ def decode_dto_ack(raw):
 
 
 def dto_worker_environment(environment):
-    allowed=('PATH','HOME','TMPDIR','XDG_CACHE_HOME','PLAYWRIGHT_BROWSERS_PATH','SSL_CERT_FILE','SSL_CERT_DIR','LANG','LC_ALL')
+    allowed=('PATH','HOME','TMPDIR','XDG_CACHE_HOME','PLAYWRIGHT_BROWSERS_PATH','SSL_CERT_FILE','SSL_CERT_DIR','LANG','LC_ALL','DISPLAY','XAUTHORITY')
     result={key:environment[key] for key in allowed if key in environment}
     for key,value in result.items():
         if not isinstance(value,str) or '\0' in value:raise ValueError('invalid worker environment')
-        if key not in ('LANG','LC_ALL'):
+        if key not in ('LANG','LC_ALL','DISPLAY'):
             paths=value.split(os.pathsep) if key=='PATH' else [value]
             if any(not Path(part).is_absolute() for part in paths):raise ValueError('worker paths must be absolute')
     return result

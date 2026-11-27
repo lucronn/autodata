@@ -526,6 +526,7 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                     time.sleep(.05)
                 metadata=_read_json(ready);assert metadata['kind']=='api-fixture'
                 browser_env={key:value for key,value in env.items() if key in allowed}
+                browser_env.update({key:os.environ[key] for key in ('DISPLAY','XAUTHORITY') if key in os.environ})
                 browser_env.update(_binding_env(binding,'browser-runner'))
                 browser_env.update(CANDIDATE_SHA=candidate,AUTODATA_WORKSHOP_BROWSER_CASE=root_name)
                 browser_home=(directory/'browser-home').absolute()
@@ -638,6 +639,7 @@ def _case(root_name,engine,provider,fresh_database,monkeypatch):
         repo=fresh_database()
         allowed=('PATH','PYTHONPATH','PYTHONDONTWRITEBYTECODE','AUTODATA_R3_CANDIDATE_SHA','AUTODATA_LIFECYCLE_TEST','AUTODATA_CATALOG_INTEGRATION_REQUIRED','AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION','GOTOOLCHAIN','GOPROXY','GOFLAGS','CGO_ENABLED','GOMODCACHE','GOCACHE','GOTMPDIR','PLAYWRIGHT_BROWSERS_PATH','XDG_CACHE_HOME','XDG_CONFIG_HOME','TMPDIR')
         env={key:os.environ[key] for key in allowed if key in os.environ}
+        env.update({key:os.environ[key] for key in ('DISPLAY','XAUTHORITY') if key in os.environ})
         env.update(_binding_env(binding,'child-pytest'))
         env.update(AUTODATA_WORKSHOP_BROWSER_CHILD='1',AUTODATA_WORKSHOP_BROWSER_DATABASE=repo.database_name,AUTODATA_WORKSHOP_BROWSER_DIRECTORY=str(directory))
         with _private_log(directory/'child.log') as log:

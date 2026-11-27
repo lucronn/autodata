@@ -232,7 +232,7 @@ async def _read_recovered_svg(origin, scope, repair):
     async with async_playwright() as playwright:
         executable = os.environ.get("AUTODATA_WORKSHOP_SIMULATION_CHROMIUM")
         options = {"executable_path": executable} if executable else {}
-        browser = await playwright.chromium.launch(**options)
+        browser = await playwright.chromium.launch(headless=False, **options)
         try:
             owner = await browser.new_context(ignore_https_errors=True, service_workers="block")
             owner_transport = APIFixture(origin, API_CASES[1])
