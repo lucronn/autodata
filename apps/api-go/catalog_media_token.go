@@ -89,6 +89,7 @@ func openCatalogImageReference(token string, key []byte) (string, error) {
 }
 
 const paidCatalogImageTokenAAD = "autodata:catalog-image:v2"
+const paidCatalogImageLifetimeSeconds = 300
 
 // This encrypted context is a reference, never a substitute for current grant
 // and source-rights checks. Provider-local identities are bound only by hashes.
@@ -115,7 +116,7 @@ var paidCatalogDigestPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var paidCatalogAssetPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$`)
 
 func validPaidCatalogImageReference(ref paidCatalogImageReference, now time.Time) bool {
-	if ref.Version != 2 || ref.IssuedAt <= 0 || ref.IssuedAt > now.Unix()+30 || ref.ExpiresAt <= now.Unix() || ref.ExpiresAt-ref.IssuedAt != 300 {
+	if ref.Version != 2 || ref.IssuedAt <= 0 || ref.IssuedAt > now.Unix()+30 || ref.ExpiresAt <= now.Unix() || ref.ExpiresAt-ref.IssuedAt != paidCatalogImageLifetimeSeconds {
 		return false
 	}
 	for _, id := range []string{ref.CustomerAccountID, ref.ConfigurationID, ref.CanonicalArticleID, ref.SelectedSourceRevisionID, ref.AnchorSourceRevisionID} {
@@ -174,7 +175,7 @@ func openPaidCatalogImageReference(token string, key []byte, now time.Time) (pai
 	if err != nil {
 		return ref, invalid
 	}
-	if len(raw) > 0 && raw[0] == compactPaidImageFormat {
+	if len(raw) > 0 && (raw[0] == compactPaidImageFormat || raw[0] == compactCurrentSourceImageFormat) {
 		compact, err := decodeCompactPaidImageClaims(raw)
 		if err != nil || !validPaidCatalogImageReference(compact, now) {
 			return ref, invalid

@@ -98,7 +98,7 @@ func paidCatalogHasImages(article CatalogArticle) bool {
 	return false
 }
 func paidCatalogProjectionReference(p Principal, configuration CatalogConfiguration, identity PaidArticleIdentity, view CatalogArticleView, sourceID, projection string, now time.Time) paidCatalogImageReference {
-	ref := paidCatalogImageReference{Version: 2, IssuedAt: now.Unix(), ExpiresAt: now.Unix() + 300, CustomerAccountID: p.CustomerAccountID, ConfigurationID: configuration.ID, Region: configuration.Region, CanonicalArticleID: identity.CanonicalArticleID, ProviderSlug: identity.ProviderSlug, SourceVehicleRefSHA256: paidCatalogSourceHash(identity.SourceVehicleRef), SourceArticleRefSHA256: paidCatalogSourceHash(identity.SourceArticleRef), SelectedSourceRevisionID: sourceID, AnchorCanonicalRevisionID: view.Article.CanonicalRevisionID, Projection: projection}
+	ref := paidCatalogImageReference{Version: 2, IssuedAt: now.Unix(), ExpiresAt: now.Unix() + paidCatalogImageLifetimeSeconds, CustomerAccountID: p.CustomerAccountID, ConfigurationID: configuration.ID, Region: configuration.Region, CanonicalArticleID: identity.CanonicalArticleID, ProviderSlug: identity.ProviderSlug, SourceVehicleRefSHA256: paidCatalogSourceHash(identity.SourceVehicleRef), SourceArticleRefSHA256: paidCatalogSourceHash(identity.SourceArticleRef), SelectedSourceRevisionID: sourceID, AnchorCanonicalRevisionID: view.Article.CanonicalRevisionID, Projection: projection}
 	if identity.CurrentSourceRevisionID != nil {
 		ref.AnchorSourceRevisionID = *identity.CurrentSourceRevisionID
 	}

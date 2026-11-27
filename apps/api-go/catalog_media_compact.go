@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -8,9 +9,12 @@ import (
 	"strings"
 )
 
-// Protected v2 links keep the same claims and encryption. A leading byte in
-// the authenticated plaintext distinguishes compact claims from older JSON.
-const compactPaidImageFormat = 1
+// Protected v2 links keep the same claims and encryption. The leading byte in
+// the authenticated plaintext distinguishes binary formats from older JSON.
+const (
+	compactPaidImageFormat          = 1
+	compactCurrentSourceImageFormat = 2
+)
 
 const (
 	compactBanktwo byte = 1 << iota
@@ -37,6 +41,18 @@ type compactPaidImageClaims struct {
 	SourceVehicle, SourceArticle    [32]byte
 	ObjectDigest                    [32]byte
 	ObjectNamespace                 [8]byte
+}
+
+// These objects use their digest for both the public asset ID and object path,
+// and the selected revision is the current anchor. Other links use format 1.
+type compactCurrentSourceImageClaims struct {
+	Format, Flags                   byte
+	IssuedAt                        int64
+	Region                          [2]byte
+	Account, Configuration, Article paidImageUUID
+	Source, CanonicalAnchor         paidImageUUID
+	SourceVehicle, SourceArticle    [32]byte
+	ObjectDigest                    [32]byte
 }
 
 var errInvalidPaidImageClaims = errors.New("invalid paid catalog image reference")
@@ -94,6 +110,17 @@ func compactPaidImagePlaintext(ref paidCatalogImageReference) ([]byte, error) {
 			return nil, errInvalidPaidImageClaims
 		}
 	}
+	if claims.Flags&(compactSourceObject|compactHashedAsset) == compactSourceObject|compactHashedAsset &&
+		claims.SelectedSource == claims.AnchorSource &&
+		bytes.Equal(asset, claims.ObjectDigest[:]) && bytes.Equal(claims.ObjectNamespace[:], claims.ObjectDigest[:8]) {
+		current := compactCurrentSourceImageClaims{
+			Format: compactCurrentSourceImageFormat, Flags: claims.Flags, IssuedAt: claims.IssuedAt,
+			Region: claims.Region, Account: claims.Account, Configuration: claims.Configuration, Article: claims.Article,
+			Source: claims.AnchorSource, CanonicalAnchor: claims.CanonicalAnchor,
+			SourceVehicle: claims.SourceVehicle, SourceArticle: claims.SourceArticle, ObjectDigest: claims.ObjectDigest,
+		}
+		return binary.Append(nil, binary.BigEndian, current)
+	}
 	size := binary.Size(claims)
 	raw, err := binary.Append(make([]byte, 0, size+len(asset)), binary.BigEndian, claims)
 	if err != nil {
@@ -103,10 +130,32 @@ func compactPaidImagePlaintext(ref paidCatalogImageReference) ([]byte, error) {
 }
 
 func decodeCompactPaidImageClaims(raw []byte) (paidCatalogImageReference, error) {
+	if len(raw) > 0 && raw[0] == compactCurrentSourceImageFormat {
+		var current compactCurrentSourceImageClaims
+		size, err := binary.Decode(raw, binary.BigEndian, &current)
+		if err != nil || size != len(raw) ||
+			current.Flags&(compactSourceObject|compactHashedAsset) != compactSourceObject|compactHashedAsset {
+			return paidCatalogImageReference{}, errInvalidPaidImageClaims
+		}
+		claims := compactPaidImageClaims{
+			Flags: current.Flags, IssuedAt: current.IssuedAt, ExpiresAt: current.IssuedAt + paidCatalogImageLifetimeSeconds,
+			Region: current.Region, Account: current.Account, Configuration: current.Configuration, Article: current.Article,
+			SelectedSource: current.Source, AnchorSource: current.Source, CanonicalAnchor: current.CanonicalAnchor,
+			SourceVehicle: current.SourceVehicle, SourceArticle: current.SourceArticle, ObjectDigest: current.ObjectDigest,
+			ObjectNamespace: [8]byte(current.ObjectDigest[:8]),
+		}
+		return claims.reference(current.ObjectDigest[:])
+	}
 	var claims compactPaidImageClaims
 	size, err := binary.Decode(raw, binary.BigEndian, &claims)
-	if err != nil || claims.Format != compactPaidImageFormat || claims.Flags&^compactImageFlags != 0 ||
-		len(raw) <= size || len(raw)-size > 256 {
+	if err != nil || claims.Format != compactPaidImageFormat || len(raw) <= size {
+		return paidCatalogImageReference{}, errInvalidPaidImageClaims
+	}
+	return claims.reference(raw[size:])
+}
+
+func (claims compactPaidImageClaims) reference(asset []byte) (paidCatalogImageReference, error) {
+	if claims.Flags&^compactImageFlags != 0 || len(asset) == 0 || len(asset) > 256 {
 		return paidCatalogImageReference{}, errInvalidPaidImageClaims
 	}
 	ref := paidCatalogImageReference{
@@ -137,7 +186,6 @@ func decodeCompactPaidImageClaims(raw []byte) (paidCatalogImageReference, error)
 		}
 		ref.ObjectKey = "procedure-images/" + hex.EncodeToString(claims.ObjectDigest[:])
 	}
-	asset := raw[size:]
 	if claims.Flags&compactHashedAsset != 0 {
 		if len(asset) != 32 {
 			return paidCatalogImageReference{}, errInvalidPaidImageClaims
