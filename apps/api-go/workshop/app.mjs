@@ -2622,9 +2622,20 @@ function matchesMountedSource(key, g) {
 }
 
 function requestSourceDocument(path, g, key, sourceView) {
-  const response = requestJSON(path, {
+  const timeout = 10_000;
+  const deadline = performance.now() + timeout;
+  const options = {
     signal: g.signal,
+    timeout,
+    reportBodyNetworkError: true,
     headers: sourceView ? { ...sourceDocumentHeaders, "X-Workshop-Source-View": sourceView } : sourceDocumentHeaders,
+  };
+  const response = requestJSON(path, options).catch((error) => {
+    g.signal.throwIfAborted();
+    const remaining = Math.floor(deadline - performance.now());
+    if (error.code !== "NETWORK_UNAVAILABLE" || error.status !== 0 || error.retryAfterSeconds || remaining <= 0)
+      throw error;
+    return requestJSON(path, { ...options, timeout: remaining });
   });
   return { key, signal: g.signal, sourceView, response };
 }
