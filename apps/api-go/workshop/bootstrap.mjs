@@ -5,8 +5,9 @@ const pickerStartup = globalThis.workshopPickerStartup;
 const demoIndex = globalThis.workshopDemoIndex;
 delete globalThis.workshopPickerStartup;
 delete globalThis.workshopDemoIndex;
+// Startup needs the parsed controls and reader. Deferred scripts can finish independently.
 const pageReady = document.readyState === 'loading'
-  ? new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }))
+  ? new Promise(resolve => document.addEventListener('readystatechange', resolve, { once: true }))
   : Promise.resolve();
 
 async function readDemoMode() {
@@ -85,6 +86,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
     document.getElementById('test-unavailable').hidden = false;
     document.querySelector('.site-header nav').hidden = true;
     document.querySelector('main').hidden = true;
+    globalThis.dispatchEvent(new Event('workshop-picker-started'));
   } else {
     document.getElementById('test-banner').hidden = !testCheckout;
     document.getElementById('open-demo-banner').hidden = !openDemo;
