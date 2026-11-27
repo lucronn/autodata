@@ -149,6 +149,7 @@ func TestWorkshopEntryCarriesOnlyCompletePublicYears(t *testing.T) {
 type workshopInitialMakesStore struct {
 	*workshopInitialYearsStore
 	requestedYears []int
+	largeOlderList bool
 }
 
 func (s *workshopInitialMakesStore) catalogMakeLists(_ context.Context, years []int, region string, completeOnly bool) (map[int][]CatalogMake, error) {
@@ -156,14 +157,21 @@ func (s *workshopInitialMakesStore) catalogMakeLists(_ context.Context, years []
 	if region != "US" || !completeOnly {
 		return nil, fmt.Errorf("expected only complete US make lists")
 	}
-	return map[int][]CatalogMake{2024: {{ID: "quoted", Name: "A < B", MarketUnverified: true}}}, nil
+	makeChoice := CatalogMake{ID: "quoted", Name: "A < B", MarketUnverified: true}
+	verified := makeChoice
+	verified.MarketUnverified = false
+	lists := map[int][]CatalogMake{2016: {makeChoice}, 2023: {verified}, 2024: {makeChoice}}
+	if s.largeOlderList {
+		lists[2021] = []CatalogMake{{ID: "large", Name: strings.Repeat("b", workshopInitialMakesMaxBytes)}}
+	}
+	return lists, nil
 }
 
 func TestWorkshopEntryCarriesBoundedPublicMakeLists(t *testing.T) {
 	server, store, _ := paidHTTPServer()
 	initial := &workshopInitialMakesStore{workshopInitialYearsStore: &workshopInitialYearsStore{
 		CatalogStore: store, complete: true,
-		items: []CatalogYear{{Year: 2027}, {Year: 2021}, {Year: 2022}, {Year: 2023}, {Year: 2024}, {Year: 2025}, {Year: 2026}},
+		items: []CatalogYear{{Year: 2027}, {Year: 2016}, {Year: 2021}, {Year: 2022}, {Year: 2023}, {Year: 2024}, {Year: 2025}, {Year: 2026}},
 	}}
 	server.catalog = initial
 	handler := server.Handler()
@@ -176,9 +184,14 @@ func TestWorkshopEntryCarriesBoundedPublicMakeLists(t *testing.T) {
 		return w.Body.String()
 	}
 	const marker = `<script id="workshop-initial-makes" type="application/json">`
-	if body := get("/workshop"); !strings.Contains(body, marker+`{"2024":[{"id":"quoted","name":"A \u003c B","market_unverified":true}]}</script>`) ||
-		!slices.Equal(initial.requestedYears, []int{2022, 2023, 2024, 2025, 2026, 2027}) {
+	if body := get("/workshop"); !strings.Contains(body, marker+`{"options":[{"id":"quoted","name":"A \u003c B","market_unverified":true},{"id":"quoted","name":"A \u003c B"}],"years":{"2016":[0],"2023":[1],"2024":[0]}}</script>`) ||
+		!slices.Equal(initial.requestedYears, []int{2016, 2021, 2022, 2023, 2024, 2025, 2026, 2027}) {
 		t.Fatalf("unexpected public make lists for %v", initial.requestedYears)
+	}
+	initial.largeOlderList = true
+	if body := get("/workshop"); !strings.Contains(body,
+		marker+`{"options":[{"id":"quoted","name":"A \u003c B"},{"id":"quoted","name":"A \u003c B","market_unverified":true}],"years":{"2023":[0],"2024":[1]}}</script>`) {
+		t.Fatal("the oversized payload did not retain the recent make lists")
 	}
 	initial.requestedYears = nil
 	if body := get("/workshop?view=library"); strings.Contains(body, marker) || initial.requestedYears != nil {
