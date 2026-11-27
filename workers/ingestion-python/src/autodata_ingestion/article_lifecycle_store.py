@@ -72,7 +72,7 @@ def load_article_state(repo, canonical_article_id):
         ).fetchone()
 
 
-def persist_resource(cur, resource):
+def persist_resource(cur, resource, *, raster_dimensions=None):
     """Blob dedupe shares bytes only; ownership lives in observation provenance."""
     row = cur.execute(
         """INSERT INTO source_snapshots(source_snapshot_id,adapter_name,source_uri,source_version,content_sha256,object_key,license_metadata,retrieved_at)
@@ -93,9 +93,20 @@ def persist_resource(cur, resource):
             (resource["sha256"],),
         ).fetchone()
     snapshot = row["source_snapshot_id"]
+    metadata = {}
+    if raster_dimensions is not None:
+        width, height = raster_dimensions
+        metadata["raster_dimensions"] = {"width": width, "height": height}
     cur.execute(
         """INSERT INTO source_artifacts(source_snapshot_id,artifact_kind,media_type,content_sha256,object_key,metadata,extraction_status)
-    VALUES (%s,%s,%s,%s,%s,'{}','candidate_ready') ON CONFLICT(content_sha256) DO NOTHING""",
+    VALUES (%s,%s,%s,%s,%s,%s,'candidate_ready') ON CONFLICT(content_sha256) DO UPDATE
+    SET metadata=source_artifacts.metadata || EXCLUDED.metadata
+    WHERE EXCLUDED.metadata<>'{}'::jsonb AND jsonb_typeof(source_artifacts.metadata)='object'
+      AND source_artifacts.source_snapshot_id=EXCLUDED.source_snapshot_id
+      AND source_artifacts.object_key=EXCLUDED.object_key
+      AND source_artifacts.media_type=EXCLUDED.media_type
+      AND source_artifacts.extraction_status<>'quarantined'
+      AND source_artifacts.metadata->'raster_dimensions' IS DISTINCT FROM EXCLUDED.metadata->'raster_dimensions'""",
         (
             snapshot,
             (
@@ -107,6 +118,7 @@ def persist_resource(cur, resource):
             resource["media_type"],
             resource["sha256"],
             resource["object_key"],
+            Jsonb(metadata),
         ),
     )
     return snapshot
@@ -425,7 +437,7 @@ def _persist_article_capture(cur, canonical_article_id, job_id, generation, capt
     snapshots = {}
     for resource in captured.resources:
         snapshots[str(resource["source_snapshot_id"])] = persist_resource(
-            cur, resource
+            cur, resource, raster_dimensions=captured.raster_dimensions.get(resource["object_key"]),
         )
     body_snapshot = snapshots[str(captured.body_source_snapshot_id)]
     if context.key.provider == "banktwo" and captured.service_schedule is not None:

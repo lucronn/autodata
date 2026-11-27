@@ -134,7 +134,7 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 	}
 	now := time.Now()
 	ref := paidCatalogProjectionReference(mediaPrincipal, configuration, identity, view, selected, "source", now)
-	s.rewritePaidCatalogImages(stored.Images, paidCatalogAssetURLs(stored.Images), ref, now)
+	s.rewritePaidCatalogImages(stored.Images, indexPaidCatalogAssets(stored.Images), ref, now)
 	var format, content string
 	if stored.Document != nil {
 		format, content = "html", renderCatalogSourceContent(w, r, stored.Document, stored.Images)

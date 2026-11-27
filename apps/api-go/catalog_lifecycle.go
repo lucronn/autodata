@@ -67,12 +67,13 @@ func catalogArticleLifecycle(article CatalogArticle) CatalogArticle {
 		article.Availability = "unavailable"
 	}
 	if readable {
-		// Hash only immutable public projection and policy. Expiring media URLs and
-		// processing timestamps are deliberately excluded from display identity.
+		// Hash only immutable public projection and policy. Expiring media URLs,
+		// optional raster dimensions, and processing timestamps are excluded.
 		images := append([]CatalogImage{}, article.Images...)
 		for i := range images {
 			images[i].URL = ""
 			images[i].StorageKey = ""
+			images[i].RasterDimensions = nil
 		}
 		steps := append([]CatalogStep(nil), article.Steps...)
 		for i := range steps {
@@ -81,6 +82,7 @@ func catalogArticleLifecycle(article CatalogArticle) CatalogArticle {
 				for j := range stepImages {
 					stepImages[j].URL = ""
 					stepImages[j].StorageKey = ""
+					stepImages[j].RasterDimensions = nil
 				}
 				steps[i].Images = &stepImages
 			}
@@ -560,17 +562,41 @@ const catalogSourceRevisionEligibleSQL = `NOT EXISTS (
 	)
 )`
 
+// Raster dimensions come from the artifact that binds the exact stored bytes.
+// Project them for the reader without changing the immutable source document.
+const catalogSourceImagesWithDimensionsSQL = `COALESCE((
+	SELECT jsonb_agg(CASE
+		WHEN jsonb_typeof(image.value)<>'object' THEN image.value
+		WHEN artifact.source_artifact_id IS NULL THEN image.value-'raster_dimensions'
+		ELSE image.value || jsonb_build_object('raster_dimensions',artifact.metadata->'raster_dimensions')
+	END ORDER BY image.position)
+	FROM jsonb_array_elements(sr.source_images) WITH ORDINALITY image(value,position)
+	LEFT JOIN source_artifacts artifact ON artifact.content_sha256=(image.value->>'content_sha256')::bpchar
+		AND artifact.object_key=image.value->>'storage_key'
+		AND artifact.media_type=image.value->>'media_type'
+		AND artifact.extraction_status<>'quarantined'
+		AND jsonb_typeof(artifact.metadata->'raster_dimensions')='object'
+),'[]'::jsonb)`
+
 func (s *postgresCatalogStore) paidCatalogSourceImages(ctx context.Context, configuration, article, revision string) ([]CatalogImage, error) {
-	_, images, err := s.paidCatalogImageView(ctx, configuration, article, revision, false)
+	_, images, err := s.readPaidCatalogImageView(ctx, configuration, article, revision, false, true)
 	return images, err
 }
 
 // Read current anchors and selected revision rights in one database snapshot.
 // The image route only needs the image records, including those nested in steps.
 func (s *postgresCatalogStore) paidCatalogImageView(ctx context.Context, configuration, article, revision string, includeArticleImages bool) (CatalogArticleView, []CatalogImage, error) {
+	return s.readPaidCatalogImageView(ctx, configuration, article, revision, includeArticleImages, false)
+}
+
+func (s *postgresCatalogStore) readPaidCatalogImageView(ctx context.Context, configuration, article, revision string, includeArticleImages, includeDimensions bool) (CatalogArticleView, []CatalogImage, error) {
 	view := CatalogArticleView{Article: CatalogArticle{ID: article, CanonicalArticleID: &article}}
 	var takedown string
 	var rawArticleImages, rawSourceImages []byte
+	imagesProjection := "sr.source_images"
+	if includeDimensions {
+		imagesProjection = catalogSourceImagesWithDimensionsSQL
+	}
 	err := s.pool.QueryRow(ctx, `SELECT
 		CASE WHEN descriptor.takedown_status<>'active' THEN descriptor.takedown_status ELSE view_row.takedown_status END,
 		view_row.source_revision_id::text,view_row.canonical_revision_id::text,
@@ -586,7 +612,7 @@ func (s *postgresCatalogStore) paidCatalogImageView(ctx context.Context, configu
 			WHERE canonical_article_id=a.canonical_article_id LIMIT 1
 		) view_row
 		LEFT JOIN LATERAL (
-			SELECT sr.source_images FROM canonical_article_source_revisions sr
+			SELECT `+imagesProjection+` AS source_images FROM canonical_article_source_revisions sr
 			JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id
 			WHERE sr.canonical_article_id=a.canonical_article_id AND sr.source_revision_id=$3::uuid
 			AND CASE WHEN sr.source_revision_id=view_row.source_revision_id AND view_row.canonical_revision_id IS NOT NULL

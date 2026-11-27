@@ -1594,6 +1594,23 @@ function addImage(parent, image, reference, g, figures = null, useAltCaption = f
     img.decoding = "async";
     img.referrerPolicy = "no-referrer";
     const viewport = element("div", undefined, "figure-viewport");
+    const dimensions = image.raster_dimensions;
+    if (!layout && dimensions && [dimensions.width, dimensions.height].every(
+      value => Number.isInteger(value) && value >= 1 && value <= 10000
+    )) {
+      img.width = dimensions.width;
+      img.height = dimensions.height;
+      img.dataset.rasterPending = "";
+      viewport.dataset.rasterPending = "";
+      const settleGeometry = () => {
+        delete viewport.dataset.rasterPending;
+        delete img.dataset.rasterPending;
+        img.removeAttribute("width");
+        img.removeAttribute("height");
+      };
+      img.addEventListener("load", settleGeometry, { once: true });
+      img.addEventListener("figureunavailable", settleGeometry, { once: true });
+    }
     const size = element("button", undefined, "text-button figure-size");
     size.type = "button";
     size.hidden = true;

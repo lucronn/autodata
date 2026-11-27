@@ -719,9 +719,14 @@ select:enabled:hover {
   background: white;
   border: 1px solid var(--rule);
 }
-.article-content img[data-figure-pending] {
+.article-content img[data-figure-pending]:not([data-raster-pending]) {
   inline-size: min(100%, 20rem);
   block-size: 8rem;
+}
+@media screen {
+  .article-content .figure-viewport[data-raster-pending] {
+    padding-block-start: 32px;
+  }
 }
 .article-content .positioned-figure {
   position: relative;

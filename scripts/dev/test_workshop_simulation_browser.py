@@ -3,6 +3,7 @@
 import asyncio
 from contextlib import ExitStack
 from hashlib import sha256
+from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -446,6 +447,7 @@ def authored_model_index_fixture(runtime, scope, *, competing_fitment=False):
     from threading import Event, Thread
 
     from psycopg.types.json import Jsonb
+    from PIL import Image
     from autodata_ingestion.article_lifecycle_types import ArticleKey, article_id
     from autodata_ingestion.catalog_index_worker import run_catalog_worker
 
@@ -490,6 +492,9 @@ def authored_model_index_fixture(runtime, scope, *, competing_fitment=False):
          "images": [{"asset_resource_ref": "figure", "alt": "Pump figure"}]},
         {"kind": "step", "number": 2, "text": "Install the replacement."},
     ]}).encode(), "application/json", ref="cold-body", assets=["figure"])
+    illustration = BytesIO()
+    Image.new("RGB", (180, 90), "navy").save(illustration, format="PNG")
+    banktwo.body(illustration.getvalue(), "image/png", ref="figure", kind="asset")
     pending_page, allow_page = Event(), Event()
     runtime.stack.callback(allow_page.set)
     original_response = banktwo.response
@@ -540,6 +545,7 @@ def authored_model_index_fixture(runtime, scope, *, competing_fitment=False):
         "resolution_queries": resolution_queries, "expected_resolution_queries": [model] if competing_fitment else [],
         "body_sha": sha256(banktwo.resources["cold-body"][0]).hexdigest(),
         "figure_sha": sha256(banktwo.resources["figure"][0]).hexdigest(),
+        "figure_dimensions": (180, 90),
     })
     return scope
 
@@ -690,6 +696,29 @@ def hold_banktwo_continuation(runtime, configuration):
     return start, admit_paid_scope, verify_handoff, verify_completion
 
 
+async def verify_reserved_figure(image, gate, dimensions):
+    from playwright.async_api import expect
+
+    measure = """image => {
+        const box = image.getBoundingClientRect();
+        return [box.width, box.height, image.closest('figure').getBoundingClientRect().height];
+    }"""
+    try:
+        await expect(image).to_have_attribute("width", str(dimensions[0]))
+        await expect(image).to_have_attribute("height", str(dimensions[1]))
+        assert await image.evaluate("image => !image.complete && image.naturalWidth === 0")
+        reserved = await image.evaluate(measure)
+    finally:
+        gate.set()
+    assert tuple(await image.evaluate("""async image => {
+        await image.decode();
+        return [image.naturalWidth, image.naturalHeight];
+    }""")) == dimensions
+    await expect(image.locator("xpath=ancestor::figure[1]").locator(".figure-size")).to_be_visible()
+    loaded = await image.evaluate(measure)
+    assert all(abs(before - after) <= 4 for before, after in zip(reserved, loaded, strict=True)), (reserved, loaded)
+
+
 async def exercise_simulated_payment(origin, scope, customer_account, repair=None, table_variant=None, table_repair=None):
     from playwright.async_api import async_playwright, expect
 
@@ -720,8 +749,11 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             owner = await browser.new_context(ignore_https_errors=True, service_workers="block")
             transport = APIFixture(origin, API_CASES[1])
             stripe = []
+            media_gate = None
 
             async def route_fixture(request_route):
+                if media_gate and urlsplit(request_route.request.url).path.startswith("/v1/catalog/images/"):
+                    await media_gate.wait()
                 host = urlsplit(request_route.request.url).hostname or ""
                 if host == "stripe.com" or host.endswith(".stripe.com"):
                     stripe.append(host)
@@ -885,6 +917,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                         "earlier_rows_at_visibility": earlier_rows, "earlier_index_completed_in_order": True,
                     }), flush=True)
             article_started = time.monotonic()
+            if cold_index:
+                media_gate = asyncio.Event()
             await article_link.click()
             article_kind = "Stored source" if table_variant == "source-table" else "Workshop article"
             await expect(page.locator("#article-kind")).to_have_text(article_kind, timeout=18000)
@@ -920,6 +954,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             expected_text = "Remove the pump." if table_variant == "source-table" else "Take off the pump."
             await expect(page.locator("#article-content")).to_contain_text(expected_text)
             image = page.locator("#article-content img").first
+            if cold_index:
+                await verify_reserved_figure(image, media_gate, cold_index["figure_dimensions"])
             await expect(image).to_be_visible()
             assert await image.evaluate("(node) => node.decode().then(() => node.naturalWidth > 0)")
             reader_ms = round((time.monotonic() - article_started) * 1000)
@@ -940,11 +976,13 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                 assert rendered.index("Do not reuse the seal.") < rendered.index("Take off the pump.") < rendered.index("Fit the replacement unit.")
                 figure_step = "(node) => node.closest('.procedure-step, li')?.textContent ?? ''"
                 assert "Take off the pump." in await image.evaluate(figure_step)
+                media_gate = asyncio.Event()
                 await page.locator("#open-original").click()
                 await expect(page.locator("#source-review-frame")).to_contain_text("Remove the pump.")
                 await expect(page.locator("#source-review-frame")).to_contain_text("Do not reuse the seal.")
                 await expect(page.locator("#reference-data")).to_contain_text(cold_index["body_sha"])
                 source_image = page.locator("#source-review-frame img").first
+                await verify_reserved_figure(source_image, media_gate, cold_index["figure_dimensions"])
                 assert await source_image.evaluate("(img) => img.decode().then(() => img.naturalWidth > 0)")
                 assert "Remove the pump." in await source_image.evaluate(figure_step)
                 original_image = await owner.request.get(await source_image.evaluate("(img) => img.currentSrc"))
@@ -988,6 +1026,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                     "independent_supplier_still_running_when_index_visible": bool(bankone_hold),
                     "stored_page_before_completion": True, "complete_rows": 2,
                     "source_prose_warning_order_and_asset_matched": True, "figure_placement_and_source_sha_matched": True,
+                    "reader_and_original_reserved_figure_space": True,
                 }), flush=True)
 
             other = await browser.new_context(ignore_https_errors=True, service_workers="block")
