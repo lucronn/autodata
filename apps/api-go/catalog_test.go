@@ -652,48 +652,64 @@ func TestStoredSelectorReadPreviewsWithoutStartingHydration(t *testing.T) {
 	}
 }
 
-func TestIncompleteSelectorReadReturnsWhileHydrationRunsInBackground(t *testing.T) {
-	client := &blockingCatalogHydrationClient{
-		started:  make(chan struct{}),
-		release:  make(chan struct{}),
-		finished: make(chan struct{}),
-	}
-	server := NewServerWithCatalogStore(staticReadiness{}, &fakeAuthenticator{
-		principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}},
-	}, newMemoryRequestStore(), newMemoryCatalogStore())
-	server.ingestionClient = client
-
-	responseCh := make(chan *httptest.ResponseRecorder, 1)
-	go func() {
-		responseCh <- catalogRequest(server, "/v1/catalog/years/1993/makes")
-	}()
-
-	var response *httptest.ResponseRecorder
-	select {
-	case response = <-responseCh:
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("selector read waited for source hydration")
-	}
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"items":[]`) {
-		t.Fatalf("response = %d %s", response.Code, response.Body.String())
-	}
-	var body CatalogMakesResponse
-	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
-		t.Fatal(err)
-	}
-	if body.Complete || !body.Hydrating {
-		t.Fatalf("hydration state = complete:%t hydrating:%t, want incomplete and hydrating", body.Complete, body.Hydrating)
-	}
-	select {
-	case <-client.started:
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("selector read did not schedule source hydration")
-	}
-	close(client.release)
-	select {
-	case <-client.finished:
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("background hydration did not finish")
+func TestIncompleteSelectorReadReportsBackgroundHydration(t *testing.T) {
+	for _, selector := range []struct {
+		scope   string
+		suffix  string
+		payload map[string]any
+	}{
+		{"makes", "/makes", map[string]any{"scope": "makes", "year": 1993, "region": "US"}},
+		{"models", "/makes/acme/models", map[string]any{"scope": "models", "year": 1993, "make": "acme", "region": "US"}},
+	} {
+		t.Run(selector.scope, func(t *testing.T) {
+			client := &blockingCatalogHydrationClient{
+				started: make(chan struct{}), release: make(chan struct{}), finished: make(chan struct{}),
+			}
+			released := false
+			t.Cleanup(func() {
+				if !released {
+					close(client.release)
+				}
+			})
+			server := catalogServer(newMemoryCatalogStore())
+			server.ingestionClient = client
+			path := "/v1/catalog/years/1993" + selector.suffix
+			assertState := func(response *httptest.ResponseRecorder, hydrating bool) {
+				t.Helper()
+				var body struct {
+					CatalogHydrationResponse
+					Items []json.RawMessage
+				}
+				err := json.Unmarshal(response.Body.Bytes(), &body)
+				if response.Code != http.StatusOK || err != nil || body.Complete || body.Hydrating != hydrating ||
+					body.DiscoveryInstance != catalogDiscoveryInstance || body.Items == nil || len(body.Items) != 0 {
+					t.Fatalf("selector response with hydrating=%t: %d %s (%v)", hydrating, response.Code, response.Body, err)
+				}
+			}
+			stored := path + "?stored_only=1"
+			assertState(catalogRequest(server, stored), false)
+			responseCh := make(chan *httptest.ResponseRecorder, 1)
+			go func() { responseCh <- catalogRequest(server, path) }()
+			select {
+			case response := <-responseCh:
+				assertState(response, true)
+			case <-time.After(time.Second):
+				t.Fatal("selector read waited for source hydration")
+			}
+			select {
+			case <-client.started:
+			case <-time.After(time.Second):
+				t.Fatal("selector read did not schedule source hydration")
+			}
+			assertState(catalogRequest(server, stored), true)
+			close(client.release)
+			released = true
+			deadline := time.Now().Add(time.Second)
+			for server.catalogHydrationRunning(selector.payload) && time.Now().Before(deadline) {
+				time.Sleep(time.Millisecond)
+			}
+			assertState(catalogRequest(server, stored), false)
+		})
 	}
 }
 

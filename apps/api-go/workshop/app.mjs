@@ -466,7 +466,7 @@ function cancelPickerRefreshes() {
 async function readStoredPicker(picker, name, signal, timeout) {
   const stored = await readStoredSelector(picker.path, signal, timeout);
   signal.throwIfAborted();
-  if (name !== "configuration" || stored.complete) return stored;
+  if (name === "year" || stored.complete) return stored;
   if (stored.hydrating || stored.discovering) {
     picker.discoveryInstance = stored.discovery_instance;
   } else if (picker.discoveryInstance && stored.discovery_instance &&
@@ -489,7 +489,7 @@ async function refreshPicker(name) {
   try {
     await readCollection((timeout) => readStoredPicker(picker, name, refresh.signal, timeout), {
       signal: refresh.signal,
-      // Only configurations distinguish active discovery from incomplete coverage.
+      // Make and model options get one stored update when the picker reopens.
       attempts: name === "configuration" ? undefined : 1,
       backoffWithChoices: true,
       hasChoices: data => pickerHasChoices(name, data.items),
@@ -544,9 +544,9 @@ async function loadOptions(name, g, desired = "", initial = null, { initialIsLiv
   const label = name === "configuration" ? "engine / trim" : name;
   const stopWithChoices = name !== "configuration" && !desired;
   let loadingStatus = `Loading ${label} choices…`;
-  let requestedConfiguration = false;
+  let requestedSelector = false;
   function trackDiscovery(response) {
-    if (name === "configuration" && g.current() && (response.hydrating || response.discovering))
+    if (g.current() && (response.hydrating || response.discovering))
       picker.discoveryInstance = response.discovery_instance;
     return response;
   }
@@ -576,6 +576,7 @@ async function loadOptions(name, g, desired = "", initial = null, { initialIsLiv
         g.signal.throwIfAborted();
         if (Array.isArray(response?.items)) {
           if (initialIsLive) {
+            requestedSelector = true;
             if (initialRequest?.sameOrigin && name === "model" && pickerHasChoices(name, response.items)) picker.sameOrigin = true;
             return trackDiscovery(response);
           }
@@ -596,10 +597,8 @@ async function loadOptions(name, g, desired = "", initial = null, { initialIsLiv
         }
         // Stored descendants cannot start ingestion. A regular read can do so once the parent is valid.
       }
-      if (name === "configuration") {
-        if (requestedConfiguration) return readStoredPicker(picker, name, g.signal, timeout);
-        requestedConfiguration = true;
-      }
+      if (name !== "year" && requestedSelector) return readStoredPicker(picker, name, g.signal, timeout);
+      requestedSelector = true;
       const cache = canCachePublicSelectors() ? "default" : "no-store";
       const modelPicker = pickerStates.get("model");
       const preferSameOrigin = name === "configuration" && modelPicker?.sameOrigin && modelPicker.path === selectorPath("model");
@@ -610,13 +609,12 @@ async function loadOptions(name, g, desired = "", initial = null, { initialIsLiv
       signal: g.signal,
       desired,
       backoffWithChoices: true,
+      backoffWithoutChoices: name !== "year",
       stopWithChoices,
       hasChoices: data => pickerHasChoices(name, data.items),
       async emptyProbe(timeout) {
         try {
-          return name === "configuration"
-            ? await readStoredPicker(picker, name, g.signal, timeout)
-            : await readStoredSelector(path, g.signal, timeout);
+          return await readStoredPicker(picker, name, g.signal, timeout);
         } catch (error) {
           g.signal.throwIfAborted();
           if (error.status === 401 || error.status === 403) throw error;

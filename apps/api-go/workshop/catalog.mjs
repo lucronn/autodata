@@ -286,13 +286,14 @@ export async function readCollection(
     wait = delay,
     emptyProbe,
     backoffWithChoices = false,
+    backoffWithoutChoices = false,
     stopWithChoices = false,
     hasChoices = data => data.items.length > 0,
     now = () => performance.now(),
   } = {},
 ) {
   let latest;
-  let choicesSince;
+  let fastPollingSince;
   let partialInterval = interval;
   const pollUntil = backoffWithChoices ? now() + DEFAULT_COLLECTION_POLL_WINDOW_MS : Infinity;
   function update(data, attempt) {
@@ -331,21 +332,23 @@ export async function readCollection(
         signal?.throwIfAborted();
         const early = await emptyProbe(timeout);
         signal?.throwIfAborted();
-        if (Array.isArray(early?.items) && (hasChoices(early) || early.complete === true) && update(early, attempt)) return latest;
+        const settled = early?.discovery_instance && !early.hydrating && !early.discovering;
+        if (Array.isArray(early?.items) && (hasChoices(early) || early.complete === true || settled) &&
+            update(early, attempt)) return latest;
       }
       await wait(Math.max(0, deadline - now()), signal);
     } else {
       const checkedAt = now();
       // The second supplier may follow the first by six seconds. Keep the
       // initial cadence through that interval, then slow optional refreshes.
-      if (backoffWithChoices && !desired && hasChoices(latest)) {
-        choicesSince ??= checkedAt;
-        if (latest.discovering && !latest.hydrating)
+      if (backoffWithChoices && ((!desired && hasChoices(latest)) || backoffWithoutChoices)) {
+        fastPollingSince ??= checkedAt;
+        if (!desired && latest.discovering && !latest.hydrating)
           partialInterval = Math.max(partialInterval, ENGINE_DISCOVERY_INTERVAL_MS);
-        if (checkedAt - choicesSince >= PARTIAL_SELECTOR_FAST_WINDOW_MS)
+        if (checkedAt - fastPollingSince >= PARTIAL_SELECTOR_FAST_WINDOW_MS)
           partialInterval = Math.min(partialInterval * 2, MAX_PARTIAL_SELECTOR_INTERVAL_MS);
       } else {
-        choicesSince = undefined;
+        fastPollingSince = undefined;
         partialInterval = interval;
       }
       if (checkedAt + partialInterval >= pollUntil) break;
