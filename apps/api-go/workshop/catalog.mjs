@@ -565,8 +565,9 @@ export async function requestJSON(path, options = {}) {
       init.signal.throwIfAborted();
       const connection = new AbortController();
       const deadline = setTimeout(() => connection.abort(), connectionTimeout);
+      let response;
       try {
-        return await fetcher(direct, {
+        response = await fetcher(direct, {
           ...init,
           signal: AbortSignal.any([init.signal, connection.signal]),
           credentials: 'omit',
@@ -578,12 +579,18 @@ export async function requestJSON(path, options = {}) {
         // The first lookup can outrun the connection hint. A short make timeout
         // still lets subsequent selectors use a connection that has since warmed.
         if (!isMake || !connection.signal.aborted) directSelectorsUnavailable = true;
-        const response = await fetcher(resource, init);
-        if (isMake && response.ok) rememberSameOriginMake(path);
-        return response;
       } finally {
         clearTimeout(deadline);
       }
+      // The main origin can still serve recorded choices during an edge outage.
+      // Preserve any explicit wait from the direct selector.
+      if (response && (![502, 503, 504].includes(response.status) || response.headers.has('Retry-After')))
+        return response;
+      init.signal.throwIfAborted();
+      if (response?.body) void response.body.cancel().catch(() => {});
+      const fallback = await fetcher(resource, init);
+      if (isMake && fallback.ok) rememberSameOriginMake(path);
+      return fallback;
     },
   })).data;
 }
