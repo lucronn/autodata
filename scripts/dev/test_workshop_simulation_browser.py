@@ -433,6 +433,43 @@ def authored_model_index_fixture(runtime, scope, *, competing_fitment=False):
     return scope
 
 
+def hold_unrelated_bankone_catalog(runtime):
+    from threading import Event
+    from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
+
+    make = "Fixture Queue Supplier"
+    active, release, finished, overlapping = Event(), Event(), Event(), Event()
+    bankone = runtime.servers["bankone"]
+    original_response = bankone.response
+    runtime.stack.callback(release.set)
+
+    def response(path, payload=None):
+        if urlsplit(path).path == "/v1/vehicle-resolutions" and payload:
+            if payload.get("make") == make:
+                active.set()
+                release.wait(8)
+                finished.set()
+            elif active.is_set() and not release.is_set():
+                overlapping.set()
+        return original_response(path, payload)
+
+    bankone.response = response
+
+    def start():
+        vehicle = seed_vehicle(runtime.repo)
+        with runtime.repo.connect() as conn:
+            conn.execute("UPDATE vehicles SET make=%s,model='Held catalog scope' WHERE vehicle_id=%s", (make, vehicle))
+        ensure_article_catalog_jobs(runtime.repo, vehicle_id=vehicle, vehicle_configuration_id=None)
+        assert active.wait(6), "the unrelated Bankone resolution did not start"
+
+    def verify():
+        assert active.is_set() and not finished.is_set()
+        assert not overlapping.is_set(), "a second Bankone resolution overlapped the first"
+        release.set()
+
+    return start, verify
+
+
 async def exercise_simulated_payment(origin, scope, customer_account, repair=None, table_variant=None, table_repair=None):
     from playwright.async_api import async_playwright, expect
 
@@ -443,6 +480,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
     quote = f"{origin}/v1/workshop/quote?configuration_id={configuration}&region=US"
     checkout_path = "/v1/workshop/checkout-sessions"
     cold_index = scope.get("authored_index")
+    bankone_hold = scope.get("bankone_hold")
     picker_values = (("year", "2005"), ("make", "cadillac-truck"), ("model", "escalade-esv-awd")) if cold_index else (
         ("year", "2024"), ("make", "example"), ("model", "car"),
     )
@@ -540,6 +578,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             await page.locator("#agreement").check()
             before = await api_measure(owner, origin)
             assert before["workshop_orders"] == before["entitlements"] == 0
+            if bankone_hold:
+                await asyncio.to_thread(bankone_hold[0])
 
             purchase_started = time.monotonic()
             async with page.expect_response(
@@ -594,6 +634,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                                       "second_page_requested": cold_index["pending"].is_set()}), flush=True)
                     raise
                 first_index_ms = round((time.monotonic() - index_started) * 1000)
+                if bankone_hold:
+                    bankone_hold[1]()
                 assert await asyncio.to_thread(cold_index["pending"].wait, 3)
                 assert cold_index["queries"] == [cold_index["model"]]
                 assert cold_index["resolution_queries"] == cold_index["expected_resolution_queries"]
@@ -705,6 +747,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                     "first_index_ms": first_index_ms, "reader_ms": reader_ms,
                     "warm_library_ms": warm_library_ms, "warm_index_ms": warm_index_ms, "warm_reader_ms": warm_reader_ms,
                     "generic_resolution_reads": len(cold_index["resolution_queries"]),
+                    "independent_supplier_still_running_when_index_visible": bool(bankone_hold),
                     "stored_page_before_completion": True, "complete_rows": 2,
                     "source_prose_warning_order_and_asset_matched": True, "figure_placement_and_source_sha_matched": True,
                 }), flush=True)
@@ -734,7 +777,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
 
 @pytest.mark.parametrize("variant", [
     "payment", "list-starts", "authored-table", "archived-table", "source-table", "labelled-market",
-    "authored-model-index", "authored-model-index-competing-fitment",
+    "authored-model-index", "authored-model-index-competing-fitment", "authored-model-index-held-bankone",
 ])
 def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_database, monkeypatch, tmp_path, variant):
     from autodata_ingestion.http_service import make_handler
@@ -757,6 +800,8 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
             scope["labelled_market"] = labelled_market_fixture(runtime)
         if variant.startswith("authored-model-index"):
             scope = authored_model_index_fixture(runtime, scope, competing_fitment=variant.endswith("-competing-fitment"))
+        if variant == "authored-model-index-held-bankone":
+            scope["bankone_hold"] = hold_unrelated_bankone_catalog(runtime)
         repair = retained_list_start_fixture(runtime, monkeypatch) if variant == "list-starts" else None
         table_variant = variant if variant in ("authored-table", "archived-table", "source-table") else None
         table_repair = authored_table_fixture(runtime, monkeypatch, tmp_path, table_variant) if table_variant else None

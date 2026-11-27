@@ -1,5 +1,7 @@
-"""Serial catalog-only admission through the existing exact-job lifecycle worker."""
+"""Catalog-only admission through the existing exact-job lifecycle worker."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 import os
 import signal
 from threading import Event
@@ -10,10 +12,11 @@ from uuid import uuid4
 from psycopg import Error, OperationalError, sql
 
 from .article_lifecycle import run_article_worker_once
+from .catalog_coverage import PROVIDERS
 from .commerce_service import WORKSHOP_PREPARATION_CHANNEL, reconcile_workshop_preparation
 
 
-def select_next_catalog_job(repo):
+def select_next_catalog_job(repo, *, provider=None):
     """Read one current, eligible UUID; release the connection before any I/O."""
     with repo.connect() as conn:
         row = conn.execute(
@@ -29,15 +32,15 @@ def select_next_catalog_job(repo):
                     AND COALESCE(j.next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp())
                    OR (j.status='processing' AND j.lease_expires_at<clock_timestamp()))
             ORDER BY j.created_at,j.source_fetch_job_id LIMIT 1""",
-            ('catalog_index', ['bankone', 'banktwo']),
+            ('catalog_index', list(PROVIDERS) if provider is None else [provider]),
         ).fetchone()
     return row['source_fetch_job_id'] if row else None
 
 
-def dispatch_next(repo, *, worker_id, registry, object_store, stop=None):
+def dispatch_next(repo, *, worker_id, registry, object_store, stop=None, provider=None):
     if stop is not None and stop.is_set():
         return False
-    job_id = select_next_catalog_job(repo)
+    job_id = select_next_catalog_job(repo) if provider is None else select_next_catalog_job(repo, provider=provider)
     if job_id is None or (stop is not None and stop.is_set()):
         return False
     return run_article_worker_once(
@@ -59,28 +62,73 @@ def _listen_for_preparation(repo):
         return None
 
 
+def _run_provider_catalog_worker(repo, *, provider, registry, object_store, wake, stop):
+    worker_id = uuid4()
+    while not stop.is_set():
+        wake.clear()
+        if not dispatch_next(repo, worker_id=worker_id, registry=registry,
+                             object_store=object_store, stop=stop, provider=provider):
+            wake.wait(2)
+
+
+def _stop_provider_catalog_workers(stop, wakes):
+    stop.set()
+    for wake in wakes.values():
+        wake.set()
+
+
 def run_catalog_worker(repo, *, registry, object_store, once=False, prepare_orders=False, stop=None):
     """Signals stop between jobs; an active multi-page job may run much longer."""
     if stop is None:
         stop = Event()
     worker_id = uuid4()
+    wake_on_checkout = prepare_orders and not once
+    with ExitStack() as workers:
+        wakes = {}
+        provider_workers = []
+        if wake_on_checkout and all(provider in registry for provider in PROVIDERS):
+            # Each bank keeps serial exact-job dispatch, with preparation independent of supplier I/O.
+            pool = workers.enter_context(ThreadPoolExecutor(max_workers=len(PROVIDERS),
+                                                            thread_name_prefix="catalog-index"))
+            wakes = {provider: Event() for provider in PROVIDERS}
+            workers.callback(_stop_provider_catalog_workers, stop, wakes)
+            provider_workers = [
+                pool.submit(_run_provider_catalog_worker, repo, provider=provider, registry=registry,
+                            object_store=object_store, wake=wake, stop=stop)
+                for provider, wake in wakes.items()
+            ]
+        _run_catalog_preparation_loop(
+            repo, worker_id, registry, object_store, once, prepare_orders, stop, wakes, provider_workers
+        )
+    return 0
+
+
+def _run_catalog_preparation_loop(repo, worker_id, registry, object_store, once, prepare_orders, stop,
+                                  wakes, provider_workers):
     next_preparation = 0.0
     wake_on_checkout = prepare_orders and not once
     listener = None
     try:
         while not stop.is_set():
+            for future in provider_workers:
+                if future.done():
+                    future.result()
             if prepare_orders and monotonic() >= next_preparation:
                 # Subscribe before reading the durable queue, including on reconnect.
                 if wake_on_checkout and listener is None:
                     listener = _listen_for_preparation(repo)
                 try:
                     with repo.connect() as connection:
-                        reconcile_workshop_preparation(connection)
+                        prepared = reconcile_workshop_preparation(connection)
+                    if prepared:
+                        for wake in wakes.values():
+                            wake.set()
                 except OperationalError:
                     print('CATALOG_ORDER_PREPARATION_RETRY', flush=True)
                 next_preparation = monotonic() + 2
-            claimed = dispatch_next(repo, worker_id=worker_id, registry=registry,
-                                    object_store=object_store, stop=stop)
+            claimed = not provider_workers and dispatch_next(
+                repo, worker_id=worker_id, registry=registry, object_store=object_store, stop=stop
+            )
             if once or stop.is_set():
                 break
             if claimed:
@@ -98,7 +146,6 @@ def run_catalog_worker(repo, *, registry, object_store, once=False, prepare_orde
     finally:
         if listener is not None:
             listener.close()
-    return 0
 
 
 def main(argv=None):
