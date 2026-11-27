@@ -15,6 +15,8 @@ import (
 	"testing"
 )
 
+const expectedWorkshopEntryCache = "private, max-age=30, must-revalidate"
+
 func TestWorkshopRootEntry(t *testing.T) {
 	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
@@ -93,7 +95,7 @@ func TestWorkshopEntryCarriesOnlyCompletePublicYears(t *testing.T) {
 	tag := first.Header().Get("ETag")
 	expected := strings.TrimSpace(request(http.MethodGet, "/v1/catalog/years", "").Body.String())
 	if first.Code != http.StatusOK || !strings.Contains(first.Body.String(), yearData+expected+"</script>") ||
-		first.Header().Get("Cache-Control") != "no-cache" || tag != fmt.Sprintf(`W/"%x"`, sha256.Sum256(first.Body.Bytes())) {
+		first.Header().Get("Cache-Control") != expectedWorkshopEntryCache || tag != fmt.Sprintf(`W/"%x"`, sha256.Sum256(first.Body.Bytes())) {
 		t.Fatal("entry did not carry the exact public snapshot and its own validator")
 	}
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
@@ -263,18 +265,24 @@ func TestWorkshopPublicAssetsRevalidateByContent(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w
 	}
-	for _, path := range []string{"/workshop/?view=library", "/workshop/app.mjs", "/workshop/styles.css", "/workshop/fonts/InstrumentSans.woff2"} {
+	for _, tc := range []struct{ path, cache string }{
+		{"/workshop/?view=library", expectedWorkshopEntryCache},
+		{"/workshop/app.mjs", "no-cache"},
+		{"/workshop/styles.css", "no-cache"},
+		{"/workshop/fonts/InstrumentSans.woff2", "no-cache"},
+	} {
+		path := tc.path
 		t.Run(path, func(t *testing.T) {
 			first := request(http.MethodGet, path, "")
 			digest := sha256.Sum256(first.Body.Bytes())
 			wantTag := `W/"` + hex.EncodeToString(digest[:]) + `"`
-			if first.Code != http.StatusOK || first.Header().Get("ETag") != wantTag || first.Header().Get("Cache-Control") != "no-cache" ||
+			if first.Code != http.StatusOK || first.Header().Get("ETag") != wantTag || first.Header().Get("Cache-Control") != tc.cache ||
 				first.Header().Get("Vercel-CDN-Cache-Control") != "" {
 				t.Fatalf("first read = %d, tag %q, cache %q", first.Code, first.Header().Get("ETag"), first.Header().Get("Cache-Control"))
 			}
 			for _, method := range []string{http.MethodGet, http.MethodHead} {
 				warm := request(method, path, wantTag)
-				if warm.Code != http.StatusNotModified || warm.Body.Len() != 0 || warm.Header().Get("ETag") != wantTag || warm.Header().Get("Cache-Control") != "no-cache" {
+				if warm.Code != http.StatusNotModified || warm.Body.Len() != 0 || warm.Header().Get("ETag") != wantTag || warm.Header().Get("Cache-Control") != tc.cache {
 					t.Fatalf("%s warm read = %d with %d bytes, tag %q, cache %q", method, warm.Code, warm.Body.Len(), warm.Header().Get("ETag"), warm.Header().Get("Cache-Control"))
 				}
 			}
@@ -523,14 +531,17 @@ func TestWorkshopEntryAliasesShareContentAndValidators(t *testing.T) {
 		for _, query := range []string{"", "?year=2024&make=buick-truck&model=envision-awd&region=US", "?view=library", "?sample=1", "?demo=1", "?order=22222222-2222-4222-8222-222222222222&q=brake%2Bline"} {
 			for _, method := range []string{http.MethodGet, http.MethodHead} {
 				fresh := request(method, path+query, "")
-				if fresh.Code != http.StatusOK || fresh.Header().Get("Location") != "" || fresh.Header().Get("ETag") != tag || fresh.Header().Get("Cache-Control") != "no-cache" {
+				if fresh.Code != http.StatusOK || fresh.Header().Get("Location") != "" || fresh.Header().Get("ETag") != tag ||
+					fresh.Header().Get("Cache-Control") != expectedWorkshopEntryCache ||
+					fresh.Header().Get("Vercel-CDN-Cache-Control") != "" || fresh.Header().Get("Set-Cookie") != "" {
 					t.Fatalf("%s %s: unexpected entry response %d %v", method, path+query, fresh.Code, fresh.Header())
 				}
 				if method == http.MethodGet && !bytes.Equal(fresh.Body.Bytes(), entry.Body.Bytes()) || method == http.MethodHead && fresh.Body.Len() != 0 {
 					t.Fatalf("%s %s: unexpected entry body", method, path+query)
 				}
 				warm := request(method, path+query, tag)
-				if warm.Code != http.StatusNotModified || warm.Body.Len() != 0 || warm.Header().Get("ETag") != tag || warm.Header().Get("Cache-Control") != "no-cache" {
+				if warm.Code != http.StatusNotModified || warm.Body.Len() != 0 || warm.Header().Get("ETag") != tag ||
+					warm.Header().Get("Cache-Control") != expectedWorkshopEntryCache {
 					t.Fatalf("%s %s: unexpected conditional response %d %v", method, path+query, warm.Code, warm.Header())
 				}
 			}
