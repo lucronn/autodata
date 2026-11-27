@@ -497,7 +497,10 @@ def _ensure_initial_selector(request, key):
     if token is None:
         result["stop_reason"] = "admission"
         return result
-    deadline = time.monotonic() + 20
+    provider_deadline = time.monotonic() + 20
+    # Keep a write allowance for evidence the owned child returns on time.
+    # The child still has the full provider deadline and cannot use this reserve.
+    persistence_deadline = provider_deadline + 2
     complete = False
     stage = "resolve"
     try:
@@ -514,7 +517,7 @@ def _ensure_initial_selector(request, key):
                     missing_scopes=(scope,),
                 )
                 _persist_hydration_scope(
-                    request, progress, deadline=deadline, progress=True, year_provider_key=year_provider_key,
+                    request, progress, deadline=persistence_deadline, progress=True, year_provider_key=year_provider_key,
                 )
             except selector_job.SelectorJobStopped:
                 return
@@ -524,8 +527,8 @@ def _ensure_initial_selector(request, key):
 
         normalized = {"scope": scope, "year": model.year, "make": model.make,
                       "region": model.region}
-        payload = selector_job.run_owned(normalized, deadline, on_progress=persist_progress)
-        selector_job.SelectorJobControl(deadline).remaining()
+        payload = selector_job.run_owned(normalized, provider_deadline, on_progress=persist_progress)
+        selector_job.SelectorJobControl(persistence_deadline).remaining()
         resolved = CatalogResult(rows=tuple(_canonical_rows(payload["rows"], scope=scope)),
                                  complete=payload["complete"],
                                  provenance=tuple(_provenance(payload["provenance"])),
@@ -540,10 +543,10 @@ def _ensure_initial_selector(request, key):
             persistence = dict(coverage)
         else:
             coverage = _persist_hydration_scope(
-                request, resolved, deadline=deadline, year_provider_key=year_provider_key,
+                request, resolved, deadline=persistence_deadline, year_provider_key=year_provider_key,
             )
             persistence = {"status": "selector_scope_only", "row_count": 0}
-        selector_job.SelectorJobControl(deadline).remaining()
+        selector_job.SelectorJobControl(persistence_deadline).remaining()
         complete = resolved.complete
         result.update(status="hydrated", complete=complete, missing_scopes=list(resolved.missing_scopes),
                       rows=list(resolved.rows), provenance=list(resolved.provenance), coverage=coverage,

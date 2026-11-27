@@ -389,6 +389,77 @@ def test_unfiltered_years_scope_cannot_bypass_cooldown_with_region():
     assert admission.acquire({'scope':'years','year':2024,'make':'ignored','region':'CA'}) is None
 
 
+@pytest.mark.parametrize("delivery", ["final", "progress", "expired"])
+def test_initial_models_persist_evidence_from_the_last_provider_dispatch(monkeypatch, delivery):
+    import psycopg
+    from autodata_ingestion import catalog_sync
+
+    clock = Clock()
+    monkeypatch.setattr(catalog.time, "monotonic", clock)
+    monkeypatch.setattr(job, "ADMISSION", job.SelectorAdmission(clock=clock))
+    monkeypatch.setattr(catalog, "_HYDRATION_RESULTS", {})
+    monkeypatch.setattr(catalog, "_configured_catalog_providers", lambda: [object()])
+    monkeypatch.setattr(catalog_sync, "_conninfo", lambda: {"host": "127.0.0.1"})
+    monkeypatch.setenv("AUTODATA_SOURCE_PERSIST", "1")
+    payload = {
+        "rows": [{"year": 2024, "make": "Authored", "model": "Fiction"}],
+        "complete": False,
+        "missing_scopes": ["models", "provider"],
+        "provenance": [{"provider": "autoapitwo"}],
+    }
+
+    def owned(request, deadline, *, on_progress):
+        assert deadline == 20
+        clock.now = 18.4
+        if delivery == "final":
+            return payload
+        if delivery == "progress":
+            on_progress(payload)
+        clock.now = 20
+        raise job.SelectorJobStopped("elapsed")
+
+    writes = []
+    commits = []
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def cursor(self):
+            return self
+
+        def execute(self, sql, params):
+            assert "INSERT INTO vehicle_catalog_hydration_scopes" in sql
+            writes.append(params)
+
+        def commit(self):
+            commits.append(True)
+
+    def connect(**options):
+        assert options["connect_timeout"] == 1
+        assert options["options"] == "-c statement_timeout=1000 -c lock_timeout=250"
+        return Connection()
+
+    monkeypatch.setattr(job, "run_owned", owned)
+    monkeypatch.setattr(psycopg, "connect", connect)
+    request = {"scope": "models", "year": 2024, "make": "authored", "region": "US"}
+    result = catalog._ensure_initial_selector(request, "fixture")
+    assert not result["complete"]
+    if delivery == "expired":
+        assert result["stop_reason"] == "elapsed" and not writes and not commits
+        return
+    [row] = writes
+    assert len(commits) == 1
+    assert row[6].obj == payload["provenance"]
+    assert row[7].obj == [{"year": 2024, "make": "Authored", "model": "Fiction"}]
+    assert row[8:] == (0, delivery == "progress")
+    if delivery == "final":
+        assert result["coverage"]["status"] == "persisted"
+
+
 @pytest.mark.parametrize('shared_locator', [False, True])
 def test_paginated_years_retains_exact_page_provenance(shared_locator):
     from autodata_ingestion.source_connector_client import SourceConnectorClient
