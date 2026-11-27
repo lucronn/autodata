@@ -30,6 +30,7 @@ FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD = "source-bound-first-draft-introductio
 FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD = "source-bound-first-draft-diagnostic-v1"
 FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD = "source-bound-first-draft-brake-applicability-v1"
 FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD = "source-bound-first-draft-reservoir-filling-v1"
+FIRST_DRAFT_WHEEL_SERVICE_RECOVERY_METHOD = "source-bound-first-draft-wheel-service-v1"
 FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD = "source-bound-positioned-figure-first-draft-v1"
 FIRST_DRAFT_SINGLE_USE_PARTS_RECOVERY_METHOD = "source-bound-single-use-parts-first-draft-v1"
 NEUTRAL_INTRODUCTION = "This article describes the service information that follows."
@@ -41,7 +42,7 @@ FIRST_DRAFT_RECOVERY_METHODS = (
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD, FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
     FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
     FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD, FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD,
-    FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD,
+    FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD, FIRST_DRAFT_WHEEL_SERVICE_RECOVERY_METHOD,
 )
 BANKONE_STRUCTURAL_RECOVERY_METHOD = "source-bound-bankone-first-draft-v1"
 BANKONE_LINKED_RECOVERY_METHOD = "source-bound-bankone-first-draft-v2"
@@ -60,6 +61,7 @@ _FIRST_DRAFT_RECASTABLE_ERRORS = frozenset({
     "REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM",
 })
 _LUBRICATION_MUTATION = "REWRITE_LUBRICATION_MUTATION"
+_WHEEL_SERVICE_ERRORS = frozenset({"REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMILAR", "REWRITE_ACTION_MUTATION"})
 FIRST_DRAFT_RECOVERABLE_ERRORS = _FIRST_DRAFT_RECASTABLE_ERRORS | {
     "REWRITE_SPEC_SCOPE_MUTATION", REQUIRED_ACTION_WEAKENED,
     _LUBRICATION_MUTATION, _TECHNICAL_AMBIGUITY,
@@ -261,6 +263,7 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
                       FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD,
                       FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD,
                       FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD,
+                      FIRST_DRAFT_WHEEL_SERVICE_RECOVERY_METHOD,
                       FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD,
                       FIRST_DRAFT_SINGLE_USE_PARTS_RECOVERY_METHOD,
                       *BANKONE_ARCHIVE_STRUCTURE_VERSIONS):
@@ -370,10 +373,8 @@ def _recover_brake_applicability_draft(source, raw, slots, *, prompt_version, or
     return None
 
 
-def _recover_reservoir_filling_draft(source, raw, slots, invalid, *, prompt_version, original_error):
-    from .bankone_brake_recovery import recast_reservoir_filling
-
-    if original_error != "REWRITE_PROSE_TOO_SIMILAR":
+def _recover_statement_draft(source, raw, slots, invalid, *, prompt_version, original_error, method, errors, recast):
+    if original_error not in errors:
         return None
     draft = deepcopy(raw)
     corrected = []
@@ -381,16 +382,26 @@ def _recover_reservoir_filling_draft(source, raw, slots, invalid, *, prompt_vers
         path = slot["path"]
         if path not in invalid:
             continue
-        if invalid[path] != "REWRITE_PROSE_TOO_SIMILAR" or row["action"] != "rewrite":
+        if invalid[path] not in errors or row["action"] != "rewrite":
             return None
-        wording = recast_reservoir_filling(slot["text"])
+        wording = recast(slot["text"])
         if wording is None:
             return None
         row["text"] = wording
         corrected.append(path)
     return _validate_first_draft(
         source, raw, draft, corrected, prompt_version=prompt_version,
-        method=FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD, original_error=original_error,
+        method=method, original_error=original_error,
+    )
+
+
+def _recover_wheel_service_draft(source, raw, slots, invalid, *, prompt_version, original_error):
+    from .wheel_service_recovery import recast_wheel_service_passage
+
+    return _recover_statement_draft(
+        source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
+        method=FIRST_DRAFT_WHEEL_SERVICE_RECOVERY_METHOD, errors=_WHEEL_SERVICE_ERRORS,
+        recast=recast_wheel_service_passage,
     )
 
 
@@ -684,11 +695,19 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
     if method == FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD or (
         method is None and original_error == "REWRITE_PROSE_TOO_SIMILAR"
     ):
-        recovered = _recover_reservoir_filling_draft(
+        from .bankone_brake_recovery import recast_reservoir_filling
+
+        recovered = _recover_statement_draft(
             source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
+            method=FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD, errors={"REWRITE_PROSE_TOO_SIMILAR"},
+            recast=recast_reservoir_filling,
         )
         if recovered is not None or method == FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD:
             return recovered
+    if method == FIRST_DRAFT_WHEEL_SERVICE_RECOVERY_METHOD:
+        return _recover_wheel_service_draft(
+            source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
+        )
     if method == FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD or original_error == _LUBRICATION_MUTATION:
         if method not in (None, FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD):
             return None
@@ -728,7 +747,12 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
     )
     if cooling_sequence is not None or method is not None:
         return cooling_sequence
-    return _recover_maintenance_draft(
+    maintenance = _recover_maintenance_draft(
+        source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
+    )
+    if maintenance is not None or original_error not in _WHEEL_SERVICE_ERRORS:
+        return maintenance
+    return _recover_wheel_service_draft(
         source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
     )
 
