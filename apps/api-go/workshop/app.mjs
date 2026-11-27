@@ -534,7 +534,7 @@ async function refreshPicker(name) {
     if (picker.refresh === refresh) picker.refresh = null;
   }
 }
-async function loadOptions(name, g, desired = "", initial = null, { initialIsLive = false } = {}) {
+async function loadOptions(name, g, desired = "", initial = null, { initialIsLive = false, initialSameOrigin = false } = {}) {
   const path = selectorPath(name);
   pickerStates.get(name)?.refresh?.abort();
   const picker = { path, incomplete: false, loading: g };
@@ -575,7 +575,10 @@ async function loadOptions(name, g, desired = "", initial = null, { initialIsLiv
         initial = null;
         g.signal.throwIfAborted();
         if (Array.isArray(response?.items)) {
-          if (initialIsLive) return trackDiscovery(response);
+          if (initialIsLive) {
+            if (initialSameOrigin && name === "model" && pickerHasChoices(name, response.items)) picker.sameOrigin = true;
+            return trackDiscovery(response);
+          }
           const discoveryActive = response.hydrating || response.discovering;
           const storedChoicesReady = desired
             ? response.items.some(choice)
@@ -598,7 +601,9 @@ async function loadOptions(name, g, desired = "", initial = null, { initialIsLiv
         requestedConfiguration = true;
       }
       const cache = canCachePublicSelectors() ? "default" : "no-store";
-      const response = await requestJSON(path, { signal: g.signal, timeout, cache });
+      const modelPicker = pickerStates.get("model");
+      const preferSameOrigin = name === "configuration" && modelPicker?.sameOrigin && modelPicker.path === selectorPath("model");
+      const response = await requestJSON(path, { signal: g.signal, timeout, cache, preferSameOrigin });
       return trackDiscovery(response);
     },
     {
@@ -3263,7 +3268,9 @@ async function restoreRoute(initialYears = null, {
           await loadOptions("make", g, selectedMake, makeRead?.response, { initialIsLive: Boolean(makeRead) });
           if (g.current() && selectedMake && $("make").value === selectedMake) {
             updateURL();
-            await loadOptions("model", g, "", modelRead?.response, { initialIsLive: Boolean(modelRead) });
+            await loadOptions("model", g, "", modelRead?.response, {
+              initialIsLive: Boolean(modelRead), initialSameOrigin: modelRead?.sameOrigin,
+            });
           }
         } finally {
           abortReads();

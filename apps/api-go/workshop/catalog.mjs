@@ -522,8 +522,8 @@ function hasRecentSameOriginMake(path) {
   }
 }
 
-function directSelectorURL(path, { method = 'GET', headers, body }) {
-  if (directSelectorsUnavailable || method !== 'GET' || headers || body !== undefined ||
+function directSelectorURL(path, { method = 'GET', headers, body, preferSameOrigin }) {
+  if (directSelectorsUnavailable || preferSameOrigin || method !== 'GET' || headers || body !== undefined ||
       globalThis.location?.origin !== 'https://autodata.cars.tk' ||
       typeof path !== 'string' ||
       !(directMakePath.test(path) || directModelPath.test(path) || directConfigurationPath.test(path))) return null;
