@@ -496,13 +496,15 @@ export async function requestArticleJSON(path, {
   }
 }
 const directSelectorPath = /^\/v1\/catalog\/years\/\d{4}\/makes\/[a-z0-9-]+\/models(?:\/[a-z0-9-]+\/configurations)?\?region=US(?:&stored_only=1)?$/;
+const directMakePath = /^\/v1\/catalog\/years\/\d{4}\/makes\?region=US$/;
 const directSelectorTimeout = 400;
+const directMakeTimeout = 175;
 let directSelectorsUnavailable = false;
 
 function directSelectorURL(path, { method = 'GET', headers, body }) {
   if (directSelectorsUnavailable || method !== 'GET' || headers || body !== undefined ||
       globalThis.location?.origin !== 'https://autodata.cars.tk' ||
-      typeof path !== 'string' || !directSelectorPath.test(path)) return null;
+      typeof path !== 'string' || !(directMakePath.test(path) || directSelectorPath.test(path))) return null;
   const catalog = globalThis.document?.getElementById('workshop-catalog-module');
   if (catalog?.dataset?.publicSelectors !== 'true' || !catalog.dataset.directSelectorOrigin) return null;
   return catalog.dataset.directSelectorOrigin + path;
@@ -511,13 +513,14 @@ function directSelectorURL(path, { method = 'GET', headers, body }) {
 export async function requestJSON(path, options = {}) {
   const direct = directSelectorURL(path, options);
   if (!direct) return (await requestArticleJSON(path, options)).data;
+  const isMake = directMakePath.test(path);
   const { fetcher = fetch } = options;
   return (await requestArticleJSON(path, {
     ...options,
     async fetcher(resource, init) {
       init.signal.throwIfAborted();
       const connection = new AbortController();
-      const deadline = setTimeout(() => connection.abort(), directSelectorTimeout);
+      const deadline = setTimeout(() => connection.abort(), isMake ? directMakeTimeout : directSelectorTimeout);
       try {
         return await fetcher(direct, {
           ...init,
@@ -528,7 +531,9 @@ export async function requestJSON(path, options = {}) {
         });
       } catch {
         init.signal.throwIfAborted();
-        directSelectorsUnavailable = true;
+        // The first lookup can outrun the connection hint. A short make timeout
+        // still lets subsequent selectors use a connection that has since warmed.
+        if (!isMake || !connection.signal.aborted) directSelectorsUnavailable = true;
         return fetcher(resource, init);
       } finally {
         clearTimeout(deadline);

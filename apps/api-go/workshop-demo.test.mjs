@@ -130,10 +130,23 @@ test('the public entry offers stored years and passes the latest early make requ
   assert.ok(makeReads.every(call => call.options.cache === 'default'));
   assert.equal(makeReads[0].options.signal.aborted, true);
   assert.equal(makeReads[1].options.signal.aborted, false);
+  const available = [];
+  context.workshopPickerStartup.requestMake = async (path, options) => {
+    available.push({ path, options });
+    return { items: [{ path }] };
+  };
+  yearPicker.value = '2024';
+  yearPicker.change();
+  assert.equal(makeReads[1].options.signal.aborted, true);
+  assert.equal(calls.length, entrySettingsPaths.length + 2);
+  assert.equal(available.length, 1);
+  assert.equal(available[0].path, makeReads[0].path);
+  assert.equal(available[0].options.cache, 'default');
+  assert.equal(available[0].options.signal.aborted, false);
   const handoff = context.workshopPickerStartup.takeYearPicker();
-  assert.equal(handoff.makeRead.year, '2023');
-  assert.deepEqual(await handoff.makeRead.response, { items: [{ path: makeReads[1].path }] });
-  assert.equal(yearPicker.value, '2023');
+  assert.equal(handoff.makeRead.year, '2024');
+  assert.deepEqual(await handoff.makeRead.response, { items: [{ path: makeReads[0].path }] });
+  assert.equal(yearPicker.value, '2024');
   assert.equal(yearPicker.change, null);
 });
 
@@ -150,7 +163,7 @@ test('entry keeps independent, private and unconfirmed paths on their ordinary r
   assert.deepEqual(startHeadPicker('?year=2024&make=%3Efoo&model=envision-awd').calls.map(({ path }) => path),
     ['/v1/catalog/years', '/v1/catalog/years/2024/makes?region=US&stored_only=1']);
 });
-test('the public picker starts one early connection for public model and engine reads', () => {
+test('the public picker starts one early connection for the eligible selector reads', () => {
   const directSelectorOrigin = 'https://autodata.curtis.click';
   const options = { origin: 'https://autodata.cars.tk', directSelectorOrigin };
   const { hints, calls } = startHeadPicker('', true, options);
@@ -252,7 +265,7 @@ test('entry starts one exact public demo index read before importing the app', a
     assert.deepEqual(startHeadPicker(skipped, true, { entry }).calls, [], skipped);
   }
 });
-test('a confirmed public demo link starts the exact detail alongside its index', () => {
+test('a confirmed public demo link starts the exact detail without reading the index', () => {
   const configuration = 'cf544dfd-4570-589f-b3b4-23487d14e591';
   const article = '1cae3450-955a-5807-b72f-91010d396008';
   const base = `/v1/catalog/vehicles/${configuration}/articles`;
@@ -260,10 +273,10 @@ test('a confirmed public demo link starts the exact detail alongside its index',
   const options = { entry: { workshopOpenDemo: 'true' } };
   const { calls, context } = startHeadPicker(search, true, options);
   const detailPath = `${base}/${article}?region=US&demo=1`;
-  assert.deepEqual(calls.map(({ path }) => path), [`${base}?region=US&demo=1`, detailPath]);
+  assert.deepEqual(calls.map(({ path }) => path), [detailPath]);
   assert.equal(context.workshopDemoIndex.detail.path, detailPath);
-  assert.equal(calls[1].options.headers.Prefer, 'workshop-short-publication-check');
-  assert.equal(calls[1].options.cache, 'no-store');
+  assert.equal(calls[0].options.headers.Prefer, 'workshop-short-publication-check, workshop-demo-fitment');
+  assert.equal(calls[0].options.cache, 'no-store');
   context.workshopDemoIndex.abort();
   assert.ok(calls.every(({ options }) => options.signal.aborted));
   assert.deepEqual(startHeadPicker(search).calls, []);

@@ -192,15 +192,6 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 				document = bytes.Replace(document, []byte(workshopInitialYearsMarker), data, 1)
 				w.Header().Set("ETag", fmt.Sprintf(`W/"%x"`, sha256.Sum256(document)))
 			}
-			// Share the canonical picker only when it carries a complete anonymous
-			// snapshot. Requests with selections keep the browser cache policy.
-			if r.URL.Path == workshopEntryPath && r.URL.RawQuery == "" && !r.URL.ForceQuery &&
-				entry.publicSelectors && len(entry.initialYears) != 0 &&
-				r.Header.Get("Range") == "" && len(w.Header().Values("Set-Cookie")) == 0 {
-				w.Header().Set("Vercel-CDN-Cache-Control", "public, max-age=15")
-				w.Header().Del("X-Request-ID")
-				w.Header().Del("Traceparent")
-			}
 			http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(document))
 			return
 		}

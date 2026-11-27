@@ -240,6 +240,7 @@ test('transport errors, malformed payloads and authentication failures remain fa
 });
 
 const selectorOrigin = 'https://autodata.curtis.click';
+const makePath = '/v1/catalog/years/2024/makes?region=US';
 const modelPath = '/v1/catalog/years/2024/makes/buick-truck/models?region=US';
 const enginePath = '/v1/catalog/years/2024/makes/buick-truck/models/envision-awd/configurations?region=US';
 
@@ -259,10 +260,10 @@ function usePublicSelectorEntry(t) {
   return entry;
 }
 
-test('the direct connection sends only public US model and engine reads without credentials', async t => {
+test('the direct connection sends eligible public US selector reads without credentials', async t => {
   const entry = usePublicSelectorEntry(t);
   const payload = { items: [{ id: 'envision-awd' }], complete: false, hydrating: true };
-  for (const path of [modelPath, enginePath, modelPath + '&stored_only=1']) {
+  for (const path of [makePath, modelPath, enginePath, modelPath + '&stored_only=1']) {
     const data = await requestJSON(path, { cache: 'default', fetcher: async (url, request) => {
       assert.equal(url, selectorOrigin + path);
       assert.equal(request.credentials, 'omit');
@@ -278,7 +279,7 @@ test('the direct connection sends only public US model and engine reads without 
     assert.equal(request.credentials, 'same-origin');
     return Response.json(payload);
   };
-  for (const path of ['/v1/catalog/years', '/v1/catalog/years/2024/makes?region=US', '/v1/workshop/library',
+  for (const path of ['/v1/catalog/years', makePath + '&stored_only=1', makePath.replace('US', 'CA'), '/v1/workshop/library',
     '/v1/workshop/checkout', '/v1/catalog/vehicles/a/articles/b', modelPath.replace('US', 'CA')]) {
     await requestJSON(path, { fetcher: sameOrigin(path) });
   }
@@ -313,6 +314,12 @@ test('the direct selector transport honors cancellation and rate limits before f
     }
     return Response.json(payload);
   };
+  assert.deepEqual(await read(makePath, { fetcher }), payload);
+  assert.deepEqual(await read(modelPath, { fetcher: async url => {
+    calls.push(url);
+    return Response.json(payload);
+  } }), payload);
+  assert.deepEqual(calls.splice(0), [selectorOrigin + makePath, makePath, selectorOrigin + modelPath]);
   assert.deepEqual(await read(modelPath, { fetcher }), payload);
   assert.deepEqual(await read(enginePath, { fetcher }), payload);
   assert.deepEqual(calls, [selectorOrigin + modelPath, modelPath, enginePath]);
