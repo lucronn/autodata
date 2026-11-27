@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, awaitingArticleRewrite, processingArticle, readableArticle, readyReprojectedSource } from './workshop/article-read.mjs';
 import { pollOrder, purchaseConfiguration, quoteConfigurationLabel, readOrder, resumableCheckoutURL, sameScope, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
-import { articlePresentation, articleSearchParams, CatalogRequestError, configurationLabel, delay, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestArticleJSON, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, trimArticleSearch, vehicleSelectorPath } from './workshop/catalog.mjs';
+import { articlePresentation, articleSearchParams, CatalogRequestError, configurationLabel, DEFAULT_COLLECTION_POLL_INTERVAL_MS, delay, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestArticleJSON, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, trimArticleSearch, vehicleSelectorPath } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 const paidPagePreferences = 'workshop-index-pages, workshop-index-live-pages';
@@ -9746,6 +9746,7 @@ function selectorOptionsHarness(response) {
  const requests=[], waits=[];
  let clock = 0;
  const context={ $, rows:{ model: [] }, Option:PickerOption, AbortController, navigation:new NavigationGeneration(),
+  DEFAULT_COLLECTION_POLL_INTERVAL_MS,
   document:{ body:{dataset:{}}, createElement:() => ({ addEventListener() {} }) },
   retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices',
   async requestJSON(path, options) {

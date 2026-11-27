@@ -705,8 +705,8 @@ async function loadOptions(name, g, desired = "", initial = null, {
       ? "Choose your vehicle to continue."
       : "No choices are available for this selection. Choose another vehicle.",
   );
-  if (name === "make" && !desired && result.hydrating) void refreshPicker(name, { followDiscovery: true });
-  else if (result === cached && picker.incomplete) void refreshPicker(name);
+  if (result === cached && picker.incomplete) void refreshPicker(name);
+  else if (name === "make" && !desired && result.hydrating) void refreshPicker(name, { followDiscovery: true });
 }
 function retryPicker(name) {
   const path = selectorPath(name);
