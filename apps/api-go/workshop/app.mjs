@@ -3481,17 +3481,13 @@ for (const [index, name] of names.entries()) {
       populate(next, []);
     }
     show("welcome");
-    updateURL();
-    if (!$(name).value) return;
     const next = names[index + 1];
+    if (!next && select.value)
+      vehicle = rows.configuration.find((item) => item.id === select.value);
+    updateURL();
+    if (!select.value) return;
     if (next) void retryPicker(next)();
-    else {
-      vehicle = rows.configuration.find(
-        (item) => item.id === $("configuration").value,
-      );
-      updateURL();
-      operation((g) => selectVehicle(g));
-    }
+    else operation((g) => selectVehicle(g));
   });
 }
 $("signin").addEventListener("click", (event) => {
