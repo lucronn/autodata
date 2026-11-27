@@ -317,6 +317,10 @@ select:enabled:hover {
   margin-left: 4px;
   font-size: 13px;
 }
+#model-alternatives .text-button {
+  min-height: 32px;
+  padding-inline: 7px;
+}
 .text-button {
   border: 0;
   background: none;

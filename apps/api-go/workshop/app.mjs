@@ -153,9 +153,29 @@ function articleRequestPath(id, suffix = "", query) {
 function status(
   text,
   { error = false, busy = false, retry = null, retryText = "Try again", complete = false, cancelable = busy,
-    announceOnly = false } = {},
+    announceOnly = false, modelAlternatives = null } = {},
 ) {
   $("activity-text").textContent = text;
+  const alternatives = $("model-alternatives");
+  if (modelAlternatives && alternatives.hidden) {
+    const model = $("model");
+    const group = model.value;
+    alternatives.replaceChildren(...modelAlternatives.map(({ id, name }) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "text-button";
+      button.textContent = name;
+      button.addEventListener("click", () => {
+        if (model.disabled || model.value !== group ||
+            !Array.from(model.options).some(option => option.value === id && !option.disabled)) return;
+        model.value = id;
+        model.focus();
+        model.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      return button;
+    }));
+  }
+  if (alternatives) alternatives.hidden = !modelAlternatives;
   $("activity").dataset.tone = error ? "error" : busy ? "loading" : "ready";
   $("activity").hidden = announceOnly;
   $("critical-error").textContent = error ? text : "";
@@ -460,11 +480,12 @@ function usableEngineChoices(name, response) {
 function groupedModelChoices() {
   const selected = $("model").value;
   const group = rows.model.find((item) => item.id === selected);
-  const names = group?.name?.split("/").map((name) => name.trim().toLowerCase());
-  if (!names || names.length < 2 || names.includes("") || new Set(names).size !== names.length) return null;
-  const choices = names.map((name) =>
+  const names = group?.name?.split("/").map((name) => name.trim());
+  const keys = names?.map((name) => name.toLowerCase());
+  if (!keys || keys.length < 2 || keys.includes("") || new Set(keys).size !== keys.length) return null;
+  const choices = keys.map((name) =>
     rows.model.find((item) => item.id !== selected && item.name?.toLowerCase() === name));
-  return choices.every(Boolean) ? choices.map((item) => item.name) : null;
+  return choices.every(Boolean) ? choices.map((item, index) => ({ id: item.id, name: names[index] })) : null;
 }
 function readStoredSelector(path, signal, timeout) {
   return requestStoredSelector(path, { signal, timeout }, requestJSON);
@@ -554,7 +575,10 @@ async function loadOptions(name, g, desired = "", initial = null, {
   const choice = (item) => String(item.id ?? item.year) === desired;
   const label = name === "configuration" ? "engine / trim" : name;
   const stopWithChoices = name !== "configuration" && !desired;
-  let loadingStatus = `Loading ${label} choices…`;
+  const modelAlternatives = name === "configuration" && !desired ? groupedModelChoices() : null;
+  let loadingStatus = modelAlternatives
+    ? "Checking engines for this group. You can choose an individual model."
+    : `Loading ${label} choices…`;
   let requestedSelector = false;
   function trackDiscovery(response) {
     if (g.current() && (response.hydrating || response.discovering))
@@ -568,6 +592,7 @@ async function loadOptions(name, g, desired = "", initial = null, {
     populate(name, data.items, desired);
     if (!(data.hydrating || data.discovering)) return;
     const hasChoices = pickerHasChoices(name, data.items);
+    if (modelAlternatives && !hasChoices) return;
     const message = hasChoices
       ? `More ${label} choices are loading. You can choose an available option.`
       : data.items.length ? "Checking sources for a verified engine or trim…" : `Loading ${label} choices…`;
@@ -575,7 +600,7 @@ async function loadOptions(name, g, desired = "", initial = null, {
     loadingStatus = message;
     status(message, data.items.length ? { cancelable: true } : { busy: true });
   }
-  status(loadingStatus, { busy: true });
+  status(loadingStatus, { busy: true, modelAlternatives });
   stage(name);
   $(name).disabled = true;
   const result = await readCollection(
@@ -640,14 +665,10 @@ async function loadOptions(name, g, desired = "", initial = null, {
   const selected = desired && result.items.some(choice);
   const choicesReady = stopWithChoices && result.items.length > 0;
   const incomplete = result.refreshFailed || result.timedOut || (result.complete === false && !choicesReady);
-  if (name === "configuration" && !desired && !pickerHasChoices(name, result.items)) {
-    const alternatives = groupedModelChoices();
-    if (alternatives) {
-      const models = new Intl.ListFormat("en", { type: "disjunction" }).format(alternatives);
-      status(`No verified engine or trim loaded for this group. Choose ${models} in Model.`,
-        { retry: incomplete ? retry : null });
-      return;
-    }
+  if (modelAlternatives && !pickerHasChoices(name, result.items)) {
+    status("No verified engine or trim loaded for this group. Choose an individual model.",
+      { modelAlternatives, retry: incomplete ? retry : null });
+    return;
   }
   if (!selected && incomplete) {
     if (!desired && result.items.length) {
