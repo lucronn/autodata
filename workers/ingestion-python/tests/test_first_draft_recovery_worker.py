@@ -8,6 +8,7 @@ from PIL import Image
 import pytest
 
 from autodata_ingestion import article_lifecycle_store as store
+from autodata_ingestion import procedure_rewrite_auto as auto
 from autodata_ingestion import procedure_rewrite_recovery as recovery
 from autodata_ingestion.article_lifecycle_types import (
     AUTOMATIC_REWRITE_PROFILE, NORMALIZATION_VERSION, SOURCE_BOUND_CORRECTION_PROFILE, digest_json,
@@ -26,6 +27,7 @@ from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
     FIRST_DRAFT_RECOVERY_METHOD,
     FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
+    FIRST_DRAFT_SINGLE_USE_PARTS_RECOVERY_METHOD,
 )
 from autodata_ingestion.published_media_publication import _publication_evidence
 from autodata_ingestion.source_job_persistence import (
@@ -68,7 +70,7 @@ class EchoedDraft:
         return result
 
 
-def queue_article(runtime, *, figure=False, instruction=COVER):
+def queue_article(runtime, *, figure=False, instruction=COVER, procedure_html=None):
     connector = runtime.servers["bankone"]
     illustration = ""
     resource = {}
@@ -80,7 +82,8 @@ def queue_article(runtime, *, figure=False, instruction=COVER):
         image = BytesIO()
         Image.new("RGB", (10, 8), (23, 89, 132)).save(image, format="PNG")
         connector.body(image.getvalue(), media_type="image/png", ref="figure", kind="asset")
-    connector.body((f"<h2>Upper Cover Service</h2><ol start='3'><li>{instruction}</li></ol>"
+    procedure = procedure_html or f"<ol start='3'><li>{instruction}</li></ol>"
+    connector.body((f"<h2>Upper Cover Service</h2>{procedure}"
                     f"{illustration}<p>{TORQUE}</p>").encode(), **resource)
     with runtime.repo.connect() as conn:
         conn.execute("UPDATE canonical_articles SET target_rewrite_profile_version=%s WHERE canonical_article_id=%s",
@@ -260,6 +263,71 @@ def test_publish_archived_first_draft_is_atomic_and_reuses_the_figure(runtime, m
     assert provenance["rewrite_attempt_id"] == archived["rewrite_attempt_id"]
     assert provenance["response_hash"] == archived["response_hash"]
     assert effective == reviewed.response and guard == attempt["guard_version"]
+
+
+def test_archive_recovers_single_use_labels_without_another_model_dispatch(runtime, monkeypatch):
+    scope_fixture_article(runtime)
+    labels = ["Fixture Mount Bolt[3x]", "Return Line Filter"]
+    procedure = "<p>Single Use Fasteners and Components</p><ul>" + "".join(
+        f"<li>{label}</li>" for label in labels
+    ) + "</ul>"
+    prior_id = queue_article(runtime, figure=True, procedure_html=procedure)
+
+    class OldDraft:
+        _model = "fixture-auto"
+
+        def complete_json(self, prompt):
+            request = json.loads(prompt)
+            assert request["prompt_version"] != auto.SINGLE_USE_PARTS_PROMPT_VERSION
+            replacements = []
+            for slot in request["slots"]:
+                text = slot["text"]
+                action = "retain" if text == TORQUE else "rewrite"
+                replacements.append({"block_id": slot["block_id"], "path": slot["path"], "action": action,
+                                     "text": "Use new parts for the listed items." if text.startswith("Single Use") else text,
+                                     "reason": "Exact specification." if action == "retain" else ""})
+            return {"introduction": "This article covers the 18 N·m specification.", "replacements": replacements}
+
+    with monkeypatch.context() as old_worker:
+        old_worker.setattr(auto, "_encode_automatic_prompt", lambda document, *, context:
+            auto._encode_prompt_with_technical_tokens(auto._auto_prompt_payload_v67(document, context=context),
+                                                       retain_standalone_notes=True))
+        assert run_job(runtime, prior_id, OldDraft(), registry=runtime.registry)
+
+    source = runtime.read_current()
+    assert source["processing_error_code"] == "REWRITE_UNCHANGED"
+    assert source["canonical_revision_id"] is None and len(source["images"]) == 1
+    [archived] = attempt_rows(runtime, prior_id)
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        prior = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (prior_id,)).fetchone()
+        attempt = source_bound_correction_prior_attempt(cur, prior, first_draft=True)
+
+    candidate = recovery.recover_single_use_parts_first_draft(prior["checkpoint"]["normalized_document"], attempt)
+    assert candidate is not None and candidate.evidence["introduction_replaced"]
+    args = {
+        "expected_job_id": prior_id, "expected_source_revision_id": source["source_revision_id"],
+        "recovery_method": FIRST_DRAFT_SINGLE_USE_PARTS_RECOVERY_METHOD,
+        "expected_recovery_hash": candidate.evidence["output_hash"],
+        "actor": "fixture-editor", "reason": "Preserve the component list and its single-use instruction.",
+    }
+    published = publish_source_bound_first_draft(runtime.repo, runtime.article_id, **args)
+    joined = publish_source_bound_first_draft(runtime.repo, runtime.article_id, **args)
+    assert published.created and not joined.created
+    current = runtime.read_current()
+    assert current["content_origin"] == "canonical"
+    assert current["canonical_revision_id"] == published.published_revision_id == joined.published_revision_id
+    assert current["source_revision_id"] == source["source_revision_id"]
+    assert next(block["items"] for block in current["document"]["blocks"] if block["type"] == "unordered_list") == labels
+    assert current["images"] == [{**image, "source_order": image["source_order"] + 1} for image in source["images"]]
+    assert attempt_rows(runtime, published.job_id) == [] and attempt_rows(runtime, prior_id) == [archived]
+    binding = store.load_source_revision(runtime.repo, source["source_revision_id"])
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (runtime.article_id,)).fetchone()
+        _, _, _, provenance, effective, guard, _ = _publication_evidence(cur, article, binding, fixture_mode=True, lock=False)
+        assert cur.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
+    assert provenance["response_hash"] == archived["response_hash"]
+    assert effective == candidate.response and guard == auto.SINGLE_USE_PARTS_PROMPT_VERSION
 
 
 def assert_automatic_bankone_recovery(runtime, job_id, model, *, method, proof_kinds):
