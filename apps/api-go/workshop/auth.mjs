@@ -89,6 +89,7 @@ export function createSession({
     provider,
     epoch = 0,
     preparation,
+    guestRefresh,
     selectedIndexConfirmation,
     retried = false;
   const changed = () => onChange({ ...state });
@@ -97,8 +98,13 @@ export function createSession({
     state.mode = ["local", "firebase"].includes(config?.mode) ? config.mode : null;
     state.available = validLoginConfig(config);
   };
+  const stopGuestRefresh = () => {
+    guestRefresh?.abort();
+    guestRefresh = null;
+  };
   const clear = () => {
     epoch++;
+    stopGuestRefresh();
     selectedIndexConfirmation?.abort();
     state.mode = null;
     state.authenticated = false;
@@ -164,20 +170,30 @@ export function createSession({
       return !signal?.aborted && current === epoch && state.authenticated &&
         csrf === state.csrf && validSession(data) && data.csrf_token === csrf;
     },
-    async bootstrap({ signal, initial } = {}) {
+    async bootstrap({ signal, initial, preserveGuestSignIn = false } = {}) {
       const current = ++epoch;
+      stopGuestRefresh();
       const wasReady = state.ready || state.popupPending;
+      // A prepared guest sign-in can remain available during a picker focus refresh.
+      // Any authenticated session still needs a fresh check before use.
+      const keepGuestSignIn = preserveGuestSignIn && !initial && state.mode === "firebase" &&
+        !state.authenticated && state.available && state.ready && !state.popupPending;
       selectedIndexConfirmation?.abort();
       pendingLoginConfiguration = null;
-      state.mode = null;
+      if (!keepGuestSignIn) state.mode = null;
       state.authenticated = false;
       state.csrf = "";
-      state.ready = false;
+      state.ready = keepGuestSignIn;
       state.popupPending = false;
-      if (wasReady) changed();
+      if (wasReady && !keepGuestSignIn) changed();
       const initialResult = initial ? await initial : null;
-      const [configuration, response] = initialResult ?? readSessionBootstrap(request, { signal });
+      if (signal?.aborted || current !== epoch) return;
+      const refresh = keepGuestSignIn ? new AbortController() : null;
+      guestRefresh = refresh;
+      const readSignal = refresh && signal ? AbortSignal.any([refresh.signal, signal]) : refresh?.signal ?? signal;
+      const [configuration, response] = initialResult ?? readSessionBootstrap(request, { signal: readSignal });
       const session = await response;
+      if (guestRefresh === refresh) guestRefresh = null;
       if (signal?.aborted || current !== epoch) return;
       const data = session.status === "fulfilled" ? session.value : null;
       const confirmedMode = validSession(data) && data.mode === "firebase";
@@ -194,17 +210,19 @@ export function createSession({
       if (confirmedMode || validSession(data)) {
         state.authenticated = true;
         state.csrf = data.csrf_token;
+        state.ready = false;
         state.message = "Signed in.";
         changed();
         return confirmedMode ? data.workshop_library ?? data.workshop_article_index : undefined;
       }
       const error = session.status === "rejected" ? session.reason : null;
       const guest = error?.status === 401;
+      state.ready = keepGuestSignIn && guest && state.available;
       state.message = state.available && guest
         ? "Sign in with Google to open your articles."
         : authMessage(error);
       changed();
-      if (state.available && guest) await prepare(current);
+      if (state.available && guest && !state.ready) await prepare(current);
     },
     signIn({ confirmSelectedIndex } = {}) {
       // App assets can span releases during a rolling deployment.
@@ -215,6 +233,8 @@ export function createSession({
       // Firebase cancels the previous popup when a new one opens. Only this
       // attempt may exchange a token or update the customer session.
       const current = ++epoch;
+      // A pending guest response can expire the cookie issued by the exchange.
+      stopGuestRefresh();
       state.ready = false;
       state.popupPending = true;
       state.message = "Continue in the Google sign-in window.";

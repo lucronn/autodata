@@ -3469,7 +3469,7 @@ export async function bootstrap(initialYears, initialAccount, {
     }
   }
   loadPurchaseConfiguration(initialPurchaseConfig);
-  const accountCheck = checkAccount(initialAccount);
+  const accountCheck = checkAccount(initialAccount, preservePicker);
   if (preservePicker) {
     await Promise.all([accountCheck, operation((g) => selectVehicle(g), () => restoreRoute())]);
     return;
@@ -3492,8 +3492,8 @@ function loadPurchaseConfiguration(initial = null) {
   merchant = null;
   merchantRequest = configRequest;
 }
-function checkAccount(initial) {
-  const accountCheck = session.bootstrap({ initial }).then((library) => {
+function checkAccount(initial, preserveGuestSignIn = false) {
+  const accountCheck = session.bootstrap({ initial, preserveGuestSignIn }).then((library) => {
     if (sessionRequest !== accountCheck) return;
     sessionRequest = null;
     sessionEstablished = true;
@@ -3999,7 +3999,9 @@ async function recheck(preservePicker = false) {
     lifecycleCheck
   )
     return;
-  lifecycleCheck = preservePicker && !validScope(scope()) ? checkAccount() : bootstrap(undefined, undefined, { preservePicker });
+  lifecycleCheck = preservePicker && !validScope(scope())
+    ? checkAccount(undefined, true)
+    : bootstrap(undefined, undefined, { preservePicker });
   try {
     await lifecycleCheck;
   } finally {
