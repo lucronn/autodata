@@ -522,7 +522,7 @@ async function refreshPicker(name, { followDiscovery = false, waitForDiscovery =
     await readCollection(async (timeout) => {
       if (!startDiscovery) return readStoredPicker(picker, name, refresh.signal, timeout);
       startDiscovery = false;
-      const data = await requestJSON(picker.path, { signal: refresh.signal, timeout });
+      const data = await requestJSON(picker.path, { signal: refresh.signal, timeout, optionalModelRefresh: true });
       if (data.hydrating || data.discovering) picker.discoveryInstance = data.discovery_instance;
       return data;
     }, {
@@ -631,7 +631,8 @@ async function loadOptions(name, g, desired = "", initial = null, {
           if (name === "year" || storedChoicesReady) {
             // A stored read can only report discovery that has already started.
             if (name !== "year" && response.complete !== true && !discoveryActive)
-              void requestJSON(path, { signal: g.signal }).then(trackDiscovery).catch(() => null);
+              void requestJSON(path, { signal: g.signal, optionalModelRefresh: name === "model" })
+                .then(trackDiscovery).catch(() => null);
             return trackDiscovery(response);
           }
           if (response.items.length) {

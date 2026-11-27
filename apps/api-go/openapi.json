@@ -1318,6 +1318,17 @@
               ]
             },
             "description": "Return stored models before starting optional refresh when no discovery is active."
+          },
+          {
+            "name": "optional_refresh",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "Attempt discovery once when stored models are available. An empty selector can wait for admission."
           }
         ],
         "responses": {
