@@ -1,6 +1,6 @@
 """Publish exact source-layout corrections with their retained rewrites."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from typing import Callable
 from uuid import UUID
@@ -11,9 +11,11 @@ from .article_lifecycle_store import resolve_source_bound_correction
 from .article_lifecycle_types import digest_json, transformation_key
 from .procedure_normalize import normalize_procedure_article
 from .published_media_publication import _publication_evidence_for_revision, _publish, _RepairPlan, _result
+from .published_media_repair import repair_published_media
 from .retained_bankone_order_publication import _article, _captured_revision
 from .retained_banktwo_notice_reply import (
-    BANKONE_DEFINITION_METHOD, BANKONE_LIST_BOUNDARY_METHOD, BANKTWO_NOTICE_METHOD, repair_layout_reply,
+    BANKONE_DEFINITION_METHOD, BANKONE_LIST_BOUNDARY_METHOD, BANKTWO_LIST_START_METHOD, BANKTWO_NOTICE_METHOD,
+    repair_layout_reply,
 )
 from .retained_procedure_repair import _valid_audit
 from .source_article_capture import _walk
@@ -25,6 +27,9 @@ from .source_bankone_list_boundary_replay import (
     load_bankone_list_boundary_binding, preview_bankone_list_boundary_replay, validate_bankone_list_boundary_capture,
 )
 from .source_bankone_order_replay import _without_generated_ids
+from .source_banktwo_list_start_replay import (
+    load_banktwo_list_start_binding, preview_banktwo_list_start_replay, validate_banktwo_list_start_capture,
+)
 from .source_banktwo_notice_replay import (
     load_banktwo_notice_binding, preview_banktwo_notice_replay, validate_banktwo_notice_capture,
 )
@@ -33,6 +38,7 @@ from .source_revision_reprojection import _require_no_active_normal_job
 
 
 SCHEMA = "autodata:published-banktwo-list-notices:v1"
+BANKTWO_LIST_START_SCHEMA = "autodata:published-banktwo-list-starts:v1"
 BANKONE_DEFINITION_SCHEMA = "autodata:published-bankone-definition-headings:v1"
 BANKONE_LIST_BOUNDARY_SCHEMA = "autodata:published-bankone-list-boundaries:v1"
 _INVALID = "BANKTWO_NOTICE_PUBLICATION_INVALID"
@@ -52,6 +58,10 @@ _LAYOUTS = {
     SCHEMA: _LayoutRepair(
         "banktwo", BANKTWO_NOTICE_METHOD, load_banktwo_notice_binding,
         preview_banktwo_notice_replay, validate_banktwo_notice_capture,
+    ),
+    BANKTWO_LIST_START_SCHEMA: _LayoutRepair(
+        "banktwo", BANKTWO_LIST_START_METHOD, load_banktwo_list_start_binding,
+        preview_banktwo_list_start_replay, validate_banktwo_list_start_capture,
     ),
     BANKONE_DEFINITION_SCHEMA: _LayoutRepair(
         "bankone", BANKONE_DEFINITION_METHOD, load_bankone_definition_heading_binding,
@@ -134,11 +144,18 @@ def _make_plan(cur, article, binding, captured, previous_id, *, schema, lock=Fal
             raise ValueError(_INVALID)
         bankone_structure = original.bankone_structure
     normalized = _normalize(captured, binding.canonical_article_id)
-    repair = repair_layout_reply(
-        row["normalized_source_document"], row["canonical_document"], normalized, response=response,
-        prompt_version=prompt, profile=row["validation_report"]["profile_version"], method=layout.method,
-        bankone_structure=bankone_structure,
-    )
+    if schema == BANKTWO_LIST_START_SCHEMA:
+        repair = repair_published_media(
+            row["normalized_source_document"], row["canonical_document"], normalized, response=response,
+            prompt_version=prompt, profile=row["validation_report"]["profile_version"], ordinals=True,
+        )
+        repair = replace(repair, provenance={**repair.provenance, "transformation_method": layout.method})
+    else:
+        repair = repair_layout_reply(
+            row["normalized_source_document"], row["canonical_document"], normalized, response=response,
+            prompt_version=prompt, profile=row["validation_report"]["profile_version"], method=layout.method,
+            bankone_structure=bankone_structure,
+        )
     retained_links = _link_successors(
         links, row["canonical_document"], repair.document, body_sha256=binding.body_sha256,
     ) if links else ()
@@ -209,6 +226,10 @@ def preview_banktwo_notice_publication(repo, source_revision_id, *, object_store
     return _preview_layout_publication(repo, source_revision_id, object_store=object_store, schema=SCHEMA)
 
 
+def preview_banktwo_list_start_publication(repo, source_revision_id, *, object_store):
+    return _preview_layout_publication(repo, source_revision_id, object_store=object_store, schema=BANKTWO_LIST_START_SCHEMA)
+
+
 def preview_bankone_definition_heading_publication(repo, source_revision_id, *, object_store):
     return _preview_layout_publication(repo, source_revision_id, object_store=object_store, schema=BANKONE_DEFINITION_SCHEMA)
 
@@ -233,6 +254,10 @@ def _preview_layout_publication(repo, source_revision_id, *, object_store, schem
 
 def resolve_banktwo_notice_publication(cur, job, article, candidate, *, lock=False):
     return _resolve_layout_publication(cur, job, article, candidate, schema=SCHEMA, lock=lock)
+
+
+def resolve_banktwo_list_start_publication(cur, job, article, candidate, *, lock=False):
+    return _resolve_layout_publication(cur, job, article, candidate, schema=BANKTWO_LIST_START_SCHEMA, lock=lock)
 
 
 def resolve_bankone_definition_heading_publication(cur, job, article, candidate, *, lock=False):
@@ -310,6 +335,11 @@ def _already_published(cur, article, approval, *, schema):
 def publish_banktwo_notice(repo, *, expected, object_store, actor, reason, hooks=None):
     return _publish_layout_publication(repo, expected=expected, object_store=object_store, actor=actor, reason=reason,
                                        schema=SCHEMA, hooks=hooks)
+
+
+def publish_banktwo_list_start(repo, *, expected, object_store, actor, reason, hooks=None):
+    return _publish_layout_publication(repo, expected=expected, object_store=object_store, actor=actor, reason=reason,
+                                       schema=BANKTWO_LIST_START_SCHEMA, hooks=hooks)
 
 
 def publish_bankone_definition_heading(repo, *, expected, object_store, actor, reason, hooks=None):

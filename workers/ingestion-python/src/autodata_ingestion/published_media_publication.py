@@ -111,7 +111,9 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
 
 def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fixture_mode, lock, expected_profile=None):
     from .retained_bankone_order_reply import BANKONE_ORDER_METHOD
-    from .retained_banktwo_notice_reply import BANKONE_DEFINITION_METHOD, BANKONE_LIST_BOUNDARY_METHOD, BANKTWO_NOTICE_METHOD
+    from .retained_banktwo_notice_reply import (
+        BANKONE_DEFINITION_METHOD, BANKONE_LIST_BOUNDARY_METHOD, BANKTWO_LIST_START_METHOD, BANKTWO_NOTICE_METHOD,
+    )
     from .retained_introduction_repair import (
         METHOD as INTRODUCTION_METHOD, PROFILE as INTRODUCTION_PROFILE, resolve_retained_introduction_repair,
     )
@@ -169,7 +171,9 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
         INTRODUCTION_PROFILE: (INTRODUCTION_METHOD, resolve_retained_introduction_repair),
     }
     if (profile not in (*AUTOMATIC_REWRITE_PROFILES, REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2, *repaired)
-        or (profile in repaired and method not in (repaired[profile][0], BANKTWO_NOTICE_METHOD, BANKONE_DEFINITION_METHOD))
+        or (profile in repaired and method not in (
+            repaired[profile][0], BANKTWO_NOTICE_METHOD, BANKTWO_LIST_START_METHOD, BANKONE_DEFINITION_METHOD,
+        ))
         or profile != (expected_profile or article["target_rewrite_profile_version"])
         or row["normalization_version"] != article["target_normalization_version"]):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PROFILE_UNSUPPORTED")
@@ -216,6 +220,11 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
         from .retained_banktwo_notice_publication import resolve_banktwo_notice_publication
 
         repaired, attempt, prompt_version = resolve_banktwo_notice_publication(cur, job, article, row, lock=lock)
+        validation, response = repaired.validation, repaired.remapped_response
+    elif method == BANKTWO_LIST_START_METHOD:
+        from .retained_banktwo_notice_publication import resolve_banktwo_list_start_publication
+
+        repaired, attempt, prompt_version = resolve_banktwo_list_start_publication(cur, job, article, row, lock=lock)
         validation, response = repaired.validation, repaired.remapped_response
     elif method == BANKONE_DEFINITION_METHOD:
         from .retained_banktwo_notice_publication import resolve_bankone_definition_heading_publication

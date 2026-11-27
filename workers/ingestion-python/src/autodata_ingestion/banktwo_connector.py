@@ -202,6 +202,7 @@ class ArticleParser(HTMLParser):
         include_untyped_pdf_positions=False, keep_bound_html_images=False, skip_noscript_images=frozenset(),
         declared_image_refs=frozenset(), lazy_image_alts=None, keep_html_document_links=False,
         keep_html_section_titles=False, keep_bankone_html_flow=False, keep_banktwo_list_notices=False,
+        keep_banktwo_dotted_list_starts=False,
         keep_bankone_definition_headings=False, keep_bankone_list_boundaries=False,
         positioned_figures=None,
     ):
@@ -241,6 +242,8 @@ class ArticleParser(HTMLParser):
         self.bankone_list_boundaries = False
         self._keep_banktwo_list_notices = keep_banktwo_list_notices
         self.banktwo_list_notices = False
+        self._keep_banktwo_dotted_list_starts = keep_banktwo_dotted_list_starts
+        self.banktwo_dotted_list_starts = False
         self._keep_html_document_links = keep_html_document_links
         self.html_document_links = False
         # Bounds are indexes into _text. A new list item awaits both bounds.
@@ -907,7 +910,13 @@ class ArticleParser(HTMLParser):
             # Only the compatibility facade reuses implicit top-level starts.
             continues = self._preserve_legacy_list_starts and not self._lists and self._list_continuation_pending
             start = self._list_start if continues else 1
-            explicit = _html_list_number(attrs.get("start")) if tag == "ol" else None
+            authored_start = attrs.get("start") if tag == "ol" else None
+            explicit = _html_list_number(authored_start)
+            if self._keep_banktwo_dotted_list_starts and isinstance(authored_start, str):
+                supplied_number = authored_start.strip()
+                if supplied_number.endswith("."):
+                    explicit = _html_list_number(supplied_number[:-1])
+                    self.banktwo_dotted_list_starts |= explicit is not None
             if explicit is not None:
                 start = explicit
             self._lists.append(_ListFrame(tag, start, authored_start=explicit is not None))

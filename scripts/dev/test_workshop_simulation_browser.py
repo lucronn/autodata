@@ -2,6 +2,7 @@
 
 import asyncio
 from contextlib import ExitStack
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -27,7 +28,109 @@ from test_paid_catalog_api_integration import configure_scoped_runtime
 from workshop_browser_smoke import API_CASES, APIFixture, api_control, api_measure, api_signin, fixture_origin
 
 
-async def exercise_simulated_payment(origin, scope, customer_account):
+def retained_list_start_fixture(runtime, monkeypatch):
+    from autodata_ingestion import source_article_capture
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion.procedure_rewrite_auto import PROFILE
+    from autodata_ingestion.retained_banktwo_notice_publication import (
+        preview_banktwo_list_start_publication, publish_banktwo_list_start,
+    )
+    from autodata_ingestion.source_job_persistence import refresh_article_job
+    from test_retained_banktwo_notice_publication import NoticeModel
+
+    markup = (
+        '<h2>CorrectionPump alignment</h2>'
+        '<ol start="1. "><li>Remove the pump.<img data-resource-ref="figure" alt="Pump figure"></li></ol>'
+        '<ol start="7. "><li>Install the replacement.</li></ol>'
+    )
+    runtime.servers["banktwo"].body(
+        json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode(),
+        "application/hal+json", assets=["figure"],
+    )
+    capture = source_article_capture.capture_source_article
+
+    def old_capture(*args, **kwargs):
+        kwargs["keep_banktwo_dotted_list_starts"] = False
+        return capture(*args, **kwargs)
+
+    model = NoticeModel()
+    refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="publish pre-repair source",
+                        rewrite_profile_version=PROFILE)
+    with monkeypatch.context() as historical:
+        historical.setattr(source_article_capture, "capture_source_article", old_capture)
+        assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+                                       object_store=runtime.objects, model_client=model)
+    prior = runtime.read_current()
+    assert prior["content_origin"] == "canonical" and model.calls == 1, runtime.diagnostics()
+    manifest = preview_banktwo_list_start_publication(
+        runtime.repo, prior["source_revision_id"], object_store=runtime.objects,
+    )
+
+    def publish():
+        args = dict(expected=manifest, object_store=runtime.objects, actor="fixture",
+                    reason="Restore authored list starts in the archived procedure.")
+        with pytest.raises(ValueError, match="BANKTWO_NOTICE_PUBLICATION_STALE"):
+            publish_banktwo_list_start(runtime.repo, **{**args, "expected": {
+                **manifest, "repaired_published_document_hash": "0" * 64,
+            }})
+
+        def interrupt(point):
+            assert point == "inside_publication" and runtime.read_current() == prior
+            raise RuntimeError("fixture interruption")
+
+        with pytest.raises(RuntimeError, match="fixture interruption"):
+            publish_banktwo_list_start(runtime.repo, hooks=interrupt, **args)
+        assert runtime.read_current() == prior
+        result = publish_banktwo_list_start(runtime.repo, **args)
+        assert result["status"] == "published"
+        assert publish_banktwo_list_start(runtime.repo, **args) == {**result, "status": "already_published"}
+        with runtime.repo.connect() as conn:
+            assert conn.execute(
+                "SELECT count(*) AS n FROM publication_events WHERE canonical_article_revision_id=%s",
+                (result["canonical_revision_id"],),
+            ).fetchone()["n"] == 1
+            assert conn.execute(
+                "SELECT count(*) AS n FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s",
+                (result["job_id"],),
+            ).fetchone()["n"] == 0
+        assert model.calls == 1
+        return result
+
+    return prior, publish
+
+
+async def verify_list_start_reader(page, owner, detail, expected, pins, *, original=False):
+    from playwright.async_api import expect
+
+    if original:
+        async with page.expect_response(lambda response: urlsplit(response.url).path == urlsplit(detail).path + "/source") as pending:
+            await page.locator("#open-original").click()
+        response = await pending.value
+        assert response.ok
+        source = (await response.json())["source"]
+        assert f"source_revision_id={pins['source_revision_id']}" in source["url"]
+        content = page.locator("#source-review-frame")
+        await expect(content).to_contain_text("Remove the pump.")
+    else:
+        response = await owner.request.get(detail)
+        assert response.ok
+        article = (await response.json())["article"]
+        assert all(article[name] == str(pins[name]) for name in ("source_revision_id", "canonical_revision_id"))
+        content = page.locator("#article-content")
+        await expect(content).to_contain_text("Take off the pump.")
+    await expect(content.locator("ol")).to_have_count(2)
+    assert await content.locator("ol").evaluate_all("lists => lists.map(list => list.start)") == expected
+    image = content.locator("ol:first-of-type > li figure img")
+    assert await image.evaluate("(node) => node.decode().then(() => node.naturalWidth > 0)")
+    asset = await owner.request.get(await image.evaluate("(node) => node.currentSrc"))
+    assert asset.ok and asset.headers["content-type"].startswith("image/png")
+    digest = sha256(await asset.body()).hexdigest()
+    if original:
+        await page.locator("#back-to-article").click()
+    return digest
+
+
+async def exercise_simulated_payment(origin, scope, customer_account, repair=None):
     from playwright.async_api import async_playwright, expect
 
     configuration = scope["configuration"]
@@ -38,8 +141,15 @@ async def exercise_simulated_payment(origin, scope, customer_account):
     checkout_path = "/v1/workshop/checkout-sessions"
 
     async with async_playwright() as playwright:
-        executable = os.environ.get("AUTODATA_WORKSHOP_SIMULATION_CHROMIUM")
-        browser = await playwright.chromium.launch(headless=False, **({"executable_path": executable} if executable else {}))
+        engine = os.environ.get("AUTODATA_WORKSHOP_SIMULATION_ENGINE", "chromium")
+        if engine == "webkit":
+            executable = os.environ.get("WORKSHOP_HEADED_WEBKIT_EXECUTABLE")
+            browser_type = playwright.webkit
+        else:
+            assert engine == "chromium"
+            executable = os.environ.get("AUTODATA_WORKSHOP_SIMULATION_CHROMIUM")
+            browser_type = playwright.chromium
+        browser = await browser_type.launch(headless=False, **({"executable_path": executable} if executable else {}))
         try:
             owner = await browser.new_context(ignore_https_errors=True, service_workers="block")
             transport = APIFixture(origin, API_CASES[1])
@@ -103,10 +213,23 @@ async def exercise_simulated_payment(origin, scope, customer_account):
             await page.reload()
             await expect(page.locator("#library-items > li")).to_have_count(1)
             await expect(page.locator("#library-items h3")).to_contain_text("Paid selected")
-            await api_control(owner, origin, "control/start-workers")
+            if repair is None:
+                await api_control(owner, origin, "control/start-workers")
             await page.get_by_role("button", name="Open articles", exact=True).click()
             await page.locator(f'#articles a[href*="{article}"]').click()
             await expect(page.locator("#article-kind")).to_have_text("Workshop article", timeout=18000)
+            if repair is not None:
+                prior, publish = repair
+                previous_reader = await verify_list_start_reader(page, owner, detail, [1, 1], prior)
+                previous_original = await verify_list_start_reader(page, owner, detail, [1, 1], prior, original=True)
+                corrected = await asyncio.to_thread(publish)
+                await page.reload()
+                corrected_reader = await verify_list_start_reader(page, owner, detail, [1, 7], corrected)
+                corrected_original = await verify_list_start_reader(page, owner, detail, [1, 7], corrected, original=True)
+                assert previous_reader == previous_original == corrected_reader == corrected_original
+                print(json.dumps({"case": "banktwo-list-starts", "engine": engine, "headed": True,
+                                  "starts": [1, 7], "figure_sha256": corrected_reader,
+                                  "publication_retry_and_rollback_verified": True}), flush=True)
             await expect(page.locator("#article-content")).to_contain_text("Take off the pump.")
             image = page.locator("#article-content img").first
             await expect(image).to_be_visible()
@@ -141,7 +264,8 @@ async def exercise_simulated_payment(origin, scope, customer_account):
             await browser.close()
 
 
-def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_database, monkeypatch, tmp_path):
+@pytest.mark.parametrize("variant", ["payment", "list-starts"])
+def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_database, monkeypatch, tmp_path, variant):
     from autodata_ingestion.http_service import make_handler
 
     repo = fresh_database()
@@ -158,6 +282,7 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
         provider = "banktwo"
         scope = configure_scoped_runtime(runtime, provider)
         scope["article"] = str(runtime.article_id)
+        repair = retained_list_start_fixture(runtime, monkeypatch) if variant == "list-starts" else None
         bridge = Bridge(runtime, GO_NAMES[0])
         for name, value in {
             **runtime.env,
@@ -218,7 +343,9 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
                 time.sleep(0.05)
             metadata = json.loads(ready.read_bytes())
             assert metadata["kind"] == "api-fixture" and metadata["scope"]["article"] == scope["article"]
-            asyncio.run(asyncio.wait_for(exercise_simulated_payment(fixture_origin(metadata["origin"]), scope, account), 45))
+            asyncio.run(asyncio.wait_for(exercise_simulated_payment(
+                fixture_origin(metadata["origin"]), scope, account, repair=repair,
+            ), 45))
             assert go.wait(timeout=5) == 0
             with repo.connect() as conn:
                 events = conn.execute(

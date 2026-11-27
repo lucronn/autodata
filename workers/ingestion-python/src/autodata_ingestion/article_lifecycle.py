@@ -11,7 +11,7 @@ from .source_job_persistence import (claim_source_job, heartbeat_source_job, loc
                                      fail_source_job, park_automatic_for_model, LeaseLost)
 from .article_lifecycle_types import (
     AUTOMATIC_REWRITE_PROFILES, ArticleKey, BANKONE_DEFINITION_HEADING_LAYOUT, BANKONE_HTML_FLOW_LAYOUT,
-    BANKONE_LIST_BOUNDARY_LAYOUT, BANKTWO_LIST_NOTICE_LAYOUT, HTML_DOCUMENT_LINK_LAYOUT,
+    BANKONE_LIST_BOUNDARY_LAYOUT, BANKTWO_DOTTED_LIST_START_LAYOUT, BANKTWO_LIST_NOTICE_LAYOUT, HTML_DOCUMENT_LINK_LAYOUT,
     HTML_INLINE_ARTICLE_LINK_LAYOUT,
     HTML_FIGURE_CAPTION_LAYOUT, HTML_FLOW_FIGURE_CAPTION_LAYOUT,
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT, HTML_SECTION_TITLE_LAYOUT, HTML_TABLE_CAPTION_LAYOUT,
@@ -116,6 +116,7 @@ def _capture_context(repo,lease):
         legacy_bankone_definition_heading_body = previous_body
         legacy_bankone_list_boundary_body = previous_body
         legacy_banktwo_list_notice_body = previous_body
+        legacy_banktwo_dotted_list_start_body = previous_body
         legacy_positioned_label_body = previous_body
         previous_pdf_roots = {previous_body} if previous_body is not None else set()
         legacy_blank_pdf_roots = set()
@@ -158,6 +159,8 @@ def _capture_context(repo,lease):
                     legacy_bankone_list_boundary_body = None
                 if resource.get("banktwo_list_notice_layout") == BANKTWO_LIST_NOTICE_LAYOUT:
                     legacy_banktwo_list_notice_body = None
+                if resource.get("banktwo_dotted_list_start_layout") == BANKTWO_DOTTED_LIST_START_LAYOUT:
+                    legacy_banktwo_dotted_list_start_body = None
                 if resource.get("html_positioned_figure_layout") == FIGURE_LABEL_LAYOUT:
                     legacy_positioned_label_body = None
                 legacy_bankone_html = resource.get("media_type") == "text/html"
@@ -201,6 +204,7 @@ def _capture_context(repo,lease):
             legacy_published_bankone_definition_heading_body=legacy_bankone_definition_heading_body,
             legacy_published_bankone_list_boundary_body=legacy_bankone_list_boundary_body,
             legacy_published_banktwo_list_notice_body=legacy_banktwo_list_notice_body,
+            legacy_published_banktwo_dotted_list_start_body=legacy_banktwo_dotted_list_start_body,
             legacy_published_positioned_label_body=legacy_positioned_label_body,
             legacy_published_bankone_svg_refs=(
                 frozenset(legacy_bankone_svg_refs)
