@@ -9,7 +9,8 @@ from autodata_ingestion import article_lifecycle_store as store
 from autodata_ingestion.article_lifecycle_types import digest_json
 from autodata_ingestion.procedure_rewrite_correction import _mask_literals
 from autodata_ingestion.procedure_rewrite_sentence_correction import (
-    SENTENCE_INSTRUCTION_RECOVERY_METHOD, SENTENCE_RECOVERY_METHOD, SENTENCE_TOOL_RECOVERY_METHOD,
+    SENTENCE_INSTRUCTION_RECOVERY_METHOD, SENTENCE_RECOVERY_METHOD, SENTENCE_SERVICE_PROCEDURE_RECOVERY_METHOD,
+    SENTENCE_TOOL_RECOVERY_METHOD,
 )
 from autodata_ingestion.published_media_publication import _publication_evidence
 from lifecycle_support import fresh_database, runtime
@@ -33,6 +34,8 @@ RECOVERED_REMOVAL = (
 )
 INSTALL_SOCKET = "Install the drive socket (6) to the gear nut."
 RECOVERED_SOCKET = "The drive socket (6) must be fitted to the gear nut."
+COVER_REMOVAL = "Remove the bolts, pin-type retainer and the LH cowl cover."
+RECOVERED_COVER = "The bolts and pin-type retainer must be removed along with the LH cowl cover."
 
 
 class EchoedSentence:
@@ -61,7 +64,8 @@ class EchoedSentence:
     (WIRING, RECOVERED_WIRING, SENTENCE_RECOVERY_METHOD),
     (LINKED_REMOVAL, RECOVERED_REMOVAL, SENTENCE_INSTRUCTION_RECOVERY_METHOD),
     (INSTALL_SOCKET, RECOVERED_SOCKET, SENTENCE_TOOL_RECOVERY_METHOD),
-], ids=["wiring", "numbered-removal", "socket-installation"])
+    (COVER_REMOVAL, RECOVERED_COVER, SENTENCE_SERVICE_PROCEDURE_RECOVERY_METHOD),
+], ids=["wiring", "numbered-removal", "socket-installation", "cover-removal"])
 def terminal_sentence(runtime, request, monkeypatch):
     text, wording, method = request.param
     connector = runtime.servers["bankone"]
