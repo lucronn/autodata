@@ -495,10 +495,12 @@ export async function requestArticleJSON(path, {
     earlyTimeout?.removeEventListener('abort', abortEarly);
   }
 }
-const directSelectorPath = /^\/v1\/catalog\/years\/\d{4}\/makes\/[a-z0-9-]+\/models(?:\/[a-z0-9-]+\/configurations)?\?region=US(?:&stored_only=1)?$/;
 const directMakePath = /^\/v1\/catalog\/years\/\d{4}\/makes\?region=US$/;
-const directSelectorTimeout = 400;
+const directModelPath = /^\/v1\/catalog\/years\/\d{4}\/makes\/[a-z0-9-]+\/models\?region=US(?:&stored_only=1)?$/;
+const directConfigurationPath = /^\/v1\/catalog\/years\/\d{4}\/makes\/[a-z0-9-]+\/models\/[a-z0-9-]+\/configurations\?region=US(?:&stored_only=1)?$/;
 const directMakeTimeout = 175;
+const directModelTimeout = 200;
+const directConfigurationTimeout = 400;
 const makeRouteKey = 'workshop:make-same-origin:';
 const makeRouteLifetime = 30000;
 let directSelectorsUnavailable = false;
@@ -523,7 +525,8 @@ function hasRecentSameOriginMake(path) {
 function directSelectorURL(path, { method = 'GET', headers, body }) {
   if (directSelectorsUnavailable || method !== 'GET' || headers || body !== undefined ||
       globalThis.location?.origin !== 'https://autodata.cars.tk' ||
-      typeof path !== 'string' || !(directMakePath.test(path) || directSelectorPath.test(path))) return null;
+      typeof path !== 'string' ||
+      !(directMakePath.test(path) || directModelPath.test(path) || directConfigurationPath.test(path))) return null;
   // A fast year selection on the cold page can already have cached this
   // exact list on the main origin before the catalog module was ready.
   if (directMakePath.test(path) && hasRecentSameOriginMake(path)) return null;
@@ -536,13 +539,16 @@ export async function requestJSON(path, options = {}) {
   const direct = directSelectorURL(path, options);
   if (!direct) return (await requestArticleJSON(path, options)).data;
   const isMake = directMakePath.test(path);
+  // An embedded make list can leave the model as the first direct request.
+  const connectionTimeout = isMake ? directMakeTimeout
+    : directModelPath.test(path) ? directModelTimeout : directConfigurationTimeout;
   const { fetcher = fetch } = options;
   return (await requestArticleJSON(path, {
     ...options,
     async fetcher(resource, init) {
       init.signal.throwIfAborted();
       const connection = new AbortController();
-      const deadline = setTimeout(() => connection.abort(), isMake ? directMakeTimeout : directSelectorTimeout);
+      const deadline = setTimeout(() => connection.abort(), connectionTimeout);
       try {
         return await fetcher(direct, {
           ...init,
