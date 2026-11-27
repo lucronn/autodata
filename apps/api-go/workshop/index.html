@@ -124,11 +124,13 @@
           const makeData = document.getElementById('workshop-initial-makes');
           if (makeData) {
             try {
-              const lists = JSON.parse(makeData.textContent);
+              const { options, years } = JSON.parse(makeData.textContent);
               for (const year of values) {
-                const items = lists[year];
-                if (Array.isArray(items) && items.length &&
-                    items.every(item => item && typeof item.id === 'string' && typeof item.name === 'string')) {
+                const indexes = years?.[year];
+                if (!Array.isArray(options) || !Array.isArray(indexes) || !indexes.length ||
+                    !indexes.every(index => Number.isInteger(index) && index >= 0 && index < options.length)) continue;
+                const items = indexes.map(index => options[index]);
+                if (items.every(item => item && typeof item.id === 'string' && typeof item.name === 'string')) {
                   makeSnapshots.set(String(year), { version: 'v1', complete: true, hydrating: false, items });
                 }
               }

@@ -17,7 +17,7 @@ import (
 const workshopEntryPath = "/workshop"
 const workshopInitialYearsMarker = "<!-- Workshop initial years -->"
 const workshopInitialYearsTimeout = 25 * time.Millisecond
-const workshopInitialMakeYearCount = 6
+const workshopInitialMakeFallbackYearCount = 6
 const workshopInitialMakesMaxBytes = 24 << 10
 
 var workshopAssetsHandler = buildWorkshopAssetsHandler()
@@ -28,6 +28,37 @@ type workshopEntryOptions struct {
 	publicDemo      bool
 	initialYears    []byte
 	initialMakes    []byte
+}
+
+type workshopEntryMakes struct {
+	Options []CatalogMake `json:"options"`
+	Years   map[int][]int `json:"years"`
+}
+
+func encodeWorkshopEntryMakes(years []int, lists map[int][]CatalogMake) ([]byte, error) {
+	packed := workshopEntryMakes{Years: make(map[int][]int, len(lists))}
+	positions := make(map[CatalogMake]int)
+	for _, year := range years {
+		makes := lists[year]
+		if len(makes) == 0 {
+			continue
+		}
+		indexes := make([]int, 0, len(makes))
+		for _, makeChoice := range makes {
+			index, found := positions[makeChoice]
+			if !found {
+				index = len(packed.Options)
+				packed.Options = append(packed.Options, makeChoice)
+				positions[makeChoice] = index
+			}
+			indexes = append(indexes, index)
+		}
+		packed.Years[year] = indexes
+	}
+	if len(packed.Years) == 0 {
+		return nil, nil
+	}
+	return json.Marshal(packed)
 }
 
 func (s *Server) workshopInitialSelectors(r *http.Request) (yearData, makeData []byte) {
@@ -64,11 +95,14 @@ func (s *Server) workshopInitialSelectors(r *http.Request) (yearData, makeData [
 		}
 		slices.Sort(modelYears)
 		modelYears = slices.Compact(modelYears)
-		requested := modelYears[max(0, len(modelYears)-workshopInitialMakeYearCount):]
-		lists, err := store.catalogMakeLists(ctx, requested, "US", true)
+		lists, err := store.catalogMakeLists(ctx, modelYears, "US", true)
 		if err == nil && ctx.Err() == nil && len(lists) > 0 {
-			encoded, err := json.Marshal(lists)
-			if err == nil && len(encoded) <= workshopInitialMakesMaxBytes {
+			encoded, err := encodeWorkshopEntryMakes(modelYears, lists)
+			if err == nil && len(encoded) > workshopInitialMakesMaxBytes {
+				recent := modelYears[max(0, len(modelYears)-workshopInitialMakeFallbackYearCount):]
+				encoded, err = encodeWorkshopEntryMakes(recent, lists)
+			}
+			if err == nil && ctx.Err() == nil && len(encoded) <= workshopInitialMakesMaxBytes {
 				makeData = encoded
 			}
 		}

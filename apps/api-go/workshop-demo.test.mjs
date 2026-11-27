@@ -183,7 +183,7 @@ test('the early picker skips only fresh stored lists for existing years', () => 
   let timestamp = 0;
   const { context, parseYear, calls } = startHeadPicker('', true, {
     initialYears: JSON.stringify({ version: 'v1', complete: true, items: years }),
-    initialMakes: JSON.stringify({ 2024: items, 2026: items, 2023: [{ id: 'malformed' }] }),
+    initialMakes: JSON.stringify({ options: items, years: { 2024: [0], 2026: [0], 2023: [1] } }),
     yearPicker, now: () => timestamp,
   });
   parseYear();
