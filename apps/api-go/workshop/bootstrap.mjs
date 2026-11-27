@@ -46,6 +46,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
     : readDemoMode();
   const preview = wantsDemo ? null : import('./catalog.mjs')
     .then(({ requestJSON, requestInitialYears, startSavedSelectorReads }) => {
+      if (pickerStartup?.takeYearPicker) pickerStartup.requestMake = requestJSON;
       const request = (path, options) => {
         const pending = pickerStartup?.get(path);
         if (!pending) return requestJSON(path, options);

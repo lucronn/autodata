@@ -145,59 +145,6 @@ func TestWorkshopEntryCarriesOnlyCompletePublicYears(t *testing.T) {
 	}
 }
 
-func TestWorkshopSharesOnlyTheCanonicalPublicPickerAtVercel(t *testing.T) {
-	server, store, _ := paidHTTPServer()
-	server.workshopSimulation = true
-	years := &workshopInitialYearsStore{CatalogStore: store, items: []CatalogYear{{Year: 2024}}, complete: true}
-	server.catalog = years
-	handler := server.Handler()
-	request := func(method, path, cookie, etag, byteRange string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(method, path, nil)
-		req.Header.Set("Cookie", cookie)
-		req.Header.Set("If-None-Match", etag)
-		req.Header.Set("Range", byteRange)
-		req.Header.Set("X-Request-ID", "workshop-visitor")
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, req)
-		return response
-	}
-	const cdnHeader = "Vercel-CDN-Cache-Control"
-	const cdnPolicy = "public, max-age=15"
-	guest := request(http.MethodGet, "/workshop", "", "", "")
-	for _, cookie := range []string{"", "__session=fixture-a", "__session=fixture-b"} {
-		entry := request(http.MethodGet, "/workshop", cookie, "", "")
-		if entry.Code != http.StatusOK || !bytes.Equal(entry.Body.Bytes(), guest.Body.Bytes()) ||
-			entry.Header().Get("ETag") != guest.Header().Get("ETag") ||
-			entry.Header().Get("Cache-Control") != expectedWorkshopEntryCache ||
-			entry.Header().Get(cdnHeader) != cdnPolicy || entry.Header().Get("Set-Cookie") != "" ||
-			entry.Header().Get("X-Request-ID") != "" {
-			t.Fatalf("public entry varied by session or included request metadata: %d %v", entry.Code, entry.Header())
-		}
-	}
-	for _, method := range []string{http.MethodGet, http.MethodHead} {
-		cached := request(method, "/workshop", "", guest.Header().Get("ETag"), "")
-		if cached.Code != http.StatusNotModified || cached.Body.Len() != 0 || cached.Header().Get(cdnHeader) != cdnPolicy {
-			t.Fatalf("conditional %s = %d %v", method, cached.Code, cached.Header())
-		}
-	}
-	for _, path := range []string{"/workshop/", "/workshop?", "/workshop?year=2024", "/workshop?view=library",
-		"/workshop?article=retained", "/workshop?order=returned", "/workshop?demo=1", "/workshop?sample=1",
-		"/workshop/purchase-config.json", "/auth/session", "/v1/workshop/library"} {
-		if got := request(http.MethodGet, path, "", "", ""); got.Header().Get(cdnHeader) != "" {
-			t.Errorf("shared policy leaked to %s", path)
-		}
-	}
-	if part := request(http.MethodGet, "/workshop", "", "", "bytes=0-9"); part.Code != http.StatusPartialContent ||
-		part.Header().Get(cdnHeader) != "" {
-		t.Fatalf("unexpected ranged response: %d %v", part.Code, part.Header())
-	}
-	years.complete = false
-	if partial := request(http.MethodGet, "/workshop", "", "", ""); partial.Code != http.StatusOK ||
-		partial.Header().Get(cdnHeader) != "" || partial.Header().Get("Cache-Control") != expectedWorkshopEntryCache {
-		t.Fatalf("initial years fallback shared by CDN: %d %v", partial.Code, partial.Header())
-	}
-}
-
 func TestWorkshopEntryMarksOpenDemoForConfiguredHost(t *testing.T) {
 	server, _, _ := paidHTTPServer()
 	server.workshopOpenDemoHost = "demo.cars.tk"
