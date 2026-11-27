@@ -4,6 +4,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
+from hashlib import sha256
 import re
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -15,16 +16,22 @@ from .article_document import project_ordered_document
 from .article_lifecycle_types import (
     RETAINED_AUTHORED_PROCEDURE_REPAIR_PROFILE as AUTHORED_PROCEDURE_PROFILE,
     RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE as CONDITIONAL_PROFILE,
+    RETAINED_DIAGNOSTIC_WORDING_REPAIR_PROFILE as DIAGNOSTIC_WORDING_PROFILE,
     RETAINED_NOTE_LABEL_REPAIR_PROFILE as PROFILE,
     RETAINED_OPTIONAL_OBSERVATION_REPAIR_PROFILE as OPTIONAL_OBSERVATION_PROFILE,
     RETAINED_PROCEDURE_CONDITION_REPAIR_PROFILE as PROCEDURE_CONDITION_PROFILE,
+    RETAINED_REQUIRED_ACTION_REPAIR_METHOD as REQUIRED_ACTION_METHOD,
+    RETAINED_REQUIRED_ACTION_REPAIR_PROFILE as REQUIRED_ACTION_PROFILE,
     RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE as ROTATION_REMOVAL_PROFILE,
     RETAINED_SHORT_ACTION_REPAIR_PROFILE as SHORT_ACTION_PROFILE,
     RETAINED_SPACED_ROTATION_REPAIR_PROFILE as SPACED_ROTATION_PROFILE,
     SOURCE_BOUND_CORRECTION_PROFILE, ValidationResult,
     digest_json, transformation_key,
 )
-from .authored_procedure_scope import correct_authored_procedure_step
+from .authored_procedure_scope import (
+    _checks_lin_wiring, _LIN_REFERENCE_CHECK, _timing_mark_target, _words,
+    correct_authored_procedure_step, require_authored_procedure_scope,
+)
 from .procedure_rewrite_auto import (
     _OPTIONAL_OBSERVATION_PROMPT_VERSION, _PROCEDURE_FIDELITY_PROMPT_VERSION, _ROTATION_REMOVAL_PROMPT_VERSION,
     _SHORT_ACTION_PROMPT_VERSION, _SPACED_ROTATION_PROMPT_VERSION, _auto_prompt_payload_v62, _procedure_condition,
@@ -39,7 +46,7 @@ from .procedure_rewrite_sentence_correction import (
     SENTENCE_CORRECTION_METHOD, SENTENCE_INSTRUCTION_RECOVERY_METHOD, SENTENCE_TOOL_RECOVERY_METHOD,
 )
 from .retained_bankone_order_reply import BANKONE_ORDER_METHOD
-from .retained_banktwo_notice_reply import BANKTWO_NOTICE_METHOD
+from .retained_banktwo_notice_reply import BANKONE_DEFINITION_METHOD, BANKTWO_NOTICE_METHOD
 from .retained_procedure_repair import _valid_audit
 from .source_job_persistence import _lease_from_row, source_bound_rewrite_source_allowed
 from .source_media_replay import _check_review_quarantine, _load_snapshots, _source_replay_row
@@ -72,6 +79,9 @@ _PROCEDURE_CONDITION_INVALID = "RETAINED_PROCEDURE_CONDITION_REPAIR_INVALID"
 SHORT_ACTION_METHOD = "retained-short-action-archived-reply-repair-v1"
 SHORT_ACTION_CHECKPOINT = "retained_short_action_repair"
 _SHORT_ACTION_INVALID = "RETAINED_SHORT_ACTION_REPAIR_INVALID"
+DIAGNOSTIC_WORDING_METHOD = "retained-diagnostic-wording-archived-reply-repair-v1"
+DIAGNOSTIC_WORDING_CHECKPOINT = "retained_diagnostic_wording_repair"
+_DIAGNOSTIC_WORDING_INVALID = "RETAINED_DIAGNOSTIC_WORDING_REPAIR_INVALID"
 _CONDITION_RETENTION_REASON = "Preserve the exact authored equipment or timing condition."
 _HASH = re.compile(r"[a-f0-9]{64}")
 
@@ -228,6 +238,38 @@ def _correct_short_procedure(original, published):
     return wording if wording != published else None
 
 
+def _restore_diagnostic_wording_reply(source, retained, old_document, old_reply, *, prompt_version, wording_edits):
+    if not isinstance(wording_edits, dict) or not wording_edits:
+        raise ValueError(_DIAGNOSTIC_WORDING_INVALID)
+    reply = deepcopy(old_reply)
+    old_leaves = {"blocks": old_document["blocks"][1:]}
+    changed = {}
+    for row in reply["replacements"]:
+        path = row["path"]
+        if path not in wording_edits:
+            continue
+        original = _get(source, path)
+        published = _get(old_leaves, path)
+        wording = _words(original)
+        edit = wording_edits[path]
+        if (not isinstance(edit, dict) or set(edit) != {"source_sha256", "prior_sha256", "text"}
+            or not isinstance(edit["text"], str) or edit["text"] in (original, published)
+            or not (_timing_mark_target(wording) or _checks_lin_wiring(wording) or _LIN_REFERENCE_CHECK.fullmatch(wording))
+            or row["action"] != "rewrite" or row["text"] != published or original != _get(retained, path)
+            or sha256(original.encode()).hexdigest() != edit["source_sha256"]
+            or sha256(published.encode()).hexdigest() != edit["prior_sha256"]):
+            raise ValueError(_DIAGNOSTIC_WORDING_INVALID)
+        changed[path] = published
+        row["text"] = edit["text"]
+    if changed.keys() != wording_edits.keys():
+        raise ValueError(_DIAGNOSTIC_WORDING_INVALID)
+    document, validation, revised_reply, paths = _validate_restored_reply(
+        source, old_document, reply, changed, _DIAGNOSTIC_WORDING_INVALID, prompt_version=prompt_version,
+    )
+    require_authored_procedure_scope(source, document, rewritten_paths=paths)
+    return document, validation, revised_reply, paths
+
+
 @dataclass(frozen=True)
 class _Repair:
     profile: str
@@ -287,6 +329,12 @@ _SHORT_ACTIONS = _Repair(
     successor_guard=_SHORT_ACTION_PROMPT_VERSION,
     prior_profiles=(SOURCE_BOUND_CORRECTION_PROFILE, AUTHORED_PROCEDURE_PROFILE, PROFILE),
 )
+_DIAGNOSTIC_WORDING = _Repair(
+    DIAGNOSTIC_WORDING_PROFILE, DIAGNOSTIC_WORDING_METHOD, DIAGNOSTIC_WORDING_CHECKPOINT,
+    (BANKONE_DEFINITION_METHOD, REQUIRED_ACTION_METHOD), _DIAGNOSTIC_WORDING_INVALID,
+    "RETAINED_DIAGNOSTIC_WORDING_REPAIR_STALE", _restore_diagnostic_wording_reply,
+    provider=None, prior_profiles=(OPTIONAL_OBSERVATION_PROFILE, REQUIRED_ACTION_PROFILE),
+)
 
 
 def _source_evidence(cur, article, source_id, descriptor_id, *, lock):
@@ -330,7 +378,8 @@ def _source_evidence(cur, article, source_id, descriptor_id, *, lock):
     return source
 
 
-def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_id, old_hash, *, lock, repair=_LABELS):
+def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_id, old_hash, *, lock, repair=_LABELS,
+             wording_edits=None):
     from .article_lifecycle_store import _require_source_bound_rewrite_rights
     from .published_media_publication import _publication_evidence_for_revision
 
@@ -348,7 +397,9 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
         or prior["rewrite_result_hash"] != old_hash):
         raise ValueError(repair.stale)
     bound_source = _source_evidence(cur, article, source_id, descriptor_id, lock=lock)
-    if lock and repair in (_ROTATION_REMOVAL, _AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION, _SHORT_ACTIONS):
+    if lock and repair in (
+        _ROTATION_REMOVAL, _AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION, _SHORT_ACTIONS, _DIAGNOSTIC_WORDING,
+    ):
         _require_source_bound_rewrite_rights(cur, prior_job, article)
     prior_profile = prior_job["rewrite_profile_version"]
     prior, review, decision, attempt, archived_reply, version, _ = _publication_evidence_for_revision(
@@ -371,7 +422,7 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
             WHERE canonical_article_revision_id=%s LIMIT 1""", (prior_revision_id,)).fetchone():
             raise ValueError(repair.invalid)
         archive = {"archived_order_evidence_hash": digest_json(prior["model_metadata"])}
-    elif repair in (_AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION, _SHORT_ACTIONS):
+    elif repair in (_AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION, _SHORT_ACTIONS, _DIAGNOSTIC_WORDING):
         if cur.execute("""SELECT 1 FROM canonical_article_link_bindings WHERE canonical_article_revision_id=%s
             UNION ALL SELECT 1 FROM canonical_article_inline_link_bindings WHERE canonical_article_revision_id=%s LIMIT 1""",
             (prior_revision_id, prior_revision_id)).fetchone():
@@ -383,6 +434,8 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
     source = prior["normalized_source_document"]
     guard = repair.successor_guard or version
     options = {"verified_color_notes": prior_profile == CONDITIONAL_PROFILE} if repair is _AUTHORED_PROCEDURE else {}
+    if repair is _DIAGNOSTIC_WORDING:
+        options["wording_edits"] = wording_edits
     document, validation, reply, paths = repair.edit_reply(
         source, bound_source["source_document"], prior["canonical_document"], archived_reply, prompt_version=guard, **options,
     )
@@ -409,6 +462,8 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
     }
     if repair.successor_guard is not None:
         facts["archived_guard_version"] = version
+    if repair is _DIAGNOSTIC_WORDING:
+        facts["wording_edits"] = wording_edits
     key = transformation_key(
         article["canonical_article_id"], bound_source["source_fingerprint"], prior["normalization_version"],
         repair.profile, projection_version=bound_source["projection_version"],
@@ -454,6 +509,10 @@ def resolve_retained_short_action_repair(cur, job, article, candidate, *, publis
     return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_SHORT_ACTIONS)
 
 
+def resolve_retained_diagnostic_wording_repair(cur, job, article, candidate, *, publishing=False):
+    return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_DIAGNOSTIC_WORDING)
+
+
 def _resolve_repair(cur, job, article, candidate, *, publishing, repair):
     audit = job["checkpoint"].get(repair.checkpoint)
     metadata = candidate["model_metadata"]
@@ -490,7 +549,8 @@ def _resolve_repair(cur, job, article, candidate, *, publishing, repair):
     prior_job = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",
                             (prior_job_id,)).fetchone()
     plan = _rebuild(cur, article, prior_job, job["source_revision_id"], descriptor_id, prior_revision_id,
-                    evidence.get("prior_document_hash"), lock=publishing, repair=repair)
+                    evidence.get("prior_document_hash"), lock=publishing, repair=repair,
+                    wording_edits=evidence.get("wording_edits"))
     if (plan.evidence != evidence or job["request_generation"] != prior_job["request_generation"] + 1
         or plan.key != job["transformation_key"] or plan.attempt["model"] != metadata.get("model")
         or candidate["normalized_source_document"] != plan.source or candidate["canonical_document"] != plan.document):
@@ -602,9 +662,24 @@ def repair_retained_short_actions(
     )
 
 
+def repair_retained_diagnostic_wording(
+    repo, article_id, *, expected_job_id, expected_source_revision_id, expected_descriptor_snapshot_id,
+    expected_published_revision_id, expected_published_hash, expected_repaired_hash,
+    wording_edits, actor, reason, hooks=None,
+):
+    """Publish checked diagnostic wording from a pinned retained source and reply."""
+    return _repair_retained_note(
+        repo, article_id, expected_job_id=expected_job_id, expected_source_revision_id=expected_source_revision_id,
+        expected_descriptor_snapshot_id=expected_descriptor_snapshot_id, expected_published_revision_id=expected_published_revision_id,
+        expected_published_hash=expected_published_hash, expected_repaired_hash=expected_repaired_hash,
+        actor=actor, reason=reason, hooks=hooks, repair=_DIAGNOSTIC_WORDING, wording_edits=wording_edits,
+    )
+
+
 def _repair_retained_note(
     repo, article_id, *, expected_job_id, expected_source_revision_id, expected_descriptor_snapshot_id,
     expected_published_revision_id, expected_published_hash, expected_repaired_hash, actor, reason, hooks, repair,
+    wording_edits=None,
 ):
     if (not _valid_audit(actor, reason) or not all(
         isinstance(value, str) and _HASH.fullmatch(value) for value in (expected_published_hash, expected_repaired_hash)
@@ -630,7 +705,7 @@ def _repair_retained_note(
         _require_no_active_normal_job(cur, article_id)
         plan = _rebuild(
             cur, article, prior_job, source_id, descriptor_id, prior_revision_id, expected_published_hash,
-            lock=True, repair=repair,
+            lock=True, repair=repair, wording_edits=wording_edits,
         )
         if plan.evidence["repaired_document_hash"] != expected_repaired_hash:
             raise ValueError(repair.stale)

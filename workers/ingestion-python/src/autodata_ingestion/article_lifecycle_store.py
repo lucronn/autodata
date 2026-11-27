@@ -1853,10 +1853,12 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
     )
     from .retained_note_label_repair import (
         AUTHORED_PROCEDURE_METHOD, CONDITIONAL_METHOD, METHOD as NOTE_LABEL_REPAIR_METHOD,
+        DIAGNOSTIC_WORDING_METHOD,
         OPTIONAL_OBSERVATION_METHOD, PROCEDURE_CONDITION_METHOD, ROTATION_REMOVAL_METHOD,
         SHORT_ACTION_METHOD, SPACED_ROTATION_METHOD,
         resolve_retained_authored_procedure_repair,
         resolve_retained_conditional_note_repair, resolve_retained_note_label_repair,
+        resolve_retained_diagnostic_wording_repair,
         resolve_retained_optional_observation_repair, resolve_retained_procedure_condition_repair,
         resolve_retained_rotation_removal_repair,
         resolve_retained_short_action_repair,
@@ -1885,7 +1887,7 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
     archived_reply_recovery = method in (
         METHOD, RETAINED_PROCEDURE_REPAIR_METHOD, NOTE_LABEL_REPAIR_METHOD, REQUIRED_ACTION_METHOD, CONDITIONAL_METHOD,
         OPTIONAL_OBSERVATION_METHOD, ROTATION_REMOVAL_METHOD, INTRODUCTION_METHOD, AUTHORED_PROCEDURE_METHOD,
-        SPACED_ROTATION_METHOD, PROCEDURE_CONDITION_METHOD, SHORT_ACTION_METHOD,
+        SPACED_ROTATION_METHOD, PROCEDURE_CONDITION_METHOD, SHORT_ACTION_METHOD, DIAGNOSTIC_WORDING_METHOD,
     )
     if method == METHOD:
         validation = verify_staged_media_reply_recovery(cur, job, article, row)
@@ -1911,6 +1913,8 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
         validation = resolve_retained_procedure_condition_repair(cur, job, article, row, publishing=True).validation
     elif method == SHORT_ACTION_METHOD:
         validation = resolve_retained_short_action_repair(cur, job, article, row, publishing=True).validation
+    elif method == DIAGNOSTIC_WORDING_METHOD:
+        validation = resolve_retained_diagnostic_wording_repair(cur, job, article, row, publishing=True).validation
     elif profile in AUTOMATIC_REWRITE_PROFILES:
         validation = automatic_candidate_validation(cur, job, row, require_current=True)
     elif profile == "full-prose-review-v1":
@@ -1958,7 +1962,7 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
     if profile in AUTOMATIC_REWRITE_PROFILES or method in (
         NOTE_LABEL_REPAIR_METHOD, REQUIRED_ACTION_METHOD, CONDITIONAL_METHOD, ROTATION_REMOVAL_METHOD,
         SPACED_ROTATION_METHOD, OPTIONAL_OBSERVATION_METHOD, INTRODUCTION_METHOD, AUTHORED_PROCEDURE_METHOD,
-        PROCEDURE_CONDITION_METHOD, SHORT_ACTION_METHOD,
+        PROCEDURE_CONDITION_METHOD, SHORT_ACTION_METHOD, DIAGNOSTIC_WORDING_METHOD,
     ):
         from .authored_procedure_scope import require_authored_procedure_scope
 

@@ -8,6 +8,7 @@ from uuid import UUID
 from psycopg.rows import dict_row
 
 from .article_lifecycle_types import (
+    RETAINED_REQUIRED_ACTION_REPAIR_METHOD as METHOD,
     RETAINED_REQUIRED_ACTION_REPAIR_PROFILE as PROFILE,
     SOURCE_BOUND_CORRECTION_PROFILE, digest_json, transformation_key,
 )
@@ -24,7 +25,6 @@ from .retained_procedure_repair import _valid_audit
 from .source_revision_reprojection import _require_no_active_normal_job
 
 
-METHOD = "retained-required-action-archived-reply-repair-v1"
 CHECKPOINT = "retained_required_action_repair"
 _INVALID = "RETAINED_REQUIRED_ACTION_REPAIR_INVALID"
 _STALE = "RETAINED_REQUIRED_ACTION_REPAIR_STALE"
