@@ -695,9 +695,7 @@ class SourceConnectorClientTests(unittest.TestCase):
         provider = _SourceCatalogProvider(client, deepening_control=budget)
         with patch.object(catalog_service, "_stored_banktwo_make_label", return_value=None):
             first = provider.resolve_catalog(CatalogRequest(2020, "ford", "placeholder", scope="models"))
-        self.assertEqual(calls, [
-            ("models", ["ford"]), ("makes", []), ("makes", ["next"]), ("models", ["Ford"]),
-        ])
+        self.assertEqual(calls, [("makes", []), ("makes", ["next"]), ("models", ["Ford"])])
         [proof] = [item["metadata"] for item in first["provenance"] if "exact_make_labels" in item["metadata"]]
         self.assertEqual(proof["exact_make_labels"], {"ford": "Ford", "toyota": "Toyota"})
         self.assertEqual(proof["connector_origin"], "https://banktwo.test")

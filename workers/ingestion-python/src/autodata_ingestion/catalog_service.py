@@ -1664,6 +1664,7 @@ def _persist_hydration_scope(
 
 
 _BANKTWO_MAKE_COVERAGE = "banktwo_complete_make_labels_v1"
+_UNLOOKED_BANKTWO_MAKE = object()
 
 
 def _banktwo_make_provenance(pages, year, origin):
@@ -1750,7 +1751,7 @@ def _read_preferred_models(request, banktwo, control, on_progress):
 
     label = _stored_banktwo_make_label(request, banktwo.client.base_url)
     if not label:
-        return partial(banktwo.resolve_catalog, model_make=request.make)
+        return partial(banktwo.resolve_catalog, model_make=None)
     try:
         first_read = banktwo.client.catalog(
             "models", {"year": request.year, "make": label},
@@ -1787,7 +1788,9 @@ class _SourceCatalogProvider:
         self.client = client
         self.deepening_control = deepening_control
 
-    def resolve_catalog(self, request: CatalogRequest, *, model_make=None, first_model_read=None) -> Mapping[str, Any]:
+    def resolve_catalog(
+        self, request: CatalogRequest, *, model_make=_UNLOOKED_BANKTWO_MAKE, first_model_read=None,
+    ) -> Mapping[str, Any]:
         from .source_connector_client import SourceCatalogAbsence
 
         scope = request.scope if request.scope in {"years", "makes", "models", "configurations"} else "configurations"
@@ -1803,10 +1806,14 @@ class _SourceCatalogProvider:
         owned_banktwo = (getattr(self.deepening_control, "initial_selector_budget", False)
                          and getattr(self.client, "provider", None) == "banktwo")
         make_pages = []
+        prove_model_make = False
         if owned_banktwo and scope == "models":
-            label = model_make if model_make is not None else _stored_banktwo_make_label(request, self.client.base_url)
+            label = (_stored_banktwo_make_label(request, self.client.base_url)
+                     if model_make is _UNLOOKED_BANKTWO_MAKE else model_make)
             if label:
                 selector["make"] = label
+            else:
+                prove_model_make = True
         rows: list[dict[str, Any]] = []
         provenance: list[dict[str, Any]] = []
         cursor: str | None = None
@@ -1830,11 +1837,16 @@ class _SourceCatalogProvider:
                         if first_model_read is not None:
                             options["first_model_read"] = first_model_read
                             first_model_read = None
-                    page = self.client.catalog(
-                        scope, selector, cursor, timeout=timeout,
-                        before_additional_request=self.deepening_control.before_request,
-                        **options,
-                    )
+                    if prove_model_make and cursor is None:
+                        page, selector["make"] = self.client.catalog_models_with_make_proof(
+                            request.year, request.make, read_control=self.deepening_control, on_make_pages=make_pages.extend,
+                        )
+                    else:
+                        page = self.client.catalog(
+                            scope, selector, cursor, timeout=timeout,
+                            before_additional_request=self.deepening_control.before_request,
+                            **options,
+                        )
                 except SourceConnectorError as error:
                     if (getattr(self.deepening_control, "configuration_budget", False)
                             or getattr(self.deepening_control, "initial_selector_budget", False)):

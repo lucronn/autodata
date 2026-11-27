@@ -120,11 +120,12 @@ def test_preferred_read_falls_back_without_repeating_definite_results(monkeypatc
     assert progress[0][1].provenance[0]["provider"] == "autoapi"
 
 
-def test_no_current_label_keeps_the_existing_supplier_order(monkeypatch):
+def test_no_current_label_proves_the_banktwo_make_after_bankone(monkeypatch):
     resolve, calls, progress, control, proofs = _selector(monkeypatch, label=None)
     assert resolve().complete
-    assert calls == [(0, "bankone", "models", "fixture-truck", None), (6, "banktwo", "models", "fixture-truck", None)]
-    assert progress[0][0] == .125 and control.requests == 2 and len(proofs) == 1
+    assert calls == [(0, "bankone", "models", "fixture-truck", None), (6, "banktwo", "makes", None, None),
+                     (12, "banktwo", "models", "Fixture Truck", None)]
+    assert progress[0][0] == .125 and control.requests == 3 and len(proofs) == 1
 
 
 def test_rate_limit_on_the_preferred_read_stops_the_shared_job(monkeypatch):

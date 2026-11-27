@@ -273,6 +273,59 @@ class SourceConnectorClient:
             raise SourceConnectorError("NOT_FOUND", status=404)
         return read_page(scope, repaired)
 
+    def catalog_models_with_make_proof(
+        self, year: int, make: str, *, read_control: Any,
+        on_make_pages: Callable[[tuple[SourceEnvelopeV1, ...]], None],
+    ) -> tuple[SourceEnvelopeV1 | SourceCatalogAbsence, str]:
+        """Resolve an unknown Banktwo make before spending a model dispatch."""
+        if self.provider != "banktwo" or not getattr(read_control, "initial_selector_budget", False):
+            raise ValueError("make proof requires the initial Banktwo selector budget")
+        selector = {"year": year, "make": make}
+        # Keep one dispatch interval for the model read after parent enumeration.
+        proof_deadline = read_control.deadline - read_control.dispatch_interval
+
+        def read_parent(scope, query):
+            now = read_control.clock()
+            if max(now, read_control.next_dispatch) >= proof_deadline:
+                raise SourceConnectorError("UPSTREAM_UNAVAILABLE", retryable=True)
+            reply = self.catalog(
+                scope, {"year": year}, query.get("cursor"),
+                timeout=proof_deadline - now, read_control=read_control,
+            )
+            if any(row.get("year") != year for row in reply.body["items"]):
+                raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+            return reply
+
+        def read_models(label):
+            page = self.catalog("models", {**selector, "make": label}, read_control=read_control, recover_labels=False)
+            return page, label
+
+        try:
+            proved = self._catalog_label(
+                "makes", "make", {"year": year}, make, read_parent,
+                requested_scope="models", requested_selector=selector, on_complete=on_make_pages,
+            )
+        except SourceConnectorError as error:
+            if error.status == 429:
+                raise
+            proved = error
+
+        label = proved if isinstance(proved, str) else make
+        try:
+            return read_models(label)
+        except SourceConnectorError as error:
+            if error.code != "NOT_FOUND":
+                raise
+            if isinstance(proved, SourceCatalogAbsence):
+                return proved, make
+            if isinstance(proved, SourceConnectorError):
+                raise proved from error
+            if label == make:
+                raise
+        # The proved label can lag behind the model endpoint. Try the caller's
+        # original selector once with the same budget and no second enumeration.
+        return read_models(make)
+
     @staticmethod
     def _catalog_label(
         scope: str, field: str, query: Mapping[str, str | int], value: str,
