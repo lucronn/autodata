@@ -368,11 +368,12 @@ test('the direct selector transport honors cancellation and rate limits before f
   assert.deepEqual(calls.splice(0), [selectorOrigin + modelPath]);
 
   const payload = { items: [{ id: 'envision-awd' }], complete: true };
+  const interruptedRequests = [];
   const fetcher = async (url, { signal }) => {
     calls.push(url);
     if (url.startsWith(selectorOrigin)) {
-      return new Promise((_, reject) =>
-        signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+      interruptedRequests.push(signal);
+      return new Promise(() => {});
     }
     return Response.json(payload);
   };
@@ -387,6 +388,7 @@ test('the direct selector transport honors cancellation and rate limits before f
   assert.deepEqual(await read(modelPath, { fetcher }), payload);
   assert.deepEqual(await read(enginePath, { fetcher }), payload);
   assert.deepEqual(calls, [selectorOrigin + modelPath, modelPath, enginePath]);
+  assert.deepEqual(interruptedRequests.map(signal => signal.aborted), [true, true]);
 });
 
 test('the cold same-origin make read stays on that route for a repeat of the same year', async t => {
