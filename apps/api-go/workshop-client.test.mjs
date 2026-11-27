@@ -9992,12 +9992,12 @@ test('a stale reopen is canceled on parent change and never enters the new scope
   assert.deepEqual(h.requests, ['/old-parent', '/old-parent?stored_only=1', '/new-parent']);
 });
 
-test('an incomplete model reopen reads storage once when hydration only describes coverage', async () => {
+test('reopening an incomplete idle model picker checks storage once', async () => {
   const first = { id: 'original', name: 'Original' };
   const sibling = { id: 'new', name: 'New' };
   const h = selectorOptionsHarness(path => path.includes('stored_only')
     ? { items: [first, sibling], complete: false, hydrating: true }
-    : { items: [first], complete: false, hydrating: true });
+    : { items: [first], complete: false, hydrating: false });
   await h.load('', null, null, 'model');
   assert.deepEqual(h.requests, ['/choices']);
   assert.equal(h.statuses.at(-1).text, 'Choose your vehicle to continue.');
