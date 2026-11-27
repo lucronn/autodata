@@ -1658,7 +1658,7 @@ function startArticleFigures(figures, g) {
   }
   const stopWatching = watchFigureLoads(figures, g);
   return {
-    figures, printing: null,
+    figures, printing: null, imagesRefreshedAt: Date.now(),
     stopWatching() {
       stopWatching?.();
       this.printing?.abort();
@@ -2582,15 +2582,15 @@ function sourceAssetAvailability(images) {
   ]));
 }
 
-function refreshPendingSourceFigures(source, images, failed = null) {
+function refreshPendingFigures(view, images, failed = null) {
   const now = Date.now();
-  if (recentMediaURLs(source.imagesRefreshedAt, now)) return false;
-  const pending = source.figures.filter(({ img }) => "figurePending" in img.dataset &&
+  if (recentMediaURLs(view.imagesRefreshedAt, now)) return false;
+  const pending = view.figures.filter(({ img }) => "figurePending" in img.dataset &&
     (!failed || img !== failed && !img.complete));
   if (!pending.length) return false;
   // Lazy figures may make their first request after the earlier signed URLs
   // have expired. Leave downloaded figures in place and use the fresh read.
-  source.imagesRefreshedAt = now;
+  view.imagesRefreshedAt = now;
   for (const { img } of pending) {
     const url = localImageURL(images.get(img.dataset.assetId)?.url, location.origin, { authMode: session.state.mode });
     if (!url || img.src === url) continue;
@@ -2686,7 +2686,7 @@ async function loadSource(value, g, blockID = null, { focusSource = false, force
       } : null;
       sourceImageRefresh = null;
       displayedSourceRevision = selected;
-    } else if (refreshPendingSourceFigures(mountedSource, images)) {
+    } else if (refreshPendingFigures(mountedSource, images)) {
       displayedSourceRevision = selected;
       sourceImageRefresh = null;
     }
@@ -2763,17 +2763,23 @@ async function renewMedia(g, failed, timedOut = false) {
             data.view_revision === source.revision) {
           const images = indexRenderableImages(data.images);
           if (sourceAssetAvailability(images) === source.assets)
-            refreshPendingSourceFigures(source, images, failed);
+            refreshPendingFigures(source, images, failed);
         }
         return data.images || [];
       }
+      const figures = deferredArticleFigures;
       const order = articleDetailOrder(g, id);
       const response = await requestArticleDetail(order, detailPath, { signal: g.signal });
       if (!current()) return [];
       const article = response.data.article;
       if (acceptArticleDetail(order, response) === response) {
         renderArticle(article, g);
-        return imageMap(article);
+        const images = imageMap(article);
+        const configuration = response.data.configuration;
+        if (figures && deferredArticleFigures === figures && article.id === id && article.view_revision === revision &&
+            configuration && configuration.id === vehicle.id && configuration.region === vehicle.region)
+          refreshPendingFigures(figures, indexRenderableImages(images), failed);
+        return images;
       }
       // An earlier response can renew the same projection's capabilities.
       return imageMap(article.id === id && articleViewRevision(article) === renderedRevision ? article : currentArticle);

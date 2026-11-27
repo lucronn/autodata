@@ -9581,6 +9581,40 @@ test('a figure that fails later reuses the refreshed article links', async () =>
   assert.equal(requests, 1);
 });
 
+test('a matching article detail refresh renews other unloaded figures', async t => {
+  const blocks = Array.from({ length: 7 }, (_, n) => ({ type: 'image', asset_id: `figure-${n}` }));
+  const images = suffix => blocks.map(({ asset_id: id }) => ({ id, url: mediaURL(`${id}-${suffix}`) }));
+  for (const region of ['US', 'CA']) {
+    await t.test(region, async () => {
+      let now = 1000, reads = 0;
+      const vehicle = { id: routeConfiguration, region: 'US' };
+      const h = articleMediaHarness({
+        Date: { now: () => now }, vehicle,
+        session: { state: { authenticated: true, mode: 'firebase' } },
+        async requestArticleJSON() {
+          reads++;
+          return { status: 200, data: { configuration: { ...vehicle, region }, article: mediaArticle(blocks, images('new')) } };
+        },
+      });
+      const content = h.render(mediaArticle(blocks, images('old')));
+      const figures = mediaDescendants(content, 'img');
+      const [decoded, failed] = figures, deferred = figures.at(-1);
+      decoded.dispatch('load');
+      failed.complete = true;
+      now += 301_000;
+      await h.context.renewMedia(h.g, failed);
+
+      assert.equal(reads, 1);
+      assert.deepEqual(mediaDescendants(content, 'img'), figures);
+      assert.ok(decoded.src.endsWith('figure-0-old'));
+      assert.ok(failed.src.endsWith('figure-1-new'));
+      assert.equal(failed.dataset.replacement, '1');
+      assert.ok(deferred.src.endsWith(region === 'US' ? 'figure-6-new' : 'figure-6-old'));
+      assert.equal(deferred.dataset.replacement, undefined);
+    });
+  }
+});
+
 for (const stored of [false, true]) {
   test(`a delayed ${stored ? 'Original' : 'article'} figure renews expired media with a fresh scoped read`, async () => {
     let now = 1000, reads = 0;
