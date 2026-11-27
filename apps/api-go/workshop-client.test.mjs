@@ -2900,6 +2900,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
   };
   runInNewContext(
     appSection('function populate(', 'async function loadOptions(') +
+    appSection('function retryPicker(', 'function renderPurchase(') +
     appSection('async function signIn() {', 'export async function bootstrap(') +
     appSection('function loadPurchaseConfiguration(', 'function checkAccount(') +
     appSection('async function confirmedSavedYear(', 'for (const [index, name] of names.entries())'),
