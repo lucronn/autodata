@@ -559,8 +559,11 @@ export async function requestJSON(path, options = {}) {
   const connectionTimeout = isMake ? directMakeTimeout
     : directModelPath.test(path) ? directModelTimeout : directConfigurationTimeout;
   const { fetcher = fetch } = options;
-  return (await requestArticleJSON(path, {
+  const bodyDeadline = performance.now() + Math.max(1, Math.min(10000, options.timeout ?? 10000));
+  let canRetryDirectBody = false;
+  const read = requestArticleJSON(path, {
     ...options,
+    reportBodyNetworkError: true,
     async fetcher(resource, init) {
       init.signal.throwIfAborted();
       const connection = new AbortController();
@@ -584,15 +587,29 @@ export async function requestJSON(path, options = {}) {
       }
       // The main origin can still serve recorded choices during an edge outage.
       // Preserve any explicit wait from the direct selector.
-      if (response && (![502, 503, 504].includes(response.status) || response.headers.has('Retry-After')))
+      if (response && (![502, 503, 504].includes(response.status) || response.headers.has('Retry-After'))) {
+        canRetryDirectBody = response.ok && !response.headers.has('Retry-After');
         return response;
+      }
       init.signal.throwIfAborted();
       if (response?.body) void response.body.cancel().catch(() => {});
       const fallback = await fetcher(resource, init);
       if (isMake && fallback.ok) rememberSameOriginMake(path);
       return fallback;
     },
-  })).data;
+  });
+  try {
+    return (await read).data;
+  } catch (error) {
+    options.signal?.throwIfAborted();
+    const remaining = Math.floor(bodyDeadline - performance.now());
+    // A truncated direct body can surface as a network error or invalid JSON.
+    if (!canRetryDirectBody || !(error instanceof CatalogRequestError) ||
+        error.status || !(error.retryable || error.code === 'INVALID_RESPONSE') || remaining < 1) throw error;
+    const fallback = await requestArticleJSON(path, { ...options, timeout: remaining });
+    if (isMake) rememberSameOriginMake(path);
+    return fallback.data;
+  }
 }
 
 export function vehicleSelectorPath(name, selection) {
