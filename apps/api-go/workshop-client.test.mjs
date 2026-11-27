@@ -293,6 +293,7 @@ test('the direct connection sends eligible public US selector reads without cred
     await requestJSON(path, { fetcher: sameOrigin(path) });
   }
   await requestJSON(modelPath, { headers: { Authorization: 'fixture-only' }, fetcher: sameOrigin(modelPath) });
+  await requestJSON(enginePath, { preferSameOrigin: true, fetcher: sameOrigin(enginePath) });
   entry.dataset.publicSelectors = 'false';
   await requestJSON(modelPath, { fetcher: sameOrigin(modelPath) });
 });
