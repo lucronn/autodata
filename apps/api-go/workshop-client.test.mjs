@@ -9269,7 +9269,7 @@ test('fresh citation authorization keeps pending figures and focuses the new exa
   assert.match(frame.children[1].textContent, /Illustration unavailable/);
 });
 
-test('reopening Original checks access and keeps figures only for the same approved view', async () => {
+test('reopening Original after publication checks access and keeps figures only for the same approved source', async () => {
   const blocks = [{ type: 'image', block_id: 'diagram', asset_id: 'diagram', caption: 'Stored diagram' }];
   const calls = [];
   const pendingReopen = deferredAuthOperation();
@@ -9287,14 +9287,18 @@ test('reopening Original checks access and keeps figures only for the same appro
       };
     },
   });
-  h.render(mediaArticle(blocks, [], {
-    content_origin: 'canonical', source_review: { available: true, url: mediaSourceURL },
-  }));
+  const stored = mediaArticle(blocks, [], {
+    view_revision: 'stored-article',
+    source_review: { available: true, url: mediaSourceURL },
+  });
+  h.render(stored);
   const reopen = () => h.context.loadSource(mediaSourceURL, h.g, null, { focusSource: true });
   const frame = h.nodes.get('source-review-frame');
   await reopen();
   const [first] = mediaDescendants(frame, 'img');
   assert.ok(first);
+  h.render({ ...stored, content_origin: 'canonical', view_revision: 'published-article' });
+  assert.equal(mediaDescendants(frame, 'img')[0], first);
   await reopen();
   assert.equal(mediaDescendants(frame, 'img')[0], first);
   assert.equal(first.src, 'https://cars.example/v1/catalog/images/v2.diagram-1');
