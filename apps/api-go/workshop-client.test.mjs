@@ -9752,7 +9752,7 @@ function selectorOptionsHarness(response) {
  const requests=[], waits=[];
  let clock = 0;
  const context={ $, rows:{ model: [] }, Option:PickerOption, AbortController, navigation:new NavigationGeneration(),
-  DEFAULT_COLLECTION_POLL_INTERVAL_MS,
+  DEFAULT_COLLECTION_POLL_INTERVAL_MS, delay: () => new Promise(() => {}),
   document:{ body:{dataset:{}}, createElement:() => ({ addEventListener() {} }) },
   retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices',
   async requestJSON(path, options) {
@@ -9992,12 +9992,12 @@ test('a stale reopen is canceled on parent change and never enters the new scope
   assert.deepEqual(h.requests, ['/old-parent', '/old-parent?stored_only=1', '/new-parent']);
 });
 
-test('an incomplete model reopen reads storage once when hydration only describes coverage', async () => {
+test('reopening an incomplete idle model picker checks storage once', async () => {
   const first = { id: 'original', name: 'Original' };
   const sibling = { id: 'new', name: 'New' };
   const h = selectorOptionsHarness(path => path.includes('stored_only')
     ? { items: [first, sibling], complete: false, hydrating: true }
-    : { items: [first], complete: false, hydrating: true });
+    : { items: [first], complete: false, hydrating: false });
   await h.load('', null, null, 'model');
   assert.deepEqual(h.requests, ['/choices']);
   assert.equal(h.statuses.at(-1).text, 'Choose your vehicle to continue.');
@@ -10005,6 +10005,33 @@ test('an incomplete model reopen reads storage once when hydration only describe
   assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
   assert.deepEqual(h.waits, []);
   assert.deepEqual(h.$('model').options.map(choice => choice.value), [first.id, sibling.id]);
+});
+
+test('a model picker follows active discovery while keeping its first option available', async () => {
+  const first = { id: 'enclave-fwd' };
+  const late = { id: 'enclave-awd' };
+  const partial = { items: [first], complete: false, hydrating: true, discovery_instance: 'current' };
+  const active = deferredAuthOperation();
+  const stored = [partial, { items: [first, late], complete: true }];
+  const h = selectorOptionsHarness(path => path === '/choices' ? partial : stored.shift());
+  h.context.delay = (ms) => {
+    assert.equal(ms, DEFAULT_COLLECTION_POLL_INTERVAL_MS);
+    return active.promise;
+  };
+  await h.load('', null, null, 'model');
+  const select = h.$('model');
+  const option = select.options[0];
+  select.value = first.id;
+  assert.deepEqual(h.requests, ['/choices']);
+  assert.equal(select.disabled, false);
+
+  active.resolve();
+  await new Promise(setImmediate);
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1', '/choices?stored_only=1']);
+  assert.equal(select.options[0], option);
+  assert.equal(select.value, first.id);
+  assert.deepEqual(select.options.map(choice => choice.value), [first.id, late.id]);
+  assert.equal(h.context.pickerStates.get('model').incomplete, false);
 });
 
 test('a refreshed make or model displays the current market label in place', async () => {
@@ -10057,7 +10084,7 @@ test('reselecting a make or model scope renders its incomplete choices before st
     await h.context.refreshPicker(name);
     assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
 
-    pending.resolve({ ...original, items: [first, sibling] });
+    pending.resolve({ items: [first, sibling], complete: false });
     await new Promise(setImmediate);
     assert.equal(select.value, first.id);
     assert.equal(select.options[0], option);
