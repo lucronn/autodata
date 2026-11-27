@@ -81,6 +81,19 @@ _ROTATION_REMOVAL_PROMPT_VERSION = "full-prose-auto-prompt-v64"
 _OPTIONAL_OBSERVATION_PROMPT_VERSION = "full-prose-auto-prompt-v65"
 _SPACED_ROTATION_PROMPT_VERSION = "full-prose-auto-prompt-v66"
 _SHORT_ACTION_PROMPT_VERSION = "full-prose-auto-prompt-v67"
+SINGLE_USE_PARTS_PROMPT_VERSION = "full-prose-auto-prompt-v68"
+_SINGLE_USE_PARTS_HEADING = "single use fasteners and components"
+SINGLE_USE_PARTS_TEXT = "Use each listed part only once."
+_SINGLE_USE_PART_LABEL = re.compile(
+    r"(?:[A-Z][A-Za-z-]* ){0,8}"
+    r"(?:Bolts?|Clamps?|Clips?|Filters?|Gaskets?|Nuts?|O-Rings?|Retainers?|Screws?|Seals?|Washers?)"
+    r"(?: ?\[[1-9][0-9]*x\])?"
+)
+_SINGLE_USE_DIRECTIVE = re.compile(
+    r"\b(?:adjust|align|apply|attach|avoid|check|clean|connect|cut|discard|disconnect|do|drain|ensure|"
+    r"fit|hold|inspect|install|loosen|lubricate|measure|never|position|release|remove|replace|reuse|"
+    r"rotate|secure|set|test|tighten|torque|turn|use|verify)\b", re.I,
+)
 _PROCEDURE_FIDELITY_PROMPT_VERSIONS = (
     _PROCEDURE_FIDELITY_PROMPT_VERSION, _DRAIN_SUBJECT_PROMPT_VERSION, _ROTATION_REMOVAL_PROMPT_VERSION,
     _OPTIONAL_OBSERVATION_PROMPT_VERSION, _SPACED_ROTATION_PROMPT_VERSION, _SHORT_ACTION_PROMPT_VERSION,
@@ -2055,14 +2068,50 @@ def authored_note_prefix(text: str) -> str | None:
 
 
 def _keeps_authored_note_labels(prompt_version):
-    return prompt_version in (_NOTE_LABEL_PROMPT_VERSION, *_PROCEDURE_FIDELITY_PROMPT_VERSIONS)
+    return prompt_version in (
+        _NOTE_LABEL_PROMPT_VERSION, *_PROCEDURE_FIDELITY_PROMPT_VERSIONS, SINGLE_USE_PARTS_PROMPT_VERSION,
+    )
+
+
+def single_use_part_slots(document):
+    """Identify authored labels under a standalone single-use parts heading."""
+    sections, labels = set(), set()
+    blocks = document["blocks"]
+    for index, (heading, listing) in enumerate(zip(blocks, blocks[1:])):
+        if (heading.get("type") != "paragraph"
+            or heading["text"].strip().casefold().removesuffix(":") != _SINGLE_USE_PARTS_HEADING
+            or listing.get("type") != "unordered_list"):
+            continue
+        items = listing["items"]
+        if items and all(isinstance(item, str) and _SINGLE_USE_PART_LABEL.fullmatch(item)
+                         and not _SINGLE_USE_DIRECTIVE.search(item) for item in items):
+            sections.add(f"/blocks/{index}/text")
+            labels.update(f"/blocks/{index + 1}/items/{offset}" for offset in range(len(items)))
+    return sections, labels
+
+
+def _encode_automatic_prompt(document, *, context):
+    payload = _auto_prompt_payload_v67(document, context=context)
+    if payload["slots"]:
+        sections, labels = single_use_part_slots(document)
+        if labels:
+            for slot in payload["slots"]:
+                if slot["path"] in sections:
+                    slot["required_text"] = SINGLE_USE_PARTS_TEXT
+                elif slot["path"] in labels:
+                    slot["required_action"] = "retain"
+            payload["prompt_version"] = SINGLE_USE_PARTS_PROMPT_VERSION
+            payload["rules"].append(
+                "For the single-use parts section, copy required_text into the heading paragraph's replacement "
+                "and keep the listed component labels and counts verbatim with action retain and a concrete reason. "
+                "This retention is allowed for the marked labels. Leave required_text out of the response object."
+            )
+    return _encode_prompt_with_technical_tokens(payload, retain_standalone_notes=True)
 
 
 def build_auto_prompt(document, *, context, profile_version=PROFILE):
     if profile_version == PROFILE:
-        return _encode_prompt_with_technical_tokens(
-            _auto_prompt_payload_v67(document, context=context), retain_standalone_notes=True,
-        )
+        return _encode_automatic_prompt(document, context=context)
     if profile_version != SOURCE_BOUND_REWRITE_PROFILE:
         raise ValueError("REWRITE_PROFILE_UNSUPPORTED")
     return _build_source_bound_prompt(
@@ -2328,6 +2377,13 @@ def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROF
     current_version = json.loads(current)["prompt_version"]
     if sha256(current.encode()).hexdigest() == prompt_hash:
         return current_version
+    if current_version == SINGLE_USE_PARTS_PROMPT_VERSION:
+        previous = _encode_prompt_with_technical_tokens(
+            _auto_prompt_payload_v67(document, context=context), retain_standalone_notes=True,
+        )
+        current_version = json.loads(previous)["prompt_version"]
+        if sha256(previous.encode()).hexdigest() == prompt_hash:
+            return current_version
     if current_version == _SHORT_ACTION_PROMPT_VERSION:
         if profile_version == SOURCE_BOUND_REWRITE_PROFILE:
             previous = _build_source_bound_prompt(
@@ -3906,7 +3962,7 @@ def _combined_replacement_preparation_targets(text, *, recognize_then_comma=Fals
 
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
-        None, *_PROCEDURE_FIDELITY_PROMPT_VERSIONS, _NOTE_LABEL_PROMPT_VERSION,
+        None, *_PROCEDURE_FIDELITY_PROMPT_VERSIONS, _NOTE_LABEL_PROMPT_VERSION, SINGLE_USE_PARTS_PROMPT_VERSION,
         _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
         _SPATIAL_SCOPE_PROMPT_VERSION, _ASSEMBLY_LABEL_PROMPT_VERSION,
         _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
@@ -3920,7 +3976,7 @@ def _uses_prose_guards(prompt_version, slot_count):
 
 def _include_cell_blocks(prompt_version):
     return prompt_version in (
-        None, *_PROCEDURE_FIDELITY_PROMPT_VERSIONS, _NOTE_LABEL_PROMPT_VERSION,
+        None, *_PROCEDURE_FIDELITY_PROMPT_VERSIONS, _NOTE_LABEL_PROMPT_VERSION, SINGLE_USE_PARTS_PROMPT_VERSION,
         _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
         _SPATIAL_SCOPE_PROMPT_VERSION, _ASSEMBLY_LABEL_PROMPT_VERSION,
         _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
@@ -3933,12 +3989,16 @@ def _include_cell_blocks(prompt_version):
 def _require_changes(
     source, candidate, *, prompt_version, include_cell_blocks=None, slot_errors=None, introduction_only=False,
     bankone_structure=None, verified_color_notes=False, allow_rotation_removal=False, allow_optional_observation=False,
-    enforce_spaced_rotation=False,
+    enforce_spaced_rotation=False, preserve_single_use_parts=False,
 ):
     # The introduced first block is the only offset in source paths.
     restored = {"blocks": candidate["blocks"][1:]}
     if include_cell_blocks is None:
         include_cell_blocks = _include_cell_blocks(prompt_version)
+    if prompt_version == SINGLE_USE_PARTS_PROMPT_VERSION:
+        preserve_single_use_parts = True
+        prompt_version = _auto_prompt_payload_v67(source, context={})["prompt_version"]
+    sections, labels = single_use_part_slots(source) if preserve_single_use_parts else (set(), set())
     short_actions = {}
     if prompt_version == _SHORT_ACTION_PROMPT_VERSION:
         prompt = _auto_prompt_payload_v66(source, context={})
@@ -4129,6 +4189,11 @@ def _require_changes(
     def check_slot(slot):
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
+        if slot["path"] in sections or slot["path"] in labels:
+            expected = SINGLE_USE_PARTS_TEXT if slot["path"] in sections else original
+            if replacement != expected:
+                raise ValueError("REWRITE_SINGLE_USE_PARTS_MUTATION")
+            return
         if slot["path"] in short_actions and replacement != short_actions[slot["path"]]:
             raise ValueError("REWRITE_SHORT_PROCEDURE_MUTATION")
         if verified_color_notes and replacement != original:
@@ -4376,8 +4441,13 @@ def _require_changes(
 
 def require_current_publication_checks(source, candidate, *, saved_prompt_version, bankone_structure=None):
     """Apply current prose rules to the saved prompt's editable slots."""
-    if saved_prompt_version == _SHORT_ACTION_PROMPT_VERSION:
+    preserve_single_use_parts = saved_prompt_version == SINGLE_USE_PARTS_PROMPT_VERSION
+    if preserve_single_use_parts:
         _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure)
+        saved_prompt_version = _auto_prompt_payload_v67(source, context={})["prompt_version"]
+    if saved_prompt_version == _SHORT_ACTION_PROMPT_VERSION:
+        _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure,
+                         preserve_single_use_parts=preserve_single_use_parts)
         saved_prompt_version = _auto_prompt_payload_v66(source, context={})["prompt_version"]
     restored = {"blocks": candidate["blocks"][1:]}
     for slot in full.prose_slots(source, include_cell_blocks=True):
@@ -4394,7 +4464,8 @@ def require_current_publication_checks(source, candidate, *, saved_prompt_versio
         and _auto_prompt_payload_v64(source, context={})["prompt_version"] == _ROTATION_REMOVAL_PROMPT_VERSION
     )
     if saved_prompt_version in _PROCEDURE_FIDELITY_PROMPT_VERSIONS:
-        _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure)
+        _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure,
+                         preserve_single_use_parts=preserve_single_use_parts)
         saved_prompt_version = _auto_prompt_payload_v61(source, context={})["prompt_version"]
     if saved_prompt_version == _NOTE_LABEL_PROMPT_VERSION:
         saved_prompt_version = _auto_prompt_payload_v60(source, context={})["prompt_version"]
@@ -4431,7 +4502,7 @@ def require_current_publication_checks(source, candidate, *, saved_prompt_versio
         include_cell_blocks=_include_cell_blocks(saved_prompt_version),
         bankone_structure=bankone_structure, allow_rotation_removal=allow_rotation_removal,
         allow_optional_observation=allow_optional_observation,
-        enforce_spaced_rotation=enforce_spaced_rotation,
+        enforce_spaced_rotation=enforce_spaced_rotation, preserve_single_use_parts=preserve_single_use_parts,
     )
 
 
@@ -4603,6 +4674,7 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None, prof
             _OPTIONAL_OBSERVATION_PROMPT_VERSION: "full-prose-auto-validator-v63",
             _SPACED_ROTATION_PROMPT_VERSION: "full-prose-auto-validator-v64",
             _SHORT_ACTION_PROMPT_VERSION: "full-prose-auto-validator-v65",
+            SINGLE_USE_PARTS_PROMPT_VERSION: "full-prose-auto-validator-v66",
         }.get(prompt_version, "full-prose-auto-validator-v53")
     if verified_color_notes:
         validator_version = "full-prose-color-note-replay-validator-v1"
