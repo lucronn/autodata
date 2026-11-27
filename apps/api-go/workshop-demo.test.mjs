@@ -22,7 +22,7 @@ const entrySettingsPaths = ['/auth/config', '/auth/session', '/workshop/purchase
 
 function startHeadPicker(search, publicSelectors = true, {
   entry = {}, origin = 'https://workshop.example', initialYears = null, initialMakes = null,
-  directSelectorOrigin, yearPicker, now = () => 0,
+  directSelectorOrigin, yearPicker, makePicker, now = () => 0,
   reply = path => ({ ok: true, json: async () => ({ items: [{ path }] }) }),
 } = {}) {
   const calls = [], hints = [];
@@ -48,6 +48,7 @@ function startHeadPicker(search, publicSelectors = true, {
         if (id === 'workshop-initial-years') return initialYears === null ? null : { textContent: initialYears };
         if (id === 'workshop-initial-makes') return initialMakes === null ? null : { textContent: initialMakes };
         if (id === 'year') return yearPicker;
+        if (id === 'make') return makePicker;
         return {};
       },
     },
@@ -200,6 +201,52 @@ test('the early picker skips only fresh stored lists for existing years', () => 
   assert.deepEqual([...handoff.makeSnapshots.keys()], ['2024']);
   assert.equal(handoff.makeSnapshotExpires, timestamp);
   assert.equal(handoff.makeRead.year, '2024');
+});
+
+test('the early picker enables stored makes and hands off the current model read', async () => {
+  const picker = () => ({
+    disabled: true, options: [{ value: '' }], value: '',
+    replaceChildren(...options) { this.options = options; this.value = options[0].value; },
+    addEventListener(_event, listener) { this.change = listener; },
+    removeEventListener() { this.change = null; },
+  });
+  const yearPicker = picker(), makePicker = picker();
+  const { context, parseYear, calls } = startHeadPicker('', true, {
+    initialYears: JSON.stringify({ version: 'v1', complete: true, items: [{ year: 2016 }, { year: 2026 }] }),
+    initialMakes: JSON.stringify({ options: [
+      { id: 'ford-truck', name: 'Ford Truck' }, { id: 'chevy-truck', name: 'Chevy Truck', market_unverified: true },
+    ], years: { 2016: [0, 1] } }),
+    yearPicker, makePicker,
+  });
+  parseYear();
+  yearPicker.value = '2016';
+  yearPicker.change();
+  assert.equal(makePicker.disabled, false);
+  assert.deepEqual(makePicker.options.map(({ text }) => text), ['Choose make', 'Ford Truck', 'Chevy Truck · market unverified']);
+  assert.equal(calls.length, entrySettingsPaths.length);
+  for (const make of ['ford-truck', 'chevy-truck']) {
+    makePicker.value = make;
+    makePicker.change();
+    assert.equal(calls.at(-1).path, `/v1/catalog/years/2016/makes/${make}/models?region=US`);
+  }
+  assert.equal(calls.at(-2).options.signal.aborted, true);
+  const stale = calls.at(-1);
+  yearPicker.value = '2026';
+  yearPicker.change();
+  assert.equal(stale.options.signal.aborted, true);
+  assert.equal(makePicker.disabled, true);
+  assert.equal(calls.at(-1).path, '/v1/catalog/years/2026/makes?region=US');
+  yearPicker.value = '2016';
+  yearPicker.change();
+  makePicker.value = 'ford-truck';
+  makePicker.change();
+  const current = calls.at(-1);
+  const handoff = context.workshopPickerStartup.takeYearPicker();
+  assert.equal(handoff.selectedMake, 'ford-truck');
+  assert.equal(handoff.modelRead.path, current.path);
+  assert.equal(current.options.signal.aborted, false);
+  assert.deepEqual(await handoff.modelRead.response, { items: [{ path: current.path }] });
+  assert.equal(makePicker.change, null);
 });
 
 test('entry keeps independent, private and unconfirmed paths on their ordinary reads', () => {

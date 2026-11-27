@@ -138,23 +138,59 @@
               // The normal make read remains available without the snapshot.
             }
           }
-          let picker, placeholder, makeRead;
-          function chooseYear() {
-            if (picker.options[0] !== placeholder || location.search !== route) return;
-            const year = picker.value;
-            if (makeRead?.year === year) return;
-            makeRead?.abort();
-            makeRead = null;
-            if (!values.includes(Number(year))) return;
-            if (makeSnapshots.has(year) && performance.now() < makeSnapshotExpires) return;
-            // The embedded catalog already confirms this parent selection.
-            const path = `${years}/${year}/makes?region=US`;
-            const requestMake = pending.requestMake;
-            const { controller, response } = read(path, 'default', requestMake);
-            makeRead = { year, path, sameOrigin: !requestMake, response, abort() {
+          let picker, placeholder, makePicker, makePlaceholder, makeYear, makeRead, modelRead;
+          function readSelector(path, selection) {
+            const request = pending.requestMake;
+            const { controller, response } = read(path, 'default', request);
+            return { ...selection, path, sameOrigin: !request, response, abort() {
               controller.abort();
               pending.delete(path);
             } };
+          }
+          function selectedMake() {
+            if (!makePlaceholder || makePicker.options[0] !== makePlaceholder || makeYear !== picker.value) return '';
+            const selected = makePicker.value;
+            return makeSnapshots.get(makeYear).items.some(item => item.id === selected) ? selected : '';
+          }
+          function chooseMake() {
+            if (location.search !== route) return;
+            const make = selectedMake();
+            if (modelRead?.make === make && modelRead.year === makeYear) return;
+            modelRead?.abort();
+            modelRead = null;
+            if (!make || performance.now() >= makeSnapshotExpires) return;
+            const path = `${years}/${makeYear}/makes/${encodeURIComponent(make)}/models?region=US`;
+            modelRead = readSelector(path, { year: makeYear, make });
+          }
+          function chooseYear() {
+            if (picker.options[0] !== placeholder || location.search !== route) return;
+            const year = picker.value;
+            if (makeRead?.year === year || makeYear === year) return;
+            makeRead?.abort();
+            makeRead = null;
+            modelRead?.abort();
+            modelRead = null;
+            if (makeYear) {
+              makePicker.replaceChildren(new Option('Choose year first', ''));
+              makePicker.disabled = true;
+            }
+            makeYear = null;
+            makePlaceholder = null;
+            if (!values.includes(Number(year))) return;
+            const available = makeSnapshots.get(year);
+            if (available && performance.now() < makeSnapshotExpires) {
+              if (makePicker) {
+                makePlaceholder = new Option('Choose make', '');
+                makePicker.replaceChildren(makePlaceholder, ...available.items.map(item =>
+                  new Option(item.market_unverified === true ? `${item.name} · market unverified` : item.name, item.id)));
+                makePicker.disabled = false;
+                makeYear = year;
+              }
+              return;
+            }
+            // The embedded catalog already confirms this parent selection.
+            const path = `${years}/${year}/makes?region=US`;
+            makeRead = readSelector(path, { year });
           }
           const route = location.search;
           // The page can offer its stored years before module evaluation.
@@ -166,14 +202,18 @@
             placeholder = new Option('Choose year', '');
             picker.replaceChildren(placeholder, ...values.map(year => new Option(year, year)));
             picker.addEventListener('change', chooseYear);
+            makePicker = document.getElementById('make');
+            makePicker?.addEventListener('change', chooseMake);
             picker.disabled = false;
           });
           observer.observe(document, { childList: true, subtree: true });
           pending.takeYearPicker = rememberSameOriginMake => {
             observer.disconnect();
             picker?.removeEventListener('change', chooseYear);
+            makePicker?.removeEventListener('change', chooseMake);
             if (!picker || picker.options[0] !== placeholder || location.search !== route) {
               makeRead?.abort();
+              modelRead?.abort();
               return null;
             }
             if (makeRead && makeRead.year !== picker.value) {
@@ -186,7 +226,12 @@
                 if (data?.items?.length) rememberSameOriginMake(path);
               });
             }
-            return { snapshot, makeRead, makeSnapshots, makeSnapshotExpires };
+            const make = selectedMake();
+            if (modelRead && (modelRead.year !== picker.value || modelRead.make !== make)) {
+              modelRead.abort();
+              modelRead = null;
+            }
+            return { snapshot, makeRead, makeSnapshots, makeSnapshotExpires, selectedMake: make, modelRead };
           };
         }
 

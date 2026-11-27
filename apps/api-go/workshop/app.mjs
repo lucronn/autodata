@@ -3240,7 +3240,7 @@ async function restoreRoute(initialYears = null, {
     async (g) => {
       if (early) g.signal.addEventListener("abort", early.abort, { once: true });
       if (initialYearPicker) {
-        const { snapshot, makeRead, makeSnapshots, makeSnapshotExpires } = initialYearPicker;
+        const { snapshot, makeRead, makeSnapshots, makeSnapshotExpires, selectedMake = "", modelRead } = initialYearPicker;
         populate("year", snapshot.items);
         rememberSelector(selectorPath("year"), "year", snapshot);
         if (performance.now() < makeSnapshotExpires) {
@@ -3254,11 +3254,19 @@ async function restoreRoute(initialYears = null, {
           return;
         }
         updateURL();
-        if (makeRead) g.signal.addEventListener("abort", makeRead.abort, { once: true });
-        try {
-          await loadOptions("make", g, "", makeRead?.response, { initialIsLive: Boolean(makeRead) });
-        } finally {
+        const abortReads = () => {
           makeRead?.abort();
+          modelRead?.abort();
+        };
+        g.signal.addEventListener("abort", abortReads, { once: true });
+        try {
+          await loadOptions("make", g, selectedMake, makeRead?.response, { initialIsLive: Boolean(makeRead) });
+          if (g.current() && selectedMake && $("make").value === selectedMake) {
+            updateURL();
+            await loadOptions("model", g, "", modelRead?.response, { initialIsLive: Boolean(modelRead) });
+          }
+        } finally {
+          abortReads();
         }
         return;
       }
