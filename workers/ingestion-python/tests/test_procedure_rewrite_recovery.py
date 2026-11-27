@@ -4,7 +4,7 @@ import json
 import pytest
 
 from autodata_ingestion.article_lifecycle_types import digest_json
-from autodata_ingestion.bankone_brake_recovery import recast_brake_applicability
+from autodata_ingestion.bankone_brake_recovery import recast_brake_applicability, recast_reservoir_filling
 from autodata_ingestion.procedure_rewrite_auto import build_auto_prompt, render_auto
 from autodata_ingestion.procedure_rewrite_cooling_recovery import recast_cooling_passage
 from autodata_ingestion.procedure_rewrite_diagnostic_recovery import recast_diagnostic_passage
@@ -22,6 +22,7 @@ from autodata_ingestion.procedure_rewrite_recovery import (
     FIRST_DRAFT_PLACEMENT_RECOVERY_METHOD,
     FIRST_DRAFT_RECOVERY_METHOD,
     FIRST_DRAFT_REQUIRED_ACTION_RECOVERY_METHOD,
+    FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD,
     NEUTRAL_INTRODUCTION,
     _equivalent_cooling_directive,
     _equivalent_directive,
@@ -77,6 +78,66 @@ def test_archived_brake_applicability_repairs_only_the_rejected_intro_and_scope(
 
     unsafe = deepcopy(saved)
     unsafe["replacements"][1].update(action="rewrite", text=specification.replace("18", "19"), reason="")
+    assert recover_first_draft(source, unsafe, prompt_version=guard, method=method) is None
+
+
+def test_reservoir_filling_recovery_keeps_conditions_and_step_order():
+    level_check = "If the hydraulic fluid level is at or below the half-full point during routine fluid checks"
+    fill_limit = "the hydraulic fluid may be topped-off up to the maximum-fill level."
+    items = [
+        f"{level_check}, the clutch system should be inspected for wear and possible hydraulic fluid leaks.",
+        f"{level_check}, and an inspection of the clutch system did not reveal wear or hydraulic fluid leaks, {fill_limit}",
+        f"If clutch system service was just completed, {fill_limit}",
+        "If the hydraulic fluid level is above the half-full point, adding hydraulic fluid is not recommended under normal conditions.",
+        "If hydraulic fluid is to be added to the clutch master reservoir, clean the outside of the reservoir "
+        "on and around the reservoir cap prior to removing the cap and diaphragm.",
+    ]
+    expected = [
+        "A routine fluid check showing a hydraulic fluid level of half-full or less calls for inspecting "
+        "the clutch system for wear and possible fluid leaks.",
+        "During a routine fluid check, a level of half-full or less permits topping up the hydraulic fluid "
+        "to the maximum-fill level once an inspection finds the clutch system free of wear and hydraulic fluid leaks.",
+        "You may bring the hydraulic fluid up to its maximum-fill level immediately after completing service on the clutch system.",
+        "Under normal conditions, topping up is discouraged when the hydraulic fluid stands higher than half-full.",
+        "To prepare the clutch master reservoir for added hydraulic fluid, clean its outside at the cap "
+        "and around it prior to removing the cap and diaphragm.",
+    ]
+    specification = "Tighten the fixture bracket screw to 27 N·m."
+    source = document("", specification)
+    numbered_steps = source["blocks"][0]
+    numbered_steps.pop("text")
+    numbered_steps.update(type="ordered_list", items=items)
+    raw = {
+        "introduction": NEUTRAL_INTRODUCTION,
+        "replacements": [
+            {"block_id": slot["block_id"], "path": slot["path"], "action": "rewrite",
+             "text": slot["text"].replace("If", "When", 1), "reason": ""}
+            for slot in prose_slots(source)
+        ],
+    }
+    raw["replacements"][-1].update(action="retain", reason="Keep the specified value.")
+    saved = deepcopy(raw)
+    guard = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    method = FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD
+    candidate = recover_first_draft(source, raw, prompt_version=guard, method=method)
+    assert candidate is not None and candidate.error_code is None
+    assert raw == saved
+    assert candidate.response["introduction"] == raw["introduction"]
+    assert [entry["text"] for entry in candidate.response["replacements"][:-1]] == expected
+    assert candidate.response["replacements"][-1] == raw["replacements"][-1]
+    assert candidate.evidence["corrected_paths"] == [f"/blocks/0/items/{index}" for index in range(len(items))]
+    attempt = {"response": saved, "guard_version": guard, "error_code": "REWRITE_PROSE_TOO_SIMILAR",
+               "rewrite_attempt_id": "fixture-attempt", "prompt_hash": "fixture-prompt"}
+    archive = recover_archived_first_draft(source, attempt, method=method, expected_hash=candidate.evidence["output_hash"])
+    assert archive.response == candidate.response
+
+    assert recast_reservoir_filling(items[0].replace("at or below", "below")) is None
+    assert recast_reservoir_filling(items[1].replace("or hydraulic fluid leaks", "but did reveal hydraulic fluid leaks")) is None
+    assert recast_reservoir_filling(items[2].replace("may", "must")) is None
+    assert recast_reservoir_filling(items[3].replace("normal", "abnormal")) is None
+    assert recast_reservoir_filling(items[4].replace("prior to", "after")) is None
+    unsafe = deepcopy(raw)
+    unsafe["replacements"][-1].update(action="rewrite", reason="", text=specification.replace("27", "28"))
     assert recover_first_draft(source, unsafe, prompt_version=guard, method=method) is None
 
 

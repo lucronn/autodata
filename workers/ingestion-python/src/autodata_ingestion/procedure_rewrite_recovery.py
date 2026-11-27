@@ -29,6 +29,7 @@ FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD = "source-bound-first-draft-recovery-v8"
 FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD = "source-bound-first-draft-introduction-v1"
 FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD = "source-bound-first-draft-diagnostic-v1"
 FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD = "source-bound-first-draft-brake-applicability-v1"
+FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD = "source-bound-first-draft-reservoir-filling-v1"
 FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD = "source-bound-positioned-figure-first-draft-v1"
 FIRST_DRAFT_SINGLE_USE_PARTS_RECOVERY_METHOD = "source-bound-single-use-parts-first-draft-v1"
 NEUTRAL_INTRODUCTION = "This article describes the service information that follows."
@@ -40,6 +41,7 @@ FIRST_DRAFT_RECOVERY_METHODS = (
     FIRST_DRAFT_COMPOUND_REMOVAL_RECOVERY_METHOD, FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
     FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
     FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD, FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD,
+    FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD,
 )
 BANKONE_STRUCTURAL_RECOVERY_METHOD = "source-bound-bankone-first-draft-v1"
 BANKONE_LINKED_RECOVERY_METHOD = "source-bound-bankone-first-draft-v2"
@@ -258,6 +260,7 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
                       FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
                       FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD,
                       FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD,
+                      FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD,
                       FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD,
                       FIRST_DRAFT_SINGLE_USE_PARTS_RECOVERY_METHOD,
                       *BANKONE_ARCHIVE_STRUCTURE_VERSIONS):
@@ -365,6 +368,30 @@ def _recover_brake_applicability_draft(source, raw, slots, *, prompt_version, or
             method=FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD,
         )
     return None
+
+
+def _recover_reservoir_filling_draft(source, raw, slots, invalid, *, prompt_version, original_error):
+    from .bankone_brake_recovery import recast_reservoir_filling
+
+    if original_error != "REWRITE_PROSE_TOO_SIMILAR":
+        return None
+    draft = deepcopy(raw)
+    corrected = []
+    for slot, row in zip(slots, draft["replacements"], strict=True):
+        path = slot["path"]
+        if path not in invalid:
+            continue
+        if invalid[path] != "REWRITE_PROSE_TOO_SIMILAR" or row["action"] != "rewrite":
+            return None
+        wording = recast_reservoir_filling(slot["text"])
+        if wording is None:
+            return None
+        row["text"] = wording
+        corrected.append(path)
+    return _validate_first_draft(
+        source, raw, draft, corrected, prompt_version=prompt_version,
+        method=FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD, original_error=original_error,
+    )
 
 
 def _recover_diagnostic_draft(source, raw, slots, *, prompt_version, original_error):
@@ -654,6 +681,14 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
     invalid = {issue["path"]: issue["code"] for issue in auto.failed_rewrite_passages(
         source, raw, prompt_version=prompt_version,
     )}
+    if method == FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD or (
+        method is None and original_error == "REWRITE_PROSE_TOO_SIMILAR"
+    ):
+        recovered = _recover_reservoir_filling_draft(
+            source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
+        )
+        if recovered is not None or method == FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD:
+            return recovered
     if method == FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD or original_error == _LUBRICATION_MUTATION:
         if method not in (None, FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD):
             return None
