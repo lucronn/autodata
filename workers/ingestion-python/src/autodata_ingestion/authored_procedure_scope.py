@@ -17,6 +17,31 @@ _VERIFICATION = re.compile(
     r"(?:make\s+)?(?:sure|certain|verify|verified|verifying|confirm|confirmed|confirming|ensure|ensuring|check|checking)\b",
     re.I,
 )
+_TIMING_MARK = re.compile(
+    r"(?:(?P<guide>using (?:the|this) (?:illustration|diagram) as a guide), )?"
+    r"mark the (?:(?:timing )?chain link|link in the timing chain) "
+    r"(?:that (?:aligns|lines up) with|(?:that is )?(?:aligned|in line) with) "
+    r"the timing mark (?:on|of) the "
+    r"(?P<side>lh|rh|left(?:[ -]hand)?|right(?:[ -]hand)?) (?P<cam>intake|exhaust) vct assembly"
+    r"(?P<shown>,? as (?:shown|illustrated))?\.?"
+)
+_LIN_WIRE = re.compile(r"the lin bus (?:is|uses|communicates (?:on|over)) (?:a single|one) wire\b")
+_LIN_FAILURES = re.compile(
+    r"\b(?:opens|open circuits), high resistance, shorts? to ground(?:/| or )power, "
+    r"poor terminal drag, (?:(?:or|and) )?connectors (?:that are )?not fully seated\b"
+)
+_CHECK_FAILURES = r"(?:inspect|check) for (?:these (?:types? of )?|such |the (?:listed|above) )(?:faults|failures)"
+_TERMINAL_PROBES = r"(?:the )?proper terminal test probes"
+_LIN_PROBE_CHECK = re.compile(
+    rf"(?:us(?:e|ing) {_TERMINAL_PROBES},? (?:to )?{_CHECK_FAILURES}"
+    rf"|{_CHECK_FAILURES} (?:with|using) {_TERMINAL_PROBES})\.?"
+)
+_LIN_REFERENCE_CHECK = re.compile(
+    r"test(?:ing)?(?:/| or )monitor(?:ing)? (?:the )?"
+    r"(?:lin bus reference voltage|reference voltage (?:on|of) the lin bus)"
+    r"(?:\. (?:the result|this))? can help (?:determine|identify) "
+    r"(?:(?:what|which) type of |which |the type of )(?:failure|fault) to (?:inspect|check) for\.?"
+)
 
 
 def _words(text):
@@ -68,9 +93,33 @@ def correct_authored_procedure_step(original, wording):
     return f"{verb.capitalize()} the {target}{follow}."
 
 
+def _timing_mark_target(text):
+    match = _TIMING_MARK.fullmatch(text)
+    if match is None:
+        return None
+    side = "lh" if match["side"].startswith("l") else "rh"
+    return side, match["cam"], bool(match["guide"] or match["shown"])
+
+
+def _checks_lin_wiring(text):
+    return (
+        _LIN_WIRE.match(text) is not None
+        and _LIN_FAILURES.search(text) is not None
+        and _LIN_PROBE_CHECK.fullmatch(text.rsplit(". ", 1)[-1]) is not None
+    )
+
+
 def require_authored_procedure_scope(source, document, *, rewritten_paths):
     """Check new publications without changing validation of historical replies."""
     candidate = {"blocks": document["blocks"][1:]}
     for path in rewritten_paths:
-        if correct_authored_procedure_step(_get(source, path), _get(candidate, path)) is not None:
+        original, wording = _get(source, path), _get(candidate, path)
+        if correct_authored_procedure_step(original, wording) is not None:
+            raise ValueError("REWRITE_CLAUSE_MUTATION")
+        original, wording = _words(original), _words(wording)
+        if (target := _timing_mark_target(original)) is not None and _timing_mark_target(wording) != target:
+            raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if _checks_lin_wiring(original) and not _checks_lin_wiring(wording):
+            raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if _LIN_REFERENCE_CHECK.fullmatch(original) and not _LIN_REFERENCE_CHECK.fullmatch(wording):
             raise ValueError("REWRITE_CLAUSE_MUTATION")
