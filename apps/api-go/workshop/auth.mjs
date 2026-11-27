@@ -164,17 +164,21 @@ export function createSession({
       return !signal?.aborted && current === epoch && state.authenticated &&
         csrf === state.csrf && validSession(data) && data.csrf_token === csrf;
     },
-    async bootstrap({ signal, initial } = {}) {
+    async bootstrap({ signal, initial, preserveGuestSignIn = false } = {}) {
       const current = ++epoch;
       const wasReady = state.ready || state.popupPending;
+      // A prepared guest sign-in can remain available during a picker focus refresh.
+      // Any authenticated session still needs a fresh check before use.
+      const keepGuestSignIn = preserveGuestSignIn && state.mode === "firebase" &&
+        !state.authenticated && state.available && state.ready && !state.popupPending;
       selectedIndexConfirmation?.abort();
       pendingLoginConfiguration = null;
-      state.mode = null;
+      if (!keepGuestSignIn) state.mode = null;
       state.authenticated = false;
       state.csrf = "";
-      state.ready = false;
+      state.ready = keepGuestSignIn;
       state.popupPending = false;
-      if (wasReady) changed();
+      if (wasReady && !keepGuestSignIn) changed();
       const initialResult = initial ? await initial : null;
       const [configuration, response] = initialResult ?? readSessionBootstrap(request, { signal });
       const session = await response;
@@ -194,17 +198,19 @@ export function createSession({
       if (confirmedMode || validSession(data)) {
         state.authenticated = true;
         state.csrf = data.csrf_token;
+        state.ready = false;
         state.message = "Signed in.";
         changed();
         return confirmedMode ? data.workshop_library ?? data.workshop_article_index : undefined;
       }
       const error = session.status === "rejected" ? session.reason : null;
       const guest = error?.status === 401;
+      state.ready = keepGuestSignIn && guest && state.available;
       state.message = state.available && guest
         ? "Sign in with Google to open your articles."
         : authMessage(error);
       changed();
-      if (state.available && guest) await prepare(current);
+      if (state.available && guest && !state.ready) await prepare(current);
     },
     signIn({ confirmSelectedIndex } = {}) {
       // App assets can span releases during a rolling deployment.

@@ -211,6 +211,7 @@ class DTOFixture:
         self.prepared = False
         self.token = None
         self.account = 'user'
+        self.auth_config_hold = None
 
     async def route(self, route):
         request = route.request
@@ -227,6 +228,11 @@ class DTOFixture:
             await route.continue_(); return
         status, data = 200, None
         if path == '/auth/config':
+            if self.auth_config_hold:
+                config_requested, release_config = self.auth_config_hold
+                self.auth_config_hold = None
+                config_requested.set()
+                await release_config.wait()
             data = dict(version='v1',mode='firebase',login_available=True,providers=['google.com'],firebase={'apiKey':'fixture-key','authDomain':'fixture-project.firebaseapp.com','projectId':'fixture-project','appId':'1:123456:web:abcdef'})
             if self.scenario == 'signin-unavailable-local': data = dict(version='v1',mode='local',login_available=False)
             if self.scenario == 'signin-malformed-config': data['firebase']['authDomain'] = 'evil.invalid'
@@ -556,6 +562,25 @@ async def assert_text(page, selector, value):
     await expect(page.locator(selector)).to_contain_text(value)
 
 
+async def sign_in_during_guest_refocus(page, fixture):
+    from playwright.async_api import expect
+    await select_vehicle(page)
+    await assert_text(page, '#purchase-selection', '2024 Fixture / Engine')
+    config_requested = asyncio.Event()
+    release_config = asyncio.Event()
+    fixture.auth_config_hold = (config_requested, release_config)
+    try:
+        await page.evaluate("window.dispatchEvent(new FocusEvent('focus'))")
+        await asyncio.wait_for(config_requested.wait(), timeout=5)
+        await expect(page.locator('#signin')).to_be_enabled(timeout=2000)
+        await page.get_by_role('button', name='Sign in with Google').and_(page.locator('#purchase-action')).click(timeout=2000)
+        await assert_text(page, '#account-status', 'Signed in.')
+    finally:
+        release_config.set()
+    await expect(page.locator('#configuration')).to_have_value(CONFIG)
+    assert fixture.checkout_count == 0
+
+
 async def dto_case(browser, origin, name, output, *, diagnostics=None):
     from playwright.async_api import expect
     owns_diagnostics = diagnostics is None
@@ -591,7 +616,11 @@ async def dto_case(browser, origin, name, output, *, diagnostics=None):
             await expect(page.locator('#year')).to_be_enabled()
             assert not any('/firebase-web.mjs' in row['path'] for row in fixture.requests)
         elif name.startswith('google-') or name=='firebase-memory-persistence':
-            await expect(page.locator('#signin')).to_be_enabled();await page.locator('#signin').click()
+            await expect(page.locator('#signin')).to_be_enabled()
+            if name == 'google-popup-exchange':
+                await sign_in_during_guest_refocus(page, fixture)
+            else:
+                await page.locator('#signin').click()
             if name=='google-popup-blocked': await assert_text(page,'#account-status','blocked')
             elif name=='google-popup-cancelled': await expect(page.locator('#account-status')).to_contain_text('canceled',timeout=15000)
             elif name=='google-stale-reauthentication':
