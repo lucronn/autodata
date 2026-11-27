@@ -17,6 +17,16 @@ import (
 
 const maxIngestionProxyBytes = 8 << 20
 
+const (
+	catalogAdmissionRetryInterval = 3 * time.Second
+	catalogAdmissionWaitLimit     = 30 * time.Second
+	catalogAdmissionRunAllowance  = 24 * time.Second
+)
+
+// Leave a single waiting slot across selectors on this API process. The
+// ingestion worker still controls supplier admission and dispatch pacing.
+var catalogAdmissionWaiter = make(chan struct{}, 1)
+
 type IngestionClient interface {
 	Do(*http.Request, string, []byte, string) (int, []byte, error)
 }
@@ -123,12 +133,55 @@ func (s *Server) ensureCatalogHydrated(request *http.Request, payload map[string
 	if err != nil {
 		return err
 	}
-	status, _, err := s.ingestionClient.Do(request, "/v1/catalog/ensure", body, key)
-	if err != nil {
+	scope := payload["scope"]
+	waitForAdmission := scope == "makes" || scope == "models"
+	dispatch := func(request *http.Request) (bool, error) {
+		status, raw, err := s.ingestionClient.Do(request, "/v1/catalog/ensure", body, key)
+		if err != nil {
+			return false, err
+		}
+		if status < http.StatusOK || status >= http.StatusMultipleChoices {
+			return false, fmt.Errorf("catalog hydration returned status %d", status)
+		}
+		if !waitForAdmission {
+			return false, nil
+		}
+		var result struct {
+			Status     string `json:"status"`
+			StopReason string `json:"stop_reason"`
+		}
+		return json.Unmarshal(raw, &result) == nil && result.Status == "deferred" && result.StopReason == "admission", nil
+	}
+
+	deferred, err := dispatch(request)
+	if err != nil || !deferred {
 		return err
 	}
-	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		return fmt.Errorf("catalog hydration returned status %d", status)
+	select {
+	case catalogAdmissionWaiter <- struct{}{}:
+		defer func() { <-catalogAdmissionWaiter }()
+	default:
+		return nil
+	}
+
+	// Keep stored reads in the hydrating state during this wait. They only
+	// observe the original keyed job and never start another supplier read.
+	admitUntil := time.Now().Add(catalogAdmissionWaitLimit)
+	ctx, cancel := context.WithDeadline(request.Context(), admitUntil.Add(catalogAdmissionRunAllowance))
+	defer cancel()
+	request = request.WithContext(ctx)
+	for time.Until(admitUntil) > catalogAdmissionRetryInterval {
+		timer := time.NewTimer(catalogAdmissionRetryInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+		deferred, err = dispatch(request)
+		if err != nil || !deferred {
+			return err
+		}
 	}
 	return nil
 }

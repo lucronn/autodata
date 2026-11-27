@@ -543,7 +543,9 @@ async function refreshPicker(name) {
     if (picker.refresh === refresh) picker.refresh = null;
   }
 }
-async function loadOptions(name, g, desired = "", initial = null, { initialIsLive = false, initialRequest } = {}) {
+async function loadOptions(name, g, desired = "", initial = null, {
+  initialIsLive = false, initialRequest, retry = () => restoreRoute(),
+} = {}) {
   const path = selectorPath(name);
   pickerStates.get(name)?.refresh?.abort();
   const picker = { path, incomplete: false, loading: g };
@@ -643,7 +645,7 @@ async function loadOptions(name, g, desired = "", initial = null, { initialIsLiv
     if (alternatives) {
       const models = new Intl.ListFormat("en", { type: "disjunction" }).format(alternatives);
       status(`No verified engine or trim loaded for this group. Choose ${models} in Model.`,
-        { retry: incomplete ? () => restoreRoute() : null });
+        { retry: incomplete ? retry : null });
       return;
     }
   }
@@ -652,7 +654,7 @@ async function loadOptions(name, g, desired = "", initial = null, { initialIsLiv
       const message = pickerHasChoices(name, result.items)
         ? `Choose an available ${label}. Some choices could not be loaded.`
         : "No verified engine or trim loaded. Try again.";
-      status(message, { retry: () => restoreRoute() });
+      status(message, { retry });
       return;
     }
     throw new Error(
@@ -680,6 +682,14 @@ async function loadOptions(name, g, desired = "", initial = null, { initialIsLiv
       : "No choices are available for this selection. Choose another vehicle.",
   );
   if (result === cached && picker.incomplete) void refreshPicker(name);
+}
+function retryPicker(name) {
+  const path = selectorPath(name);
+  const retry = () => {
+    if (selectorPath(name) === path)
+      return operation((g) => loadOptions(name, g, "", null, { retry }), retry);
+  };
+  return retry;
 }
 function renderPurchase() {
   if (!$("purchase")) return;
@@ -3258,6 +3268,7 @@ async function restoreRoute(initialYears = null, {
   vehicle = null;
   quote = null;
   renderPurchase();
+  let retry = () => restoreRoute();
   const restore = operation(
     async (g) => {
       if (early) g.signal.addEventListener("abort", early.abort, { once: true });
@@ -3285,8 +3296,9 @@ async function restoreRoute(initialYears = null, {
           await loadOptions("make", g, selectedMake, makeRead?.response, { initialIsLive: Boolean(makeRead) });
           if (g.current() && selectedMake && $("make").value === selectedMake) {
             updateURL();
+            retry = retryPicker("model");
             await loadOptions("model", g, "", modelRead?.response, {
-              initialIsLive: Boolean(modelRead), initialRequest: modelRead,
+              initialIsLive: Boolean(modelRead), initialRequest: modelRead, retry,
             });
           }
         } finally {
@@ -3399,7 +3411,8 @@ async function restoreRoute(initialYears = null, {
       let yearsRefresh;
       try {
         for (const name of names) {
-          await loadOptions(name, g, desired[name], initial[name]);
+          if (name !== "year" && !desired[name]) retry = retryPicker(name);
+          await loadOptions(name, g, desired[name], initial[name], { retry });
           if (!g.current() || !desired[name]) return;
           if (name === "year" && confirmed) yearsRefresh = finishSavedYears(g, fullYears, confirmed);
         }
@@ -3415,7 +3428,7 @@ async function restoreRoute(initialYears = null, {
         if (yearsRefresh) await yearsRefresh;
       }
     },
-    () => restoreRoute(),
+    () => retry(),
   );
   return early || readerStartup ? restore.finally(() => {
     early?.abort();
@@ -3444,11 +3457,7 @@ for (const [index, name] of names.entries()) {
     updateURL();
     if (!$(name).value) return;
     const next = names[index + 1];
-    if (next)
-      operation(
-        (g) => loadOptions(next, g),
-        () => restoreRoute(),
-      );
+    if (next) void retryPicker(next)();
     else {
       vehicle = rows.configuration.find(
         (item) => item.id === $("configuration").value,
