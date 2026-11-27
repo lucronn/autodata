@@ -20,6 +20,9 @@ _PAN_SIDE_NOTE = (
     r"|the (?:illustration|figure) shows the lh rear\. the rh side is similar)\. "
 )
 _SHOWN_PRY_PADS = r"the (?:(?:illustrated|shown) pry pads|pry pads shown)"
+_WHEEL_PILOT_HOLE = r"wheel hub pilot hole \(\d+\)"
+_WHEEL_HUB_FLANGE = r"wheel bearing/hub flange"
+_PILOT_LUBRICANT = r"a small amount of lubricant"
 
 _SERVICE_STEPS = (
     ("cold coolant fill", re.compile(
@@ -73,6 +76,14 @@ _SERVICE_STEPS = (
         rf"{_PAN_SIDE_NOTE}(?:using a pry tool on {_SHOWN_PRY_PADS}, remove the oil pan"
         rf"|use a pry tool (?:on|at) {_SHOWN_PRY_PADS} to remove the oil pan"
         rf"|remove the oil pan by applying a pry tool (?:on|at) {_SHOWN_PRY_PADS})\.?"
+    )),
+    ("lubricate pilot hole at flange contact", re.compile(
+        rf"(?:apply {_PILOT_LUBRICANT} to the inner diameter of the {_WHEEL_PILOT_HOLE} "
+        rf"where it contacts (?:the with )?the {_WHEEL_HUB_FLANGE}"
+        rf"|use {_PILOT_LUBRICANT} on the inner diameter of the {_WHEEL_PILOT_HOLE}, "
+        rf"at the contact surface with the {_WHEEL_HUB_FLANGE}"
+        rf"|where the {_WHEEL_HUB_FLANGE} meets the {_WHEEL_PILOT_HOLE}, "
+        rf"apply {_PILOT_LUBRICANT} to the hole's inner diameter)\.?"
     )),
 )
 

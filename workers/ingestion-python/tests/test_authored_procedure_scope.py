@@ -157,6 +157,14 @@ def test_equivalent_or_unscoped_wording_is_preserved(source, wording):
         [("NOTE: ", ""), ("LH rear", "LH front"), ("RH side is similar. ", ""), ("pry tool", "chisel"),
          ("illustrated pry pads", "sealing flange")],
     ),
+    (
+        "Apply a small amount of lubricant to the inner diameter of the wheel hub pilot hole (8) "
+        "where it contacts the wheel bearing/hub flange.",
+        "Where the wheel bearing/hub flange meets the wheel hub pilot hole (8), "
+        "apply a small amount of lubricant to the hole's inner diameter.",
+        [("a small amount", "a generous amount"), ("inner diameter", "outer diameter"),
+         ("wheel bearing/hub flange", "wheel stud threads"), ("pilot hole (8)", "pilot hole (9)")],
+    ),
 ])
 def test_publication_preserves_authored_procedure_details(source, rewrite, mutations):
     original = {"blocks": [{"items": [source]}]}
