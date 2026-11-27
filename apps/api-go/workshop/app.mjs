@@ -1071,8 +1071,8 @@ async function loadArticles(g, articleID = "", {
       signal: g.signal,
       desired: articleID,
       backoffWithChoices: Boolean(offerPaging),
-      // An owned index may gain stored rows shortly after its first empty read.
-      // Keep the regular poll if this one short check misses them.
+      // Give the first owned page one more chance to appear during the initial poll interval.
+      emptyProbeDelays: offerPaging ? [350, 900] : undefined,
       emptyProbe: !visibleRows && !articleID && !openDemo && session.state.mode === "firebase"
         ? async (timeout) => {
           try {
