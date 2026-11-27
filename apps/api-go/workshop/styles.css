@@ -861,6 +861,15 @@ footer {
   max-width: 130px;
   max-height: 130px;
 }
+@media screen {
+  .article-table :is(td, th) .figure-viewport {
+    contain: inline-size;
+    contain-intrinsic-inline-size: min(25vw, 130px);
+  }
+  .article-table :is(td, th) .figure-viewport:not([data-full-size]) img {
+    max-inline-size: min(100%, 130px);
+  }
+}
 .article-content ul {
   margin: 0 0 22px;
   padding-left: 28px;
