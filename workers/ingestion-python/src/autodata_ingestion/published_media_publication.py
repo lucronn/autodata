@@ -24,7 +24,7 @@ from .article_lifecycle_store import (
     resolve_source_bound_correction,
 )
 from .article_lifecycle_types import (
-    AUTOMATIC_REWRITE_PROFILES, SOURCE_BOUND_CORRECTION_PROFILE, digest_json, transformation_key,
+    AUTOMATIC_REWRITE_PROFILES, SOURCE_BOUND_CORRECTION_PROFILE, ValidationResult, digest_json, transformation_key,
 )
 from .procedure_normalize import normalize_procedure_article
 from .procedure_rewrite import build_rewrite_prompt, validate_article_rewrite
@@ -49,10 +49,13 @@ from .source_revision_reprojection import (
     _require_no_active_normal_job, preview_svg_reprojection,
 )
 from .source_table_replay import load_table_replay_binding, preview_table_replay
+from .source_table_geometry import load_table_geometry_binding, preview_table_geometry, transfer_table_geometry
 
 SCHEMA = "autodata:published-media-repair:v1"
 ORDINAL_SCHEMA = "autodata:published-list-ordinals:v1"
 TABLE_SPAN_SCHEMA = "autodata:published-table-spans:v1"
+TABLE_GEOMETRY_SCHEMA = "autodata:published-table-geometry:v1"
+TABLE_GEOMETRY_METHOD = "published-table-geometry-v1"
 SVG_RECOVERY_SCHEMA = "autodata:published-svg-recovery:v1"
 
 
@@ -103,13 +106,15 @@ def _validate_technical_evidence(cur, job, row, attempt):
     return validate_article_rewrite(source, row["canonical_document"], profile_version=profile)
 
 
-def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
+def _publication_evidence(cur, article, binding, *, fixture_mode, lock, table_geometry=False):
     return _publication_evidence_for_revision(
         cur, article, binding, article["current_canonical_revision_id"], fixture_mode=fixture_mode, lock=lock,
+        table_geometry=table_geometry,
     )
 
 
-def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fixture_mode, lock, expected_profile=None):
+def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fixture_mode, lock,
+                                       expected_profile=None, table_geometry=False):
     from .retained_bankone_order_reply import BANKONE_ORDER_METHOD
     from .retained_banktwo_notice_reply import (
         BANKONE_DEFINITION_METHOD, BANKONE_LIST_BOUNDARY_METHOD, BANKTWO_LIST_START_METHOD, BANKTWO_NOTICE_METHOD,
@@ -148,13 +153,13 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
     if row is None:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_CURRENT_REVISION_REQUIRED")
 
-    if row["model_metadata"].get("transformation_method") in (
-        MEDIA_METHOD, ORDINAL_METHOD, TABLE_SPAN_METHOD, SVG_RECOVERY_METHOD, STAGED_MEDIA_REPLY_RECOVERY_METHOD,
+    method = row["model_metadata"].get("transformation_method")
+    if method in (MEDIA_METHOD, ORDINAL_METHOD, TABLE_SPAN_METHOD, TABLE_GEOMETRY_METHOD, SVG_RECOVERY_METHOD) or (
+        method == STAGED_MEDIA_REPLY_RECOVERY_METHOD and not table_geometry
     ):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PRIOR_REPAIR_UNSUPPORTED")
 
     profile = row["rewrite_profile_version"]
-    method = row["model_metadata"].get("transformation_method")
     repaired = {
         NOTE_LABEL_REPAIR_PROFILE: (NOTE_LABEL_REPAIR_METHOD, resolve_retained_note_label_repair),
         REQUIRED_ACTION_PROFILE: (REQUIRED_ACTION_METHOD, resolve_retained_required_action_repair),
@@ -236,6 +241,14 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
 
         repaired, attempt, prompt_version = resolve_bankone_list_boundary_publication(cur, job, article, row, lock=lock)
         validation, response = repaired.validation, repaired.remapped_response
+    elif method == STAGED_MEDIA_REPLY_RECOVERY_METHOD:
+        from .staged_media_reply_recovery import resolve_published_staged_media_evidence
+
+        validation, attempt, prompt_version, recorded_authors = resolve_published_staged_media_evidence(
+            cur, job, article, row, lock=lock,
+        )
+        response = None
+        authors.update(recorded_authors)
     elif method == RETAINED_PROCEDURE_REPAIR_METHOD:
         recovered = resolve_retained_procedure_repair(cur, job, article, row)
         validation, attempt, response, prompt_version = (
@@ -288,32 +301,71 @@ def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fi
     return row, latest, decision, attempt, response, prompt_version, tuple(sorted(authors))
 
 
+def _geometry_repair(binding, captured, previous, prompt_version):
+    """Rebind verified geometry while retaining the already validated publication."""
+    before = binding.row["source_document"]
+    normalized = transfer_table_geometry(before, captured.source_document, previous["normalized_source_document"])
+    old_document = previous["canonical_document"]
+    document = transfer_table_geometry(before, captured.source_document, old_document)
+    projection = project_ordered_document(document)
+    if (projection != project_ordered_document(old_document)
+            or project_ordered_document(normalized) != project_ordered_document(previous["normalized_source_document"])):
+        raise ValueError("PUBLISHED_TABLE_GEOMETRY_CONTENT_DRIFT")
+    provenance = {
+        "transformation_method": TABLE_GEOMETRY_METHOD,
+        "profile_version": previous["rewrite_profile_version"],
+        "model_calls": 0,
+        "model_dispatch_count": 0,
+        "original_prompt_version": prompt_version,
+        "original_normalized_source_hash": previous["normalized_source_hash"],
+        "original_published_document_hash": previous["rewrite_result_hash"],
+        "original_validation_hash": previous["validation_hash"],
+        "repaired_normalized_source_hash": digest_json(normalized),
+        "repaired_published_document_hash": digest_json(document),
+        "preserved_reading_projection_hash": digest_json(projection),
+    }
+    report = {**previous["validation_report"], "table_geometry_repair": provenance}
+    return normalized, PublishedMediaRepair(document, projection, {}, ValidationResult(True, (), report), provenance)
+
+
 def _plan(cur, article, binding, captured, *, fixture_mode, lock=False, ordinals=False,
-          table_spans=False, svg_recovery=False):
+          table_spans=False, table_geometry=False, svg_recovery=False):
     if article["current_source_revision_id"] != binding.source_revision_id:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_STALE")
     row, review, decision, attempt, response, prompt_version, authors = _publication_evidence(
-        cur, article, binding, fixture_mode=fixture_mode, lock=lock,
+        cur, article, binding, fixture_mode=fixture_mode, lock=lock, table_geometry=table_geometry,
     )
-    normalized = captured.source_document if table_spans or svg_recovery else _normalize(captured, binding.canonical_article_id)
-    metadata = row["model_metadata"]
-    bankone_structure = (
-        metadata["bankone_first_draft_structure"]["proof"]
-        if metadata.get("transformation_method") in BANKONE_ARCHIVE_STRUCTURE_VERSIONS else None
-    )
-    repair = repair_published_media(
-        row["normalized_source_document"], row["canonical_document"], normalized,
-        response=response, prompt_version=prompt_version, profile=row["rewrite_profile_version"],
-        ordinals=ordinals, table_spans=table_spans, svg_recovery=svg_recovery, bankone_structure=bankone_structure,
-    )
-    if row["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD:
-        preserving_document, _ = build_source_preserving_candidate(normalized, profile_version=row["rewrite_profile_version"])
-        if digest_json(preserving_document) != digest_json(repair.document):
-            raise ValueError("PUBLISHED_MEDIA_REPAIR_SOURCE_HEADING_CHANGED")
+    retained_links = ()
+    if table_geometry:
+        from .retained_banktwo_notice_publication import _link_successors, _retained_link_rows
+        from .source_job_persistence import source_bound_rewrite_source_allowed
+
+        if not source_bound_rewrite_source_allowed(cur, article, binding.source_revision_id):
+            raise ValueError("PUBLISHED_TABLE_GEOMETRY_SOURCE_WITHDRAWN")
+        normalized, repair = _geometry_repair(binding, captured, row, prompt_version)
+        retained_links = _link_successors(
+            _retained_link_rows(cur, row), row["canonical_document"], repair.document, body_sha256=binding.body_sha256,
+        )
+    else:
+        normalized = captured.source_document if table_spans or svg_recovery else _normalize(captured, binding.canonical_article_id)
+        metadata = row["model_metadata"]
+        bankone_structure = (
+            metadata["bankone_first_draft_structure"]["proof"]
+            if metadata.get("transformation_method") in BANKONE_ARCHIVE_STRUCTURE_VERSIONS else None
+        )
+        repair = repair_published_media(
+            row["normalized_source_document"], row["canonical_document"], normalized,
+            response=response, prompt_version=prompt_version, profile=row["rewrite_profile_version"],
+            ordinals=ordinals, table_spans=table_spans, svg_recovery=svg_recovery, bankone_structure=bankone_structure,
+        )
+        if metadata.get("transformation_method") == SOURCE_PRESERVING_METHOD:
+            preserving_document, _ = build_source_preserving_candidate(normalized, profile_version=row["rewrite_profile_version"])
+            if digest_json(preserving_document) != digest_json(repair.document):
+                raise ValueError("PUBLISHED_MEDIA_REPAIR_SOURCE_HEADING_CHANGED")
     manifest = {
         "schema": (
             SVG_RECOVERY_SCHEMA if svg_recovery else TABLE_SPAN_SCHEMA if table_spans
-            else ORDINAL_SCHEMA if ordinals else SCHEMA
+            else TABLE_GEOMETRY_SCHEMA if table_geometry else ORDINAL_SCHEMA if ordinals else SCHEMA
         ),
         "article_id": str(binding.canonical_article_id),
         "source_revision_id": str(binding.source_revision_id),
@@ -340,17 +392,23 @@ def _plan(cur, article, binding, captured, *, fixture_mode, lock=False, ordinals
             recovered_source_fingerprint=captured.source_fingerprint,
             recovered_provenance_hash=digest_json(captured.resource_provenance),
         )
-    return _RepairPlan(manifest, row, normalized, repair, decision, authors)
+    if table_geometry:
+        manifest["repaired_source_fingerprint"] = captured.source_fingerprint
+        manifest["retained_link_bindings_hash"] = digest_json(retained_links)
+    return _RepairPlan(manifest, row, normalized, repair, decision, authors, retained_links)
 
 
-def _preview_repair_source(repo, source_revision_id, *, object_store, ordinals, table_spans, svg_archive):
-    if sum((ordinals, table_spans, svg_archive is not None)) > 1:
+def _preview_repair_source(repo, source_revision_id, *, object_store, ordinals, table_spans, svg_archive,
+                           table_geometry=False):
+    if sum((ordinals, table_spans, table_geometry, svg_archive is not None)) > 1:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_MODE_INVALID")
     if svg_archive is not None:
         return preview_svg_reprojection(
             repo, source_revision_id, object_store=object_store, svg_archive=svg_archive,
         )
-    if table_spans:
+    if table_geometry:
+        binding, captured = preview_table_geometry(repo, source_revision_id, object_store=object_store)
+    elif table_spans:
         binding, captured = preview_table_replay(repo, source_revision_id, object_store=object_store)
     else:
         binding, captured = preview_media_replay(repo, source_revision_id, object_store=object_store, ordinals=ordinals)
@@ -358,11 +416,12 @@ def _preview_repair_source(repo, source_revision_id, *, object_store, ordinals, 
 
 
 def preview_published_media_repair(repo, article_id, source_revision_id, *, object_store, destination,
-                                   fixture_mode=False, ordinals=False, table_spans=False, svg_archive=None):
+                                   fixture_mode=False, ordinals=False, table_spans=False, svg_archive=None,
+                                   table_geometry=False):
     """Export both documents and exact approval bindings to a private directory."""
     binding, captured, _ = _preview_repair_source(
         repo, source_revision_id, object_store=object_store, ordinals=ordinals,
-        table_spans=table_spans, svg_archive=svg_archive,
+        table_spans=table_spans, svg_archive=svg_archive, table_geometry=table_geometry,
     )
     if binding.canonical_article_id != article_id:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_ARTICLE_MISMATCH")
@@ -372,7 +431,8 @@ def preview_published_media_repair(repo, article_id, source_revision_id, *, obje
         if article is None:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_ARTICLE_MISMATCH")
         plan = _plan(cur, article, binding, captured, fixture_mode=fixture_mode,
-                     ordinals=ordinals, table_spans=table_spans, svg_recovery=svg_archive is not None)
+                     ordinals=ordinals, table_spans=table_spans, table_geometry=table_geometry,
+                     svg_recovery=svg_archive is not None)
     write_private_export(destination, {
         "manifest": plan.manifest,
         "source": {"before": plan.previous["normalized_source_document"], "after": plan.normalized},
@@ -415,19 +475,20 @@ def publish_retained_media_repair(repo, *, expected, object_store, reviewer_id, 
                                   fixture_mode=False, hooks=None, svg_archive=None):
     """Rebuild the reviewed correction under owner/source rights locks, then publish."""
     if (not isinstance(expected, dict)
-        or expected.get("schema") not in (SCHEMA, ORDINAL_SCHEMA, TABLE_SPAN_SCHEMA, SVG_RECOVERY_SCHEMA)
+        or expected.get("schema") not in (SCHEMA, ORDINAL_SCHEMA, TABLE_SPAN_SCHEMA, TABLE_GEOMETRY_SCHEMA, SVG_RECOVERY_SCHEMA)
         or type(expected.get("request_generation")) is not int or not _substantive(rationale)):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_APPROVAL_INVALID")
     article_id = UUID(expected["article_id"])
     source_revision_id = UUID(expected["source_revision_id"])
     ordinals = expected["schema"] == ORDINAL_SCHEMA
     table_spans = expected["schema"] == TABLE_SPAN_SCHEMA
+    table_geometry = expected["schema"] == TABLE_GEOMETRY_SCHEMA
     svg_recovery = expected["schema"] == SVG_RECOVERY_SCHEMA
     if svg_recovery != (svg_archive is not None):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_APPROVAL_INVALID")
     binding, captured, blobs = _preview_repair_source(
         repo, source_revision_id, object_store=object_store, ordinals=ordinals,
-        table_spans=table_spans, svg_archive=svg_archive,
+        table_spans=table_spans, svg_archive=svg_archive, table_geometry=table_geometry,
     )
     if binding.canonical_article_id != article_id:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_ARTICLE_MISMATCH")
@@ -436,16 +497,18 @@ def publish_retained_media_repair(repo, *, expected, object_store, reviewer_id, 
         article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE", (article_id,)).fetchone()
         if article is None:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_ARTICLE_MISMATCH")
-        if table_spans or svg_recovery:
+        if table_geometry:
+            locked = load_table_geometry_binding(cur, source_revision_id, lock=True)
+        elif table_spans or svg_recovery:
             locked = load_table_replay_binding(cur, source_revision_id, lock=True)
         else:
             locked = load_media_replay_binding(cur, source_revision_id, lock=True, ordinals=ordinals)
         if binding != locked:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_SOURCE_CHANGED")
-        if not (table_spans or svg_recovery):
+        if not (table_spans or table_geometry or svg_recovery):
             validate_media_replay_result(locked, captured, ordinals=ordinals)
         key = transformation_key(
-            article_id, captured.source_fingerprint if svg_recovery else locked.source_fingerprint,
+            article_id, captured.source_fingerprint if svg_recovery or table_geometry else locked.source_fingerprint,
             article["target_normalization_version"],
             article["target_rewrite_profile_version"], projection_version=captured.projection_version,
         )
@@ -454,13 +517,13 @@ def publish_retained_media_repair(repo, *, expected, object_store, reviewer_id, 
         )
         if repeated is not None:
             return repeated
-        if (table_spans or svg_recovery) and cur.execute(
+        if (table_spans or table_geometry or svg_recovery) and cur.execute(
             "SELECT 1 FROM schema_migrations WHERE version='045_article_source_projection_v5'"
         ).fetchone() is None:
             raise ValueError("SOURCE_TABLE_REPLAY_SCHEMA_REQUIRED")
         _require_no_active_normal_job(cur, article_id)
         plan = _plan(cur, article, locked, captured, fixture_mode=fixture_mode, lock=True,
-                     ordinals=ordinals, table_spans=table_spans, svg_recovery=svg_recovery)
+                     ordinals=ordinals, table_spans=table_spans, table_geometry=table_geometry, svg_recovery=svg_recovery)
         if digest_json(plan.manifest) != digest_json(expected):
             raise ValueError("PUBLISHED_MEDIA_REPAIR_STALE")
         reviewer_kind = authorize_reviewer(

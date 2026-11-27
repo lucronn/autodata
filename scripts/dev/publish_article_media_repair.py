@@ -27,6 +27,8 @@ def main(argv=None, *, repo=None, object_store=None, registry=None):
                          help="Recover authored ordered-list numbers from the retained source")
     repairs.add_argument("--table-spans", action="store_true",
                          help="Recover authored table spans from the retained source")
+    repairs.add_argument("--table-geometry", action="store_true",
+                         help="Recover authored table headers and spans from the retained source")
     repairs.add_argument("--svg-archive", type=Path, help="Private SVG input directory from stage-svg")
     stage = commands.add_parser("stage-svg")
     stage.add_argument("--article-id", type=UUID, required=True)
@@ -57,7 +59,7 @@ def main(argv=None, *, repo=None, object_store=None, registry=None):
         result = preview_published_media_repair(
             repo, args.article_id, args.source_revision_id, object_store=object_store,
             destination=args.output, fixture_mode=args.fixture_mode, ordinals=args.ordinals,
-            table_spans=args.table_spans, svg_archive=args.svg_archive,
+            table_spans=args.table_spans, table_geometry=args.table_geometry, svg_archive=args.svg_archive,
         )
     else:
         result = publish_retained_media_repair(

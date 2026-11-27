@@ -34,6 +34,8 @@ def main(argv=None, *, repo=None, object_store=None):
     replays = parser.add_mutually_exclusive_group()
     replays.add_argument("--retained-media", action="store_true", help="Replay retained article figures")
     replays.add_argument("--retained-table-spans", action="store_true", help="Restore authored spans in retained HTML tables")
+    replays.add_argument("--retained-table-geometry", action="store_true",
+                         help="Restore authored headers and spans in retained HTML tables")
     replays.add_argument("--svg-archive", type=Path, help="Restore figures from a private archive created by stage-svg")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--dry-run", action="store_true")
@@ -49,7 +51,8 @@ def main(argv=None, *, repo=None, object_store=None):
     args = parser.parse_args(argv)
     if args.apply and not all((args.actor, args.reason, args.expected_fingerprint, args.expected_body_sha256)):
         parser.error("--apply requires --actor, --reason, --expected-fingerprint and --expected-body-sha256")
-    if (args.apply and (args.retained_media or args.retained_table_spans or args.svg_archive is not None)
+    if (args.apply and (args.retained_media or args.retained_table_spans or args.retained_table_geometry
+                        or args.svg_archive is not None)
             and not (args.expected_observation_id and args.expected_document_sha256)):
         parser.error("retained repair requires --expected-observation-id and --expected-document-sha256 on apply")
     if (args.apply and args.svg_archive is not None
@@ -59,8 +62,8 @@ def main(argv=None, *, repo=None, object_store=None):
     if args.svg_archive is not None:
         print(json.dumps(replay_svg(args, repo, object_store), sort_keys=True))
         return 0
-    if args.retained_table_spans:
-        print(json.dumps(replay_table_spans(args, repo, object_store), sort_keys=True))
+    if args.retained_table_spans or args.retained_table_geometry:
+        print(json.dumps(replay_retained_table(args, repo, object_store), sort_keys=True))
         return 0
     if args.retained_media:
         result = replay_media(args, repo, object_store)
@@ -118,7 +121,7 @@ def replay_media(args, repo, object_store):
     }
 
 
-def replay_table_spans(args, repo, object_store):
+def replay_retained_table(args, repo, object_store):
     from autodata_ingestion.source_revision_reprojection import apply_table_reprojection
     from autodata_ingestion.source_table_replay import preview_table_replay
 
@@ -129,9 +132,14 @@ def replay_table_spans(args, repo, object_store):
             expected_fingerprint=args.expected_fingerprint,
             expected_body_sha256=args.expected_body_sha256,
             expected_document_sha256=args.expected_document_sha256,
-            actor=args.actor, reason=args.reason,
+            actor=args.actor, reason=args.reason, geometry=args.retained_table_geometry,
         )
-    binding, captured = preview_table_replay(repo, args.source_revision_id, object_store=object_store)
+    preview = preview_table_replay
+    if args.retained_table_geometry:
+        from autodata_ingestion.source_table_geometry import preview_table_geometry
+
+        preview = preview_table_geometry
+    binding, captured = preview(repo, args.source_revision_id, object_store=object_store)
     row = binding.row
     if row["canonical_article_id"] != args.article_id:
         raise ValueError("SOURCE_TABLE_REPLAY_ARTICLE_MISMATCH")
