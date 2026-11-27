@@ -2354,6 +2354,7 @@ async function loadArticleView(id, g, order, {
     throw error;
   };
   let retainedReadStartedAt;
+  let pendingRetainedRead, retainedSession;
   const readFirst = preferRetained || (indexedArticle?.id === id && hasSupplierPreview(indexedArticle));
   if ((readFirst || initialRetainedReader) && !verifiedDetail && !refreshOnly && !openDemo &&
       session.state.mode === "firebase" && (savedLink || access === "owned") &&
@@ -2363,17 +2364,25 @@ async function loadArticleView(id, g, order, {
     try {
       let response;
       if (initialRetainedReader) {
-        const csrf = session.state.csrf;
-        const early = await initialRetainedReader();
+        retainedSession = session.state.csrf;
+        const sequence = ++order.issued;
+        const verifyRetained = async (early) => {
+          if (!early || !g.current() || !session.state.authenticated) return null;
+          if (early.retry) return early;
+          const sameSession = await matchesRetainedReaderSession(early, retainedSession);
+          if (sameSession && g.current() && session.state.authenticated && session.state.csrf === retainedSession &&
+              early.data?.article?.id === id && matchesConfiguration(early.data?.configuration) &&
+              hasRetainedArticleRevision(early.data.article) && !early.data.article.source_body_preview &&
+              readableArticle(early.data.article))
+            return { ...early, [articleDetailSequence]: sequence };
+          return null;
+        };
+        const early = await initialRetainedReader((pending) => {
+          pendingRetainedRead = pending.then(verifyRetained).catch(() => null);
+        });
+        response = await verifyRetained(early);
         if (!g.current() || !session.state.authenticated) return;
-        if (early?.retry) throw early.retry;
-        const sameSession = await matchesRetainedReaderSession(early, csrf);
-        if (!g.current() || !session.state.authenticated) return;
-        if (sameSession && session.state.csrf === csrf &&
-            early.data?.article?.id === id && matchesConfiguration(early.data?.configuration) &&
-            hasRetainedArticleRevision(early.data.article) && !early.data.article.source_body_preview &&
-            readableArticle(early.data.article))
-          response = { ...early, [articleDetailSequence]: ++order.issued };
+        if (response?.retry) throw response.retry;
       }
       if (!response && readFirst) response = await requestArticleDetail(order, detailPath, readOptions);
       if (response) {
@@ -2513,11 +2522,19 @@ async function loadArticleView(id, g, order, {
       throw error;
     });
   // A fast prepare still supplies the first view. Only a slow, in-flight
-  // prepare can start the one optional exact read for an already stored body.
+  // prepare can start an optional exact read. Reuse the saved route's
+  // authorized read when it completes before another request is due.
   const retainedPrepareDelayMs = 250;
-  const earlyRead = earlySignal && delay(retainedPrepareDelayMs, earlySignal).then(async () => {
+  const retainedReadDelay = earlySignal && delay(retainedPrepareDelayMs, earlySignal).then(() => null);
+  const retainedReadTrigger = retainedReadDelay && (pendingRetainedRead
+    ? Promise.race([retainedReadDelay, pendingRetainedRead.then(response =>
+        response?.status === 200 || response?.retry ? response : retainedReadDelay)])
+    : retainedReadDelay);
+  const earlyRead = retainedReadTrigger && retainedReadTrigger.then(async (savedResponse) => {
     if (!preparing || !g.current() || earlySignal.aborted) return;
-    const response = await recoverDetail(earlySignal, true);
+    if (savedResponse && (savedResponse.retry || !session.state.authenticated ||
+        session.state.csrf !== retainedSession)) return;
+    const response = savedResponse ?? await recoverDetail(earlySignal, true);
     if ((!preparing && !keepEarlyRead) || !g.current() || earlySignal.aborted) return;
     if (pendingDetail(response)) return response;
     const article = response?.data?.article;
@@ -3619,8 +3636,12 @@ async function restoreRoute(initialYears = null, {
           }).catch(error => error?.status === 429 || error?.retryAfterSeconds > 0 ? { retry: error } : null);
           // An unfamiliar link may need preparation. Give a slow probe only a
           // short window after session restoration before using that path.
-          initialRetainedReader = () => preferRetained ? response
-            : Promise.race([response, delay(100, signal).then(() => null)]).finally(() => earlyReader.abort());
+          initialRetainedReader = async (onPending) => {
+            if (preferRetained) return response;
+            const initial = await Promise.race([response, delay(100, signal).then(() => undefined)]);
+            if (initial === undefined) onPending?.(response);
+            return initial ?? null;
+          };
         }
         try {
           await selectVehicle(g, articleID, {

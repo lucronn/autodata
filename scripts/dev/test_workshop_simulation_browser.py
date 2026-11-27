@@ -396,6 +396,52 @@ async def verify_late_grouped_models(page, origin):
             await page.unroute(f"{origin}{path}?*", handler)
 
 
+async def verify_pending_saved_article(owner, origin, configuration, article, expected_text):
+    from playwright.async_api import expect
+
+    detail = f"{origin}/v1/catalog/vehicles/{configuration}/articles/{article}"
+    preparing = asyncio.Event()
+    release_prepare = asyncio.Event()
+    detail_requests = []
+    tab = await owner.new_page()
+
+    async def read_article(route):
+        startup = "workshop-retained-reader-session" in route.request.headers.get("prefer", "")
+        detail_requests.append(startup)
+        if not startup:
+            await route.fallback()
+            return
+        reply = await route.fetch()
+        assert reply.ok and reply.headers.get("workshop-reader-session")
+        await preparing.wait()
+        await route.fulfill(response=reply)
+
+    async def prepare_article(route):
+        assert route.request.method == "POST"
+        preparing.set()
+        await release_prepare.wait()
+        await route.fallback()
+
+    try:
+        await tab.route(f"{detail}?*", read_article)
+        await tab.route(f"{detail}/prepare?*", prepare_article)
+        await tab.goto(f"{origin}/workshop?configuration={configuration}&region=US&article={article}", wait_until="commit")
+        await asyncio.wait_for(preparing.wait(), timeout=5)
+        await expect(tab.locator("#article-content")).to_contain_text(expected_text, timeout=5000)
+        image = tab.locator("#article-content img").first
+        assert await image.evaluate("(node) => node.decode().then(() => node.naturalWidth > 0)")
+        assert detail_requests == [True]
+        async with tab.expect_response(
+            lambda reply: reply.request.method == "POST" and urlsplit(reply.url).path.endswith("/prepare"),
+        ) as prepared:
+            release_prepare.set()
+        assert (await prepared.value).ok
+    finally:
+        preparing.set()
+        release_prepare.set()
+        await tab.close()
+
+
 def authored_model_index_fixture(runtime, scope, *, competing_fitment=False):
     from threading import Event, Thread
 
@@ -883,6 +929,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             assert urlsplit(media).path.startswith("/v1/catalog/images/v2.")
             asset = await owner.request.get(media)
             assert asset.status == 200 and asset.headers["content-type"].startswith("image/png")
+            if scope.get("pending_saved_reader"):
+                await verify_pending_saved_article(owner, origin, configuration, article, expected_text)
             if cold_index:
                 assert sha256(await asset.body()).hexdigest() == cold_index["figure_sha"]
                 await expect(page.locator("#article-content")).to_contain_text("Fit the replacement unit.")
@@ -991,6 +1039,8 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
             scope["labelled_market"] = labelled_market_fixture(runtime)
         if variant == "late-group-models":
             scope["late_group_models"] = True
+        if variant == "payment":
+            scope["pending_saved_reader"] = True
         if variant.startswith("authored-model-index"):
             scope = authored_model_index_fixture(runtime, scope, competing_fitment=variant.endswith("-competing-fitment"))
         if variant == "authored-model-index-held-bankone":
