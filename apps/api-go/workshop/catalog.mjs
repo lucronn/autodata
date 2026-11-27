@@ -559,6 +559,7 @@ function directSelectorURL(path, { method = 'GET', headers, body, preferSameOrig
 }
 
 export async function requestJSON(path, options = {}) {
+  if (options.deferModelRefresh) path += '&defer_refresh=1';
   const direct = directSelectorURL(path, options);
   if (!direct) return (await requestArticleJSON(path, options)).data;
   const isMake = directMakePath.test(path);

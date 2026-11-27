@@ -646,8 +646,9 @@ async function loadOptions(name, g, desired = "", initial = null, {
       const cache = canCachePublicSelectors() ? "default" : "no-store";
       const modelPicker = pickerStates.get("model");
       const preferSameOrigin = name === "configuration" && modelPicker?.sameOrigin && modelPicker.path === selectorPath("model");
-      const requestPath = name === "model" && !desired ? path + "&defer_refresh=1" : path;
-      const response = await requestJSON(requestPath, { signal: g.signal, timeout, cache, preferSameOrigin });
+      const response = await requestJSON(path, {
+        signal: g.signal, timeout, cache, preferSameOrigin, deferModelRefresh: name === "model" && !desired,
+      });
       return trackDiscovery(response);
     },
     {
