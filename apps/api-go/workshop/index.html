@@ -64,14 +64,26 @@
             headers: { Accept: 'application/json', ...headers } }).catch(() => null);
           return { controller, response };
         }
-        function startAccount() {
+        const sessionMode = 'workshop-session-mode';
+        function startAccount(sessionPath = '/auth/session', prefer = sessionMode) {
           // Let the app handle the original response, including a signed-out status.
           for (const [path, headers] of [
-            ['/auth/config'], ['/auth/session', { Prefer: 'workshop-session-mode' }],
+            ['/auth/config'], [sessionPath, { Prefer: prefer }],
             ['/workshop/purchase-config.json'],
           ]) {
             pending.set(path, { ...start(path, 'no-store', headers), rawResponse: true });
           }
+        }
+        if (params.get('view') === 'library' && !params.has('order')) {
+          startAccount('/auth/session', sessionMode + ', workshop-session-library');
+          return;
+        }
+        if (uuid(configuration) && /^[A-Z]{2}$/.test(region || '') &&
+            !['year', 'view', 'order', 'article', 'q'].some(key => params.has(key)) &&
+            ['configuration', 'region'].every(key => params.getAll(key).length === 1)) {
+          const scope = new URLSearchParams({ configuration_id: configuration, region });
+          startAccount('/auth/session?' + scope, sessionMode + ', workshop-session-article-index');
+          return;
         }
         if (uuid(configuration) && uuid(article) && /^[A-Z]{2}$/.test(region || '') &&
             !params.has('order') && params.get('view') !== 'library' &&

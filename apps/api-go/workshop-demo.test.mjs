@@ -279,7 +279,7 @@ test('the early picker enables stored makes and hands off the current model read
 
 test('entry keeps independent, private and unconfirmed paths on their ordinary reads', () => {
   const completeSnapshot = JSON.stringify({ version: 'v1', complete: true, items: [{ year: 2024 }] });
-  for (const search of ['?view=library', '?order=returning', '?article=saved', '?configuration=selected',
+  for (const search of ['?order=returning', '?article=saved', '?configuration=selected',
     '?year=2024&region=CA', '?sample=1', '?demo=1']) {
     const { calls, context } = startHeadPicker(search, true, { initialYears: completeSnapshot });
     assert.deepEqual(calls, [], search);
@@ -343,6 +343,50 @@ test('account and purchase bootstrap consume the original entry reads and preser
     assert.deepEqual(calls.map(call => call.path), [
       ...entrySettingsPaths, '/workshop/demo-mode.json', ...(failedTransport ? ['/auth/config'] : []),
     ]);
+  }
+});
+test('saved Library and exact vehicle links reuse their private session response during bootstrap', async () => {
+  const configuration = 'cf544dfd-4570-589f-b3b4-23487d14e591';
+  const selection = `configuration=${configuration}&region=US`;
+  const fixture = { version: 'v1', items: [] };
+  for (const [search, sessionPath, preference, field] of [
+    ['?view=library', '/auth/session', 'workshop-session-library', 'workshop_library'],
+    [`?${selection}`, `/auth/session?configuration_id=${configuration}&region=US`,
+      'workshop-session-article-index', 'workshop_article_index'],
+  ]) {
+    const payload = { authenticated: true, mode: 'firebase', [field]: fixture };
+    const { calls, context } = startHeadPicker(search, true, {
+      reply(path) {
+        if (path === sessionPath) return Response.json(payload);
+        return Response.json({ version: 'v1' });
+      },
+    });
+    assert.deepEqual(calls.map(call => call.path), ['/auth/config', sessionPath, '/workshop/purchase-config.json']);
+    assert.equal(calls[1].options.headers.Prefer, `workshop-session-mode, ${preference}`);
+    assert.ok(calls.every(({ options }) => options.credentials === 'same-origin' && options.cache === 'no-store'));
+    context.loadModule = async path => {
+      if (path === './catalog.mjs') return {
+        requestInitialYears, startSavedSelectorReads,
+        async requestJSON(path, options) {
+          return (await requestArticleJSON(path, { fetcher: context.fetch, ...options })).data;
+        },
+      };
+      if (path === './auth.mjs') return { readSessionBootstrap };
+      return { async bootstrap(_years, account, { initialPurchaseConfig }) {
+        const [config, session] = await account;
+        assert.deepEqual(await config, { status: 'fulfilled', value: { version: 'v1' } });
+        assert.deepEqual(await session, { status: 'fulfilled', value: payload });
+        assert.deepEqual(await initialPurchaseConfig, { version: 'v1' });
+      } };
+    };
+    await runInNewContext(`(async () => { ${bootstrapCode} })()`, context);
+    assert.deepEqual(calls.map(call => call.path), [
+      '/auth/config', sessionPath, '/workshop/purchase-config.json', '/workshop/demo-mode.json',
+    ]);
+  }
+  for (const search of ['?view=library&order=return',
+    `?${selection}&year=2024`, `?${selection}&q=oil`, `?${selection}&region=CA`]) {
+    assert.ok(!startHeadPicker(search).calls.some(({ path }) => path.startsWith('/auth/session')), search);
   }
 });
 test('entry preloads the app for confirmed public demos without starting regular picker reads', () => {
