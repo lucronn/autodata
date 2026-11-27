@@ -10532,10 +10532,10 @@ test('known-owned handoffs skip the quote and Library fetches a price only if ac
   }
 });
 
-test('saved exact Firebase links try the article before fetching index or quote', async () => {
+test('saved exact Firebase and demo links try the article before fetching index or quote', async () => {
   for (const [mode, openDemo, supported, index] of [
     ['firebase', false, true, false], ['firebase', false, false, true],
-    ['local', false, true, true], ['firebase', true, true, true],
+    ['local', false, true, true], ['firebase', true, true, false], ['firebase', true, false, true],
   ]) {
     const h = selectionQuoteHarness({ enabled: true }, { openDemo });
     h.context.session.state.mode = mode;
@@ -10549,7 +10549,7 @@ test('saved exact Firebase links try the article before fetching index or quote'
     };
     await h.context.selectVehicle(h.generation, routeArticle, { savedLink: true });
     assert.equal(h.opened.length, Number(index));
-    assert.equal(direct.length, Number(mode === 'firebase' && !openDemo));
+    assert.equal(direct.length, Number(mode === 'firebase'));
     assert.equal(h.calls.length, Number(mode === 'local'));
   }
 });
@@ -11842,6 +11842,33 @@ test('open demo reads an article with GET and no session or checkout', async () 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a?region=US&demo=1');
   assert.equal(calls[0].options.method, undefined);
+});
+
+test('a directly opened demo article requires a readable body and its exact fitment', async () => {
+  const path = '/v1/catalog/vehicles/v/articles/a?region=US&demo=1';
+  const article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }], [], { content_origin: 'source' });
+  for (const scenario of ['ready', 'wrong-fitment', 'wrong-region', 'wrong-article', 'legacy', 'waiting']) {
+    let configuration = { id: 'v', region: 'US', make: 'Example', model: 'Car' };
+    if (scenario === 'wrong-fitment') configuration.id = 'other';
+    if (scenario === 'wrong-region') configuration.region = 'CA';
+    if (scenario === 'legacy') configuration = undefined;
+    const data = { configuration, article: scenario === 'wrong-article' ? { ...article, id: 'other' } : article };
+    const reply = new Response(JSON.stringify(data), { status: scenario === 'waiting' ? 202 : 200 });
+    const calls = [];
+    const h = articleRouteHarness('firebase', (resource, options) => {
+      calls.push({ resource, prefer: options.headers.Prefer });
+      assert.equal(options.method, undefined);
+      return requestArticleJSON(resource, options);
+    }, false, true);
+    h.context.vehicle.id = 'v';
+    h.context.renderPurchase = () => {};
+    const opened = await h.context.loadArticle('a', h.g, {
+      savedLink: true, initialDemoDetail: { path, response: Promise.resolve(reply) },
+    });
+    assert.equal(opened, scenario === 'ready', scenario);
+    assert.equal(h.context.currentArticle?.id, scenario === 'ready' ? 'a' : undefined, scenario);
+    assert.deepEqual(calls, [{ resource: path, prefer: 'workshop-short-publication-check, workshop-demo-fitment' }]);
+  }
 });
 
 test('the demo reader consumes a matching detail once and rereads a stale or failed prefetch', async () => {

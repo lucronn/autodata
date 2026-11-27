@@ -849,6 +849,12 @@ async function selectVehicle(g, articleID = "", {
     return;
   }
   try {
+    if (openDemo && savedLink && uuid(articleID)) {
+      const detail = initialDemoIndex?.detail;
+      if (detail) g.signal.addEventListener("abort", initialDemoIndex.abort, { once: true });
+      if (await loadArticle(articleID, g, { savedLink: true, initialDemoDetail: detail })) return;
+      if (detail) initialDemoIndex = { ...initialDemoIndex, detail: null };
+    }
     if (directArticle && await loadArticle(articleID, g, { savedLink: true, preferRetained, initialRetainedReader })) return;
     if (savedQuery && await loadSavedSearch(g, savedQuery, focusArticle)) return;
     if (!g.current()) return;
@@ -2138,10 +2144,14 @@ async function loadArticleView(id, g, order, {
   const matchesConfiguration = (configuration) =>
     configuration?.id === selected.id && configuration?.region === selected.region;
   const detailPath = articleRequestPath(id);
+  const savedDemo = openDemo && savedLink;
   const preferPreviewSourceCheck = !openDemo && session.state.mode === "firebase";
-  const readOptions = { signal: g.signal, preferShortPublicationCheck: true, preferPreviewSourceCheck };
+  const readOptions = {
+    signal: g.signal, preferShortPublicationCheck: true, preferPreviewSourceCheck,
+    ...(savedDemo && { headers: { Prefer: "workshop-short-publication-check, workshop-demo-fitment" } }),
+  };
   const readInitialDetail = async () => {
-    if (openDemo && indexedArticle?.id === id && initialDemoDetail?.path === detailPath) {
+    if (openDemo && (savedDemo || indexedArticle?.id === id) && initialDemoDetail?.path === detailPath) {
       const reply = await initialDemoDetail.response;
       g.signal.throwIfAborted();
       if (reply) {
@@ -2152,6 +2162,7 @@ async function loadArticleView(id, g, order, {
           if (error.status === 0) return null;
           throw error;
         });
+        if (savedDemo && response) return response;
         // Publication may have changed while the index and detail were in flight.
         const article = response?.data?.article;
         if (response?.status === 200 && article?.id === id && readableArticle(article) &&
@@ -2327,7 +2338,9 @@ async function loadArticleView(id, g, order, {
             : recovered;
         }
       }
-      if (savedLink && error.status === 404) {
+      const demoWithoutBody = savedDemo && ["CATALOG_SOURCE_UNAVAILABLE", "CATALOG_REVIEW_REQUIRED",
+        "CATALOG_PROCESSING_FAILED"].includes(error.code);
+      if ((savedLink && error.status === 404) || demoWithoutBody) {
         if (retained && g.current()) clearUnavailableArticle();
         return null;
       }
@@ -2360,7 +2373,9 @@ async function loadArticleView(id, g, order, {
   if (!g.current()) return;
   if (savedLink) {
     const configuration = first?.data?.configuration;
-    if (!matchesConfiguration(configuration)) {
+    const unconfirmedDemo = savedDemo && (first?.status !== 200 || first.data?.article?.id !== id ||
+      !readableArticle(first.data.article));
+    if (!matchesConfiguration(configuration) || unconfirmedDemo) {
       if (retained) clearUnavailableArticle();
       return false;
     }
