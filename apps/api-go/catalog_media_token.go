@@ -131,11 +131,11 @@ func validPaidCatalogImageReference(ref paidCatalogImageReference, now time.Time
 
 func sealPaidCatalogImageReference(ref paidCatalogImageReference, key []byte, now time.Time) (string, error) {
 	if len(key) != 32 || !validPaidCatalogImageReference(ref, now) {
-		return "", errors.New("invalid paid catalog image reference")
+		return "", errInvalidPaidImageClaims
 	}
-	raw, err := json.Marshal(ref)
-	if err != nil || len(raw) > 4096 {
-		return "", errors.New("invalid paid catalog image reference")
+	raw, err := compactPaidImagePlaintext(ref)
+	if err != nil {
+		return "", err
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -154,7 +154,7 @@ func sealPaidCatalogImageReference(ref paidCatalogImageReference, key []byte, no
 
 func openPaidCatalogImageReference(token string, key []byte, now time.Time) (paidCatalogImageReference, error) {
 	var ref paidCatalogImageReference
-	invalid := errors.New("invalid paid catalog image reference")
+	invalid := errInvalidPaidImageClaims
 	if len(key) != 32 || len(token) > 6000 || !strings.HasPrefix(token, "v2.") {
 		return ref, invalid
 	}
@@ -173,6 +173,13 @@ func openPaidCatalogImageReference(token string, key []byte, now time.Time) (pai
 	raw, err := aead.Open(nil, sealed[:aead.NonceSize()], sealed[aead.NonceSize():], []byte(paidCatalogImageTokenAAD))
 	if err != nil {
 		return ref, invalid
+	}
+	if len(raw) > 0 && raw[0] == compactPaidImageFormat {
+		compact, err := decodeCompactPaidImageClaims(raw)
+		if err != nil || !validPaidCatalogImageReference(compact, now) {
+			return ref, invalid
+		}
+		return compact, nil
 	}
 	// Parse the object once to reject duplicate keys, including duplicate null
 	// anchors. The typed second pass rejects every unknown or mistyped field.
