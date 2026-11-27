@@ -7661,6 +7661,12 @@ test('reader refocus shows the authorized article while its open Original is sti
     requestJSON(path, options) {
       assert.equal(path, article.source_review.url);
       assert.equal(options.signal, h.g.signal);
+      if (!calls.length) {
+        assert.equal(options.headers['X-Workshop-Source-View'], undefined);
+        return Promise.resolve({ source: { url: path }, view_revision: 'pinned-view',
+          document: { blocks: [{ type: 'paragraph', text: 'Pinned source' }] } });
+      }
+      assert.equal(options.headers['X-Workshop-Source-View'], 'pinned-view');
       calls.push('source'); return source.promise;
     },
     renderPurchase() {},
@@ -7668,11 +7674,9 @@ test('reader refocus shows the authorized article while its open Original is sti
   });
   h.context.document.visibilityState = 'visible';
   const content = h.render(article), main = content.children[0];
-  h.context.sourceURL = article.source_review.url;
-  h.nodes.get('article-reference').open = true;
-  const frame = h.nodes.get('source-review-frame'), held = new ArticleMediaNode('p');
-  held.textContent = 'Pinned source';
-  frame.append(held);
+  await h.context.loadSource(article.source_review.url, h.g);
+  const frame = h.nodes.get('source-review-frame'), held = frame.children[0];
+  assert.equal(held.textContent, 'Pinned source');
   const focusTarget = h.nodes.get('source-review-load');
   h.nodes.get('reader').append(focusTarget);
   focusTarget.focus = () => {
@@ -7699,7 +7703,7 @@ test('reader refocus shows the authorized article while its open Original is sti
   assert.equal(frame.hidden, true);
   assert.equal(focusTarget.disabled, true);
   assert.equal(h.context.document.activeElement, h.context.document.body);
-  source.resolve({ source: { url: article.source_review.url } });
+  source.resolve({ source: { url: article.source_review.url }, view_revision: 'pinned-view', document_unchanged: true });
   await checked;
   assert.equal(frame.hidden, false);
   assert.equal(frame.children[0], held);
@@ -7802,10 +7806,14 @@ async function recheckOpenedOriginal() {
       async bootstrap() { sessionEvents.push('bootstrap'); },
     },
     async requestArticleJSON() { return { status: 200, data: { configuration, article } }; },
-    async requestJSON(path) {
+    async requestJSON(path, options) {
       requests.push(path);
-      if (requests.length === 2) return pending.promise;
-      return { source: { url }, document: { blocks: [{ type: 'paragraph', text: 'Authorized Original' }] } };
+      if (requests.length === 2) {
+        assert.equal(options.headers['X-Workshop-Source-View'], 'original-view');
+        return pending.promise;
+      }
+      return { source: { url }, view_revision: 'original-view',
+        document: { blocks: [{ type: 'paragraph', text: 'Authorized Original' }] } };
     },
     cancelPickerRefreshes() {},
     renderPurchase() {},
@@ -7843,6 +7851,19 @@ test('reader refocus keeps the same main DOM and allows an exact Original retry 
   assert.deepEqual(h.requests, [h.url, h.url, h.url]);
   assert.equal(h.frame.hidden, false);
   assert.equal(h.frame.textContent, 'Authorized Original');
+  assert.equal(h.content.children[0], main);
+});
+
+test('reader refocus applies the full response when the Original projection has changed', async () => {
+  const h = await recheckOpenedOriginal(), main = h.content.children[0], prior = h.frame.children[0];
+  h.pending.resolve({ source: { url: h.url }, view_revision: 'updated-original',
+    document: { blocks: [{ type: 'paragraph', text: 'Updated Original' }] } });
+  await h.checked;
+
+  assert.deepEqual(h.requests, [h.url, h.url]);
+  assert.equal(h.frame.hidden, false);
+  assert.equal(h.frame.textContent, 'Updated Original');
+  assert.notEqual(h.frame.children[0], prior);
   assert.equal(h.content.children[0], main);
 });
 

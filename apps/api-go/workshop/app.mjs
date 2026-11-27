@@ -2595,31 +2595,47 @@ function refreshPendingSourceFigures(images, selected) {
   }
 }
 
-async function loadSource(value, g, blockID = null, { focusSource = false, forceDocument = false } = {}) {
-  const requested = validSourceURL(value);
-  if (!requested) throw new Error("This source reference is unavailable.");
+function sourceDocumentKey(requested) {
   const query = new URLSearchParams(requested.search);
   // The JSON document is independent of the clicked evidence marker.
   query.delete("evidence_id");
   query.delete("source_locator");
   query.sort();
-  const key = `${requested.pathname}?${query}`;
-  const sameMountedSource = () => !openDemo && session.state.mode === "firebase" && mountedSource?.key === key &&
+  return `${requested.pathname}?${query}`;
+}
+
+function matchesMountedSource(key, g) {
+  return !openDemo && session.state.mode === "firebase" && mountedSource?.key === key &&
     mountedSource.signal === g.signal && mountedSource.articleRevision === renderedRevision;
-  const sourceView = !forceDocument && sameMountedSource() ? mountedSource.revision : "";
+}
+
+function requestSourceDocument(requested, g, key, sourceView) {
+  const response = requestJSON(demoPath(requested.pathname + requested.search), {
+    signal: g.signal,
+    headers: sourceView ? { ...sourceDocumentHeaders, "X-Workshop-Source-View": sourceView } : sourceDocumentHeaders,
+  });
+  return { key, signal: g.signal, sourceView, response };
+}
+
+async function loadSource(value, g, blockID = null, { focusSource = false, forceDocument = false, checkedRead } = {}) {
+  const requested = validSourceURL(value);
+  if (!requested) throw new Error("This source reference is unavailable.");
+  const key = sourceDocumentKey(requested);
   const selected = ++sourceRevision;
   setSourceLoading(true);
   let pending;
   try {
-    if (sourceDocumentRequest?.key !== key || sourceDocumentRequest.signal !== g.signal ||
-        sourceDocumentRequest.sourceView !== sourceView) {
-      const response = requestJSON(demoPath(requested.pathname + requested.search), {
-        signal: g.signal,
-        headers: sourceView ? { ...sourceDocumentHeaders, "X-Workshop-Source-View": sourceView } : sourceDocumentHeaders,
-      });
-      sourceDocumentRequest = { key, signal: g.signal, sourceView, response };
+    if (checkedRead?.key === key && checkedRead.signal === g.signal) {
+      pending = checkedRead;
+    } else {
+      const sourceView = !forceDocument && matchesMountedSource(key, g) ? mountedSource.revision : "";
+      if (sourceDocumentRequest?.key !== key || sourceDocumentRequest.signal !== g.signal ||
+          sourceDocumentRequest.sourceView !== sourceView) {
+        sourceDocumentRequest = requestSourceDocument(requested, g, key, sourceView);
+      }
+      pending = sourceDocumentRequest;
     }
-    pending = sourceDocumentRequest;
+    const { sourceView } = pending;
     const data = await pending.response;
     if (!g.current() || selected !== sourceRevision) return;
     const returned = validSourceURL(data.source?.url);
@@ -2641,7 +2657,7 @@ async function loadSource(value, g, blockID = null, { focusSource = false, force
     ]));
     // After a fresh authorized read, keep images already fetching for the same
     // source projection. Media URLs rotate even when the displayed view agrees.
-    const keep = stable && sameMountedSource() && mountedSource.revision === revision && mountedSource.assets === assets;
+    const keep = stable && matchesMountedSource(key, g) && mountedSource.revision === revision && mountedSource.assets === assets;
     if (data.document_unchanged === true && (!unchanged || !keep)) {
       // The mounted view may have changed while this request was in flight.
       if (sourceView) return loadSource(value, g, blockID, { focusSource, forceDocument: true });
@@ -3880,8 +3896,10 @@ async function recheckReader(g) {
       session.matchesCurrentSession({ signal }),
       requestArticleDetail(order, articleRequestPath(opened.id), { signal, preferShortPublicationCheck: true }),
     ]);
-    const sourceRead = pinned ? requestJSON(pinned.pathname + pinned.search, { signal, headers: sourceDocumentHeaders })
-      .then(value => ({ value }), error => ({ error })) : null;
+    const sourceKey = pinned && sourceDocumentKey(pinned);
+    const sourceRead = pinned && requestSourceDocument(pinned, g, sourceKey,
+      matchesMountedSource(sourceKey, g) ? mountedSource.revision : "");
+    const sourceFailure = sourceRead?.response.then(() => null, (error) => error);
     const [sameSession, detail] = await articleRead;
     if (!g.current()) return;
     const checked = acceptArticleDetail(order, detail);
@@ -3908,18 +3926,20 @@ async function recheckReader(g) {
         .catch((error) => handleReaderCheckError(error, g, true));
     }
     if (!sourceRead) return;
-    const { value, error } = await sourceRead;
+    let error = await sourceFailure;
     if (!g.current()) return;
     if ([401, 403, 410].includes(error?.status)) throw error;
     if (sourceRevision !== checkedSourceRevision) return;
-    const returned = validSourceURL(value?.source?.url);
-    if (returned?.pathname === pinned.pathname &&
-        returned.searchParams.get("source_revision_id") === pin) {
-      sourceFrame.hidden = false;
-      backToArticle.hidden = false;
-      setSourceLoading(false);
-      $("source-review-meta").textContent = "Stored source loaded.";
-    } else {
+    if (!error) {
+      try {
+        await loadSource(pinned.href, g, null, { checkedRead: sourceRead });
+      } catch (failure) {
+        error = failure;
+      }
+    }
+    if (!g.current()) return;
+    if ([401, 403, 410].includes(error?.status)) throw error;
+    if (error) {
       resetSourceReview();
       renderArticle(currentArticle, g);
       const stagedUnavailable = pin === stagedPin && error?.status === 404 && error.code === "CATALOG_NOT_FOUND";
