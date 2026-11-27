@@ -17,15 +17,17 @@ import (
 )
 
 type CatalogSourceContentResponse struct {
-	Version      string              `json:"version"`
-	Source       CatalogSourceReview `json:"source"`
-	Content      string              `json:"content"`
-	Document     *CatalogDocument    `json:"document,omitempty"`
-	Images       []CatalogImage      `json:"images,omitempty"`
-	ViewRevision *string             `json:"view_revision,omitempty"`
+	Version           string              `json:"version"`
+	Source            CatalogSourceReview `json:"source"`
+	Content           string              `json:"content"`
+	Document          *CatalogDocument    `json:"document,omitempty"`
+	Images            []CatalogImage      `json:"images,omitempty"`
+	ViewRevision      *string             `json:"view_revision,omitempty"`
+	DocumentUnchanged bool                `json:"document_unchanged,omitempty"`
 }
 
 const catalogSourceDocumentPreference = "workshop-source-document"
+const catalogSourceViewRequestHeader = "X-Workshop-Source-View"
 
 var unsafeCatalogSourceStyle = regexp.MustCompile(`(?i)(?:url\s*\([^)]*\)|expression\s*\(|behavior\s*:|-moz-binding\s*:)`)
 
@@ -150,7 +152,14 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 	}
 	review := CatalogSourceReview{Available: true, SnapshotID: stored.SnapshotID, Version: stored.Version, ContentSHA256: stored.ContentSHA256, Format: format, URL: catalogPinnedSourceURL(configuration.ID, articleID, stored.SourceRevisionID)}
 	if acceptsJSON(r) {
-		writeJSON(w, http.StatusOK, CatalogSourceContentResponse{Version: "v1", Source: review, Content: content, Document: stored.Document, Images: stored.Images, ViewRevision: stored.ViewRevision})
+		body := CatalogSourceContentResponse{Version: "v1", Source: review, Content: content, Document: stored.Document, Images: stored.Images, ViewRevision: stored.ViewRevision}
+		if !scope.openDemo && w.Header().Get("Preference-Applied") == catalogSourceDocumentPreference &&
+			stored.ViewRevision != nil && *stored.ViewRevision != "" && r.Header.Get(catalogSourceViewRequestHeader) == *stored.ViewRevision {
+			// The browser already displays this exact projection. Keep the fresh authorized media URLs.
+			body.Document = nil
+			body.DocumentUnchanged = true
+		}
+		writeJSON(w, http.StatusOK, body)
 		return
 	}
 	writeCatalogSourceHTML(w, review, content, r.URL.Query().Get("evidence_id"), r.URL.Query().Get("source_locator"))
