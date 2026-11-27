@@ -1,6 +1,7 @@
 """Exact Banktwo archived-reply Note repair on isolated PostgreSQL."""
 
 from copy import deepcopy
+from hashlib import sha256
 from io import BytesIO
 import json
 from types import SimpleNamespace
@@ -257,18 +258,25 @@ def test_short_action_repair_replays_the_archive_and_preserves_the_figure(runtim
     assert len(after["publication_events"]) == len(before["publication_events"]) + 1
 
 
-def test_retained_required_action_repair_publishes_same_source_and_rolls_back_atomically(runtime, monkeypatch):
+def test_retained_action_and_diagnostic_repairs_publish_same_source_atomically(runtime, monkeypatch):
     from autodata_ingestion.retained_required_action_repair import (
         CHECKPOINT as ACTION_CHECKPOINT, PROFILE as ACTION_PROFILE, _rebuild,
         repair_retained_required_actions,
     )
+    from autodata_ingestion.retained_note_label_repair import (
+        DIAGNOSTIC_WORDING_CHECKPOINT, repair_retained_diagnostic_wording,
+    )
 
     draft = "The bracket's clamp should be tightened."
+    diagnostic = "Testing or monitoring reference voltage on the LIN bus can help identify which type of fault to inspect for."
+    diagnostic_draft = "Test or monitor the reference voltage on the LIN bus. The result can help determine which type of fault to inspect for."
+    diagnostic_revision = "Test or monitor the LIN bus reference voltage. This can help identify which type of fault to inspect for."
     with monkeypatch.context() as archived_release:
         # Reproduce the published archive from before the current guard.
         archived_release.setattr(auto, "require_required_procedure_actions", lambda *_a, **_k: None)
         args, _, source, _, _ = seed_archived_note_publication(runtime, additional={
             "Tighten the clamp on the existing bracket.": draft,
+            diagnostic: diagnostic_draft,
         })
         prior_id = repair_retained_note_labels(runtime.repo, runtime.article_id, **args)
     runtime.reset_counters()
@@ -330,6 +338,45 @@ def test_retained_required_action_repair_publishes_same_source_and_rolls_back_at
         repair_retained_required_actions(runtime.repo, runtime.article_id, **pins)
     with pytest.raises(ProfileRefreshRequired):
         refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="Reject implicit operator profile.")
+
+    [diagnostic_path] = [
+        replacement["path"] for replacement in reply["replacements"]
+        if _get(row["normalized_source_document"], replacement["path"]) == diagnostic
+    ]
+    with runtime.repo.connect() as conn:
+        active_job = conn.execute("SELECT current_job_id FROM canonical_articles WHERE canonical_article_id=%s",
+                                  (runtime.article_id,)).fetchone()["current_job_id"]
+    expected = deepcopy(row["canonical_document"])
+    _set({"blocks": expected["blocks"][1:]}, diagnostic_path, diagnostic_revision)
+    wording_edits = {diagnostic_path: {
+        "source_sha256": sha256(diagnostic.encode()).hexdigest(),
+        "prior_sha256": sha256(diagnostic_draft.encode()).hexdigest(),
+        "text": diagnostic_revision,
+    }}
+    diagnostic_pins = {
+        **pins, "expected_job_id": active_job, "expected_published_revision_id": revision,
+        "expected_published_hash": row["rewrite_result_hash"], "expected_repaired_hash": digest_json(expected),
+        "wording_edits": wording_edits,
+    }
+    before_diagnostic = _state(runtime)
+    with pytest.raises(RuntimeError, match="fixture interrupted required wording publication"):
+        repair_retained_diagnostic_wording(runtime.repo, runtime.article_id, **diagnostic_pins, hooks=abort_at_publication)
+    assert _state(runtime) == before_diagnostic
+    new_revision = repair_retained_diagnostic_wording(runtime.repo, runtime.article_id, **diagnostic_pins)
+    with runtime.repo.connect() as conn, conn.cursor() as cur:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                              (runtime.article_id,)).fetchone()
+        changed, _, _, _, revised, _, _ = _publication_evidence(
+            cur, article, SimpleNamespace(source_revision_id=source["source_revision_id"]), fixture_mode=False, lock=False,
+        )
+    assert changed["canonical_article_revision_id"] == new_revision
+    assert changed["canonical_document"] == expected
+    assert changed["canonical_images"] == row["canonical_images"]
+    assert changed["model_metadata"][DIAGNOSTIC_WORDING_CHECKPOINT]["evidence"]["wording_edits"] == wording_edits
+    assert any(item["path"] == diagnostic_path and item["text"] == diagnostic_revision for item in revised["replacements"])
+    assert _state(runtime)["canonical_article_rewrite_attempts"] == before_diagnostic["canonical_article_rewrite_attempts"]
+    with pytest.raises(ValueError, match="^RETAINED_DIAGNOSTIC_WORDING_REPAIR_STALE$"):
+        repair_retained_diagnostic_wording(runtime.repo, runtime.article_id, **diagnostic_pins)
 
 
 def test_retained_notes_publish_exact_successor_and_replay_after_descriptor_update(runtime, archived_notes, tmp_path, capsys):
