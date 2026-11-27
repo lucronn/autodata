@@ -1,5 +1,6 @@
 """Test procedure-fact binding through normal automatic rewrite entry points."""
 
+from copy import deepcopy
 from hashlib import sha256
 import json
 
@@ -7,9 +8,10 @@ import pytest
 
 from autodata_ingestion import procedure_rewrite as rewrite
 from autodata_ingestion import procedure_rewrite_auto as auto
-from autodata_ingestion.article_lifecycle_types import digest_json
+from autodata_ingestion.article_lifecycle_types import SOURCE_BOUND_CORRECTION_PROFILE, digest_json
 from autodata_ingestion.procedure_rewrite_full import render_full
 from autodata_ingestion.procedure_rewrite_recovery import FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD, recover_first_draft
+from autodata_ingestion.retained_note_label_repair import _restore_procedure_condition_reply
 
 from test_procedure_rewrite_auto import _scoped_prose_response, _scoped_prose_source
 from test_procedure_rewrite_full import Draft, document, response
@@ -33,6 +35,34 @@ _IDLE = (
 )
 _ACTION = "REWRITE_ACTION_MUTATION"
 _QUALIFIER = "REWRITE_QUALIFIER_MUTATION"
+
+
+def test_archived_repair_restores_only_an_exact_authored_condition():
+    condition = "For vehicles equipped with a rear access cover, remove the access panel and its bracket."
+    rewritten = "On vehicles with a rear access cover, take off the access panel and its bracket."
+    following = "Install the fixture cap. Continue until it contacts the positive stop."
+    source = document(condition, _CONTACT)
+    archived_reply = response(rewritten, following)
+    version = auto._PROCEDURE_FIDELITY_PROMPT_VERSION
+    old_document = render_full(
+        source, archived_reply, profile_version=SOURCE_BOUND_CORRECTION_PROFILE, include_cell_blocks=True,
+    )
+    original_reply = deepcopy(archived_reply)
+
+    repaired, validation, reply, paths = _restore_procedure_condition_reply(
+        source, source, old_document, archived_reply, prompt_version=version,
+    )
+    assert validation.passed
+    assert paths == ["/blocks/0/text"]
+    assert repaired["blocks"][1]["text"] == condition
+    assert repaired["blocks"][2] == old_document["blocks"][2]
+    assert reply["replacements"][0]["action"] == "retain"
+    assert reply["replacements"][1] == archived_reply["replacements"][1]
+    assert archived_reply == original_reply
+
+    changed_source = document(condition.replace("rear", "front"), _CONTACT)
+    with pytest.raises(ValueError, match="^RETAINED_PROCEDURE_CONDITION_REPAIR_INVALID$"):
+        _restore_procedure_condition_reply(source, changed_source, old_document, archived_reply, prompt_version=version)
 
 
 def _draft(layout, original, wording, *, profile):

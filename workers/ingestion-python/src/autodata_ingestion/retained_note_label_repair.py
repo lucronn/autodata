@@ -17,6 +17,7 @@ from .article_lifecycle_types import (
     RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE as CONDITIONAL_PROFILE,
     RETAINED_NOTE_LABEL_REPAIR_PROFILE as PROFILE,
     RETAINED_OPTIONAL_OBSERVATION_REPAIR_PROFILE as OPTIONAL_OBSERVATION_PROFILE,
+    RETAINED_PROCEDURE_CONDITION_REPAIR_PROFILE as PROCEDURE_CONDITION_PROFILE,
     RETAINED_ROTATION_REMOVAL_REPAIR_PROFILE as ROTATION_REMOVAL_PROFILE,
     RETAINED_SPACED_ROTATION_REPAIR_PROFILE as SPACED_ROTATION_PROFILE,
     SOURCE_BOUND_CORRECTION_PROFILE, ValidationResult,
@@ -24,8 +25,9 @@ from .article_lifecycle_types import (
 )
 from .authored_procedure_scope import correct_authored_procedure_step
 from .procedure_rewrite_auto import (
-    _OPTIONAL_OBSERVATION_PROMPT_VERSION, _ROTATION_REMOVAL_PROMPT_VERSION, _SPACED_ROTATION_PROMPT_VERSION,
-    authored_note_prefix, recast_authored_rotation_removal, recast_optional_observation,
+    _OPTIONAL_OBSERVATION_PROMPT_VERSION, _PROCEDURE_FIDELITY_PROMPT_VERSION, _ROTATION_REMOVAL_PROMPT_VERSION,
+    _SPACED_ROTATION_PROMPT_VERSION, _auto_prompt_payload_v62, _procedure_condition,
+    authored_note_prefix, failed_rewrite_passages, recast_authored_rotation_removal, recast_optional_observation,
     recast_spaced_rotation_removal, render_auto, require_current_publication_checks, validate_auto,
 )
 from .procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
@@ -62,6 +64,10 @@ _OPTIONAL_OBSERVATION_INVALID = "RETAINED_OPTIONAL_OBSERVATION_REPAIR_INVALID"
 AUTHORED_PROCEDURE_METHOD = "retained-authored-procedure-archived-reply-repair-v1"
 AUTHORED_PROCEDURE_CHECKPOINT = "retained_authored_procedure_repair"
 _AUTHORED_PROCEDURE_INVALID = "RETAINED_AUTHORED_PROCEDURE_REPAIR_INVALID"
+PROCEDURE_CONDITION_METHOD = "retained-procedure-condition-archived-reply-repair-v1"
+PROCEDURE_CONDITION_CHECKPOINT = "retained_procedure_condition_repair"
+_PROCEDURE_CONDITION_INVALID = "RETAINED_PROCEDURE_CONDITION_REPAIR_INVALID"
+_CONDITION_RETENTION_REASON = "Preserve the exact authored equipment or timing condition."
 _HASH = re.compile(r"[a-f0-9]{64}")
 
 
@@ -160,6 +166,12 @@ def _restore_authored_procedure_reply(
         changed[path] = published
     if not changed:
         raise ValueError(invalid)
+    return _validate_restored_reply(source, old_document, reply, changed, invalid,
+                                    prompt_version=prompt_version, verified_color_notes=verified_color_notes)
+
+
+def _validate_restored_reply(source, old_document, reply, changed, invalid, *, prompt_version,
+                             verified_color_notes=False):
     options = dict(prompt_version=prompt_version, profile_version=SOURCE_BOUND_CORRECTION_PROFILE,
                    verified_color_notes=verified_color_notes)
     document = render_auto(source, reply, **options)
@@ -170,6 +182,33 @@ def _restore_authored_procedure_reply(
     if not validation.passed or reverted != old_document:
         raise ValueError(invalid)
     return document, validation, reply, sorted(changed)
+
+
+def _restore_procedure_condition_reply(source, retained, old_document, old_reply, *, prompt_version):
+    prompt = _auto_prompt_payload_v62(source, context={})
+    if prompt["prompt_version"] != prompt_version:
+        raise ValueError(_PROCEDURE_CONDITION_INVALID)
+    failures = {finding["path"] for finding in failed_rewrite_passages(source, old_reply, prompt_version=prompt_version)
+                if finding["code"] == "REWRITE_QUALIFIER_MUTATION"}
+    eligible = {slot["path"] for slot in prompt["slots"]
+                if slot["path"] in failures and slot["required_action"] == "retain"
+                and _procedure_condition(slot["text"], fuel_prerequisites=True) is None}
+    if not eligible:
+        raise ValueError(_PROCEDURE_CONDITION_INVALID)
+    reply = deepcopy(old_reply)
+    old_leaves = {"blocks": old_document["blocks"][1:]}
+    changed = {}
+    for row in reply["replacements"]:
+        path = row["path"]
+        if path not in eligible:
+            continue
+        original = _get(source, path)
+        if row["action"] != "rewrite" or original != _get(retained, path) or row["text"] != _get(old_leaves, path):
+            raise ValueError(_PROCEDURE_CONDITION_INVALID)
+        changed[path] = row["text"]
+        row.update(action="retain", text=original, reason=_CONDITION_RETENTION_REASON)
+    return _validate_restored_reply(source, old_document, reply, changed, _PROCEDURE_CONDITION_INVALID,
+                                    prompt_version=prompt_version)
 
 
 def _correct_spaced_rotation(original, published):
@@ -223,6 +262,12 @@ _AUTHORED_PROCEDURE = _Repair(
     _AUTHORED_PROCEDURE_INVALID, "RETAINED_AUTHORED_PROCEDURE_REPAIR_STALE",
     _restore_authored_procedure_reply, provider=None,
     prior_profiles=(SOURCE_BOUND_CORRECTION_PROFILE, CONDITIONAL_PROFILE),
+)
+_PROCEDURE_CONDITION = _Repair(
+    PROCEDURE_CONDITION_PROFILE, PROCEDURE_CONDITION_METHOD, PROCEDURE_CONDITION_CHECKPOINT, (AUTHORED_PROCEDURE_METHOD,),
+    _PROCEDURE_CONDITION_INVALID, "RETAINED_PROCEDURE_CONDITION_REPAIR_STALE",
+    _restore_procedure_condition_reply, successor_guard=_PROCEDURE_FIDELITY_PROMPT_VERSION,
+    prior_profiles=(AUTHORED_PROCEDURE_PROFILE,),
 )
 
 
@@ -285,7 +330,7 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
         or prior["rewrite_result_hash"] != old_hash):
         raise ValueError(repair.stale)
     bound_source = _source_evidence(cur, article, source_id, descriptor_id, lock=lock)
-    if lock and repair in (_ROTATION_REMOVAL, _AUTHORED_PROCEDURE, _SPACED_ROTATION):
+    if lock and repair in (_ROTATION_REMOVAL, _AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION):
         _require_source_bound_rewrite_rights(cur, prior_job, article)
     prior_profile = prior_job["rewrite_profile_version"]
     prior, review, decision, attempt, archived_reply, version, _ = _publication_evidence_for_revision(
@@ -308,7 +353,7 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
             WHERE canonical_article_revision_id=%s LIMIT 1""", (prior_revision_id,)).fetchone():
             raise ValueError(repair.invalid)
         archive = {"archived_order_evidence_hash": digest_json(prior["model_metadata"])}
-    elif repair in (_AUTHORED_PROCEDURE, _SPACED_ROTATION):
+    elif repair in (_AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION):
         if cur.execute("""SELECT 1 FROM canonical_article_link_bindings WHERE canonical_article_revision_id=%s
             UNION ALL SELECT 1 FROM canonical_article_inline_link_bindings WHERE canonical_article_revision_id=%s LIMIT 1""",
             (prior_revision_id, prior_revision_id)).fetchone():
@@ -380,6 +425,10 @@ def resolve_retained_optional_observation_repair(cur, job, article, candidate, *
 def resolve_retained_authored_procedure_repair(cur, job, article, candidate, *, publishing=False):
     """Replay the scoped repair from the original source and previous reply."""
     return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_AUTHORED_PROCEDURE)
+
+
+def resolve_retained_procedure_condition_repair(cur, job, article, candidate, *, publishing=False):
+    return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_PROCEDURE_CONDITION)
 
 
 def _resolve_repair(cur, job, article, candidate, *, publishing, repair):
@@ -501,6 +550,19 @@ def repair_retained_authored_procedure(
         expected_descriptor_snapshot_id=expected_descriptor_snapshot_id,
         expected_published_revision_id=expected_published_revision_id, expected_published_hash=expected_published_hash,
         expected_repaired_hash=expected_repaired_hash, actor=actor, reason=reason, hooks=hooks, repair=_AUTHORED_PROCEDURE,
+    )
+
+
+def repair_retained_procedure_condition(
+    repo, article_id, *, expected_job_id, expected_source_revision_id, expected_descriptor_snapshot_id,
+    expected_published_revision_id, expected_published_hash, expected_repaired_hash, actor, reason, hooks=None,
+):
+    """Republish the archived rewrite with its original procedure conditions."""
+    return _repair_retained_note(
+        repo, article_id, expected_job_id=expected_job_id, expected_source_revision_id=expected_source_revision_id,
+        expected_descriptor_snapshot_id=expected_descriptor_snapshot_id, expected_published_revision_id=expected_published_revision_id,
+        expected_published_hash=expected_published_hash, expected_repaired_hash=expected_repaired_hash,
+        actor=actor, reason=reason, hooks=hooks, repair=_PROCEDURE_CONDITION,
     )
 
 
