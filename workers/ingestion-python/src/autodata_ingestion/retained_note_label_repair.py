@@ -14,9 +14,11 @@ from psycopg.types.json import Jsonb
 
 from .article_document import project_ordered_document
 from .article_lifecycle_types import (
+    AUTOMATIC_REWRITE_PROFILE,
     RETAINED_AUTHORED_PROCEDURE_REPAIR_PROFILE as AUTHORED_PROCEDURE_PROFILE,
     RETAINED_CONDITIONAL_NOTE_REPAIR_PROFILE as CONDITIONAL_PROFILE,
     RETAINED_DIAGNOSTIC_WORDING_REPAIR_PROFILE as DIAGNOSTIC_WORDING_PROFILE,
+    RETAINED_FILTER_PREPARATION_REPAIR_PROFILE as FILTER_PREPARATION_PROFILE,
     RETAINED_NOTE_LABEL_REPAIR_PROFILE as PROFILE,
     RETAINED_OPTIONAL_OBSERVATION_REPAIR_PROFILE as OPTIONAL_OBSERVATION_PROFILE,
     RETAINED_PROCEDURE_CONDITION_REPAIR_PROFILE as PROCEDURE_CONDITION_PROFILE,
@@ -35,15 +37,17 @@ from .authored_procedure_scope import (
     correct_authored_procedure_step, require_authored_procedure_scope,
 )
 from .procedure_rewrite_auto import (
+    _FILTER_PREPARATION_PROMPT_VERSION,
     _OPTIONAL_OBSERVATION_PROMPT_VERSION, _PROCEDURE_FIDELITY_PROMPT_VERSION, _ROTATION_REMOVAL_PROMPT_VERSION,
     _SHORT_ACTION_PROMPT_VERSION, _SPACED_ROTATION_PROMPT_VERSION, _auto_prompt_payload_v62, _procedure_condition,
-    authored_note_prefix, failed_rewrite_passages, recast_authored_rotation_removal, recast_optional_observation,
+    authored_note_prefix, failed_rewrite_passages, recast_authored_rotation_removal,
+    recast_oil_filter_preparation, recast_optional_observation,
     recast_short_procedure, recast_spaced_rotation_removal, render_auto, require_current_publication_checks, validate_auto,
 )
 from .procedure_rewrite_correction import ARCHIVED_FIRST_DRAFT_METHOD
 from .procedure_rewrite_fidelity import recast_conditional_color_note
 from .procedure_rewrite_full import _get, _set
-from .procedure_rewrite_recovery import RECOVERY_METHOD
+from .procedure_rewrite_recovery import FIRST_DRAFT_COOLING_RECOVERY_METHOD, RECOVERY_METHOD
 from .procedure_rewrite_sentence_correction import (
     SENTENCE_CORRECTION_METHOD, SENTENCE_INSTRUCTION_RECOVERY_METHOD, SENTENCE_TOOL_RECOVERY_METHOD,
 )
@@ -82,6 +86,9 @@ _PROCEDURE_CONDITION_INVALID = "RETAINED_PROCEDURE_CONDITION_REPAIR_INVALID"
 SHORT_ACTION_METHOD = "retained-short-action-archived-reply-repair-v1"
 SHORT_ACTION_CHECKPOINT = "retained_short_action_repair"
 _SHORT_ACTION_INVALID = "RETAINED_SHORT_ACTION_REPAIR_INVALID"
+FILTER_PREPARATION_METHOD = "retained-filter-preparation-archived-reply-repair-v1"
+FILTER_PREPARATION_CHECKPOINT = "retained_filter_preparation_repair"
+_FILTER_PREPARATION_INVALID = "RETAINED_FILTER_PREPARATION_REPAIR_INVALID"
 DIAGNOSTIC_WORDING_METHOD = "retained-diagnostic-wording-archived-reply-repair-v1"
 DIAGNOSTIC_WORDING_CHECKPOINT = "retained_diagnostic_wording_repair"
 _DIAGNOSTIC_WORDING_INVALID = "RETAINED_DIAGNOSTIC_WORDING_REPAIR_INVALID"
@@ -134,7 +141,7 @@ def _restore_reply(source, retained, old_document, old_reply, *, prompt_version)
 
 
 def _recast_reply(source, retained, old_document, old_reply, *, prompt_version, recast, invalid,
-                  verified_color_notes=False):
+                  verified_color_notes=False, profile_version=SOURCE_BOUND_CORRECTION_PROFILE):
     reply = deepcopy(old_reply)
     old_leaves = {"blocks": old_document["blocks"][1:]}
     changed = {}
@@ -154,7 +161,7 @@ def _recast_reply(source, retained, old_document, old_reply, *, prompt_version, 
         raise ValueError(invalid)
 
     options = dict(
-        prompt_version=prompt_version, profile_version=SOURCE_BOUND_CORRECTION_PROFILE,
+        prompt_version=prompt_version, profile_version=profile_version,
         verified_color_notes=verified_color_notes,
     )
     document = render_auto(source, reply, **options)
@@ -345,6 +352,13 @@ _SHORT_ACTIONS = _Repair(
     successor_guard=_SHORT_ACTION_PROMPT_VERSION,
     prior_profiles=(SOURCE_BOUND_CORRECTION_PROFILE, AUTHORED_PROCEDURE_PROFILE, PROFILE),
 )
+_FILTER_PREPARATION = _Repair(
+    FILTER_PREPARATION_PROFILE, FILTER_PREPARATION_METHOD, FILTER_PREPARATION_CHECKPOINT,
+    (FIRST_DRAFT_COOLING_RECOVERY_METHOD,), _FILTER_PREPARATION_INVALID,
+    "RETAINED_FILTER_PREPARATION_REPAIR_STALE",
+    partial(_recast_reply, recast=recast_oil_filter_preparation, invalid=_FILTER_PREPARATION_INVALID),
+    successor_guard=_FILTER_PREPARATION_PROMPT_VERSION, prior_profiles=(AUTOMATIC_REWRITE_PROFILE,),
+)
 _DIAGNOSTIC_WORDING = _Repair(
     DIAGNOSTIC_WORDING_PROFILE, DIAGNOSTIC_WORDING_METHOD, DIAGNOSTIC_WORDING_CHECKPOINT,
     (BANKONE_DEFINITION_METHOD, REQUIRED_ACTION_METHOD, PROCEDURE_CONDITION_METHOD), _DIAGNOSTIC_WORDING_INVALID,
@@ -441,11 +455,15 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
     # The layout publisher has its own capture proof, replayed under lock below.
     if lock and not direct_bankone_layout and (wording_repair or repair in (
         _ROTATION_REMOVAL, _AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION, _SHORT_ACTIONS,
+        _FILTER_PREPARATION,
     )):
         _require_source_bound_rewrite_rights(cur, prior_job, article)
     prior_profile = prior_job["rewrite_profile_version"]
+    binding = SimpleNamespace(source_revision_id=source_id)
+    if repair is _FILTER_PREPARATION:
+        binding.context = SimpleNamespace(vehicle=bound_source["captured_context"]["vehicle"])
     prior, review, decision, attempt, archived_reply, version, _ = _publication_evidence_for_revision(
-        cur, article, SimpleNamespace(source_revision_id=source_id), prior_revision_id,
+        cur, article, binding, prior_revision_id,
         fixture_mode=False, lock=lock, expected_profile=prior_profile,
     )
     if review is not None or decision != "UNREVIEWED" or attempt is None:
@@ -464,7 +482,9 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
             WHERE canonical_article_revision_id=%s LIMIT 1""", (prior_revision_id,)).fetchone():
             raise ValueError(repair.invalid)
         archive = {"archived_order_evidence_hash": digest_json(prior["model_metadata"])}
-    elif wording_repair or repair in (_AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION, _SHORT_ACTIONS):
+    elif wording_repair or repair in (
+        _AUTHORED_PROCEDURE, _SPACED_ROTATION, _PROCEDURE_CONDITION, _SHORT_ACTIONS, _FILTER_PREPARATION,
+    ):
         if cur.execute("""SELECT 1 FROM canonical_article_link_bindings WHERE canonical_article_revision_id=%s
             AND NOT %s
             UNION ALL SELECT 1 FROM canonical_article_inline_link_bindings WHERE canonical_article_revision_id=%s LIMIT 1""",
@@ -479,7 +499,7 @@ def _rebuild(cur, article, prior_job, source_id, descriptor_id, prior_revision_i
     options = {"verified_color_notes": prior_profile == CONDITIONAL_PROFILE} if repair is _AUTHORED_PROCEDURE else {}
     if wording_repair:
         options["wording_edits"] = wording_edits
-    if service_wording:
+    if service_wording or repair is _FILTER_PREPARATION:
         options["profile_version"] = prior["validation_report"]["profile_version"]
     bankone_structure = None
     if direct_bankone_layout:
@@ -577,6 +597,10 @@ def resolve_retained_procedure_condition_repair(cur, job, article, candidate, *,
 def resolve_retained_short_action_repair(cur, job, article, candidate, *, publishing=False):
     """Rebuild the same two-action wording from the pinned archive."""
     return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_SHORT_ACTIONS)
+
+
+def resolve_retained_filter_preparation_repair(cur, job, article, candidate, *, publishing=False):
+    return _resolve_repair(cur, job, article, candidate, publishing=publishing, repair=_FILTER_PREPARATION)
 
 
 def resolve_retained_diagnostic_wording_repair(cur, job, article, candidate, *, publishing=False):
@@ -770,6 +794,19 @@ def repair_retained_service_wording(
         expected_descriptor_snapshot_id=expected_descriptor_snapshot_id, expected_published_revision_id=expected_published_revision_id,
         expected_published_hash=expected_published_hash, expected_repaired_hash=expected_repaired_hash,
         actor=actor, reason=reason, hooks=hooks, repair=repair, wording_edits=wording_edits,
+    )
+
+
+def repair_retained_filter_preparation(
+    repo, article_id, *, expected_job_id, expected_source_revision_id, expected_descriptor_snapshot_id,
+    expected_published_revision_id, expected_published_hash, expected_repaired_hash, actor, reason, hooks=None,
+):
+    """Publish the validated oil-filter wording from the exact archived reply."""
+    return _repair_retained_note(
+        repo, article_id, expected_job_id=expected_job_id, expected_source_revision_id=expected_source_revision_id,
+        expected_descriptor_snapshot_id=expected_descriptor_snapshot_id, expected_published_revision_id=expected_published_revision_id,
+        expected_published_hash=expected_published_hash, expected_repaired_hash=expected_repaired_hash,
+        actor=actor, reason=reason, hooks=hooks, repair=_FILTER_PREPARATION,
     )
 
 
