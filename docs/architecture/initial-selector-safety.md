@@ -48,11 +48,10 @@ enumerating that scope, before the next provider dispatch. A failed or expired
 remaining traversal leaves verified partial options readable. It cannot mark
 the scope complete.
 
-Parent persistence checks remaining time before connection, writes and
-commit, reserves connect/commit time, and uses one-second connect/statement
-and 250 ms lock timeouts. These driver/server limits are distinct from the hard
-owned-provider deadline; database cleanup is not claimed to have an owned
-process deadline. Makes/models store sparse rows and provenance in their
+Parent persistence has a two-second allowance beyond the supplier deadline
+for evidence the child delivered on time. It checks remaining time before
+connection, writes and commit and uses one-second connect/statement and 250 ms
+lock timeouts. Makes/models store sparse rows and provenance in their
 normal scoped marker: version 0 remains partial, version 1 proves complete.
 Progress writes leave an existing complete scope intact. These choices do
 not enter full vehicle/S3 evidence persistence.
