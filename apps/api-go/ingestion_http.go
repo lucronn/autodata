@@ -24,9 +24,13 @@ const (
 	catalogAdmissionRunAllowance  = 24 * time.Second
 )
 
-// Leave a single waiting slot across selectors on this API process. The
-// ingestion worker still controls supplier admission and dispatch pacing.
-var catalogAdmissionWaiter = make(chan struct{}, 1)
+// A make refresh can still be pending after its picker has shown saved
+// choices. Reserve model waiting slots so it cannot fill their queue.
+// The worker still admits one job at a time and controls dispatch pacing.
+var (
+	catalogMakeAdmissionWaiter   = make(chan struct{}, 1)
+	catalogModelAdmissionWaiters = make(chan struct{}, 2)
+)
 
 type IngestionClient interface {
 	Do(*http.Request, string, []byte, string) (int, []byte, error)
@@ -165,9 +169,13 @@ func (s *Server) ensureCatalogHydrated(request *http.Request, payload map[string
 	if err != nil || retryAfter == 0 {
 		return err
 	}
+	waiters := catalogMakeAdmissionWaiter
+	if scope == "models" {
+		waiters = catalogModelAdmissionWaiters
+	}
 	select {
-	case catalogAdmissionWaiter <- struct{}{}:
-		defer func() { <-catalogAdmissionWaiter }()
+	case waiters <- struct{}{}:
+		defer func() { <-waiters }()
 	default:
 		return nil
 	}
