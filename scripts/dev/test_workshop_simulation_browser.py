@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "workers/ingestion-python/tests"))
 
 from autodata_ingestion.commerce_service import configured_commerce
-from lifecycle_support import LifecycleRuntime, fresh_database, seed_configuration
+from lifecycle_support import LifecycleRuntime, fresh_database, seed_configuration, seed_vehicle
 from test_catalog_api_integration import Bridge, GO_NAMES, serve
 from test_paid_catalog_api_integration import configure_scoped_runtime
 from workshop_browser_smoke import API_CASES, APIFixture, api_control, api_measure, api_signin, fixture_origin
@@ -331,6 +331,98 @@ async def verify_labelled_market_picker(page, origin, misplaced, verified):
     await expect(page.locator("#purchase")).to_be_hidden()
 
 
+def authored_model_index_fixture(runtime, scope):
+    from threading import Event, Thread
+
+    from psycopg.types.json import Jsonb
+    from autodata_ingestion.article_lifecycle_types import ArticleKey, article_id
+    from autodata_ingestion.catalog_index_worker import run_catalog_worker
+
+    vehicle = seed_vehicle(runtime.repo)
+    configuration = seed_configuration(runtime.repo, vehicle, engine_displacement_l=6.0)
+    make, model, authored = "Cadillac Truck", "Escalade Esv Awd", "Escalade/ESV AWD"
+    ref, document = "vehicle:fixture-cadillac-awd-6", "cold-procedure"
+    title = "Fixture pump service"
+    with runtime.repo.connect() as conn:
+        conn.execute("UPDATE vehicles SET model_year=2005,make=%s,model=%s WHERE vehicle_id=%s",
+                     (make, model, vehicle))
+        conn.execute("""UPDATE vehicle_identity_bases SET model_year=2005,make=%s,model=%s
+                        WHERE vehicle_id=%s""", (make, model, vehicle))
+        conn.execute("""INSERT INTO vehicle_identity_observations
+            (observation_key,vehicle_id,vehicle_identity_base_id,vehicle_configuration_id,source_snapshot_id,
+             extraction_evidence_id,source_locator,evidence_locator,evidence_confidence,reviewer_state,
+             raw_observation,canonical_observation,resolution_status)
+            SELECT %s,vehicle_id,vehicle_identity_base_id,vehicle_configuration_id,source_snapshot_id,
+                   extraction_evidence_id,'fixture','fixture',1,'pending',%s,%s,'matched'
+              FROM vehicle_configurations WHERE vehicle_configuration_id=%s""",
+            (uuid4().hex, Jsonb({"model": authored, "provider_mappings": [
+                {"provider": "autoapitwo", "entity_type": "car", "provider_id": ref},
+            ]}), Jsonb({"region": "US"}), configuration))
+        assert conn.execute(
+            "SELECT count(*) AS n FROM catalog_article_provider_scopes WHERE vehicle_configuration_id=%s",
+            (configuration,),
+        ).fetchone()["n"] == 0
+    for server in runtime.servers.values():
+        server.candidates = []
+    banktwo = runtime.servers["banktwo"]
+    banktwo.pages = [
+        {"complete": False, "next_cursor": "1", "articles": [
+            {"opaque_ref": document, "title": title, "resource_ref": "cold-body",
+             "asset_resource_refs": ["figure"]},
+        ]},
+        {"complete": True, "articles": [{"opaque_ref": "later-entry", "title": "Related service",
+                                        "resource_ref": "other-body"}]},
+    ]
+    banktwo.body(json.dumps({"blocks": [
+        {"kind": "warning", "text": "Do not reuse the seal."},
+        {"kind": "step", "number": 1, "text": "Remove the pump.",
+         "images": [{"asset_resource_ref": "figure", "alt": "Pump figure"}]},
+        {"kind": "step", "number": 2, "text": "Install the replacement."},
+    ]}).encode(), "application/json", ref="cold-body", assets=["figure"])
+    pending_page, allow_page = Event(), Event()
+    runtime.stack.callback(allow_page.set)
+    original_response = banktwo.response
+    model_queries = []
+
+    def response(path, payload=None):
+        parsed = urlsplit(path)
+        if parsed.path == "/v1/catalog/configurations":
+            query = parse_qs(parsed.query)
+            if query.get("year") != ["2005"] or query.get("make") != [make]:
+                return original_response(path, payload)
+            model_queries.extend(query["model"])
+            rows = [{"opaque_ref": ref, "year": 2005, "make": make, "model": authored, "region": "US",
+                     "drivetrain": "AWD", "label": "V8-6.0L VIN N"}] if query["model"] == [authored] else []
+            return 200, banktwo.envelope(scope="configurations", complete=True, items=rows)
+        if parsed.path.endswith("/articles") and parse_qs(parsed.query).get("cursor") == ["1"]:
+            pending_page.set()
+            assert allow_page.wait(18), "first page did not reach the browser"
+        return original_response(path, payload)
+
+    banktwo.response = response
+    stop = Event()
+    preparation = Thread(target=run_catalog_worker, args=(runtime.repo,), kwargs={
+        "registry": runtime.registry, "object_store": runtime.objects, "prepare_orders": True, "stop": stop,
+    }, name="workshop-catalog-preparation-fixture", daemon=True)
+
+    def stop_preparation():
+        stop.set()
+        allow_page.set()
+        preparation.join(5)
+        assert not preparation.is_alive()
+
+    runtime.stack.callback(stop_preparation)
+    preparation.start()
+    identifier = article_id(ArticleKey("banktwo", vehicle, configuration, ref, document))
+    scope.update(configuration=str(configuration), article=str(identifier), authored_index={
+        "vehicle": vehicle, "configuration": configuration, "repository": runtime.repo, "title": title,
+        "model": authored, "queries": model_queries, "pending": pending_page, "release": allow_page,
+        "body_sha": sha256(banktwo.resources["cold-body"][0]).hexdigest(),
+        "figure_sha": sha256(banktwo.resources["figure"][0]).hexdigest(),
+    })
+    return scope
+
+
 async def exercise_simulated_payment(origin, scope, customer_account, repair=None, table_variant=None, table_repair=None):
     from playwright.async_api import async_playwright, expect
 
@@ -340,6 +432,10 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
     detail = f"{origin}/v1/catalog/vehicles/{configuration}/articles/{article}?region=US"
     quote = f"{origin}/v1/workshop/quote?configuration_id={configuration}&region=US"
     checkout_path = "/v1/workshop/checkout-sessions"
+    cold_index = scope.get("authored_index")
+    picker_values = (("year", "2005"), ("make", "cadillac-truck"), ("model", "escalade-esv-awd")) if cold_index else (
+        ("year", "2024"), ("make", "example"), ("model", "car"),
+    )
 
     async with async_playwright() as playwright:
         engine = os.environ.get("AUTODATA_WORKSHOP_SIMULATION_ENGINE", "chromium")
@@ -373,12 +469,12 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             if market:
                 await verify_labelled_market_picker(page, origin, *market)
             if repair is None and table_variant is None:
+                picker_started = time.monotonic()
                 await page.goto(f"{origin}/workshop/")
-                for field, value in (("year", "2024"), ("make", "example"), ("model", "car"),
-                                     ("configuration", configuration)):
+                for field, value in (*picker_values, ("configuration", configuration)):
                     await page.locator(f"#{field}").select_option(value)
-                expected = {"year": ["2024"], "make": ["example"], "model": ["car"],
-                            "configuration": [configuration], "region": ["US"]}
+                expected = {field: [value] for field, value in picker_values}
+                expected.update(configuration=[configuration], region=["US"])
                 assert parse_qs(urlsplit(page.url).query) == expected
                 await page.go_back()
                 await expect(page.locator("#configuration")).to_have_value("")
@@ -393,6 +489,11 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             await expect(page.locator("#purchase-message")).to_have_text(
                 "Sign in with Google to simulate purchase. No payment is collected."
             )
+            if cold_index:
+                await expect(page.locator("#purchase-selection")).to_have_text(
+                    "2005 / Cadillac Truck / Escalade Esv Awd / 6.0 L / US"
+                )
+                picker_ms = round((time.monotonic() - picker_started) * 1000)
             await api_signin(page)
             if market:
                 misplaced, verified = market
@@ -430,6 +531,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             before = await api_measure(owner, origin)
             assert before["workshop_orders"] == before["entitlements"] == 0
 
+            purchase_started = time.monotonic()
             async with page.expect_response(
                 lambda response: response.request.method == "POST"
                 and urlsplit(response.url).path == checkout_path,
@@ -446,20 +548,55 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             }
             assert UUID(request.headers["idempotency-key"])
             result = await checkout.json()
+            checkout_ms = round((time.monotonic() - purchase_started) * 1000)
             assert result["state"] == "owned"
             assert result["configuration_id"] == configuration and result["region"] == "US"
             assert result["library_item_id"] == result["order_id"] and not result.get("checkout_url")
             assert urlsplit(page.url).path.rstrip("/") == "/workshop"
 
+            library_started = time.monotonic()
             await page.locator("#my-vehicles").click()
             await expect(page.locator("#library-items > li")).to_have_count(1)
+            library_ms = round((time.monotonic() - library_started) * 1000)
+            reload_started = time.monotonic()
             await page.reload()
             await expect(page.locator("#library-items > li")).to_have_count(1)
-            await expect(page.locator("#library-items h3")).to_contain_text("Paid selected")
+            library_reload_ms = round((time.monotonic() - reload_started) * 1000)
+            await expect(page.locator("#library-items h3")).to_contain_text(
+                "Escalade" if cold_index else "Paid selected"
+            )
             if repair is None and table_variant is None:
                 await api_control(owner, origin, "control/start-workers")
+            index_started = time.monotonic()
             await page.get_by_role("button", name="Open articles", exact=True).click()
-            await page.locator(f'#articles a[href*="{article}"]').click()
+            article_link = page.locator(f'#articles a[href*="{article}"]')
+            if cold_index:
+                try:
+                    await expect(article_link).to_contain_text(cold_index["title"], timeout=15000)
+                except AssertionError:
+                    with cold_index["repository"].connect() as conn:
+                        states = conn.execute("""SELECT s.provider_slug,s.status,s.row_count,s.error_code,j.status AS job_status
+                            FROM catalog_article_provider_scopes s LEFT JOIN source_fetch_jobs j
+                                ON j.source_fetch_job_id=s.current_job_id
+                            WHERE s.vehicle_configuration_id=%s ORDER BY s.provider_slug""",
+                            (cold_index["configuration"],)).fetchall()
+                    print(json.dumps({"cold_index_states": states, "fixture_model_queries": cold_index["queries"],
+                                      "second_page_requested": cold_index["pending"].is_set()}), flush=True)
+                    raise
+                first_index_ms = round((time.monotonic() - index_started) * 1000)
+                assert await asyncio.to_thread(cold_index["pending"].wait, 3)
+                assert cold_index["queries"] == [cold_index["model"]]
+                with cold_index["repository"].connect() as conn:
+                    rows = conn.execute("""SELECT s.status,s.row_count,p.complete,b.adapter_name
+                        FROM catalog_article_provider_scopes s
+                        JOIN catalog_article_index_pages p USING(catalog_provider_scope_id)
+                        JOIN source_snapshots b ON b.source_snapshot_id=p.source_snapshot_id
+                        WHERE s.vehicle_configuration_id=%s AND s.provider_slug='banktwo'""",
+                        (cold_index["configuration"],)).fetchall()
+                    assert rows == [{"status": "running", "row_count": 1, "complete": False, "adapter_name": "banktwo"}]
+                cold_index["release"].set()
+            article_started = time.monotonic()
+            await article_link.click()
             article_kind = "Stored source" if table_variant == "source-table" else "Workshop article"
             await expect(page.locator("#article-kind")).to_have_text(article_kind, timeout=18000)
             if repair is not None:
@@ -496,12 +633,69 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             image = page.locator("#article-content img").first
             await expect(image).to_be_visible()
             assert await image.evaluate("(node) => node.decode().then(() => node.naturalWidth > 0)")
+            reader_ms = round((time.monotonic() - article_started) * 1000)
             assert (await owner.request.get(detail)).status == 200
             media = await image.evaluate("(node) => node.currentSrc")
             assert urlsplit(media).netloc == urlsplit(origin).netloc
             assert urlsplit(media).path.startswith("/v1/catalog/images/v2.")
             asset = await owner.request.get(media)
             assert asset.status == 200 and asset.headers["content-type"].startswith("image/png")
+            if cold_index:
+                assert sha256(await asset.body()).hexdigest() == cold_index["figure_sha"]
+                await expect(page.locator("#article-content")).to_contain_text("Fit the replacement unit.")
+                await expect(page.locator("#article-content")).to_contain_text("Do not reuse the seal.")
+                await expect(page.locator("#article-content")).not_to_contain_text("Remove the pump.")
+                rendered = await page.locator("#article-content").inner_text()
+                assert rendered.index("Do not reuse the seal.") < rendered.index("Take off the pump.") < rendered.index("Fit the replacement unit.")
+                figure_step = "(node) => node.closest('.procedure-step, li')?.textContent ?? ''"
+                assert "Take off the pump." in await image.evaluate(figure_step)
+                await page.locator("#open-original").click()
+                await expect(page.locator("#source-review-frame")).to_contain_text("Remove the pump.")
+                await expect(page.locator("#source-review-frame")).to_contain_text("Do not reuse the seal.")
+                await expect(page.locator("#reference-data")).to_contain_text(cold_index["body_sha"])
+                source_image = page.locator("#source-review-frame img").first
+                assert await source_image.evaluate("(img) => img.decode().then(() => img.naturalWidth > 0)")
+                assert "Remove the pump." in await source_image.evaluate(figure_step)
+                original_image = await owner.request.get(await source_image.evaluate("(img) => img.currentSrc"))
+                assert original_image.ok and sha256(await original_image.body()).hexdigest() == cold_index["figure_sha"]
+                async def wait_complete():
+                    for _ in range(150):
+                        with cold_index["repository"].connect() as conn:
+                            finished = conn.execute("""SELECT status,row_count FROM catalog_article_provider_scopes
+                                WHERE vehicle_configuration_id=%s AND provider_slug='banktwo'""",
+                                (cold_index["configuration"],)).fetchone()
+                        if finished == {"status": "complete", "row_count": 2}:
+                            return
+                        await asyncio.sleep(.05)
+                    raise AssertionError(finished)
+                await wait_complete()
+
+                warm_started = time.monotonic()
+                await page.locator("#my-vehicles").click()
+                await expect(page.locator("#library-items h3")).to_contain_text("Escalade")
+                warm_library_ms = round((time.monotonic() - warm_started) * 1000)
+                warm_started = time.monotonic()
+                await page.get_by_role("button", name="Open articles", exact=True).click()
+                await expect(article_link).to_contain_text(cold_index["title"])
+                warm_index_ms = round((time.monotonic() - warm_started) * 1000)
+                warm_started = time.monotonic()
+                await article_link.click()
+                await expect(page.locator("#article-kind")).to_have_text("Workshop article")
+                await expect(page.locator("#article-content")).to_contain_text(expected_text)
+                await expect(image).to_be_visible()
+                assert await image.evaluate("(node) => node.decode().then(() => node.naturalWidth > 0)")
+                warm_reader_ms = round((time.monotonic() - warm_started) * 1000)
+                assert "Take off the pump." in await image.evaluate(figure_step)
+                print("WORKSHOP_AUTHORED_MODEL_INDEX " + json.dumps({
+                    "engine": engine, "headed": True, "scope": configuration, "article": article,
+                    "revision": os.environ.get("AUTODATA_R3_CANDIDATE_SHA"),
+                    "picker_ms": picker_ms, "checkout_ms": checkout_ms,
+                    "library_ms": library_ms, "library_reload_ms": library_reload_ms,
+                    "first_index_ms": first_index_ms, "reader_ms": reader_ms,
+                    "warm_library_ms": warm_library_ms, "warm_index_ms": warm_index_ms, "warm_reader_ms": warm_reader_ms,
+                    "stored_page_before_completion": True, "complete_rows": 2,
+                    "source_prose_warning_order_and_asset_matched": True, "figure_placement_and_source_sha_matched": True,
+                }), flush=True)
 
             other = await browser.new_context(ignore_https_errors=True, service_workers="block")
             other_transport = APIFixture(origin, API_CASES[1])
@@ -528,6 +722,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
 
 @pytest.mark.parametrize("variant", [
     "payment", "list-starts", "authored-table", "archived-table", "source-table", "labelled-market",
+    "authored-model-index",
 ])
 def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_database, monkeypatch, tmp_path, variant):
     from autodata_ingestion.http_service import make_handler
@@ -548,6 +743,8 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
         scope["article"] = str(runtime.article_id)
         if variant == "labelled-market":
             scope["labelled_market"] = labelled_market_fixture(runtime)
+        if variant == "authored-model-index":
+            scope = authored_model_index_fixture(runtime, scope)
         repair = retained_list_start_fixture(runtime, monkeypatch) if variant == "list-starts" else None
         table_variant = variant if variant in ("authored-table", "archived-table", "source-table") else None
         table_repair = authored_table_fixture(runtime, monkeypatch, tmp_path, table_variant) if table_variant else None
