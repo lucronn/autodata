@@ -83,6 +83,15 @@ _SPACED_ROTATION_PROMPT_VERSION = "full-prose-auto-prompt-v66"
 _SHORT_ACTION_PROMPT_VERSION = "full-prose-auto-prompt-v67"
 SINGLE_USE_PARTS_PROMPT_VERSION = "full-prose-auto-prompt-v68"
 _FILTER_PREPARATION_PROMPT_VERSION = "full-prose-auto-prompt-v69"
+_SERVICE_LABEL_PROMPT_VERSION = "full-prose-auto-prompt-v70"
+_SERVICE_LABEL_AND_SINGLE_USE_PROMPT_VERSION = "full-prose-auto-prompt-v71"
+_SERVICE_LABEL_PROMPT_VERSIONS = (_SERVICE_LABEL_PROMPT_VERSION, _SERVICE_LABEL_AND_SINGLE_USE_PROMPT_VERSION)
+_COMPONENT_SECTION = re.compile(r"(?:[A-Za-z0-9][A-Za-z0-9,/-]* ){1,8}and Components:?", re.I)
+_SERVICE_LABEL = re.compile(
+    r"(?:[A-Z][A-Za-z0-9/-]*|and|of|the)"
+    r"(?: (?:[A-Z][A-Za-z0-9/-]*|and|of|the)){0,8}"
+    r"(?: \([A-Z0-9][A-Z0-9-]{0,15}\)| ?\[[0-9][0-9A-Za-z]{0,8}\])?"
+)
 _SINGLE_USE_PARTS_HEADING = "single use fasteners and components"
 SINGLE_USE_PARTS_TEXT = "Use each listed part only once."
 _SINGLE_USE_PART_LABEL = re.compile(
@@ -2071,7 +2080,7 @@ def authored_note_prefix(text: str) -> str | None:
 def _keeps_authored_note_labels(prompt_version):
     return prompt_version in (
         _NOTE_LABEL_PROMPT_VERSION, *_PROCEDURE_FIDELITY_PROMPT_VERSIONS, SINGLE_USE_PARTS_PROMPT_VERSION,
-        _FILTER_PREPARATION_PROMPT_VERSION,
+        _FILTER_PREPARATION_PROMPT_VERSION, *_SERVICE_LABEL_PROMPT_VERSIONS,
     )
 
 
@@ -2092,7 +2101,53 @@ def single_use_part_slots(document):
     return sections, labels
 
 
-def _encode_automatic_prompt(document, *, context):
+def _service_label(value):
+    return _SERVICE_LABEL.fullmatch(value) is not None and _SINGLE_USE_DIRECTIVE.search(value) is None
+
+
+def _authored_service_labels(document):
+    """Use standalone tool headings and component lists attached to a figure and table."""
+    from .bankone_first_draft_structure import _TOOL_HEADING, _tool_identifier
+
+    labels = set()
+    blocks = document["blocks"]
+    for index, (heading, entry) in enumerate(zip(blocks, blocks[1:])):
+        if heading["type"] not in ("heading", "paragraph"):
+            continue
+        heading_text = heading["text"].strip()
+        if entry["type"] == "paragraph" and _TOOL_HEADING.fullmatch(heading_text):
+            if (identifier := _tool_identifier(entry["text"])) and _service_label(
+                entry["text"][len(identifier) + 1:]
+            ):
+                labels.add(f"/blocks/{index + 1}/text")
+        elif (entry["type"] == "unordered_list" and _COMPONENT_SECTION.fullmatch(heading_text)
+              and [block["type"] for block in blocks[index + 2:index + 4]] == ["image", "table"]):
+            items = entry["items"]
+            if items and all(isinstance(item, str) and _service_label(item) for item in items):
+                labels.update(f"/blocks/{index + 1}/items/{offset}" for offset in range(len(items)))
+    return labels
+
+
+
+def _apply_service_label_retention(document, payload):
+    labels = _authored_service_labels(document)
+    marked = [slot for slot in payload["slots"] if slot["path"] in labels]
+    if not any(slot["required_action"] == "rewrite" for slot in marked):
+        return
+    for slot in marked:
+        slot["required_action"] = "retain"
+    payload["prompt_version"] = (
+        _SERVICE_LABEL_AND_SINGLE_USE_PROMPT_VERSION
+        if payload["prompt_version"] == SINGLE_USE_PARTS_PROMPT_VERSION
+        else _SERVICE_LABEL_PROMPT_VERSION
+    )
+    payload["rules"].append(
+        "Keep the marked tool and diagram component names exactly as supplied, with action retain and "
+        "a concrete reason. Continue to rewrite surrounding procedure prose."
+    )
+
+
+def _encode_automatic_prompt(document, *, context, retain_service_labels=True):
     payload = _auto_prompt_payload_v69(document, context=context)
     if payload["slots"]:
         sections, labels = single_use_part_slots(document)
@@ -2108,6 +2163,8 @@ def _encode_automatic_prompt(document, *, context):
                 "and keep the listed component labels and counts verbatim with action retain and a concrete reason. "
                 "This retention is allowed for the marked labels. Leave required_text out of the response object."
             )
+        if retain_service_labels:
+            _apply_service_label_retention(document, payload)
     return _encode_prompt_with_technical_tokens(payload, retain_standalone_notes=True)
 
 
@@ -2120,7 +2177,7 @@ def build_auto_prompt(document, *, context, profile_version=PROFILE):
         document, preserve_notes=True, procedure_fidelity=True,
         allow_drain_subject=True, allow_rotation_removal=True, allow_optional_observation=True,
         allow_spaced_rotation=True, include_technical_tokens=True, retain_standalone_notes=True,
-        recast_short_actions=True, recast_filter_preparation=True,
+        recast_short_actions=True, recast_filter_preparation=True, retain_service_labels=True,
     )
 
 
@@ -2128,6 +2185,7 @@ def _build_source_bound_prompt(
     document, *, preserve_notes, procedure_fidelity=False, allow_drain_subject=False, allow_rotation_removal=False,
     allow_optional_observation=False, allow_spaced_rotation=False, include_technical_tokens=False,
     retain_standalone_notes=False, recast_short_actions=False, recast_filter_preparation=False,
+    retain_service_labels=False,
 ):
     builder = _auto_prompt_payload_v61 if preserve_notes else _auto_prompt_payload_v60
     if procedure_fidelity:
@@ -2143,6 +2201,8 @@ def _build_source_bound_prompt(
     if recast_filter_preparation:
         builder = _auto_prompt_payload_v69
     payload = builder(document, context={})
+    if retain_service_labels:
+        _apply_service_label_retention(document, payload)
     payload.pop("context", None)
     payload["profile_version"] = SOURCE_BOUND_REWRITE_PROFILE
     if payload["slots"]:
@@ -2409,6 +2469,19 @@ def _auto_prompt_version(document, *, context, prompt_hash, profile_version=PROF
     current_version = json.loads(current)["prompt_version"]
     if sha256(current.encode()).hexdigest() == prompt_hash:
         return current_version
+    if current_version in _SERVICE_LABEL_PROMPT_VERSIONS:
+        if profile_version == SOURCE_BOUND_REWRITE_PROFILE:
+            previous = _build_source_bound_prompt(
+                document, preserve_notes=True, procedure_fidelity=True, allow_drain_subject=True,
+                allow_rotation_removal=True, allow_optional_observation=True, allow_spaced_rotation=True,
+                include_technical_tokens=True, retain_standalone_notes=True, recast_short_actions=True,
+                recast_filter_preparation=True,
+            )
+        else:
+            previous = _encode_automatic_prompt(document, context=context, retain_service_labels=False)
+        current_version = json.loads(previous)["prompt_version"]
+        if sha256(previous.encode()).hexdigest() == prompt_hash:
+            return current_version
     if current_version == _FILTER_PREPARATION_PROMPT_VERSION:
         if profile_version == SOURCE_BOUND_REWRITE_PROFILE:
             previous = _build_source_bound_prompt(
@@ -4038,7 +4111,7 @@ def _combined_replacement_preparation_targets(text, *, recognize_then_comma=Fals
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
         None, *_PROCEDURE_FIDELITY_PROMPT_VERSIONS, _NOTE_LABEL_PROMPT_VERSION, SINGLE_USE_PARTS_PROMPT_VERSION,
-        _FILTER_PREPARATION_PROMPT_VERSION,
+        _FILTER_PREPARATION_PROMPT_VERSION, *_SERVICE_LABEL_PROMPT_VERSIONS,
         _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
         _SPATIAL_SCOPE_PROMPT_VERSION, _ASSEMBLY_LABEL_PROMPT_VERSION,
         _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
@@ -4053,7 +4126,7 @@ def _uses_prose_guards(prompt_version, slot_count):
 def _include_cell_blocks(prompt_version):
     return prompt_version in (
         None, *_PROCEDURE_FIDELITY_PROMPT_VERSIONS, _NOTE_LABEL_PROMPT_VERSION, SINGLE_USE_PARTS_PROMPT_VERSION,
-        _FILTER_PREPARATION_PROMPT_VERSION,
+        _FILTER_PREPARATION_PROMPT_VERSION, *_SERVICE_LABEL_PROMPT_VERSIONS,
         _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
         _SPATIAL_SCOPE_PROMPT_VERSION, _ASSEMBLY_LABEL_PROMPT_VERSION,
         _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
@@ -4063,15 +4136,28 @@ def _include_cell_blocks(prompt_version):
     )
 
 
+def _service_label_base_version(source, prompt_version):
+    if prompt_version == _SERVICE_LABEL_AND_SINGLE_USE_PROMPT_VERSION:
+        return SINGLE_USE_PARTS_PROMPT_VERSION
+    return _auto_prompt_payload_v69(source, context={})["prompt_version"]
+
+
 def _require_changes(
     source, candidate, *, prompt_version, include_cell_blocks=None, slot_errors=None, introduction_only=False,
     bankone_structure=None, verified_color_notes=False, allow_rotation_removal=False, allow_optional_observation=False,
     enforce_spaced_rotation=False, preserve_single_use_parts=False, preserve_filter_preparation=False,
+    preserve_service_labels=False,
 ):
     # The introduced first block is the only offset in source paths.
     restored = {"blocks": candidate["blocks"][1:]}
     if include_cell_blocks is None:
         include_cell_blocks = _include_cell_blocks(prompt_version)
+    if prompt_version in _SERVICE_LABEL_PROMPT_VERSIONS:
+        preserve_service_labels = True
+        prompt_version = _service_label_base_version(source, prompt_version)
+    service_labels = _authored_service_labels(source) if preserve_service_labels else set()
+    if preserve_service_labels and not service_labels:
+        raise ValueError("REWRITE_SERVICE_LABEL_MUTATION")
     if prompt_version == SINGLE_USE_PARTS_PROMPT_VERSION:
         preserve_single_use_parts = True
         prompt_version = _auto_prompt_payload_v67(source, context={})["prompt_version"]
@@ -4274,6 +4360,10 @@ def _require_changes(
     def check_slot(slot):
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
+        if slot["path"] in service_labels:
+            if replacement != original:
+                raise ValueError("REWRITE_SERVICE_LABEL_MUTATION")
+            return
         if slot["path"] in filter_preparation:
             if replacement != filter_preparation[slot["path"]]:
                 raise ValueError("REWRITE_FILTER_PREPARATION_MUTATION")
@@ -4530,17 +4620,24 @@ def _require_changes(
 
 def require_current_publication_checks(source, candidate, *, saved_prompt_version, bankone_structure=None):
     """Apply current prose rules to the saved prompt's editable slots."""
+    preserve_service_labels = saved_prompt_version in _SERVICE_LABEL_PROMPT_VERSIONS
+    if preserve_service_labels:
+        _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure)
+        saved_prompt_version = _service_label_base_version(source, saved_prompt_version)
     preserve_single_use_parts = saved_prompt_version == SINGLE_USE_PARTS_PROMPT_VERSION
     preserve_filter_preparation = saved_prompt_version == _FILTER_PREPARATION_PROMPT_VERSION
     if preserve_filter_preparation:
-        _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure)
+        _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure,
+                         preserve_service_labels=preserve_service_labels)
         saved_prompt_version = _auto_prompt_payload_v67(source, context={})["prompt_version"]
     if preserve_single_use_parts:
-        _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure)
+        _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure,
+                         preserve_service_labels=preserve_service_labels)
         saved_prompt_version = _auto_prompt_payload_v67(source, context={})["prompt_version"]
     if saved_prompt_version == _SHORT_ACTION_PROMPT_VERSION:
         _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure,
-                         preserve_single_use_parts=preserve_single_use_parts)
+                         preserve_single_use_parts=preserve_single_use_parts,
+                         preserve_service_labels=preserve_service_labels)
         saved_prompt_version = _auto_prompt_payload_v66(source, context={})["prompt_version"]
     restored = {"blocks": candidate["blocks"][1:]}
     for slot in full.prose_slots(source, include_cell_blocks=True):
@@ -4558,7 +4655,8 @@ def require_current_publication_checks(source, candidate, *, saved_prompt_versio
     )
     if saved_prompt_version in _PROCEDURE_FIDELITY_PROMPT_VERSIONS:
         _require_changes(source, candidate, prompt_version=saved_prompt_version, bankone_structure=bankone_structure,
-                         preserve_single_use_parts=preserve_single_use_parts)
+                         preserve_single_use_parts=preserve_single_use_parts,
+                         preserve_service_labels=preserve_service_labels)
         saved_prompt_version = _auto_prompt_payload_v61(source, context={})["prompt_version"]
     if saved_prompt_version == _NOTE_LABEL_PROMPT_VERSION:
         saved_prompt_version = _auto_prompt_payload_v60(source, context={})["prompt_version"]
@@ -4596,7 +4694,7 @@ def require_current_publication_checks(source, candidate, *, saved_prompt_versio
         bankone_structure=bankone_structure, allow_rotation_removal=allow_rotation_removal,
         allow_optional_observation=allow_optional_observation,
         enforce_spaced_rotation=enforce_spaced_rotation, preserve_single_use_parts=preserve_single_use_parts,
-        preserve_filter_preparation=preserve_filter_preparation,
+        preserve_filter_preparation=preserve_filter_preparation, preserve_service_labels=preserve_service_labels,
     )
 
 
@@ -4770,6 +4868,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None, prof
             _SHORT_ACTION_PROMPT_VERSION: "full-prose-auto-validator-v65",
             SINGLE_USE_PARTS_PROMPT_VERSION: "full-prose-auto-validator-v66",
             _FILTER_PREPARATION_PROMPT_VERSION: "full-prose-auto-validator-v67",
+            _SERVICE_LABEL_PROMPT_VERSION: "full-prose-auto-validator-v68",
+            _SERVICE_LABEL_AND_SINGLE_USE_PROMPT_VERSION: "full-prose-auto-validator-v69",
         }.get(prompt_version, "full-prose-auto-validator-v53")
     if verified_color_notes:
         validator_version = "full-prose-color-note-replay-validator-v1"
