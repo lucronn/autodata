@@ -371,7 +371,7 @@ def _banktwo_catalog_models(retained, requested_model):
         if model and _slug(model) == requested_slug
     }
     preferred = next(iter(authored_models)) if len(authored_models) == 1 else requested_model
-    return (preferred, requested_model) if preferred.casefold() != requested_model.casefold() else (requested_model,)
+    return (preferred, requested_model) if preferred != requested_model else (requested_model,)
 
 
 def _read_banktwo_configuration_catalog(client, selector, model):
@@ -454,7 +454,7 @@ def _unique_retained_model(retained, model):
 def _resolve_catalog_vehicle(repo, client, scope, selector, configuration):
     retained = _retained_catalog_refs(repo, scope, configuration) if scope["provider_slug"] == "banktwo" else {}
     models = _banktwo_catalog_models(retained, selector["model"]) if retained else ()
-    early_model = models[0] if len(models) == 2 and _unique_retained_model(retained, models[0]) else None
+    early_model = models[0] if models and _unique_retained_model(retained, models[0]) else None
     early_catalog, early_error = None, None
     if early_model:
         # Use the authored selector first when both the saved identity and the live catalog bind one exact reference.
