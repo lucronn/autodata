@@ -234,7 +234,7 @@ def test_resolution_empty_and_ambiguity_are_distinct(
 
 @pytest.mark.parametrize("case", [
     "exact", "no_observation", "rejected", "wrong_engine", "wrong_drivetrain",
-    "wrong_market", "partial",
+    "wrong_market", "partial", "competing_unbound",
 ])
 def test_banktwo_catalog_recovers_only_an_exact_retained_configuration(
     fresh_database, capture_fixture, monkeypatch, case,
@@ -291,6 +291,7 @@ def test_banktwo_catalog_recovers_only_an_exact_retained_configuration(
         row["drivetrain"] = "AWD"
     if case == "wrong_market":
         row["region"] = "CA"
+    other_configuration = row["configuration"] if case == "competing_unbound" else "L3-1.3L Turbo"
 
     def response(path, request_payload=None):
         parsed = urlsplit(path)
@@ -302,7 +303,7 @@ def test_banktwo_catalog_recovers_only_an_exact_retained_configuration(
             scope="configurations", complete=case != "partial",
             next_cursor="next" if case == "partial" else None,
             items=[row, {**row, "opaque_ref": "vehicle:other",
-                         "label": "L3-1.3L Turbo", "configuration": "L3-1.3L Turbo"}],
+                         "label": other_configuration, "configuration": other_configuration}],
         )
 
     monkeypatch.setattr(server, "response", response)
@@ -320,11 +321,12 @@ def test_banktwo_catalog_recovers_only_an_exact_retained_configuration(
     assert any(path.startswith("/v1/catalog/configurations?") for path in server.calls) == (
         case not in {"no_observation", "rejected"}
     )
-    if case == "exact":
+    if case in {"exact", "competing_unbound"}:
         assert banktwo["source_vehicle_ref"] == ref
         assert banktwo["row_count"] == 1
         assert [item["source_article_ref"] for item in state["items"]] == ["exact-index-entry"]
         assert any(unquote(path).endswith(f"/{ref}/articles") for path in server.calls)
+        assert not any(unquote(path).endswith("/vehicle:other/articles") for path in server.calls)
         with repo.connect() as conn:
             snapshot = conn.execute(
                 "SELECT object_key FROM source_snapshots WHERE source_snapshot_id=%s",

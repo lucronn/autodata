@@ -11,7 +11,7 @@ import signal
 import subprocess
 import sys
 import time
-from urllib.parse import parse_qs, urljoin, urlsplit
+from urllib.parse import parse_qs, unquote, urljoin, urlsplit
 from uuid import UUID, uuid4
 
 import pytest
@@ -443,7 +443,7 @@ async def verify_pending_saved_article(owner, origin, configuration, article, ex
         await tab.close()
 
 
-def authored_model_index_fixture(runtime, scope, *, competing_fitment=False, spelling="alias"):
+def authored_model_index_fixture(runtime, scope, *, competing_fitment=False, resolver_miss=False, spelling="alias"):
     from threading import Event, Thread
 
     from psycopg.types.json import Jsonb
@@ -508,7 +508,9 @@ def authored_model_index_fixture(runtime, scope, *, competing_fitment=False, spe
             and payload.get("year") == 2005 and payload.get("make") == make
             and payload.get("model") == model and payload.get("configuration") == "6.0L"):
             resolution_queries.append(model)
-            candidates = [{"opaque_ref": ref, "label": "V8-6.0L VIN N", "confidence": 1.0}] if competing_fitment else []
+            candidates = [{"opaque_ref": ref, "label": "V8-6.0L VIN N", "confidence": 1.0}] if (
+                competing_fitment and not resolver_miss
+            ) else []
             return 200, banktwo.envelope(selector=payload, candidates=candidates)
         if parsed.path == "/v1/catalog/configurations":
             query = parse_qs(parsed.query)
@@ -520,9 +522,12 @@ def authored_model_index_fixture(runtime, scope, *, competing_fitment=False, spe
             if rows and competing_fitment:
                 rows.append({**rows[0], "opaque_ref": "vehicle:unbound-cadillac-6"})
             return 200, banktwo.envelope(scope="configurations", complete=True, items=rows)
-        if parsed.path.endswith("/articles") and parse_qs(parsed.query).get("cursor") == ["1"]:
-            pending_page.set()
-            assert allow_page.wait(18), "first page did not reach the browser"
+        if parsed.path.endswith("/articles"):
+            if resolver_miss:
+                assert unquote(parsed.path).endswith(f"/{ref}/articles")
+            if parse_qs(parsed.query).get("cursor") == ["1"]:
+                pending_page.set()
+                assert allow_page.wait(18), "first page did not reach the browser"
         return original_response(path, payload)
 
     banktwo.response = response
@@ -1556,7 +1561,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
     "authored-model-index", "authored-model-index-competing-fitment", "authored-model-index-held-bankone",
     "authored-model-index-held-banktwo", "authored-guid", "authored-guid-source",
     "authored-model-index-case", "authored-model-index-case-competing-fitment",
-    "authored-model-index-same-spelling",
+    "authored-model-index-same-spelling", "authored-model-index-retained-fallback",
 ])
 def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_database, monkeypatch, tmp_path, variant):
     from autodata_ingestion.http_service import make_handler
@@ -1587,11 +1592,13 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
         if variant == "payment":
             scope["pending_saved_reader"] = True
         if variant.startswith("authored-model-index"):
+            resolver_miss = variant.endswith("-retained-fallback")
             spelling = "case" if variant.startswith("authored-model-index-case") else (
-                "same" if variant.endswith("-same-spelling") else "alias"
+                "same" if resolver_miss or variant.endswith("-same-spelling") else "alias"
             )
             scope = authored_model_index_fixture(
-                runtime, scope, competing_fitment=variant.endswith("-competing-fitment"), spelling=spelling,
+                runtime, scope, competing_fitment=resolver_miss or variant.endswith("-competing-fitment"),
+                resolver_miss=resolver_miss, spelling=spelling,
             )
         if variant == "authored-model-index":
             scope["retry_workshop_entry"] = True

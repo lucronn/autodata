@@ -423,7 +423,7 @@ def _banktwo_catalog_candidate(catalog, retained, selector, configuration, model
             if require_unique:
                 # An independently bound reference cannot rule out a second live fitment.
                 return None
-                continue
+            continue
         matches[ref] = {"opaque_ref": ref, "label": label}
     if len(matches) > 1:
         raise SourceConnectorError("AMBIGUOUS")
