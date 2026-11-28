@@ -652,6 +652,11 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 		// can open a saved article before the user asks to see that index.
 		configuration = &scope.configuration
 		response.Header().Add("Preference-Applied", catalogDemoFitmentPreference)
+		if catalogReadPreferenceRequested(request, workshopLeadImagePreference) {
+			if path := workshopLeadImageURL(article); path != "" {
+				response.Header().Set("Workshop-Lead-Image", path)
+			}
+		}
 	}
 	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article, Configuration: configuration})
 }
