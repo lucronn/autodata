@@ -60,6 +60,27 @@ _RESERVOIR_CLEAN_BEFORE_OPENING = re.compile(
     r"clean the outside of the reservoir on and around the reservoir (?P<cap>cap) "
     r"prior to removing the (?P=cap) and (?P<seal>diaphragm)\."
 )
+_REFILL_AFTER_SERVICE_WORDING = (
+    re.compile(rf"You may bring the (?P<fluid>{_NOUN} fluid) up to its (?P<limit>maximum-fill level) "
+               rf"immediately after completing service on the (?P<system>{_NOUN} system)\."),
+    re.compile(rf"Immediately after servicing the (?P<system>{_NOUN} system), you may top up "
+               rf"the (?P<fluid>{_NOUN} fluid) to the (?P<limit>maximum-fill level)\."),
+)
+_CLEAN_BEFORE_OPENING_WORDING = re.compile(
+    rf"To prepare the (?P<container>{_NOUN} reservoir) for added (?P<fluid>{_NOUN} fluid), "
+    r"clean its outside at the (?P<cap>cap) and around it (?:prior to|before) removing the (?P=cap) and (?P<seal>diaphragm)\."
+)
+
+
+def reservoir_preparation_facts(text):
+    """Recognize complete instructions that bind servicing or cleaning order."""
+    for syntax in (_RESERVOIR_FILL_AFTER_SERVICE, *_REFILL_AFTER_SERVICE_WORDING):
+        if match := syntax.fullmatch(text):
+            return "refill_after_service", match["system"], match["fluid"], match["limit"]
+    for syntax in (_RESERVOIR_CLEAN_BEFORE_OPENING, _CLEAN_BEFORE_OPENING_WORDING):
+        if match := syntax.fullmatch(text):
+            return "clean_before_opening", match["container"], match["fluid"], match["cap"], match["seal"]
+    return None
 
 
 def recast_brake_applicability(text):

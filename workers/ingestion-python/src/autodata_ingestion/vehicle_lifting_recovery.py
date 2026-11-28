@@ -4,6 +4,8 @@ from hashlib import sha256
 import re
 
 
+_HOOD_PRECAUTION_SHA256 = "f21b60276ddf0e5646701986d9e4850876050dff025a2eb2e6a0676f35da62e4"
+
 # Bind the precautions and illustrated locations to the complete source text.
 _REVIEWED_STATEMENTS = {
     # Hoist support while removing major components.
@@ -12,7 +14,7 @@ _REVIEWED_STATEMENTS = {
         "opposite the work and secure the vehicle to the hoist with straps."
     ),
     # Hood position, remote start, and risk of injury or damage.
-    "f21b60276ddf0e5646701986d9e4850876050dff025a2eb2e6a0676f35da62e4": (
+    _HOOD_PRECAUTION_SHA256: (
         "Work under the vehicle or in its engine compartment with the hood open fully or to the secondary latch. "
         "When the hood is opened to that latch, the vehicle disables remote start through the key fob and the "
         "OnStar mobile app. If the hood is neither opened fully nor opened to its secondary latch during that work, "
@@ -66,6 +68,12 @@ _STATEMENTS = tuple((re.compile(pattern), wording) for pattern, wording in (
         r"Position \g<stands> beneath \g<structures> only where the structure is both \g<stable> and \g<strong>.",
     ),
 ))
+
+
+def recast_reviewed_hood_precaution(text):
+    if sha256(text.encode()).hexdigest() == _HOOD_PRECAUTION_SHA256:
+        return _REVIEWED_STATEMENTS[_HOOD_PRECAUTION_SHA256]
+    return None
 
 
 def recast_vehicle_lifting_passage(text):

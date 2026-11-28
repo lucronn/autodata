@@ -32,6 +32,7 @@ FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD = "source-bound-first-draft-brak
 FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD = "source-bound-first-draft-reservoir-filling-v1"
 FIRST_DRAFT_WHEEL_SERVICE_RECOVERY_METHOD = "source-bound-first-draft-wheel-service-v1"
 FIRST_DRAFT_VEHICLE_LIFTING_RECOVERY_METHOD = "source-bound-first-draft-vehicle-lifting-v1"
+FIRST_DRAFT_PROCEDURE_CONDITION_RECOVERY_METHOD = "source-bound-first-draft-procedure-condition-v1"
 FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD = "source-bound-positioned-figure-first-draft-v1"
 FIRST_DRAFT_SINGLE_USE_PARTS_RECOVERY_METHOD = "source-bound-single-use-parts-first-draft-v1"
 NEUTRAL_INTRODUCTION = "This article describes the service information that follows."
@@ -44,7 +45,7 @@ FIRST_DRAFT_RECOVERY_METHODS = (
     FIRST_DRAFT_MAINTENANCE_RECOVERY_METHOD, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD,
     FIRST_DRAFT_DIAGNOSTIC_RECOVERY_METHOD, FIRST_DRAFT_BRAKE_APPLICABILITY_RECOVERY_METHOD,
     FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD, FIRST_DRAFT_WHEEL_SERVICE_RECOVERY_METHOD,
-    FIRST_DRAFT_VEHICLE_LIFTING_RECOVERY_METHOD,
+    FIRST_DRAFT_VEHICLE_LIFTING_RECOVERY_METHOD, FIRST_DRAFT_PROCEDURE_CONDITION_RECOVERY_METHOD,
 )
 BANKONE_STRUCTURAL_RECOVERY_METHOD = "source-bound-bankone-first-draft-v1"
 BANKONE_LINKED_RECOVERY_METHOD = "source-bound-bankone-first-draft-v2"
@@ -67,6 +68,7 @@ _WHEEL_SERVICE_ERRORS = frozenset({"REWRITE_UNCHANGED", "REWRITE_PROSE_TOO_SIMIL
 FIRST_DRAFT_RECOVERABLE_ERRORS = _FIRST_DRAFT_RECASTABLE_ERRORS | {
     "REWRITE_SPEC_SCOPE_MUTATION", REQUIRED_ACTION_WEAKENED,
     _LUBRICATION_MUTATION, _TECHNICAL_AMBIGUITY,
+    auto.PROCEDURE_CONDITION_MUTATION,
 }
 _PART_WORD = r"[a-z]+(?:-[a-z]+)*"
 _PART = rf"{_PART_WORD}(?: {_PART_WORD}){{0,9}}"
@@ -267,6 +269,7 @@ def _validate_first_draft(source, raw, draft, corrected_paths, *, prompt_version
                       FIRST_DRAFT_RESERVOIR_FILLING_RECOVERY_METHOD,
                       FIRST_DRAFT_WHEEL_SERVICE_RECOVERY_METHOD,
                       FIRST_DRAFT_VEHICLE_LIFTING_RECOVERY_METHOD,
+                      FIRST_DRAFT_PROCEDURE_CONDITION_RECOVERY_METHOD,
                       FIRST_DRAFT_POSITIONED_FIGURE_RECOVERY_METHOD,
                       FIRST_DRAFT_SINGLE_USE_PARTS_RECOVERY_METHOD,
                       *BANKONE_ARCHIVE_STRUCTURE_VERSIONS):
@@ -396,6 +399,15 @@ def _recover_statement_draft(source, raw, slots, invalid, *, prompt_version, ori
         source, raw, draft, corrected, prompt_version=prompt_version,
         method=method, original_error=original_error,
     )
+
+
+def _recast_procedure_condition(text):
+    from .bankone_brake_recovery import recast_reservoir_filling, reservoir_preparation_facts
+    from .vehicle_lifting_recovery import recast_reviewed_hood_precaution
+
+    if reservoir_preparation_facts(text):
+        return recast_reservoir_filling(text)
+    return recast_reviewed_hood_precaution(text)
 
 
 def _recover_wheel_service_draft(source, raw, slots, invalid, *, prompt_version, original_error):
@@ -650,6 +662,17 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
         return None
     if original_error not in FIRST_DRAFT_RECOVERABLE_ERRORS:
         return None
+    if original_error == auto.PROCEDURE_CONDITION_MUTATION or method == FIRST_DRAFT_PROCEDURE_CONDITION_RECOVERY_METHOD:
+        if method not in (None, FIRST_DRAFT_PROCEDURE_CONDITION_RECOVERY_METHOD):
+            return None
+        invalid = {issue["path"]: issue["code"] for issue in auto.failed_rewrite_passages(
+            source, raw, prompt_version=prompt_version,
+        )}
+        return _recover_statement_draft(
+            source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
+            method=FIRST_DRAFT_PROCEDURE_CONDITION_RECOVERY_METHOD,
+            errors={auto.PROCEDURE_CONDITION_MUTATION}, recast=_recast_procedure_condition,
+        )
     if original_error == _TECHNICAL_AMBIGUITY:
         if method not in (None, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD):
             return None

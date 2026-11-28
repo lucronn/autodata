@@ -11,7 +11,12 @@ from autodata_ingestion import procedure_rewrite_auto as auto
 from autodata_ingestion.article_lifecycle_types import SOURCE_BOUND_CORRECTION_PROFILE, digest_json
 from autodata_ingestion.procedure_rewrite_fidelity import brake_fluid_level_facts
 from autodata_ingestion.procedure_rewrite_full import render_full
-from autodata_ingestion.procedure_rewrite_recovery import FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD, recover_first_draft
+from autodata_ingestion.procedure_rewrite_recovery import (
+    FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD,
+    FIRST_DRAFT_PROCEDURE_CONDITION_RECOVERY_METHOD,
+    NEUTRAL_INTRODUCTION,
+    recover_first_draft,
+)
 from autodata_ingestion.retained_note_label_repair import _restore_procedure_condition_reply
 
 from test_procedure_rewrite_auto import _scoped_prose_response, _scoped_prose_source
@@ -56,6 +61,24 @@ def test_brake_fluid_level_guard_keeps_inclusive_condition_and_clean_inspection(
         clean.replace("free of", "with"),
     ):
         assert brake_fluid_level_facts(instruction("half-full or less", wrong_inspection)) != original
+
+
+def test_refill_recovery_preserves_service_order_and_replays_the_same_draft():
+    source = document(
+        "If clutch system service was just completed, the hydraulic fluid may be topped-off up to the maximum-fill level.",
+    )
+    good = "You may bring the hydraulic fluid up to its maximum-fill level immediately after completing service on the clutch system."
+    raw = response(good.replace("after completing", "before completing"), introduction=NEUTRAL_INTRODUCTION)
+    version = json.loads(auto.build_auto_prompt(source, context={}))["prompt_version"]
+    invalid = render_full(source, raw, profile_version=auto.PROFILE, include_cell_blocks=auto._include_cell_blocks(version))
+    assert auto.PROCEDURE_CONDITION_MUTATION in auto.validate_auto(source, invalid, prompt_version=version).error_codes
+    recovered = recover_first_draft(source, raw, prompt_version=version)
+    assert recovered is not None
+    assert recovered.document["blocks"][1]["text"] == good
+    assert recovered.evidence["corrected_paths"] == ["/blocks/0/text"]
+    assert recovered.evidence["method"] == FIRST_DRAFT_PROCEDURE_CONDITION_RECOVERY_METHOD
+    replayed = recover_first_draft(source, raw, prompt_version=version, method=recovered.evidence["method"])
+    assert replayed is not None and replayed.document == recovered.document and replayed.evidence == recovered.evidence
 
 
 def test_archived_repair_restores_only_an_exact_authored_condition():
