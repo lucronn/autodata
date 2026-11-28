@@ -320,14 +320,15 @@
         const savedLibrary = params.get('view') === 'library' && params.get('demo') !== '1';
         const savedRead = !params.has('order') && (savedScope || savedLibrary) &&
           ['configuration', 'region', 'article', 'view', 'demo'].every(key => params.getAll(key).length <= 1);
+        const checkoutReturn = params.size === 1 && uuid(params.get('order'));
 
         const deadline = setTimeout(recover, 10000);
-        const savedReadDelay = savedRead ? setTimeout(showRetryWhenParsed, 3000) : undefined;
+        const slowStartTimer = savedRead || checkoutReturn ? setTimeout(showRetryWhenParsed, 3000) : undefined;
         let startupFailed = false;
         let retry;
         function stopWatchingFailures() {
           clearTimeout(deadline);
-          clearTimeout(savedReadDelay);
+          clearTimeout(slowStartTimer);
           document.removeEventListener('error', failedEntry, true);
           window.removeEventListener('workshop-picker-startup-failed', failedApp);
         }
@@ -368,8 +369,14 @@
           } else {
             const recovery = document.getElementById('workshop-startup-recovery');
             recovery.dataset.tone = startupFailed ? 'error' : 'loading';
-            recovery.querySelector('[role="alert"]').textContent = startupFailed
-              ? 'Workshop could not open this page.' : 'Workshop is taking longer to open this page.';
+            const alert = recovery.querySelector('[role="alert"]');
+            if (startupFailed) {
+              alert.textContent = 'Workshop could not open this page.';
+            } else {
+              alert.textContent = checkoutReturn
+                ? 'Workshop is taking longer to check this payment.'
+                : 'Workshop is taking longer to open this page.';
+            }
             retry = recovery.querySelector('button');
             recovery.hidden = false;
           }

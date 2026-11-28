@@ -786,6 +786,74 @@ async def retry_workshop_entry(browser, url, storage, fixture_route, *, persiste
         await context.close()
 
 
+async def verify_paid_checkout_startup_retry(browser, origin, storage, fixture_route, order, article, engine):
+    from playwright.async_api import expect
+
+    url = f"{origin}/workshop?order={order['order_id']}"
+    order_status = f"{origin}/v1/workshop/orders/{order['order_id']}"
+    for manual in (False, True):
+        context = await browser.new_context(ignore_https_errors=True, service_workers="block", storage_state=storage)
+        navigations, writes, order_reads = [], [], []
+        release_app = asyncio.Event()
+
+        async def hold_first_app(route):
+            if len(navigations) == 1:
+                await release_app.wait()
+            await route.fallback()
+
+        def track(request):
+            if request.is_navigation_request() and urlsplit(request.url).path == "/workshop":
+                navigations.append(request.url)
+            if request.url == order_status and request.method == "GET":
+                order_reads.append(request)
+            if urlsplit(request.url).path.startswith(("/auth/", "/v1/", "/workshop/")) and request.method not in (
+                "GET", "HEAD", "OPTIONS",
+            ):
+                writes.append(request)
+
+        try:
+            await context.route("**/*", fixture_route)
+            page = await context.new_page()
+            page.on("request", track)
+            await page.route(lambda address: urlsplit(address).path.endswith("/app.mjs"), hold_first_app)
+            start = time.monotonic()
+            await page.goto(url, wait_until="commit")
+            recovery = page.locator("#workshop-startup-recovery")
+            retry = recovery.get_by_role("button", name="Try again")
+            await expect(retry).to_be_visible(timeout=7000)
+            retry_ms = round((time.monotonic() - start) * 1000)
+            await expect(recovery).to_have_attribute("data-tone", "loading")
+            await expect(recovery.get_by_role("alert")).to_have_text("Workshop is taking longer to check this payment.")
+            assert navigations == [url] and not order_reads and not writes
+            if manual:
+                position = await retry.bounding_box()
+                assert position
+                # WebKit can wait for a stable frame while the app module is held.
+                await page.mouse.click(position["x"] + position["width"] / 2, position["y"] + position["height"] / 2)
+            else:
+                release_app.set()
+            await expect(page.locator(f'#articles a[href*="{article}"]')).to_be_visible(timeout=15000)
+            await expect(recovery).to_be_hidden()
+            params = parse_qs(urlsplit(page.url).query)
+            assert params.get("configuration") == [order["configuration_id"]] and params.get("region") == [order["region"]]
+            assert len(order_reads) == 1
+            response = await order_reads[0].response()
+            assert response and response.ok
+            status = await response.json()
+            assert status["state"] == "paid" and all(
+                status[key] == order[key] for key in ("order_id", "configuration_id", "region")
+            )
+            assert navigations == [url] * (2 if manual else 1) and not writes
+            print("WORKSHOP_CHECKOUT_STARTUP " + json.dumps({
+                "engine": engine, "headed": True, "manual_retry": manual, "retry_ms": retry_ms,
+                "index_ms": round((time.monotonic() - start) * 1000),
+                "existing_paid_order_verified": True, "order_reads": len(order_reads), "startup_writes": len(writes),
+            }), flush=True)
+        finally:
+            release_app.set()
+            await context.close()
+
+
 async def verify_figure_transport_retry(browser, url, storage, fixture_route, detail, digest):
     context = await browser.new_context(ignore_https_errors=True, service_workers="block", storage_state=storage)
     image_prefix = "/v1/catalog/images/v2."
@@ -1139,6 +1207,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                 }), flush=True)
                 if scope.get("retry_workshop_entry"):
                     storage = await owner.storage_state()
+                    await verify_paid_checkout_startup_retry(browser, origin, storage, route_fixture, result, article, engine)
                     await verify_figure_transport_retry(browser, page.url, storage, route_fixture, detail, cold_index["figure_sha"])
                     print(json.dumps({"case": "workshop-figure-transport-retry", "engine": engine, "headed": True,
                                       "reader_and_original_verified": True}), flush=True)
