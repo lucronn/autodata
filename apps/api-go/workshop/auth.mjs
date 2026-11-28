@@ -46,7 +46,7 @@ export function authMessage(error) {
   if (error?.status === 401) return "Your session has expired. Sign in again.";
   return "Google sign-in is unavailable. You can keep browsing.";
 }
-export function readSessionBootstrap(request = requestJSON, { signal, includeLibrary = false, route } = {}) {
+export function readSessionBootstrap(request = requestJSON, { signal, includeLibrary = false, libraryLimit, route } = {}) {
   const read = async (path, headers) => {
     try {
       return { status: "fulfilled", value: await request(path, { signal, timeout: 10000, headers }) };
@@ -58,6 +58,8 @@ export function readSessionBootstrap(request = requestJSON, { signal, includeLib
   let prefer = "workshop-session-mode";
   if (includeLibrary) {
     prefer += ", workshop-session-library";
+    if (Number.isSafeInteger(libraryLimit) && libraryLimit > 20 && libraryLimit <= 50)
+      path += `?limit=${libraryLimit}`;
   } else if (route && !["year", "view", "order", "article", "q"].some(key => route.has(key))) {
     const scope = { configuration_id: route.get("configuration"), region: route.get("region") };
     if (validScope(scope) && route.getAll("configuration").length === 1 && route.getAll("region").length === 1) {

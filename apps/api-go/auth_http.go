@@ -18,8 +18,9 @@ const (
 )
 
 type sessionArticleIndexReader func(context.Context, Principal, string, string) (CatalogArticlesResponse, bool)
+type sessionLibraryReader func(context.Context, customerSession, int) *commerceLibrary
 
-func (s *customerAuthService) mountRoutes(mux *http.ServeMux, confirmSelectedIndex bool, firstLibrary func(context.Context, customerSession) *commerceLibrary, firstIndex sessionArticleIndexReader) {
+func (s *customerAuthService) mountRoutes(mux *http.ServeMux, confirmSelectedIndex bool, firstLibrary sessionLibraryReader, firstIndex sessionArticleIndexReader) {
 	mux.HandleFunc("GET /auth/config", s.publicConfig)
 	mux.HandleFunc("GET /auth/session", func(w http.ResponseWriter, r *http.Request) {
 		s.currentSession(w, r, firstLibrary, firstIndex)
@@ -59,7 +60,7 @@ func (s *customerAuthService) writeError(w http.ResponseWriter, r *http.Request,
 	}
 	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": message, "retryable": retryable, "request_id": requestIDFrom(r), "details": map[string]any{"login_available": s.config.Mode == "firebase"}}})
 }
-func (s *customerAuthService) currentSession(w http.ResponseWriter, r *http.Request, firstLibrary func(context.Context, customerSession) *commerceLibrary, firstIndex sessionArticleIndexReader) {
+func (s *customerAuthService) currentSession(w http.ResponseWriter, r *http.Request, firstLibrary sessionLibraryReader, firstIndex sessionArticleIndexReader) {
 	w.Header().Set("Cache-Control", "no-store")
 	session, token, err := s.session(r, true)
 	if err != nil {
@@ -75,9 +76,11 @@ func (s *customerAuthService) currentSession(w http.ResponseWriter, r *http.Requ
 	if catalogReadPreferenceRequested(r, workshopSessionModePreference) {
 		result["mode"] = s.config.Mode
 		if catalogReadPreferenceRequested(r, workshopSessionLibraryPreference) {
-			if firstLibrary != nil {
-				if library := firstLibrary(r.Context(), session); library != nil {
-					result["workshop_library"] = library
+			if query, ok := commerceQuery(r, "limit"); firstLibrary != nil && ok {
+				if limit, valid := commerceLibraryLimit(query); valid {
+					if library := firstLibrary(r.Context(), session, limit); library != nil {
+						result["workshop_library"] = library
+					}
 				}
 			}
 		} else if s.config.Mode == "firebase" && firstIndex != nil && catalogReadPreferenceRequested(r, workshopSessionIndexPreference) {

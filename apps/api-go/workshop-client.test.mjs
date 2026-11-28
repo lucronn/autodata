@@ -2226,6 +2226,14 @@ test('saved Library startup requests its first page with the verified Firebase s
     ['/auth/config', undefined],
     ['/auth/session', 'workshop-session-mode, workshop-session-library'],
   ]);
+  calls.length = 0;
+  assert.equal(await session.bootstrap({
+    initial: readSessionBootstrap(request, { includeLibrary: true, libraryLimit: 42 }),
+  }), library);
+  assert.deepEqual(calls, [
+    ['/auth/config', undefined],
+    ['/auth/session?limit=42', 'workshop-session-mode, workshop-session-library'],
+  ]);
 });
 
 test('only exact saved index startup requests an index with the verified session', async () => {

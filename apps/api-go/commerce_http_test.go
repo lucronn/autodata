@@ -106,6 +106,7 @@ func (f commerceFixture) Do(ctx context.Context, op string, b []byte, s string) 
 
 func TestWorkshopSessionLibraryRequiresVerifiedOwnerAndOptIn(t *testing.T) {
 	calls := 0
+	wantLimit := float64(20)
 	result := `{"version":"v1","items":[{"library_item_id":"` + commerceOrderID + `","configuration_id":"` + commerceConfigID + `","region":"US","label":"Exact vehicle","access_state":"paid","catalog_empty":true,"granted_at":"2026-11-23T00:00:00Z","private":"filtered"}],"next_cursor":"next-page"}`
 	s, cookie, csrf := commerceTestAPI(t, commerceFixture(func(_ context.Context, operation string, body []byte, _ string) (int, []byte, error) {
 		calls++
@@ -113,7 +114,7 @@ func TestWorkshopSessionLibraryRequiresVerifiedOwnerAndOptIn(t *testing.T) {
 		if operation != "library" || json.Unmarshal(body, &input) != nil ||
 			input["customer_account_id"] != "11111111-1111-4111-8111-111111111111" ||
 			input["organization_id"] != "44444444-4444-4444-8444-444444444444" ||
-			input["cursor"] != "" || input["limit"] != float64(20) {
+			input["cursor"] != "" || input["limit"] != wantLimit {
 			t.Fatalf("unexpected Library request: %s %s", operation, body)
 		}
 		return http.StatusOK, []byte(result), nil
@@ -153,9 +154,23 @@ func TestWorkshopSessionLibraryRequiresVerifiedOwnerAndOptIn(t *testing.T) {
 		strings.Contains(w.Body.String(), "filtered") {
 		t.Fatalf("valid Library was not attached to the verified session: %d %s", w.Code, w.Body.String())
 	}
+	wantLimit = 50
+	readPage := func(path string) *httptest.ResponseRecorder {
+		return customerHTTP(t, handler, http.MethodGet, path, "", map[string]string{"Prefer": preference}, cookie)
+	}
+	if w := readPage("/auth/session?limit=50"); w.Code != http.StatusOK || calls != 2 ||
+		!strings.Contains(w.Body.String(), "workshop_library") {
+		t.Fatalf("valid Library limit was not applied: %d %s", w.Code, w.Body.String())
+	}
+	for _, path := range []string{"/auth/session?limit=0", "/auth/session?limit=51", "/auth/session?limit=21&limit=22"} {
+		if w := readPage(path); w.Code != http.StatusOK || calls != 2 || strings.Contains(w.Body.String(), "workshop_library") {
+			t.Fatalf("invalid Library limit changed the verified session: %d %s", w.Code, w.Body.String())
+		}
+	}
+	wantLimit = 20
 	result = `{"version":"v1","items":[]}`
 	w = read(preference, cookie)
-	if w.Code != http.StatusOK || calls != 2 || strings.Contains(w.Body.String(), "workshop_library") {
+	if w.Code != http.StatusOK || calls != 3 || strings.Contains(w.Body.String(), "workshop_library") {
 		t.Fatalf("invalid Library changed the verification response: %d %s", w.Code, w.Body.String())
 	}
 }
