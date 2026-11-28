@@ -1,0 +1,9 @@
+{
+  "name": "autodata-proxy",
+  "private": true,
+  "version": "1.0.0",
+  "description": "autodata.cars.tk proxy to the AutoData tunnel",
+  "dependencies": {
+    "@vercel/functions": "3.12.0"
+  }
+}
