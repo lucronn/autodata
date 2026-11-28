@@ -427,6 +427,28 @@ class SourceConnectorClient:
     def read_resource(self, resource_ref: str, *, timeout: float | None = None) -> SourceEnvelopeV1:
         return self._read("GET", f"/v1/resources/{_opaque_ref(resource_ref, 2048)}", operation="resource", timeout=timeout)
 
+    def resolve_authored_guid_article(
+        self, source_vehicle_ref: str, parent_resource_ref: str, *,
+        markup_sha256: str, authored_path_sha256: str, timeout: float | None = None,
+    ) -> SourceEnvelopeV1:
+        if self.provider != "banktwo" or not self._token:
+            raise SourceConnectorError("NOT_CONFIGURED")
+        if not all(isinstance(value, str) and _SHA256.fullmatch(value)
+                   for value in (markup_sha256, authored_path_sha256)):
+            raise ValueError("invalid authored article digest")
+        response = self._read(
+            "POST", f"/v1/vehicles/{_opaque_ref(source_vehicle_ref, 1024)}/article-search",
+            operation="articles", timeout=timeout, payload={
+                "parent_resource_ref": _opaque_ref(parent_resource_ref, 2048),
+                "markup_sha256": markup_sha256, "authored_path_sha256": authored_path_sha256,
+            },
+        )
+        found = response.body["articles"]
+        if (not response.complete or len(found) != 1
+                or found[0]["opaque_ref"] != found[0].get("resource_ref")):
+            raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+        return response
+
     def _read(
         self, method: str, path: str, *, operation: str, payload: Mapping[str, Any] | None = None,
         scope: str | None = None, timeout: float | None = None, deadline: float | None = None,
