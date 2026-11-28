@@ -8,12 +8,25 @@
           "value": "1"
         }
       ]
+    },
+    {
+      "source": "/v1/catalog/images/:token(v2\\.[A-Za-z0-9_-]{1,6000})",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
     }
   ],
   "rewrites": [
     {
       "source": "/workshop/assets/:version([a-f0-9]{64})/:asset*",
       "destination": "https://autodata.curtis.click/workshop/assets/:version/:asset*"
+    },
+    {
+      "source": "/v1/catalog/images/:token(v2\\.[A-Za-z0-9_-]{1,6000})",
+      "destination": "https://autodata.curtis.click/v1/catalog/images/:token"
     }
   ]
 }
