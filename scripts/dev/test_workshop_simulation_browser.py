@@ -720,7 +720,7 @@ async def verify_reserved_figure(image, gate, dimensions):
 
 
 @asynccontextmanager
-async def retry_workshop_entry(browser, url, storage, fixture_route, *, persistent=False):
+async def retry_workshop_entry(browser, url, storage, fixture_route, *, persistent=False, stalled=False):
     from playwright.async_api import expect
 
     context = await browser.new_context(ignore_https_errors=True, service_workers="block", storage_state=storage)
@@ -728,13 +728,17 @@ async def retry_workshop_entry(browser, url, storage, fixture_route, *, persiste
     navigations, writes = [], []
     failed_entries = set()
     automatic_retry = asyncio.Event()
+    release_app = asyncio.Event()
     fail_count = 2 if persistent else 1
 
     def app_request(url):
         return urlsplit(url).path.endswith("/app.mjs")
 
     async def block_app(route):
-        if len(navigations) <= fail_count:
+        if stalled:
+            await release_app.wait()
+            await route.fallback()
+        elif len(navigations) <= fail_count:
             failed_entries.add(len(navigations))
             await route.abort("connectionreset")
         else:
@@ -755,8 +759,14 @@ async def retry_workshop_entry(browser, url, storage, fixture_route, *, persiste
         page.on("request", track_entry)
         await page.route(app_request, block_app)
         await page.goto(url, wait_until="commit")
-        await asyncio.wait_for(automatic_retry.wait(), timeout=5)
         recovery = page.locator("#workshop-startup-recovery")
+        if stalled:
+            await expect(recovery.get_by_role("button", name="Try again")).to_be_visible(timeout=7000)
+            await expect(recovery).to_have_attribute("data-tone", "loading")
+            assert navigations == [url]
+            release_app.set()
+        else:
+            await asyncio.wait_for(automatic_retry.wait(), timeout=5)
         if persistent:
             await expect(recovery).to_be_visible(timeout=5000)
             assert navigations == [url, url]
@@ -765,9 +775,14 @@ async def retry_workshop_entry(browser, url, storage, fixture_route, *, persiste
         await expect(recovery).to_be_hidden()
         yield page
         await page.wait_for_function("!history.state?.workshopPickerStartupRetry")
-        assert navigations == [url] * (fail_count + 1)
-        assert failed_entries == set(range(1, fail_count + 1)) and not writes
+        if stalled:
+            assert navigations == [url] and not failed_entries
+        else:
+            assert navigations == [url] * (fail_count + 1)
+            assert failed_entries == set(range(1, fail_count + 1))
+        assert not writes
     finally:
+        release_app.set()
         await context.close()
 
 
@@ -1134,6 +1149,11 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                         recovered_url = await saved.locator("#article-content img").first.evaluate("node => node.currentSrc")
                         recovered_image = await saved.request.get(recovered_url)
                         assert recovered_image.ok and sha256(await recovered_image.body()).hexdigest() == cold_index["figure_sha"]
+                    async with retry_workshop_entry(browser, page.url, storage, route_fixture, stalled=True) as saved:
+                        await expect(saved.locator("#article-content")).to_contain_text(expected_text)
+                        recovered = saved.locator("#article-content img").first
+                        await recovered.scroll_into_view_if_needed()
+                        assert await recovered.evaluate("image => image.decode().then(() => image.naturalWidth > 0)")
                     await page.locator("#my-vehicles").click()
                     await expect(page.locator("#library-items > li")).to_have_count(1)
                     for persistent in (False, True):
@@ -1142,6 +1162,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                             await expect(saved.locator("#library-items h3")).to_contain_text("Escalade")
                     print(json.dumps({"case": "workshop-entry-recovery", "engine": engine, "headed": True,
                                       "protected_article_and_library_verified": True,
+                                      "stalled_article_completed_without_reload": True,
                                       "initial_failure_automatically_retried": True,
                                       "second_failure_used_manual_retry": True, "startup_writes": 0}), flush=True)
 
