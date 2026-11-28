@@ -402,11 +402,16 @@ def _recover_statement_draft(source, raw, slots, invalid, *, prompt_version, ori
 
 
 def _recast_procedure_condition(text):
-    from .bankone_brake_recovery import recast_reservoir_filling, reservoir_preparation_facts
+    from .bankone_brake_recovery import recast_brake_passage, recast_reservoir_filling, reservoir_preparation_facts
+    from .procedure_rewrite_fidelity import conditional_service_facts, recast_conditional_service
     from .vehicle_lifting_recovery import recast_reviewed_hood_precaution
 
     if reservoir_preparation_facts(text):
         return recast_reservoir_filling(text)
+    if (facts := conditional_service_facts(text)) and facts[0] == "axle_set":
+        return recast_brake_passage(text, "REWRITE_PROSE_TOO_SIMILAR")
+    if wording := recast_conditional_service(text):
+        return wording
     return recast_reviewed_hood_precaution(text)
 
 
@@ -662,17 +667,24 @@ def recover_first_draft(source, raw, *, prompt_version, method=None):
         return None
     if original_error not in FIRST_DRAFT_RECOVERABLE_ERRORS:
         return None
-    if original_error == auto.PROCEDURE_CONDITION_MUTATION or method == FIRST_DRAFT_PROCEDURE_CONDITION_RECOVERY_METHOD:
-        if method not in (None, FIRST_DRAFT_PROCEDURE_CONDITION_RECOVERY_METHOD):
-            return None
+    if method in (None, FIRST_DRAFT_PROCEDURE_CONDITION_RECOVERY_METHOD) and (
+        original_error == auto.PROCEDURE_CONDITION_MUTATION
+        or (original_error == "REWRITE_ACTION_MUTATION" and any(
+            auto.conditional_service_facts(slot["text"]) for slot in slots
+        ))
+    ):
         invalid = {issue["path"]: issue["code"] for issue in auto.failed_rewrite_passages(
             source, raw, prompt_version=prompt_version,
         )}
-        return _recover_statement_draft(
+        recovered = _recover_statement_draft(
             source, raw, slots, invalid, prompt_version=prompt_version, original_error=original_error,
             method=FIRST_DRAFT_PROCEDURE_CONDITION_RECOVERY_METHOD,
-            errors={auto.PROCEDURE_CONDITION_MUTATION}, recast=_recast_procedure_condition,
+            errors={auto.PROCEDURE_CONDITION_MUTATION, "REWRITE_ACTION_MUTATION"}, recast=_recast_procedure_condition,
         )
+        if recovered is not None or original_error == auto.PROCEDURE_CONDITION_MUTATION:
+            return recovered
+    if method == FIRST_DRAFT_PROCEDURE_CONDITION_RECOVERY_METHOD:
+        return None
     if original_error == _TECHNICAL_AMBIGUITY:
         if method not in (None, FIRST_DRAFT_INTRODUCTION_RECOVERY_METHOD):
             return None

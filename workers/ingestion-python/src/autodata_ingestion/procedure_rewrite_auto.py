@@ -15,7 +15,9 @@ import re
 from . import procedure_rewrite_full as full
 from .article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, ValidationResult
 from .bankone_brake_recovery import reservoir_preparation_facts
-from .procedure_rewrite_fidelity import brake_fluid_level_facts, procedure_facts, recast_conditional_color_note
+from .procedure_rewrite_fidelity import (
+    brake_fluid_level_facts, conditional_service_facts, procedure_facts, recast_conditional_color_note,
+)
 from .vehicle_lifting_recovery import recast_reviewed_hood_precaution
 
 PROFILE = AUTOMATIC_REWRITE_PROFILE
@@ -2276,6 +2278,12 @@ def _require_procedure_conditions(original, restored, path):
             raise ValueError(PROCEDURE_CONDITION_MUTATION)
     if "remote start" in original and (reviewed := recast_reviewed_hood_precaution(original)):
         if full._get(restored, path) not in (original, reviewed):
+            raise ValueError(PROCEDURE_CONDITION_MUTATION)
+
+
+def _require_conditional_service(slot, restored):
+    if expected := conditional_service_facts(slot["text"]):
+        if conditional_service_facts(full._get(restored, slot["path"])) != expected:
             raise ValueError(PROCEDURE_CONDITION_MUTATION)
 
 
@@ -4621,11 +4629,13 @@ def _require_changes(
     for slot in slots:
         if slot_errors is None:
             check_slot(slot)
+            _require_conditional_service(slot, restored)
         elif slot["path"] not in slot_errors:
             try:
                 if guard_assembly_labels:
                     _check_assembly_components((slot,), restored)
                 check_slot(slot)
+                _require_conditional_service(slot, restored)
             except ValueError as error:
                 slot_errors[slot["path"]] = str(error)
     if slot_errors is not None:
@@ -4664,6 +4674,7 @@ def require_current_publication_checks(source, candidate, *, saved_prompt_versio
     for slot in full.prose_slots(source, include_cell_blocks=True):
         original = slot["text"]
         _require_procedure_conditions(original, restored, slot["path"])
+        _require_conditional_service(slot, restored)
         if (recast := recast_spaced_rotation_removal(original)) and full._get(restored, slot["path"]) not in (original, recast):
             raise ValueError("REWRITE_ROTATION_DIRECTION_MUTATION")
     enforce_spaced_rotation = saved_prompt_version == _SPACED_ROTATION_PROMPT_VERSION

@@ -138,6 +138,85 @@ def procedure_facts(text: str, *, allow_drain_subject: bool = True) -> tuple[str
     return _idle_facts(text)
 
 
+_SEAL = rf"the (?P<seal>(?:{_WORD} ){{0,7}}seal) (?P<marker>\([0-9]{{1,4}}\))"
+_INSPECT_SEAL = re.compile(
+    rf"(?:inspect|check|examine) {_SEAL}(?: and |\. (?:then )?)"
+    r"(?:replace(?: it)? (?:as necessary|if (?:needed|necessary))|swap it out if needed)\."
+)
+_DISCARD_SPRINGS = re.compile(
+    r"(?:if|when) (?:installing|fitting) new brake pads, (?:discard|dispose of) "
+    rf"the (?P<springs>(?:{_WORD} ){{0,4}}springs)\."
+)
+_AXLE_PADS = rf"(?P<pads>(?:{_WORD} ){{0,4}}pads)"
+_PAD_SPRINGS = rf"(?P<springs>(?:{_WORD} ){{0,4}}springs)"
+_AXLE_REPLACEMENT = (
+    re.compile(
+        rf"note: always replace {_AXLE_PADS} in axle sets\. "
+        rf"(?:if|when) (?:installing|fitting) new brake pads, install new {_PAD_SPRINGS}\."
+    ),
+    re.compile(
+        rf"note: {_AXLE_PADS} must always be replaced in axle sets\. "
+        rf"install new {_PAD_SPRINGS} whenever new brake pads are (?:fitted|installed)\."
+    ),
+)
+_THREAD_REPLACEMENT = (
+    re.compile(
+        r"clean the threads (?:of the wheel studs|on each wheel stud)\. "
+        r"(?:if the threads are damaged, replace the wheel stud|replace any stud with damage to its threads)\."
+    ),
+    re.compile(r"after cleaning the wheel stud threads, replace (?:a|each) stud only if its threads are damaged\."),
+)
+_NETWORK_DEVICE_CHECK = re.compile(
+    r"(?:if there is more than one smart device|when multiple smart devices are present), "
+    r"(?:such as|as in) the example below, (?:keep in mind that )?"
+    r"each smart device (?:is sending out|outputs|provides) its own reference voltage\. "
+    r"in (?:these|such) cases, (?:disconnect the other smart devices|the other smart devices will need to be disconnected) "
+    r"(?:along with|and) the master controller before (?:checking|measuring) "
+    r"the reference voltage from (?:the|that) smart device in question\."
+)
+
+
+def conditional_service_facts(text: str) -> tuple[str, ...] | None:
+    """Bind replacement conditions, required parts and diagnostic isolation to complete passages."""
+    if not isinstance(text, str):
+        return None
+    text = " ".join(text.casefold().split())
+    if "seal (" in text and (seal := _INSPECT_SEAL.fullmatch(text)) and _object_name(seal["seal"]):
+        return "inspect_seal", seal["seal"], seal["marker"]
+    if "springs" in text:
+        if (springs := _DISCARD_SPRINGS.fullmatch(text)) and _object_name(springs["springs"]):
+            return "discard_springs", springs["springs"]
+        for syntax in _AXLE_REPLACEMENT:
+            if (axle := syntax.fullmatch(text)) and all(_object_name(axle[key]) for key in ("pads", "springs")):
+                return "axle_set", axle["pads"], axle["springs"]
+    if "wheel stud" in text and any(syntax.fullmatch(text) for syntax in _THREAD_REPLACEMENT):
+        return ("damaged_stud_threads",)
+    if "reference voltage" in text and _NETWORK_DEVICE_CHECK.fullmatch(text):
+        return ("isolate_reference_voltage",)
+    return None
+
+
+def recast_conditional_service(text: str) -> str | None:
+    facts = conditional_service_facts(text)
+    if facts is None:
+        return None
+    kind, *parts = facts
+    if kind == "inspect_seal":
+        seal, marker = parts
+        return f"Check the {seal} {marker} and swap it out if needed."
+    if kind == "discard_springs":
+        return f"When fitting new brake pads, dispose of the {parts[0]}."
+    if kind == "damaged_stud_threads":
+        return "Clean the threads on each wheel stud. Replace any stud with damage to its threads."
+    if kind == "isolate_reference_voltage":
+        device = "smart device"
+        voltage = "reference voltage"
+        return (f"When multiple {device}s are present, as in the example below, each {device} outputs its own {voltage}. "
+                f"In such cases, disconnect the other {device}s along with the master controller before checking "
+                f"the {voltage} from the {device} in question.")
+    return None
+
+
 _BRAKE_HALF_FULL = r"(?:the )?half[- ]full(?: point)?"
 _BRAKE_FLUID_MIDPOINT = (
     r"(?:the )?(?:midpoint|midway(?: point)?) between the maximum-full point and the minimum allowable level"

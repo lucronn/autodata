@@ -72,11 +72,31 @@ def test_refill_recovery_preserves_service_order_and_replays_the_same_draft():
     version = json.loads(auto.build_auto_prompt(source, context={}))["prompt_version"]
     invalid = render_full(source, raw, profile_version=auto.PROFILE, include_cell_blocks=auto._include_cell_blocks(version))
     assert auto.PROCEDURE_CONDITION_MUTATION in auto.validate_auto(source, invalid, prompt_version=version).error_codes
+    try:
+        auto.require_current_publication_checks(source, invalid, saved_prompt_version=version)
+    except ValueError as error:
+        assert str(error) == auto.PROCEDURE_CONDITION_MUTATION
+    else:
+        raise AssertionError("publication must preserve the replacement condition")
     recovered = recover_first_draft(source, raw, prompt_version=version)
     assert recovered is not None
     assert recovered.document["blocks"][1]["text"] == good
     assert recovered.evidence["corrected_paths"] == ["/blocks/0/text"]
     assert recovered.evidence["method"] == FIRST_DRAFT_PROCEDURE_CONDITION_RECOVERY_METHOD
+    replayed = recover_first_draft(source, raw, prompt_version=version, method=recovered.evidence["method"])
+    assert replayed is not None and replayed.document == recovered.document and replayed.evidence == recovered.evidence
+
+
+def test_recovery_keeps_seal_replacement_conditional():
+    source = document("Inspect the pump housing seal (8) and replace as necessary.")
+    good = "Check the pump housing seal (8) and swap it out if needed."
+    raw = response(good.replace("if needed", "each time"), introduction=NEUTRAL_INTRODUCTION)
+    version = json.loads(auto.build_auto_prompt(source, context={}))["prompt_version"]
+    invalid = render_full(source, raw, profile_version=auto.PROFILE, include_cell_blocks=auto._include_cell_blocks(version))
+    assert auto.PROCEDURE_CONDITION_MUTATION in auto.validate_auto(source, invalid, prompt_version=version).error_codes
+    recovered = recover_first_draft(source, raw, prompt_version=version)
+    assert recovered is not None
+    assert recovered.document["blocks"][1]["text"] == good
     replayed = recover_first_draft(source, raw, prompt_version=version, method=recovered.evidence["method"])
     assert replayed is not None and replayed.document == recovered.document and replayed.evidence == recovered.evidence
 
