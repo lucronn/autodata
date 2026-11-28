@@ -854,6 +854,127 @@ async def verify_paid_checkout_startup_retry(browser, origin, storage, fixture_r
             await context.close()
 
 
+async def verify_public_demo_read(browser, fixture, configuration, article, expected_text, figure_sha, engine):
+    from playwright.async_api import expect
+
+    main = "https://autodata.cars.tk"
+    direct = "https://autodata.curtis.click"
+    saved = f"{main}/workshop?configuration={configuration}&region=US&article={article}&demo=1"
+    index = f"/v1/catalog/vehicles/{configuration}/articles"
+    article_path = f"{index}/{article}"
+
+    for fallback in (False, True):
+        context = await browser.new_context(ignore_https_errors=True, service_workers="block")
+        requests, results = [], []
+        direct_read_started = None
+        fallback_started_ms = None
+        fallback_started = asyncio.Event()
+
+        async def relay(route):
+            nonlocal direct_read_started, fallback_started_ms
+            url = urlsplit(route.request.url)
+            origin = f"{url.scheme}://{url.netloc}"
+            if origin not in (main, direct):
+                await route.abort()
+                return
+            request_path = url.path + (f"?{url.query}" if url.query else "")
+            headers = await route.request.all_headers()
+            if url.path in (article_path, index):
+                requests.append((origin, url.path, route.request.method))
+            if origin == direct and url.path == article_path:
+                assert parse_qs(url.query) == {"region": ["US"], "demo": ["1"], "fitment": ["1"]}
+                assert "cookie" not in headers and "authorization" not in headers and "prefer" not in headers
+                if fallback:
+                    direct_read_started = time.monotonic()
+                    await fallback_started.wait()
+                    await route.abort("timedout")
+                    return
+            headers.pop("host", None)
+            headers["x-workshop-fixture-demo"] = "1"
+            if origin == main and url.path == article_path:
+                if fallback:
+                    assert direct_read_started is not None
+                    fallback_started_ms = round(1000 * (time.monotonic() - direct_read_started))
+                    fallback_started.set()
+                await asyncio.sleep(0.25)
+            response = await route.fetch(url=fixture + request_path, headers=headers, max_redirects=0)
+            if url.path == article_path and response.ok:
+                payload = await response.json()
+                results.append((origin, headers.get("origin"), response.headers, payload))
+            await route.fulfill(response=response)
+
+        try:
+            await context.route("**/*", relay)
+            page = await context.new_page()
+            started = time.monotonic()
+            await page.goto(saved, wait_until="commit")
+            await expect(page.locator("#article-content")).to_contain_text(expected_text, timeout=12000)
+            first_text_ms = round((time.monotonic() - started) * 1000)
+            await expect(page.locator("#reader-engine")).to_have_text("US")
+            image = page.locator("#article-content img").first
+            await image.scroll_into_view_if_needed()
+            await expect(image).to_be_visible()
+            assert await image.evaluate("image => image.decode().then(() => image.naturalWidth > 0)")
+            decoded = await image.evaluate("""async image => {
+                const response = await fetch(image.currentSrc);
+                const bytes = await response.arrayBuffer();
+                return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
+                    .map(byte => byte.toString(16).padStart(2, '0')).join('');
+            }""")
+            assert decoded == figure_sha
+            assert page.url == saved and requests == ([(direct, article_path, "GET")] +
+                                                      ([(main, article_path, "GET")] if fallback else []))
+            resolved_origin, caller, response_headers, payload = results[0]
+            assert len(results) == 1 and resolved_origin == (main if fallback else direct)
+            assert payload["configuration"]["id"] == configuration and payload["configuration"]["region"] == "US"
+            assert payload["article"]["id"] == article and payload["article"]["canonical_revision_id"]
+            assert response_headers["cache-control"] == "private, no-store"
+            if not fallback:
+                assert caller == main and response_headers.get("access-control-allow-origin") == main
+                assert "access-control-allow-credentials" not in response_headers
+                assert "workshop-demo-fitment" in response_headers["preference-applied"]
+            else:
+                assert 200 <= fallback_started_ms < 1000
+            print("WORKSHOP_PUBLIC_DEMO_TRANSPORT " + json.dumps({
+                "engine": engine, "headed": True, "fallback": fallback, "first_text_ms": first_text_ms,
+                "fallback_started_ms": fallback_started_ms, "exact_scope_and_figure_verified": True,
+            }), flush=True)
+        finally:
+            fallback_started.set()
+            await context.close()
+
+    context = await browser.new_context(ignore_https_errors=True, service_workers="block")
+    try:
+        info = await context.request.get(fixture + "/__fixture/demo-origins")
+        addresses = await info.json()
+        detail = fixture + "/__fixture/demo-article?region=US&fitment=1"
+        page = await context.new_page()
+        async def read(url):
+            return await page.evaluate("""async url => {
+                try {
+                    const reply = await fetch(url, {credentials:'omit', cache:'no-store'});
+                    const body = await reply.json();
+                    return {status:reply.status, article:body.article?.id, configuration:body.configuration?.id};
+                } catch (error) {
+                    return {blocked:error instanceof TypeError};
+                }
+            }""", url)
+
+        await page.goto(addresses["main"], wait_until="domcontentloaded")
+        assert await read(detail + "&demo=1") == {"status": 200, "article": article, "configuration": configuration}
+        assert await read(detail) == {"blocked": True}
+        assert await read(detail + "&demo=1&region=US") == {"blocked": True}
+        assert await read(detail.replace("region=US", "region=") + "&demo=1") == {"blocked": True}
+        await page.goto(addresses["outside"], wait_until="domcontentloaded")
+        assert await read(detail + "&demo=1") == {"blocked": True}
+        print("WORKSHOP_PUBLIC_DEMO_CORS " + json.dumps({
+            "engine": engine, "headed": True, "direct_read_matches": True,
+            "ordinary_private_detail_blocked": True, "outside_origin_blocked": True,
+        }), flush=True)
+    finally:
+        await context.close()
+
+
 async def verify_figure_transport_retry(browser, url, storage, fixture_route, detail, digest):
     context = await browser.new_context(ignore_https_errors=True, service_workers="block", storage_state=storage)
     image_prefix = "/v1/catalog/images/v2."
@@ -1207,6 +1328,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                 }), flush=True)
                 if scope.get("retry_workshop_entry"):
                     storage = await owner.storage_state()
+                    await verify_public_demo_read(browser, origin, configuration, article, expected_text,
+                                                  cold_index["figure_sha"], engine)
                     await verify_paid_checkout_startup_retry(browser, origin, storage, route_fixture, result, article, engine)
                     await verify_figure_transport_retry(browser, page.url, storage, route_fixture, detail, cold_index["figure_sha"])
                     print(json.dumps({"case": "workshop-figure-transport-retry", "engine": engine, "headed": True,
@@ -1323,6 +1446,7 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
             AUTODATA_CATALOG_INTEGRATION_REQUIRED="1",
             AUTODATA_LIFECYCLE_TEST="1",
             AUTODATA_WORKSHOP_BROWSER_SIMULATION="1",
+            AUTODATA_WORKSHOP_BROWSER_PUBLIC_DEMO=("1" if variant == "authored-model-index" else ""),
             AUTODATA_WORKSHOP_BROWSER_READY=str(ready),
             AUTODATA_CATALOG_TEST_DSN=f"postgres://lifecycle_test:lifecycle_test_only@postgres:5432/{repo.database_name}?sslmode=disable",
             AUTODATA_CATALOG_TEST_ENSURE_URL=ensure,
