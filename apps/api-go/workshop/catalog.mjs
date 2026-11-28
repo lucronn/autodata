@@ -28,14 +28,27 @@ export function articleSearchParams(value) {
     : { q: query };
 }
 
+function articleTitleMatch(title) {
+  // Match full titles with the same simple case folding as the API.
+  const literal = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const exact = new RegExp(`^${literal}$`, 'iu');
+  return item => exact.test(trimArticleSearch(item.title || ''));
+}
+
+export function prioritizeReadableTitle(items, query) {
+  const matches = articleTitleMatch(query);
+  const titles = [];
+  const others = [];
+  for (const item of items) {
+    const destination = item.availability === 'available' && matches(item) ? titles : others;
+    destination.push(item);
+  }
+  return titles.length ? [...titles, ...others] : items;
+}
+
 export function filterArticles(items, query) {
   const { title, q } = articleSearchParams(query);
-  if (title) {
-    // The API compares the full title with Unicode simple case folding.
-    const literal = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const exact = new RegExp(`^${literal}$`, 'iu');
-    return items.filter(item => exact.test(trimArticleSearch(item.title || '')));
-  }
+  if (title) return items.filter(articleTitleMatch(title));
   const words = q.toLocaleLowerCase().split(articleSearchWhitespace).filter(Boolean);
   return items.filter(item => {
     const text = [item.title, item.component, item.kind, item.service_schedule].filter(Boolean).join(' ').toLocaleLowerCase();
