@@ -308,27 +308,50 @@ def test_continuous_permanent_ledger_ceiling(continuous_state):
     with pytest.raises(worker.WorkerBlocked):state.read()
 
 
-def test_continuous_quota_waits_and_resumes(continuous_state,monkeypatch):
-    state=continuous_state;state.set_enabled(True)
-    for _ in range(10):assert state.reserve(uuid4(),NOW)
+def test_continuous_quota_waits_and_resumes(continuous_state, monkeypatch):
     from threading import Event
-    stop=Event();clock=[NOW];observed=[]
+
+    state = continuous_state
+    state.set_enabled(True)
+    for _ in range(10):
+        assert state.reserve(uuid4(), NOW)
+    stop = Event()
+    clock = [NOW]
+    observed = []
     subscriptions = []
+    paid_deadline_reads = []
+
     class Stop:
-        def is_set(self):return stop.is_set()
-        def wait(self,seconds):
-            assert seconds==2
-            if clock[0]==NOW:clock[0]=NOW+timedelta(hours=24)
-            else:stop.set()
-    monkeypatch.setattr(worker,'database_now',lambda repo:clock[0])
-    monkeypatch.setattr(worker,'_subscribe_to_article_jobs',lambda repo: subscriptions.append(clock[0]))
+        def is_set(self):
+            return stop.is_set()
+
+        def set(self):
+            stop.set()
+
+        def wait(self, seconds):
+            if clock[0] == NOW:
+                assert seconds == 0.25
+                clock[0] = NOW + timedelta(hours=24)
+            else:
+                assert seconds == 2
+                stop.set()
+
+    def poll_timeout(repo, providers):
+        paid_deadline_reads.append((clock[0], tuple(providers)))
+        return 0.25
+
     def reserve(*args, **kwargs):
         if not kwargs["paid_overflow"]:
             observed.append(state.reserve(uuid4(), clock[0]))
+
+    monkeypatch.setattr(worker, 'database_now', lambda repo: clock[0])
+    monkeypatch.setattr(worker, '_subscribe_to_article_jobs', lambda repo: subscriptions.append(clock[0]))
+    monkeypatch.setattr(worker, '_paid_source_poll_timeout', poll_timeout)
     monkeypatch.setattr(worker, '_reserve_next_article', reserve)
-    worker.run_new_article_worker(None,state,registry={},object_store=None,model_client=None,stop=Stop())
-    assert observed==[True] and len(state.read()['reservations'])==11
+    worker.run_new_article_worker(None, state, registry={}, object_store=None, model_client=None, stop=Stop())
+    assert observed == [True] and len(state.read()['reservations']) == 11
     assert subscriptions == [NOW, NOW + timedelta(hours=24)]
+    assert paid_deadline_reads == [(NOW, ('bankone', 'banktwo'))]
 
 
 @pytest.mark.parametrize("listener_fails", [False, True])
