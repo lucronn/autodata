@@ -866,6 +866,7 @@ async def verify_public_demo_read(browser, fixture, configuration, article, expe
     for fallback in (False, True):
         context = await browser.new_context(ignore_https_errors=True, service_workers="block")
         requests, results = [], []
+        warming = True
         direct_read_started = None
         fallback_started_ms = None
         fallback_started = asyncio.Event()
@@ -882,6 +883,7 @@ async def verify_public_demo_read(browser, fixture, configuration, article, expe
             if url.path in (article_path, index):
                 requests.append((origin, url.path, route.request.method))
             if origin == direct and url.path == article_path:
+                assert not warming
                 assert parse_qs(url.query) == {"region": ["US"], "demo": ["1"], "fitment": ["1"]}
                 assert "cookie" not in headers and "authorization" not in headers and "prefer" not in headers
                 if fallback:
@@ -892,7 +894,7 @@ async def verify_public_demo_read(browser, fixture, configuration, article, expe
             headers.pop("host", None)
             headers["x-workshop-fixture-demo"] = "1"
             if origin == main and url.path == article_path:
-                if fallback:
+                if fallback and not warming:
                     assert direct_read_started is not None
                     fallback_started_ms = round(1000 * (time.monotonic() - direct_read_started))
                     fallback_started.set()
@@ -906,6 +908,16 @@ async def verify_public_demo_read(browser, fixture, configuration, article, expe
         try:
             await context.route("**/*", relay)
             page = await context.new_page()
+            await page.goto(saved, wait_until="commit")
+            await expect(page.locator("#article-content")).to_contain_text(expected_text, timeout=12000)
+            assert requests == [(main, article_path, "GET")] and len(results) == 1
+            assert await page.evaluate("""origin =>
+                [...document.querySelectorAll('link[rel=preconnect]')].some(link =>
+                    new URL(link.href).origin === origin && link.crossOrigin === 'anonymous')
+            """, direct)
+            requests.clear()
+            results.clear()
+            warming = False
             started = time.monotonic()
             await page.goto(saved, wait_until="commit")
             await expect(page.locator("#article-content")).to_contain_text(expected_text, timeout=12000)
@@ -934,11 +946,26 @@ async def verify_public_demo_read(browser, fixture, configuration, article, expe
                 assert "access-control-allow-credentials" not in response_headers
                 assert "workshop-demo-fitment" in response_headers["preference-applied"]
             else:
-                assert 200 <= fallback_started_ms < 1000
+                assert 125 <= fallback_started_ms < 750
+            if not fallback:
+                await page.evaluate("sessionStorage.setItem('workshopDemoDirectReadyAt', String(Date.now() - 16000))")
+            requests.clear()
+            results.clear()
+            warming = True
+            await page.goto(saved, wait_until="commit")
+            await expect(page.locator("#article-content")).to_contain_text(expected_text, timeout=12000)
+            assert requests == [(main, article_path, "GET")] and len(results) == 1
             print("WORKSHOP_PUBLIC_DEMO_TRANSPORT " + json.dumps({
                 "engine": engine, "headed": True, "fallback": fallback, "first_text_ms": first_text_ms,
                 "fallback_started_ms": fallback_started_ms, "exact_scope_and_figure_verified": True,
+                "cold_read_started_on_main": True, "expired_or_failed_preparation_used_main": True,
             }), flush=True)
+        except Exception:
+            print("WORKSHOP_PUBLIC_DEMO_FAILURE " + json.dumps({
+                "engine": engine, "fallback": fallback, "warming": warming, "requests": requests,
+                "completed": len(results), "fallback_started_ms": fallback_started_ms,
+            }), flush=True)
+            raise
         finally:
             fallback_started.set()
             await context.close()
