@@ -510,6 +510,18 @@ function groupedModelChoices(names) {
   });
   return choices.length ? choices : null;
 }
+function drivetrainModelChoices() {
+  const selected = $("model").value;
+  const name = rows.model.find((item) => item.id === selected)?.name?.trim().toLowerCase();
+  if (!name) return null;
+  const choices = rows.model.flatMap((item) => {
+    const sibling = item.name?.trim().match(/^(.+?)(?:\s*-\s*|\s+)(?:AWD|FWD|RWD|2WD|4WD|4x2|4x4)$/i);
+    return item.id !== selected && sibling?.[1].trim().toLowerCase() === name
+      ? [{ id: item.id, name: selectorLabel("model", item) }]
+      : [];
+  });
+  return choices.length ? choices : null;
+}
 function readStoredSelector(path, signal, timeout) {
   return requestStoredSelector(path, { signal, timeout }, requestJSON);
 }
@@ -586,6 +598,7 @@ async function refreshPicker(name, { followDiscovery = false, waitForDiscovery =
           select.append(...additional.map((item) => pickerOption(pickerChoice(name, item))));
         }
         onChoices?.();
+        if (name === "model") pickerStates.get("configuration")?.onModelChoices?.();
       },
     });
   } catch {
@@ -607,6 +620,7 @@ async function loadOptions(name, g, desired = "", initial = null, {
   const stopWithChoices = name !== "configuration" && !desired;
   const groupNames = name === "configuration" && !desired ? groupedModelNames() : null;
   let modelAlternatives = groupedModelChoices(groupNames);
+  const suggestDrivetrains = name === "configuration" && !desired && !groupNames;
   let loadingStatus = modelAlternatives
     ? "Checking engines for this group. You can choose an individual model."
     : `Loading ${label} choices…`;
@@ -624,12 +638,15 @@ async function loadOptions(name, g, desired = "", initial = null, {
     if (!(data.hydrating || data.discovering)) return;
     const hasChoices = pickerHasChoices(name, data.items);
     if (modelAlternatives && !hasChoices) return;
-    const message = hasChoices
-      ? `More ${label} choices are loading. You can choose an available option.`
+    const drivetrainChoices = !hasChoices && suggestDrivetrains ? drivetrainModelChoices() : null;
+    const message = drivetrainChoices
+      ? "Checking engines and trims. You can choose a drivetrain-specific model."
+      : hasChoices ? `More ${label} choices are loading. You can choose an available option.`
       : data.items.length ? "Checking sources for a verified engine or trim…" : `Loading ${label} choices…`;
     if (message === loadingStatus) return;
     loadingStatus = message;
-    status(message, data.items.length ? { cancelable: true } : { busy: true });
+    status(message, { busy: !data.items.length || Boolean(drivetrainChoices), cancelable: true,
+      modelAlternatives: drivetrainChoices });
   }
   status(loadingStatus, { busy: true, modelAlternatives });
   stage(name);
@@ -726,6 +743,19 @@ async function loadOptions(name, g, desired = "", initial = null, {
     status("No verified engine or trim loaded for this group. Choose an individual model.",
       { modelAlternatives, retry: incomplete ? retry : null });
     return;
+  }
+  if (suggestDrivetrains && !pickerHasChoices(name, result.items)) {
+    picker.onModelChoices = () => {
+      if (!g.current() || pickerHasChoices(name, rows[name])) return false;
+      const choices = drivetrainModelChoices();
+      if (!choices) return false;
+      status("Choose a drivetrain-specific model to see its engines and trims.",
+        { modelAlternatives: choices, retry: incomplete ? retry : null });
+      return true;
+    };
+    const shown = picker.onModelChoices();
+    if (pickerStates.get("model")?.incomplete) void refreshPicker("model", { followDiscovery: true });
+    if (shown) return;
   }
   if (!selected && incomplete) {
     if (!desired && result.items.length) {

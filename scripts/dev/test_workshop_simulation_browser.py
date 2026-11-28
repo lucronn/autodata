@@ -397,6 +397,110 @@ async def verify_late_grouped_models(page, origin):
             await page.unroute(f"{origin}{path}?*", handler)
 
 
+async def verify_drivetrain_model_choices(page, origin, engine):
+    from playwright.async_api import expect
+
+    model_path = "/v1/catalog/years/2024/makes/example/models"
+    models = [
+        {"id": "trail", "name": "Trail"},
+        {"id": "trail-awd", "name": "Trail Awd", "market_unverified": True},
+        {"id": "trail-fwd", "name": "Trail - Fwd"},
+        {"id": "trail-awd-premium", "name": "Trail AWD Premium"},
+        {"id": "trailblazer-awd", "name": "Trailblazer AWD"},
+        {"id": "road", "name": "Road"},
+        {"id": "road-awd", "name": "Road AWD"},
+    ]
+    ridge = {"id": "ridge", "name": "Ridge"}
+    ridge_awd = {"id": "ridge-awd", "name": "Ridge AWD"}
+    engines = {name: str(uuid4()) for name in ("trail", "trail-awd", "trail-fwd", "road", "ridge", "ridge-awd")}
+    finish_discovery = False
+    late_models = False
+    ridge_requested = False
+    release_ridge_sibling = asyncio.Event()
+
+    async def selector(route):
+        nonlocal ridge_requested
+        path = urlsplit(route.request.url).path
+        complete = True
+        if path == model_path:
+            items = models
+            if late_models:
+                complete = ridge_requested
+                items = [ridge]
+                if complete:
+                    await release_ridge_sibling.wait()
+                    items.append(ridge_awd)
+        else:
+            model = path.split("/")[-2]
+            row = {"id": engines[model], "year": 2024, "make": "Example", "region": "US",
+                   "model": next(item["name"] for item in (*models, ridge, ridge_awd) if item["id"] == model)}
+            if model == "trail":
+                complete = finish_discovery
+                row["configuration_unresolved"] = True
+            elif model == "ridge":
+                ridge_requested = True
+                row["configuration_unresolved"] = True
+            else:
+                row["engine"] = "2.4 L"
+            items = [row]
+        await route.fulfill(json={"version": "v1", "items": items, "complete": complete, "hydrating": not complete})
+
+    paths = [model_path, *(f"{model_path}/{model}/configurations" for model in engines)]
+    for path in paths:
+        await page.route(f"{origin}{path}?*", selector)
+    try:
+        model = page.locator("#model")
+        alternatives = page.locator("#model-alternatives")
+        await page.goto(f"{origin}/workshop/?year=2024&make=example")
+        for target in ("trail-fwd", "trail-awd"):
+            started = time.monotonic()
+            await model.select_option("trail")
+            await expect(alternatives.get_by_role("button")).to_have_text(
+                ["Trail Awd · market unverified", "Trail - Fwd"], timeout=4000,
+            )
+            choices_ms = round((time.monotonic() - started) * 1000)
+            if not finish_discovery:
+                await expect(page.locator("#activity-text")).to_contain_text("Checking")
+            await expect(page.locator(f'#configuration option[value="{engines["trail"]}"][disabled]')).to_have_count(1)
+            await expect(page.locator("#purchase")).to_be_hidden()
+            selected_at = time.monotonic()
+            await alternatives.locator(f'button[value="{target}"]').click()
+            await expect(model).to_have_value(target)
+            await expect(model).to_be_focused()
+            await expect(page.locator(f'#configuration option[value="{engines[target]}"]')).to_have_text("2.4 L")
+            await expect(alternatives).to_be_hidden()
+            assert parse_qs(urlsplit(page.url).query)["model"] == [target]
+            print("WORKSHOP_DRIVETRAIN_MODEL " + json.dumps({
+                "engine": engine, "headed": True, "discovery_finished": finish_discovery, "model": target,
+                "alternatives_ms": choices_ms, "selection_to_engine_ms": round((time.monotonic() - selected_at) * 1000),
+            }), flush=True)
+            finish_discovery = True
+        await model.select_option("road")
+        await expect(page.locator(f'#configuration option[value="{engines["road"]}"]')).to_have_text("2.4 L")
+        await expect(alternatives).to_be_hidden()
+
+        late_models = True
+        await page.goto(f"{origin}/workshop/?year=2024&make=example&model=ridge")
+        await expect(model).to_have_value("ridge")
+        await expect(page.locator("#activity-text")).to_contain_text("No verified engine or trim is available")
+        await expect(alternatives).to_be_hidden()
+        await expect(model.locator('option[value="ridge-awd"]')).to_have_count(0)
+        started = time.monotonic()
+        release_ridge_sibling.set()
+        await expect(alternatives.get_by_role("button")).to_have_text(["Ridge AWD"])
+        choices_ms = round((time.monotonic() - started) * 1000)
+        await alternatives.get_by_role("button", name="Ridge AWD").click()
+        await expect(model).to_have_value("ridge-awd")
+        await expect(page.locator(f'#configuration option[value="{engines["ridge-awd"]}"]')).to_have_text("2.4 L")
+        print("WORKSHOP_DRIVETRAIN_LATE_MODEL " + json.dumps({
+            "engine": engine, "headed": True, "alternatives_ms": choices_ms, "model": "ridge-awd",
+        }), flush=True)
+    finally:
+        release_ridge_sibling.set()
+        for path in paths:
+            await page.unroute(f"{origin}{path}?*", selector)
+
+
 async def verify_pending_saved_article(owner, origin, configuration, article, expected_text):
     from playwright.async_api import expect
 
@@ -1228,6 +1332,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                 await verify_labelled_market_picker(page, origin, *market)
             if scope.get("late_group_models"):
                 await verify_late_grouped_models(page, origin)
+            if scope.get("drivetrain_model_choices"):
+                await verify_drivetrain_model_choices(page, origin, engine)
             if repair is None and table_variant is None:
                 picker_started = time.monotonic()
                 await page.goto(f"{origin}/workshop/")
@@ -1558,6 +1664,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
 
 @pytest.mark.parametrize("variant", [
     "payment", "index-history", "list-starts", "authored-table", "archived-table", "source-table", "labelled-market", "late-group-models",
+    "drivetrain-model-choices",
     "authored-model-index", "authored-model-index-competing-fitment", "authored-model-index-held-bankone",
     "authored-model-index-held-banktwo", "authored-guid", "authored-guid-source",
     "authored-model-index-case", "authored-model-index-case-competing-fitment",
@@ -1586,6 +1693,8 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
             scope["labelled_market"] = labelled_market_fixture(runtime)
         if variant == "late-group-models":
             scope["late_group_models"] = True
+        if variant == "drivetrain-model-choices":
+            scope["drivetrain_model_choices"] = True
         if variant in ("authored-guid", "authored-guid-source"):
             from test_workshop_authored_referrals_browser import authored_guid_reader_fixture
             scope["authored_guid"] = authored_guid_reader_fixture(runtime, rewrite_child=variant == "authored-guid")
