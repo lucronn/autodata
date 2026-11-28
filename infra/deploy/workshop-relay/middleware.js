@@ -117,11 +117,12 @@ function savedEntryReader(upstreamOrigin, publicHost, fetchDocument = fetch, reg
     const headers = new Headers(document.headers);
     headers.set("age", Math.floor((Date.now() - document.storedAt) / 1000).toString());
     headers.set("server-timing", "workshop-entry;desc=" + (hit ? "hit" : "fill"));
+    headers.append("server-timing", "workshop-demo-detail");
     return new Response(document.body, { headers });
   };
 }
 
-export const config = { matcher: "/((?!workshop/assets/[a-f0-9]{64}/).*)", runtime: "nodejs" };
+export const config = { matcher: "/((?!workshop/assets/[a-f0-9]{64}/|workshop-demo-detail/).*)", runtime: "nodejs" };
 
 import { getCache } from "@vercel/functions";
 
@@ -190,6 +191,9 @@ export default async function middleware(request) {
   const responseHeaders = new Headers(response.headers);
   responseHeaders.delete("content-encoding");
   responseHeaders.delete("content-length");
+  if (path === "/workshop" && request.method === "GET") {
+    responseHeaders.append("server-timing", "workshop-demo-detail");
+  }
 
   return new Response(response.body, {
     status: response.status,

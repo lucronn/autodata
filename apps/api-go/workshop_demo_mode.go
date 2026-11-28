@@ -81,21 +81,6 @@ func (s *Server) workshopOpenDemoAvailable(r *http.Request) bool {
 	return s.workshopOpenDemoHost != "" && r.Host == s.workshopOpenDemoHost && s.paidCatalogEnabled()
 }
 
-// The main Workshop origin can read the same anonymous demo article directly
-// from the public tunnel. This query describes the response shape without
-// requiring a cross-origin Prefer header or preflight.
-func (s *Server) workshopDirectDemoDetail(r *http.Request) bool {
-	origins := r.Header.Values("Origin")
-	if r.Host != workshopPublicDemoTunnelHost || !s.workshopOpenDemoRequest(r) ||
-		len(origins) != 1 || origins[0] != workshopPublicDemoOrigin {
-		return false
-	}
-	query, err := url.ParseQuery(r.URL.RawQuery)
-	fitment, region := query["fitment"], query["region"]
-	return err == nil && len(query) == 3 && len(fitment) == 1 && fitment[0] == "1" &&
-		len(region) == 1 && commerceRegion(region[0])
-}
-
 func workshopPrivateTestModeReady(body []byte) bool {
 	if len(body) > 256 {
 		return false

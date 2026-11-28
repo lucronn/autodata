@@ -42,63 +42,23 @@
           const base = `/v1/catalog/vehicles/${configuration}/articles`;
           const query = `?region=${region}&demo=1`;
           const controller = new AbortController();
-          function read(path, prefer) {
-            const response = fetch(path, {
+          function read(path, prefer, transport = path) {
+            const response = fetch(transport, {
               signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
               credentials: 'same-origin', cache: 'no-store',
               headers: { Accept: 'application/json', Prefer: prefer },
             }).catch(() => null);
             return { path, response };
           }
-          const detailPreference = 'workshop-short-publication-check, workshop-demo-fitment';
           function readDetail(path) {
-            const directOrigin = catalog.dataset.directSelectorOrigin;
-            if (location.origin !== 'https://autodata.cars.tk' || !directOrigin) return read(path, detailPreference);
-            const readyKey = 'workshopDemoDirectReadyAt';
-            let preparedAt = 0;
-            try {
-              preparedAt = Number(sessionStorage.getItem(readyKey));
-            } catch {}
-            function rememberReady(ready) {
-              try {
-                if (ready) sessionStorage.setItem(readyKey, String(Date.now()));
-                else sessionStorage.removeItem(readyKey);
-              } catch {}
-            }
-            const elapsed = Date.now() - preparedAt;
-            if (elapsed < 0 || elapsed > 15000 || !preparedAt) {
-              const ordinary = read(path, detailPreference);
-              const connection = document.createElement('link');
-              connection.rel = 'preconnect';
-              connection.href = directOrigin;
-              connection.crossOrigin = 'anonymous';
-              document.head.append(connection);
-              ordinary.response.then(reply => rememberReady(reply?.status === 200));
-              return ordinary;
-            }
-            const direct = new AbortController();
-            let timer;
-            const deadline = new Promise(resolve => {
-              timer = setTimeout(() => {
-                resolve(null);
-                direct.abort();
-              }, 175);
-            });
-            const readDirect = fetch(new URL(path + '&fitment=1', directOrigin), {
-              signal: AbortSignal.any([controller.signal, direct.signal]),
-              credentials: 'omit', cache: 'no-store', redirect: 'error',
-              headers: { Accept: 'application/json' },
-            }).then(async reply => {
-              if (reply.status !== 200 || !reply.headers.get('Preference-Applied')?.includes('workshop-demo-fitment'))
-                return null;
-              // A response with headers can still stall before the article arrives.
-              await reply.clone().arrayBuffer();
-              return reply;
-            }).catch(() => null);
-            const response = Promise.race([readDirect, deadline]).then(reply => {
-              clearTimeout(timer);
-              rememberReady(Boolean(reply));
-              return reply ?? (controller.signal.aborted ? null : read(path, detailPreference).response);
+            const prefer = 'workshop-short-publication-check, workshop-demo-fitment';
+            const timings = globalThis.performance?.getEntriesByType?.('navigation')?.[0]?.serverTiming;
+            if (!timings?.some(timing => timing.name === 'workshop-demo-detail')) return read(path, prefer);
+            const transport = `/workshop-demo-detail/${configuration}/${article}/${region}`;
+            const response = read(path, prefer, transport).response.then(reply => {
+              if (reply?.headers.get('content-type')?.includes('application/json')) return reply;
+              // A cached entry can outlive the relay deployment that advertised the route.
+              return controller.signal.aborted ? null : read(path, prefer).response;
             });
             return { path, response };
           }

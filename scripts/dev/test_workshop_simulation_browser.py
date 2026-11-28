@@ -858,148 +858,88 @@ async def verify_public_demo_read(browser, fixture, configuration, article, expe
     from playwright.async_api import expect
 
     main = "https://autodata.cars.tk"
-    direct = "https://autodata.curtis.click"
     saved = f"{main}/workshop?configuration={configuration}&region=US&article={article}&demo=1"
     index = f"/v1/catalog/vehicles/{configuration}/articles"
     article_path = f"{index}/{article}"
+    alias = f"/workshop-demo-detail/{configuration}/{article}/US"
+    ordinary = f"{main}{article_path}?region=US"
 
-    for fallback in (False, True):
+    for lane in ("rewrite", "unavailable", "regular"):
         context = await browser.new_context(ignore_https_errors=True, service_workers="block")
-        requests, results = [], []
-        warming = True
-        direct_read_started = None
-        fallback_started_ms = None
-        fallback_started = asyncio.Event()
+        requests, payloads = [], []
 
         async def relay(route):
-            nonlocal direct_read_started, fallback_started_ms
             url = urlsplit(route.request.url)
-            origin = f"{url.scheme}://{url.netloc}"
-            if origin not in (main, direct):
+            if f"{url.scheme}://{url.netloc}" != main:
                 await route.abort()
                 return
             request_path = url.path + (f"?{url.query}" if url.query else "")
             headers = await route.request.all_headers()
-            if url.path in (article_path, index):
-                requests.append((origin, url.path, route.request.method))
-            if origin == direct and url.path == article_path:
-                assert not warming
-                assert parse_qs(url.query) == {"region": ["US"], "demo": ["1"], "fitment": ["1"]}
-                assert "cookie" not in headers and "authorization" not in headers and "prefer" not in headers
-                if fallback:
-                    direct_read_started = time.monotonic()
-                    await fallback_started.wait()
-                    await route.abort("timedout")
+            demo_detail = url.path == alias or (url.path == article_path and "demo=1" in url.query)
+            if demo_detail or url.path == index:
+                requests.append(url.path)
+            if url.path == alias:
+                assert not url.query and route.request.method == "GET"
+                assert headers["prefer"] == "workshop-short-publication-check, workshop-demo-fitment"
+                if lane == "unavailable":
+                    await route.fulfill(status=404, content_type="text/plain", body="Route unavailable")
                     return
+                request_path = article_path + "?region=US&demo=1"
             headers.pop("host", None)
             headers["x-workshop-fixture-demo"] = "1"
-            if origin == main and url.path == article_path:
-                if fallback and not warming:
-                    assert direct_read_started is not None
-                    fallback_started_ms = round(1000 * (time.monotonic() - direct_read_started))
-                    fallback_started.set()
-                await asyncio.sleep(0.25)
             response = await route.fetch(url=fixture + request_path, headers=headers, max_redirects=0)
-            if url.path == article_path and response.ok:
-                payload = await response.json()
-                results.append((origin, headers.get("origin"), response.headers, payload))
+            if demo_detail and response.ok:
+                assert response.headers["cache-control"] == "private, no-store"
+                payloads.append(await response.json())
+            if url.path == "/workshop" and lane != "regular":
+                response_headers = dict(response.headers)
+                response_headers["server-timing"] = "workshop-entry;desc=hit, workshop-demo-detail"
+                await route.fulfill(response=response, headers=response_headers)
+                return
             await route.fulfill(response=response)
 
         try:
             await context.route("**/*", relay)
             page = await context.new_page()
-            await page.goto(saved, wait_until="commit")
-            await expect(page.locator("#article-content")).to_contain_text(expected_text, timeout=12000)
-            assert requests == [(main, article_path, "GET")] and len(results) == 1
-            assert await page.evaluate("""origin =>
-                [...document.querySelectorAll('link[rel=preconnect]')].some(link =>
-                    new URL(link.href).origin === origin && link.crossOrigin === 'anonymous')
-            """, direct)
-            requests.clear()
-            results.clear()
-            warming = False
-            started = time.monotonic()
-            await page.goto(saved, wait_until="commit")
-            await expect(page.locator("#article-content")).to_contain_text(expected_text, timeout=12000)
-            first_text_ms = round((time.monotonic() - started) * 1000)
-            await expect(page.locator("#reader-engine")).to_have_text("US")
-            image = page.locator("#article-content img").first
-            await image.scroll_into_view_if_needed()
-            await expect(image).to_be_visible()
-            assert await image.evaluate("image => image.decode().then(() => image.naturalWidth > 0)")
-            decoded = await image.evaluate("""async image => {
-                const response = await fetch(image.currentSrc);
-                const bytes = await response.arrayBuffer();
-                return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
-                    .map(byte => byte.toString(16).padStart(2, '0')).join('');
-            }""")
-            assert decoded == figure_sha
-            assert page.url == saved and requests == ([(direct, article_path, "GET")] +
-                                                      ([(main, article_path, "GET")] if fallback else []))
-            resolved_origin, caller, response_headers, payload = results[0]
-            assert len(results) == 1 and resolved_origin == (main if fallback else direct)
-            assert payload["configuration"]["id"] == configuration and payload["configuration"]["region"] == "US"
-            assert payload["article"]["id"] == article and payload["article"]["canonical_revision_id"]
-            assert response_headers["cache-control"] == "private, no-store"
-            if not fallback:
-                assert caller == main and response_headers.get("access-control-allow-origin") == main
-                assert "access-control-allow-credentials" not in response_headers
-                assert "workshop-demo-fitment" in response_headers["preference-applied"]
-            else:
-                assert 125 <= fallback_started_ms < 750
-            if not fallback:
-                await page.evaluate("sessionStorage.setItem('workshopDemoDirectReadyAt', String(Date.now() - 16000))")
-            requests.clear()
-            results.clear()
-            warming = True
-            await page.goto(saved, wait_until="commit")
-            await expect(page.locator("#article-content")).to_contain_text(expected_text, timeout=12000)
-            assert requests == [(main, article_path, "GET")] and len(results) == 1
-            print("WORKSHOP_PUBLIC_DEMO_TRANSPORT " + json.dumps({
-                "engine": engine, "headed": True, "fallback": fallback, "first_text_ms": first_text_ms,
-                "fallback_started_ms": fallback_started_ms, "exact_scope_and_figure_verified": True,
-                "cold_read_started_on_main": True, "expired_or_failed_preparation_used_main": True,
-            }), flush=True)
+            for temperature in ("cold", "warm"):
+                if temperature == "warm":
+                    await page.goto("about:blank", wait_until="commit")
+                requests.clear()
+                payloads.clear()
+                started = time.monotonic()
+                await page.goto(saved, wait_until="commit")
+                await expect(page.locator("#article-content")).to_contain_text(expected_text, timeout=12000)
+                first_text_ms = round((time.monotonic() - started) * 1000)
+                await expect(page.locator("#reader-engine")).to_have_text("US")
+                image = page.locator("#article-content img").first
+                await image.scroll_into_view_if_needed()
+                assert await image.evaluate("image => image.decode().then(() => image.naturalWidth > 0)")
+                decoded = await image.evaluate("""async image => {
+                    const response = await fetch(image.currentSrc);
+                    const bytes = await response.arrayBuffer();
+                    return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
+                        .map(byte => byte.toString(16).padStart(2, '0')).join('');
+                }""")
+                assert decoded == figure_sha
+                expected = {"rewrite": [alias], "unavailable": [alias, article_path], "regular": [article_path]}
+                assert page.url == saved and requests == expected[lane]
+                payload, = payloads
+                assert payload["configuration"]["id"] == configuration and payload["configuration"]["region"] == "US"
+                assert payload["article"]["id"] == article and payload["article"]["canonical_revision_id"]
+                status = await page.evaluate("async url => (await fetch(url, {cache:'no-store'})).status", ordinary)
+                assert status == 401
+                print("WORKSHOP_PUBLIC_DEMO_TRANSPORT " + json.dumps({
+                    "engine": engine, "headed": True, "lane": lane, "temperature": temperature,
+                    "first_text_ms": first_text_ms, "detail_reads": len(requests), "ordinary_status": status,
+                    "exact_scope_and_figure_verified": True,
+                }), flush=True)
         except Exception:
             print("WORKSHOP_PUBLIC_DEMO_FAILURE " + json.dumps({
-                "engine": engine, "fallback": fallback, "warming": warming, "requests": requests,
-                "completed": len(results), "fallback_started_ms": fallback_started_ms,
+                "engine": engine, "lane": lane, "requests": requests, "completed": len(payloads),
             }), flush=True)
             raise
         finally:
-            fallback_started.set()
             await context.close()
-
-    context = await browser.new_context(ignore_https_errors=True, service_workers="block")
-    try:
-        info = await context.request.get(fixture + "/__fixture/demo-origins")
-        addresses = await info.json()
-        detail = fixture + "/__fixture/demo-article?region=US&fitment=1"
-        page = await context.new_page()
-        async def read(url):
-            return await page.evaluate("""async url => {
-                try {
-                    const reply = await fetch(url, {credentials:'omit', cache:'no-store'});
-                    const body = await reply.json();
-                    return {status:reply.status, article:body.article?.id, configuration:body.configuration?.id};
-                } catch (error) {
-                    return {blocked:error instanceof TypeError};
-                }
-            }""", url)
-
-        await page.goto(addresses["main"], wait_until="domcontentloaded")
-        assert await read(detail + "&demo=1") == {"status": 200, "article": article, "configuration": configuration}
-        assert await read(detail) == {"blocked": True}
-        assert await read(detail + "&demo=1&region=US") == {"blocked": True}
-        assert await read(detail.replace("region=US", "region=") + "&demo=1") == {"blocked": True}
-        await page.goto(addresses["outside"], wait_until="domcontentloaded")
-        assert await read(detail + "&demo=1") == {"blocked": True}
-        print("WORKSHOP_PUBLIC_DEMO_CORS " + json.dumps({
-            "engine": engine, "headed": True, "direct_read_matches": True,
-            "ordinary_private_detail_blocked": True, "outside_origin_blocked": True,
-        }), flush=True)
-    finally:
-        await context.close()
 
 
 async def verify_figure_transport_retry(browser, url, storage, fixture_route, detail, digest):

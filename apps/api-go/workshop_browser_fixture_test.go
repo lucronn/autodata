@@ -185,38 +185,6 @@ func TestWorkshopBrowserFixtureHTTP(t *testing.T) {
 		})
 	}
 	application := server.Handler()
-	if os.Getenv("AUTODATA_WORKSHOP_BROWSER_PUBLIC_DEMO") == "1" && paid != nil {
-		demoPage := func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			io.WriteString(w, "<!doctype html><title>Workshop browser origin fixture</title>")
-		}
-		main, outside := httptest.NewServer(http.HandlerFunc(demoPage)), httptest.NewServer(http.HandlerFunc(demoPage))
-		defer main.Close()
-		defer outside.Close()
-		mux.HandleFunc("GET /__fixture/demo-origins", func(w http.ResponseWriter, _ *http.Request) {
-			writeJSON(w, http.StatusOK, map[string]string{"main": main.URL, "outside": outside.URL})
-		})
-		mux.HandleFunc("GET /__fixture/demo-article", func(w http.ResponseWriter, r *http.Request) {
-			// Translate the two origin names for this loopback fixture. The browser receives
-			// an allow header only if the real application grants the corresponding origin.
-			r.Host = workshopPublicDemoTunnelHost
-			r.URL.Path = "/v1/catalog/vehicles/" + paid.configuration + "/articles/" + paid.article
-			if r.Header.Get("Origin") == main.URL {
-				r.Header.Set("Origin", workshopPublicDemoOrigin)
-			}
-			response := httptest.NewRecorder()
-			application.ServeHTTP(response, r)
-			headers := response.Header()
-			if headers.Get("Access-Control-Allow-Origin") == workshopPublicDemoOrigin {
-				headers.Set("Access-Control-Allow-Origin", main.URL)
-			}
-			for name, values := range headers {
-				w.Header()[name] = values
-			}
-			w.WriteHeader(response.Code)
-			w.Write(response.Body.Bytes())
-		})
-	}
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if os.Getenv("AUTODATA_WORKSHOP_BROWSER_PUBLIC_DEMO") == "1" &&
 			r.Header.Get("X-Workshop-Fixture-Demo") == "1" {
