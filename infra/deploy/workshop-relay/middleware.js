@@ -122,7 +122,7 @@ function savedEntryReader(upstreamOrigin, publicHost, fetchDocument = fetch, reg
 }
 
 export const config = {
-  matcher: "/((?!workshop/assets/[a-f0-9]{64}/|v1/catalog/images/v2\\.[A-Za-z0-9_-]{1,6000}$).*)",
+  matcher: "/((?!workshop/assets/[a-f0-9]{64}/|v1/catalog/images/v2\\.[A-Za-z0-9_-]{1,6000}$|v1/catalog/vehicles/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/articles/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:/source)?$).*)",
   runtime: "nodejs",
 };
 
