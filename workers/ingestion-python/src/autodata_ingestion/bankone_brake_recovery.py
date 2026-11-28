@@ -74,6 +74,8 @@ _CLEAN_BEFORE_OPENING_WORDING = re.compile(
 
 def reservoir_preparation_facts(text):
     """Recognize complete instructions that bind servicing or cleaning order."""
+    if text.startswith("When "):
+        text = "If " + text.removeprefix("When ")
     for syntax in (_RESERVOIR_FILL_AFTER_SERVICE, *_REFILL_AFTER_SERVICE_WORDING):
         if match := syntax.fullmatch(text):
             return "refill_after_service", match["system"], match["fluid"], match["limit"]
