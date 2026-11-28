@@ -124,10 +124,31 @@ function savedEntryReader(upstreamOrigin, publicHost, fetchDocument = fetch, reg
 export const config = { matcher: "/((?!workshop/assets/[a-f0-9]{64}/).*)", runtime: "nodejs" };
 
 import { getCache } from "@vercel/functions";
+import { Pool, fetch as pooledFetch } from "undici";
 
 const UPSTREAM_ORIGIN = "https://autodata.curtis.click";
 const PUBLIC_HOST = "autodata.cars.tk";
 const PUBLIC_READ_USER_AGENT = "AutoData-Workshop-Proxy/1.0";
+const articleDetailPath = /^\/v1\/catalog\/vehicles\/([^/]+)\/articles\/([^/]+)$/;
+const readerImagePath = /^\/v1\/catalog\/images\/v2\.[A-Za-z0-9_-]+$/;
+const readerPool = new Pool(UPSTREAM_ORIGIN, { allowH2: true, connections: 2, connectTimeout: 4000 });
+
+function readerGET(request, path) {
+  if (request.method !== "GET") return false;
+  if (readerImagePath.test(path)) return true;
+  const article = articleDetailPath.exec(path);
+  return article && uuid.test(article[1]) && uuid.test(article[2]);
+}
+
+async function readWithPool(url, init) {
+  try {
+    return await pooledFetch(url, { ...init, dispatcher: readerPool });
+  } catch (error) {
+    // A failed connection can be retried through the standard transport for these reads.
+    if (!(error instanceof TypeError)) throw error;
+    return fetch(url, init);
+  }
+}
 
 // These are the public read routes mounted by the Workshop API.
 const PUBLIC_READ_PATHS = [
@@ -176,7 +197,8 @@ export default async function middleware(request) {
 
   // Follow redirects within the upstream origin, including the Workshop UI's
   // canonical /workshop/ path.
-  let response = await fetch(upstream, init);
+  const readOrigin = readerGET(request, path) ? readWithPool : fetch;
+  let response = await readOrigin(upstream, init);
   for (let i = 0; i < 5; i++) {
     if (![301, 302, 303, 307, 308].includes(response.status)) break;
     const location = response.headers.get("location");
@@ -184,7 +206,7 @@ export default async function middleware(request) {
     const next = new URL(location, upstream);
     if (next.origin !== upstream.origin) break;
     upstream = next;
-    response = await fetch(upstream, init);
+    response = await readOrigin(upstream, init);
   }
 
   const responseHeaders = new Headers(response.headers);
