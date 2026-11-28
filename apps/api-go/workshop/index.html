@@ -50,17 +50,34 @@
             }).catch(() => null);
             return { path, response };
           }
+          const savedArticleSearch = location.search;
+          function preloadLeadImage(reply) {
+            if (reply?.status === 200 && !controller.signal.aborted && location.search === savedArticleSearch) {
+              const path = reply.headers.get('Workshop-Lead-Image');
+              if (/^\/v1\/catalog\/images\/v2\.[a-zA-Z0-9_-]{1,6000}$/.test(path || '')) {
+                const hint = document.createElement('link');
+                hint.rel = 'preload';
+                hint.as = 'image';
+                hint.referrerPolicy = 'no-referrer';
+                hint.href = path;
+                document.head.append(hint);
+              }
+            }
+            return reply;
+          }
           function readDetail(path) {
-            const prefer = 'workshop-short-publication-check, workshop-demo-fitment';
+            const prefer = 'workshop-short-publication-check, workshop-demo-fitment, workshop-preload-lead-image';
             const timings = globalThis.performance?.getEntriesByType?.('navigation')?.[0]?.serverTiming;
-            if (!timings?.some(timing => timing.name === 'workshop-demo-detail')) return read(path, prefer);
+            if (!timings?.some(timing => timing.name === 'workshop-demo-detail')) {
+              return { path, response: read(path, prefer).response.then(preloadLeadImage) };
+            }
             const transport = `/workshop-demo-detail/${configuration}/${article}/${region}`;
             const response = read(path, prefer, transport).response.then(reply => {
               if (reply?.headers.get('content-type')?.includes('application/json')) return reply;
               // A cached entry can outlive the relay deployment that advertised the route.
               return controller.signal.aborted ? null : read(path, prefer).response;
             });
-            return { path, response };
+            return { path, response: response.then(preloadLeadImage) };
           }
           globalThis.workshopDemoIndex = {
             ...(article ? {} : read(base + query, 'workshop-demo-readable-index')),
