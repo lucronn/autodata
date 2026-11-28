@@ -118,6 +118,7 @@ let quote = null,
   mountedSource = null,
   viewGeneration = null,
   articleIndexOrigin = null,
+  articleIndexHistorySession = null,
   sessionRequest = null,
   sessionEstablished = false,
   signingIn = false;
@@ -129,6 +130,8 @@ const element = (tag, text, className) => {
 };
 const session = createSession({
   onChange(state) {
+    if (!state.authenticated || state.csrf !== articleIndexHistorySession?.csrf)
+      articleIndexHistorySession = null;
     $("signin").hidden = state.authenticated;
     $("signin").disabled = !state.ready && !state.popupPending;
     $("signin").textContent = state.popupPending
@@ -2717,13 +2720,24 @@ function openArticle(id, indexLink = null, { refreshOnly = false, preferRetained
     currentArticle.id !== id && params.get("article") === currentArticle.id ? currentArticle.id : "";
   const indexedArticle = indexLink && (searchItems?.find((item) => item.id === id) ||
     articles.find((item) => item.id === id));
+  const indexOrigin = indexLink && sameVehicle && !params.has("article") && !params.has("order") &&
+    access === "owned" && session.state.authenticated && session.state.csrf
+    ? { indexURL, indexLink, articleID: id, configuration: scope(), csrf: session.state.csrf,
+        paged: Boolean(indexPage && !params.has("q")) }
+    : null;
+  if (indexOrigin?.paged && uuid(id)) {
+    // Keep only a navigation hint for this tab's current session. The index
+    // request still revalidates the grant and locates the article's current page.
+    const marker = articleIndexHistorySession?.csrf === indexOrigin.csrf ? articleIndexHistorySession.marker
+      : globalThis.crypto?.randomUUID?.();
+    if (marker) {
+      articleIndexHistorySession = { marker, csrf: indexOrigin.csrf };
+      history.replaceState({ ...history.state, workshopArticleIndex: { marker, indexURL, articleID: id } }, "");
+    }
+  }
   updateURL({ article: id, previousArticle });
   if (indexURL !== location.href) {
-    articleIndexOrigin = indexLink && sameVehicle && !params.has("article") && !params.has("order") &&
-      access === "owned" && session.state.authenticated && session.state.csrf
-      ? { indexURL, readerURL: location.href, indexLink, articleID: id, configuration: scope(), csrf: session.state.csrf,
-          paged: Boolean(indexPage && !params.has("q")) }
-      : null;
+    articleIndexOrigin = indexOrigin && { ...indexOrigin, readerURL: location.href };
   }
   operation(
     (g) => {
@@ -3978,9 +3992,13 @@ function restoreHistoryEntry() {
     }
     return showReturnedArticleIndex(origin.indexLink);
   }
+  const savedIndex = history.state?.workshopArticleIndex;
+  const savedAnchor = savedIndex?.indexURL === location.href && uuid(savedIndex.articleID) &&
+    session.state.authenticated && articleIndexHistorySession && articleIndexHistorySession.csrf === session.state.csrf &&
+    articleIndexHistorySession.marker === savedIndex.marker ? savedIndex.articleID : "";
   return restoreRoute(null, {
-    focusArticle: sameIndex ? origin.articleID : "",
-    indexAnchor: sameIndex && origin.paged && uuid(origin.articleID) ? origin.articleID : "",
+    focusArticle: sameIndex ? origin.articleID : savedAnchor,
+    indexAnchor: sameIndex && origin.paged && uuid(origin.articleID) ? origin.articleID : savedAnchor,
   });
 }
 function showReturnedArticleIndex(indexLink = null) {

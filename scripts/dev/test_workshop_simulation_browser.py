@@ -1047,6 +1047,73 @@ async def verify_banktwo_guid_reader(page, scope):
     return visible_url
 
 
+async def verify_repeated_index_history(page, configuration, article, engine):
+    from playwright.async_api import expect
+
+    index_path = f"/v1/catalog/vehicles/{configuration}/articles"
+    index_request = lambda url: urlsplit(url).path == index_path
+    filler_rows = [{"id": str(uuid4()), "title": f"Test index entry {number}", "availability": "pending"}
+                   for number in range(1, 101)]
+    reads = []
+
+    async def paged_index(route):
+        url = urlsplit(route.request.url)
+        query = parse_qs(url.query)
+        assert query.get("region") == ["US"]
+        response = await route.fetch(url=url._replace(query="region=US").geturl())
+        assert response.ok
+        data = await response.json()
+        assert data["configuration"]["id"] == configuration and data["configuration"]["region"] == "US"
+        selected = next(row for row in data["items"] if row["id"] == article)
+        anchor = query.get("anchor", [None])[0]
+        offset = int(query.get("offset", [100 if anchor == article else 0])[0])
+        assert offset in (0, 100)
+        reads.append({"anchor": anchor, "offset": offset})
+        data.update(items=[selected] if offset else filler_rows,
+                    page={"offset": offset, "total": 101, "revision": "1" * 64},
+                    complete=True, hydrating=False)
+        await route.fulfill(response=response, json=data)
+
+    await page.route(index_request, paged_index)
+    try:
+        await page.locator("#my-vehicles").click()
+        await page.get_by_role("button", name="Open articles", exact=True).click()
+        page_range = page.locator("#article-page-range")
+        article_link = page.locator(f'#articles a[href*="{article}"]')
+        await expect(page_range).to_have_text("1–100 of 101")
+        await page.locator("#article-next").click()
+        await expect(page_range).to_have_text("101–101 of 101")
+        await article_link.click()
+        await expect(page.locator("#article-content")).to_contain_text("Take off the pump.")
+
+        measurements = []
+        for visit in ("first", "repeated"):
+            reads.clear()
+            started = time.monotonic()
+            await page.go_back()
+            await expect(page_range).to_be_visible()
+            restored_range = await page_range.inner_text()
+            first_view_ms = round((time.monotonic() - started) * 1000)
+            if restored_range == "1–100 of 101":
+                await page.locator("#article-next").click()
+            await expect(article_link).to_be_visible()
+            await expect(page_range).to_have_text("101–101 of 101")
+            measurements.append({"visit": visit, "first_visible_range": restored_range,
+                                 "first_view_ms": first_view_ms,
+                                 "target_visible_ms": round((time.monotonic() - started) * 1000),
+                                 "focused": await article_link.evaluate("node => node === document.activeElement"),
+                                 "reads": reads.copy()})
+            await page.go_forward()
+            await expect(page.locator("#article-content")).to_contain_text("Take off the pump.")
+
+        print("WORKSHOP_INDEX_HISTORY " + json.dumps({"engine": engine, "headed": True,
+              "display_backend": "Xvfb", "visits": measurements}), flush=True)
+        assert all(visit["reads"] == [{"anchor": article, "offset": 100}] and visit["focused"]
+                   for visit in measurements), measurements
+    finally:
+        await page.unroute(index_request, paged_index)
+
+
 async def exercise_simulated_payment(origin, scope, customer_account, repair=None, table_variant=None, table_repair=None):
     from playwright.async_api import async_playwright, expect
 
@@ -1398,6 +1465,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                 child = (await (await owner.request.get(child_detail)).json())["article"]
                 assert child["source_revision_id"] == chain["source_revision"]
                 assert bool(child.get("canonical_revision_id")) == chain["child_published"]
+            if scope.get("index_history"):
+                await verify_repeated_index_history(page, configuration, article, engine)
             other = await browser.new_context(ignore_https_errors=True, service_workers="block")
             other_transport = APIFixture(origin, API_CASES[1])
             other_transport.account = "other"
@@ -1426,7 +1495,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
 
 
 @pytest.mark.parametrize("variant", [
-    "payment", "list-starts", "authored-table", "archived-table", "source-table", "labelled-market", "late-group-models",
+    "payment", "index-history", "list-starts", "authored-table", "archived-table", "source-table", "labelled-market", "late-group-models",
     "authored-model-index", "authored-model-index-competing-fitment", "authored-model-index-held-bankone",
     "authored-model-index-held-banktwo", "authored-guid", "authored-guid-source",
     "authored-model-index-case", "authored-model-index-case-competing-fitment",
@@ -1449,6 +1518,8 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
         provider = "banktwo"
         scope = configure_scoped_runtime(runtime, provider)
         scope["article"] = str(runtime.article_id)
+        if variant == "index-history":
+            scope["index_history"] = True
         if variant == "labelled-market":
             scope["labelled_market"] = labelled_market_fixture(runtime)
         if variant == "late-group-models":
