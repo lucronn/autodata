@@ -46,14 +46,7 @@ export function authMessage(error) {
   if (error?.status === 401) return "Your session has expired. Sign in again.";
   return "Google sign-in is unavailable. You can keep browsing.";
 }
-export function readSessionBootstrap(request = requestJSON, { signal, includeLibrary = false, libraryLimit, route } = {}) {
-  const read = async (path, headers) => {
-    try {
-      return { status: "fulfilled", value: await request(path, { signal, timeout: 10000, headers }) };
-    } catch (reason) {
-      return { status: "rejected", reason };
-    }
-  };
+function sessionReadTarget({ includeLibrary = false, libraryLimit, route } = {}) {
   let path = "/auth/session";
   let prefer = "workshop-session-mode";
   if (includeLibrary) {
@@ -67,7 +60,18 @@ export function readSessionBootstrap(request = requestJSON, { signal, includeLib
       prefer += ", workshop-session-article-index";
     }
   }
-  return [read("/auth/config"), read(path, { Prefer: prefer })];
+  return { path, headers: { Prefer: prefer } };
+}
+export function readSessionBootstrap(request = requestJSON, { signal, ...selection } = {}) {
+  const read = async (path, headers) => {
+    try {
+      return { status: "fulfilled", value: await request(path, { signal, timeout: 10000, headers }) };
+    } catch (reason) {
+      return { status: "rejected", reason };
+    }
+  };
+  const { path, headers } = sessionReadTarget(selection);
+  return [read("/auth/config"), read(path, headers)];
 }
 export function createSession({
   request = requestJSON,
@@ -162,15 +166,23 @@ export function createSession({
       changed();
     }
   }
+  async function confirmSession(path, options) {
+    const current = epoch;
+    const csrf = state.csrf;
+    const data = await request(path, { ...options, timeout: 10000 });
+    return !options.signal?.aborted && current === epoch && state.authenticated &&
+      csrf === state.csrf && validSession(data) && data.csrf_token === csrf ? data : null;
+  }
   return {
     state,
     clear,
     async matchesCurrentSession({ signal } = {}) {
-      const current = epoch;
-      const csrf = state.csrf;
-      const data = await request("/auth/session", { signal, timeout: 10000 });
-      return !signal?.aborted && current === epoch && state.authenticated &&
-        csrf === state.csrf && validSession(data) && data.csrf_token === csrf;
+      return Boolean(await confirmSession("/auth/session", { signal }));
+    },
+    async readCurrentLibrary({ signal, limit }) {
+      const { path, headers } = sessionReadTarget({ includeLibrary: true, libraryLimit: limit });
+      const data = await confirmSession(path, { signal, headers });
+      return data?.mode === "firebase" ? { page: data.workshop_library } : null;
     },
     async bootstrap({ signal, initial, preserveGuestSignIn = false } = {}) {
       const current = ++epoch;
