@@ -1083,6 +1083,7 @@ async function loadArticles(g, articleID = "", {
   $("completion-status").textContent = "";
   stage("articles");
   const visibleRows = !$("catalog").hidden && (articles.length > 0 || searchItems?.length > 0);
+  let retryIndexConnection = compactDemo && !visibleRows && !firstIndex;
   status(visibleRows ? "Updating your article index…" : "Opening your article index…", {
     busy: !visibleRows,
     cancelable: true,
@@ -1097,14 +1098,27 @@ async function loadArticles(g, articleID = "", {
     ].filter(Boolean).join(", ");
     const startup = initialDemoIndex;
     initialDemoIndex = null;
-    const fetcher = startup?.path === path && prefer === "workshop-demo-readable-index"
-      ? async (_path, { signal }) => {
+    let fetcher;
+    if (startup?.path === path && prefer === "workshop-demo-readable-index") {
+      fetcher = async (_path, { signal }) => {
         signal.throwIfAborted();
         signal.addEventListener("abort", startup.abort, { once: true });
         const response = await startup.response;
         if (!response) throw new TypeError("The initial article index request did not return a response.");
         return response;
-      } : undefined;
+      };
+    } else if (retryIndexConnection) {
+      fetcher = async (url, init) => {
+        try {
+          return await fetch(url, init);
+        } catch (error) {
+          init.signal.throwIfAborted();
+          if (!(error instanceof TypeError)) throw error;
+          return fetch(url, init);
+        }
+      };
+    }
+    retryIndexConnection = false;
     return requestJSON(path, {
       ...options,
       fetcher,
