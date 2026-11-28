@@ -2658,11 +2658,15 @@ async function loadArticleView(id, g, order, {
   if (Object.hasOwn(reader.dataset, "rechecking")) return true;
   const article = retained ? currentArticle : result.data?.article;
   showArticleReadStatus(id, article, result.timedOut);
-  if (result.timedOut || !captureJob || currentArticle !== article || !awaitingArticleRewrite(article) ||
-      article.processing.job_id !== captureJob ||
+  if (result.timedOut || currentArticle !== article || !awaitingArticleRewrite(article) ||
+      !article.processing.job_id ||
       result.retryAfterSeconds > 0 || article.processing.retry_after_seconds > 0) return true;
+  const observedCapture = captureJob === article.processing.job_id;
+  const savedOwnedSource = savedLink && !openDemo && session.state.mode === "firebase" &&
+    session.state.authenticated && article.id === id && matchesConfiguration(result.data?.configuration);
+  if (!observedCapture && !savedOwnedSource) return true;
 
-  // The worker may pick up a newly stored source as soon as capture parks it.
+  // A saved reader can reopen the stored source just before its rewrite publishes.
   const sourceStillOpen = () =>
     g.current() && currentArticle === article && !Object.hasOwn(reader.dataset, "rechecking");
   await delay(500, g.signal);
