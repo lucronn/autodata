@@ -1742,7 +1742,7 @@ function startArticleFigures(figures, g) {
   const loadNearViewport = new Set(figures.map(({ url }) => url)).size >= 7;
   for (const { img, url } of figures) {
     if (loadNearViewport) {
-      img.loading = "lazy";
+      img.loading = img === figures[0].img ? "eager" : "lazy";
       img.dataset.figurePending = "";
       img.addEventListener("load", () => { delete img.dataset.figurePending; }, { once: true });
     }
