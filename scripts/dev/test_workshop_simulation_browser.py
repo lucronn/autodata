@@ -1034,7 +1034,11 @@ async def verify_banktwo_guid_reader(page, scope):
         assert sha256(bytes(contents)).hexdigest() == chain["figure_sha256"]
         return src
 
-    visible_url = await verify_figure(content, "Begin by disconnecting the pump.", "Take off the pump seal.")
+    if chain["child_published"]:
+        visible_url = await verify_figure(content, "Begin by disconnecting the pump.", "Take off the pump seal.")
+    else:
+        await expect(page.locator("#article-kind")).to_have_text("Stored source")
+        visible_url = await verify_figure(content, "Disconnect the pump.", "Remove the pump seal.")
     await page.locator("#open-original").click()
     await expect(original).to_contain_text("Disconnect the pump.")
     await verify_figure(original, "Disconnect the pump.", "Remove the pump seal.")
@@ -1391,7 +1395,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                 media = await verify_banktwo_guid_reader(page, scope)
                 child_detail = detail.replace(article, chain["child"])
                 child = (await (await owner.request.get(child_detail)).json())["article"]
-                assert child["source_revision_id"] == chain["source_revision"] and child["canonical_revision_id"]
+                assert child["source_revision_id"] == chain["source_revision"]
+                assert bool(child.get("canonical_revision_id")) == chain["child_published"]
             other = await browser.new_context(ignore_https_errors=True, service_workers="block")
             other_transport = APIFixture(origin, API_CASES[1])
             other_transport.account = "other"
@@ -1405,7 +1410,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             assert (await other.request.get(media)).status in (401, 403, 404)
             if chain:
                 assert (await other.request.get(child_detail)).status == 403
-                print(f"WORKSHOP_BANKTWO_GUID_READER headed={engine} authored_links=2 original_figure=true", flush=True)
+                child_origin = "canonical" if chain["child_published"] else "source"
+                print(f"WORKSHOP_BANKTWO_GUID_READER headed={engine} authored_links=2 original_figure=true child_origin={child_origin}", flush=True)
             after = await api_measure(owner, origin)
             assert after["workshop_orders"] == after["workshop_checkout_requests"] == after["entitlements"] == 1
             assert after["orders"] == [{
@@ -1421,7 +1427,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
 @pytest.mark.parametrize("variant", [
     "payment", "list-starts", "authored-table", "archived-table", "source-table", "labelled-market", "late-group-models",
     "authored-model-index", "authored-model-index-competing-fitment", "authored-model-index-held-bankone",
-    "authored-model-index-held-banktwo", "authored-guid",
+    "authored-model-index-held-banktwo", "authored-guid", "authored-guid-source",
 ])
 def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_database, monkeypatch, tmp_path, variant):
     from autodata_ingestion.http_service import make_handler
@@ -1444,9 +1450,9 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
             scope["labelled_market"] = labelled_market_fixture(runtime)
         if variant == "late-group-models":
             scope["late_group_models"] = True
-        if variant == "authored-guid":
+        if variant in ("authored-guid", "authored-guid-source"):
             from test_workshop_authored_referrals_browser import authored_guid_reader_fixture
-            scope["authored_guid"] = authored_guid_reader_fixture(runtime)
+            scope["authored_guid"] = authored_guid_reader_fixture(runtime, rewrite_child=variant == "authored-guid")
         if variant == "payment":
             scope["pending_saved_reader"] = True
         if variant.startswith("authored-model-index"):
