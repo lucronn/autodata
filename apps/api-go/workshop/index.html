@@ -50,9 +50,24 @@
             }).catch(() => null);
             return { path, response };
           }
+          const detailPreference = 'workshop-short-publication-check, workshop-demo-fitment';
+          function readDetail(path) {
+            const directOrigin = catalog.dataset.directSelectorOrigin;
+            if (location.origin !== 'https://autodata.cars.tk' || !directOrigin) return read(path, detailPreference);
+            const response = fetch(new URL(path + '&fitment=1', directOrigin), {
+              signal: AbortSignal.any([controller.signal, AbortSignal.timeout(350)]),
+              credentials: 'omit', cache: 'no-store', redirect: 'error',
+              headers: { Accept: 'application/json' },
+            }).catch(() => null).then(reply => {
+              if (reply?.status === 200 && reply.headers.get('Preference-Applied')?.includes('workshop-demo-fitment'))
+                return reply;
+              return controller.signal.aborted ? null : read(path, detailPreference).response;
+            });
+            return { path, response };
+          }
           globalThis.workshopDemoIndex = {
             ...(article ? {} : read(base + query, 'workshop-demo-readable-index')),
-            detail: article ? read(`${base}/${article}${query}`, 'workshop-short-publication-check, workshop-demo-fitment') : null,
+            detail: article ? readDetail(`${base}/${article}${query}`) : null,
             abort: () => controller.abort(), route: params.toString(),
           };
           return;
