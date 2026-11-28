@@ -2449,11 +2449,16 @@ async function loadArticleView(id, g, order, {
   }
   const prepare = !verifiedDetail && !refreshOnly && !openDemo && session.state.mode !== "local";
   let readingStatus = "Opening article…";
+  let captureJob;
   const updateReader = (response, early = false) => {
     if (!g.current() || Object.hasOwn($("reader").dataset, "rechecking")) return;
     const article = response.data.article;
     const readable = readableArticle(article);
     if (retained && (!readable || olderThanRetained(response))) return;
+    const phase = article.processing?.state;
+    if (prepare && article.id === id && !article.source_revision_id &&
+        (phase === "queued" || phase === "fetching_source") && article.processing.job_id)
+      captureJob = article.processing.job_id;
     renderArticle(article, g, refreshVisibleArticle && !verifiedDetail);
     rememberIndexArticleReadiness(response, g);
     rememberRetainedReader(response);
@@ -2479,7 +2484,6 @@ async function loadArticleView(id, g, order, {
       else if (article.content_origin === "source") ready = "Stored source is ready.";
       else ready = "Article is readable.";
     }
-    const phase = article.processing?.state;
     const message = ready || (phase === "queued" ? "Waiting for the supplier article…"
       : phase === "fetching_source" ? "Fetching the supplier article…"
       : phase === "failed" ? "Waiting to retry article preparation…" : "Preparing the article…");
@@ -2644,8 +2648,34 @@ async function loadArticleView(id, g, order, {
     .catch(handleReadError)
     .finally(() => earlyCheck?.abort());
   if (!g.current()) return;
-  if (!Object.hasOwn($("reader").dataset, "rechecking"))
-    showArticleReadStatus(id, retained ? currentArticle : result.data?.article, result.timedOut);
+  const reader = $("reader");
+  if (Object.hasOwn(reader.dataset, "rechecking")) return true;
+  const article = retained ? currentArticle : result.data?.article;
+  showArticleReadStatus(id, article, result.timedOut);
+  if (result.timedOut || !captureJob || currentArticle !== article || !awaitingArticleRewrite(article) ||
+      article.processing.job_id !== captureJob ||
+      result.retryAfterSeconds > 0 || article.processing.retry_after_seconds > 0) return true;
+
+  // The worker may pick up a newly stored source as soon as capture parks it.
+  const sourceStillOpen = () =>
+    g.current() && currentArticle === article && !Object.hasOwn(reader.dataset, "rechecking");
+  await delay(500, g.signal);
+  if (!sourceStillOpen()) return true;
+  const checked = await requestArticleDetail(order, detailPath, { ...readOptions, timeout: 2000 }).catch((error) => {
+    if (sourceStillOpen() && deniesArticle(error.status)) {
+      clearUnavailableArticle();
+      throw error;
+    }
+    return null;
+  });
+  const published = checked?.data?.article;
+  if (sourceStillOpen() && checked?.status === 200 && matchesConfiguration(checked.data.configuration) &&
+      published?.id === id && published.source_revision_id === article.source_revision_id &&
+      published.content_origin === "canonical" && published.canonical_revision_id && readableArticle(published) &&
+      acceptArticleDetail(order, checked) === checked) {
+    updateReader(checked);
+    showArticleReadStatus(id, published);
+  }
   return true;
 }
 function openArticle(id, indexLink = null, { refreshOnly = false, preferRetained = false, referenceTitle = "" } = {}) {
