@@ -523,6 +523,8 @@ const directConfigurationPath = /^\/v1\/catalog\/years\/\d{4}\/makes\/[a-z0-9-]+
 const directMakeTimeout = 175;
 const directModelTimeout = 200;
 const directConfigurationTimeout = 400;
+const storedModelFallbackDelay = 100;
+const storedConfigurationFallbackDelay = 150;
 const directSelectorBodyTimeout = 1500;
 const makeRouteKey = 'workshop:make-same-origin:';
 const modelRouteKey = 'workshop:model-same-origin:';
@@ -583,6 +585,58 @@ async function fetchSelectorBeforeAbort(fetcher, resource, init) {
   }
 }
 
+function prepareStoredSelectorFallback(fetchSelector, resource, init, afterMs) {
+  const controller = new AbortController();
+  const signal = AbortSignal.any([init.signal, controller.signal]);
+  const path = resource.replace(/&(?:defer_refresh|optional_refresh)=1$/, '') + '&stored_only=1';
+  const prepared = { started: false, response: null, data: null, cancel: () => controller.abort() };
+  prepared.pending = delay(afterMs, signal).then(async () => {
+    prepared.started = true;
+    const response = await fetchSelector(path, { ...init, signal, cache: 'no-store' });
+    if (response.headers.has('Retry-After') || [401, 403, 429].includes(response.status)) {
+      prepared.response = response;
+    } else if (response.ok) {
+      const data = await response.clone().json();
+      signal.throwIfAborted();
+      if (data?.version === 'v1' && Array.isArray(data.items) && data.items.length) {
+        if (data.complete === true && !data.hydrating && !data.discovering) prepared.response = response;
+        else prepared.data = data;
+      }
+    }
+    return prepared.response;
+  }).catch(() => null).finally(() => {
+    if (!prepared.response) prepared.cancel();
+  });
+  return prepared;
+}
+
+async function readSelectorFallback(fetchSelector, resource, init, prepared, onStoredChoices) {
+  if (!prepared?.started) {
+    prepared?.cancel();
+    return fetchSelector(resource, init);
+  }
+  if (prepared.response) return prepared.response;
+  const regularRead = new AbortController();
+  const regular = fetchSelector(resource, { ...init, signal: AbortSignal.any([init.signal, regularRead.signal]) });
+  let waiting = true;
+  const retained = prepared.pending.then(response => {
+    if (response) return response;
+    if (waiting && prepared.data && !init.signal.aborted) onStoredChoices(prepared.data);
+    return regular;
+  });
+  try {
+    const response = await Promise.race([regular, retained]);
+    if (response === prepared.response) regularRead.abort();
+    else prepared.cancel();
+    return response;
+  } catch (error) {
+    prepared.cancel();
+    throw error;
+  } finally {
+    waiting = false;
+  }
+}
+
 export async function requestJSON(path, options = {}) {
   if (options.deferModelRefresh) path += '&defer_refresh=1';
   else if (options.optionalModelRefresh) path += '&optional_refresh=1';
@@ -636,6 +690,13 @@ export async function requestJSON(path, options = {}) {
     async fetcher(resource, init) {
       init.signal.throwIfAborted();
       const deadline = setTimeout(() => connection.abort(), connectionTimeout);
+      // The read-only probe can prepare an exact retained list while the
+      // direct request is waiting for headers. Only a transport failure or
+      // transient gateway error makes the prepared list eligible.
+      const prepared = options.onStoredChoices && !sameOriginModelError && !isMake && !path.endsWith('&stored_only=1')
+        ? prepareStoredSelectorFallback(fetchSelector, resource, init,
+            isModel ? storedModelFallbackDelay : storedConfigurationFallbackDelay)
+        : null;
       let response;
       try {
         response = await fetchSelector(direct, {
@@ -656,6 +717,7 @@ export async function requestJSON(path, options = {}) {
       // The main origin can still serve recorded choices during an edge outage.
       // Preserve any explicit wait from the direct selector.
       if (response && (![502, 503, 504].includes(response.status) || response.headers.has('Retry-After'))) {
+        prepared?.cancel();
         canRetryDirectBody = response.ok && !response.headers.has('Retry-After');
         if (canRetryDirectBody) {
           // Keep part of the overall budget available if the direct body stalls.
@@ -666,7 +728,7 @@ export async function requestJSON(path, options = {}) {
       init.signal.throwIfAborted();
       if (response?.body) void response.body.cancel().catch(() => {});
       if (sameOriginModelError) throw sameOriginModelError;
-      const fallback = await fetchSelector(resource, init);
+      const fallback = await readSelectorFallback(fetchSelector, resource, init, prepared, options.onStoredChoices);
       if (isMake && fallback.ok) rememberSameOriginMake(path);
       rememberModelFallback = isModel && connection.signal.aborted && fallback.ok;
       return fallback;

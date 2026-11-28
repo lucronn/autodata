@@ -668,6 +668,9 @@ async function loadOptions(name, g, desired = "", initial = null, {
       const preferSameOrigin = name === "configuration" && modelPicker?.sameOrigin && modelPicker.path === selectorPath("model");
       const response = await requestJSON(path, {
         signal: g.signal, timeout, cache, preferSameOrigin, deferModelRefresh: name === "model" && !desired,
+        onStoredChoices: name === "model" || name === "configuration"
+          ? data => showChoices({ ...data, complete: false, hydrating: true })
+          : undefined,
       });
       return trackDiscovery(response);
     },
