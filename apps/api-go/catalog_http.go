@@ -603,7 +603,6 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 		writeCatalogArticleMediaRefresh(response, request, *configuration, article) {
 		return
 	}
-	directDemo := paid && scope.openDemo && status == http.StatusOK && s.workshopDirectDemoDetail(request)
 	if current := article.Processing; current != nil {
 		preference := current.shortReadPreference
 		applicable := preference == shortSourceCheckPreference && status == http.StatusAccepted ||
@@ -615,8 +614,7 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 			current.JobID != "" && current.State == "fetching_source" {
 			preference, applicable = previewSourceCheckPreference, true
 		}
-		if applicable && (catalogReadPreferenceRequested(request, preference) ||
-			directDemo && preference == shortPublicationCheckPreference) {
+		if applicable && catalogReadPreferenceRequested(request, preference) {
 			// Only replace the default read cadence when the client opts in.
 			processing := *current
 			processing.RetryAfterSeconds = nil
@@ -649,17 +647,11 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 		article.OriginalSourceReview = view.originalSourceReview
 	}
 	if paid && scope.openDemo && status == http.StatusOK && request.Method == http.MethodGet &&
-		(directDemo || catalogReadPreferenceRequested(request, catalogDemoFitmentPreference)) {
+		catalogReadPreferenceRequested(request, catalogDemoFitmentPreference) {
 		// Use the same fitment already included in the public index. This response
 		// can open a saved article before the user asks to see that index.
 		configuration = &scope.configuration
 		response.Header().Add("Preference-Applied", catalogDemoFitmentPreference)
-	}
-	if directDemo {
-		response.Header().Set("Access-Control-Allow-Origin", workshopPublicDemoOrigin)
-		response.Header().Set("Access-Control-Expose-Headers", "Preference-Applied, Retry-After, X-Request-ID")
-		response.Header().Set("Timing-Allow-Origin", workshopPublicDemoOrigin)
-		response.Header().Add("Vary", "Origin")
 	}
 	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article, Configuration: configuration})
 }

@@ -14,6 +14,10 @@
     {
       "source": "/workshop/assets/:version([a-f0-9]{64})/:asset*",
       "destination": "https://autodata.curtis.click/workshop/assets/:version/:asset*"
+    },
+    {
+      "source": "/workshop-demo-detail/:configuration([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/:article([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/:region([A-Z]{2})",
+      "destination": "https://autodata.curtis.click/v1/catalog/vehicles/:configuration/articles/:article?region=:region&demo=1"
     }
   ]
 }
