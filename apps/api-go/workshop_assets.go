@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,6 +31,11 @@ type workshopEntryOptions struct {
 	publicDemo      bool
 	initialYears    []byte
 	initialMakes    []byte
+}
+
+type workshopEntryEncoding struct {
+	tag  string
+	gzip []byte
 }
 
 type workshopEntryMakes struct {
@@ -142,17 +148,11 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 			return nil
 		}
 		if strings.HasSuffix(name, ".mjs") || strings.HasSuffix(name, ".css") {
-			var encoded bytes.Buffer
-			writer := gzip.NewWriter(&encoded)
-			if _, err := writer.Write(data); err != nil {
+			encoded, err := encodeWorkshopGzip(data)
+			if err != nil {
 				return err
 			}
-			if err := writer.Close(); err != nil {
-				return err
-			}
-			if encoded.Len() < len(data) {
-				compressed[prefix+name] = encoded.Bytes()
-			}
+			compressed[prefix+name] = encoded
 		}
 		// A reverse proxy can serve the same asset with a different content coding.
 		sum := sha256.Sum256(data)
@@ -195,6 +195,18 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 	browserOrigins := demoMarker + ` data-workshop-demo-origins="` + workshopPublicDemoOrigin + " https://" + workshopPublicDemoTunnelHost + `"`
 	publicDemoEntry := bytes.Replace(publicEntry, []byte(demoMarker), []byte(browserOrigins), 1)
 	publicDemoEntryTag := fmt.Sprintf(`W/"%x"`, sha256.Sum256(publicDemoEntry))
+	entryEncodings := make(map[string][]byte, 4)
+	for tag, content := range map[string][]byte{
+		tags[prefix]: entryPage, publicEntryTag: publicEntry,
+		openDemoEntryTag: openDemoEntry, publicDemoEntryTag: publicDemoEntry,
+	} {
+		encoded, err := encodeWorkshopGzip(content)
+		if err != nil {
+			panic("embedded Workshop entry compression unavailable: " + err.Error())
+		}
+		entryEncodings[tag] = encoded
+	}
+	var latestSnapshot atomic.Pointer[workshopEntryEncoding]
 	files := http.StripPrefix(prefix, http.FileServer(http.FS(assets)))
 	return func(w http.ResponseWriter, r *http.Request, entry workshopEntryOptions) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -254,18 +266,17 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 			w.Header().Set("ETag", tag)
 		}
 		if path == prefix {
-			// The shared entry carries only anonymous selector data.
-			w.Header().Set("Cache-Control", "private, max-age=30, must-revalidate")
+			// Preserve the selected representation and its weak validator at the edge.
+			w.Header().Set("Cache-Control", "private, max-age=30, must-revalidate, no-transform")
+			w.Header().Add("Vary", "Accept-Encoding")
 			document := entryPage
+			tag := tags[prefix]
 			if entry.publicDemo {
-				document = publicDemoEntry
-				w.Header().Set("ETag", publicDemoEntryTag)
+				document, tag = publicDemoEntry, publicDemoEntryTag
 			} else if entry.openDemo {
-				document = openDemoEntry
-				w.Header().Set("ETag", openDemoEntryTag)
+				document, tag = openDemoEntry, openDemoEntryTag
 			} else if entry.publicSelectors {
-				document = publicEntry
-				w.Header().Set("ETag", publicEntryTag)
+				document, tag = publicEntry, publicEntryTag
 			}
 			if len(entry.initialYears) != 0 {
 				data := fmt.Appendf(nil, `<script id="workshop-initial-years" type="application/json">%s</script>`, entry.initialYears)
@@ -273,13 +284,47 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 					data = fmt.Appendf(data, `<script id="workshop-initial-makes" type="application/json">%s</script>`, entry.initialMakes)
 				}
 				document = bytes.Replace(document, []byte(workshopInitialYearsMarker), data, 1)
-				w.Header().Set("ETag", fmt.Sprintf(`W/"%x"`, sha256.Sum256(document)))
+				tag = fmt.Sprintf(`W/"%x"`, sha256.Sum256(document))
+			}
+			w.Header().Set("ETag", tag)
+			if r.Header.Get("Range") == "" && acceptsWorkshopGzip(r.Header.Values("Accept-Encoding")) {
+				encoded, static := entryEncodings[tag]
+				if !static {
+					// Reuse only the latest anonymous snapshot's encoding. Its
+					// validator identifies all of the decoded document bytes.
+					cached := latestSnapshot.Load()
+					if cached != nil && cached.tag == tag {
+						encoded = cached.gzip
+					} else if zipped, err := encodeWorkshopGzip(document); err == nil {
+						encoded = zipped
+						latestSnapshot.Store(&workshopEntryEncoding{tag: tag, gzip: encoded})
+					}
+				}
+				if encoded != nil {
+					w.Header().Set("Content-Encoding", "gzip")
+					document = encoded
+				}
 			}
 			http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(document))
 			return
 		}
 		files.ServeHTTP(w, r)
 	}
+}
+
+func encodeWorkshopGzip(data []byte) ([]byte, error) {
+	var encoded bytes.Buffer
+	writer := gzip.NewWriter(&encoded)
+	if _, err := writer.Write(data); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	if encoded.Len() >= len(data) {
+		return nil, nil
+	}
+	return encoded.Bytes(), nil
 }
 
 func acceptsWorkshopGzip(values []string) bool {

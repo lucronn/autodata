@@ -18,7 +18,7 @@ import (
 	"testing"
 )
 
-const expectedWorkshopEntryCache = "private, max-age=30, must-revalidate"
+const expectedWorkshopEntryCache = "private, max-age=30, must-revalidate, no-transform"
 
 func TestWorkshopRootEntry(t *testing.T) {
 	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
