@@ -5327,6 +5327,7 @@ function articleIndexHarness(responses, { wait = async () => {}, now = () => per
   const statuses = [], updates = [], opened = [], requests = [], results = [], shown = [], clearedOrders = [];
   const context = {
     $, element, URL, uuid, readableArticle, openDemo,
+    articleIndexHistorySession: null,
     demoPath: path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path,
     location: { href: `https://cars.example/workshop?vehicle=B${openDemo ? '&demo=1' : ''}` },
     document,
@@ -5522,7 +5523,12 @@ async function openedIndexHistory(responses, { next = false, onRestore } = {}) {
     routes.push({ article, replace });
     h.context.location.href = article ? `${indexURL}&article=${article}` : indexURL;
   };
-  h.context.history = { back() { back.push(true); } };
+  h.context.crypto = { randomUUID: () => 'test-tab-session' };
+  h.context.history = {
+    state: null,
+    back() { back.push(true); },
+    replaceState(state) { this.state = state; },
+  };
   h.context.restoreRoute = (_years, { focusArticle = '', indexAnchor = '' } = {}) => {
     restores.push({ focusArticle, ...(indexAnchor ? { indexAnchor } : {}) });
     return onRestore?.(h, { focusArticle, indexAnchor });
@@ -6475,6 +6481,24 @@ test('paged reader Back reuses its index in-app and anchors a fresh browser hist
       assert.equal(browser.context.document.activeElement, browser.$('catalog-title'));
     }
     assert.equal(browser.requests.length, 3);
+  }
+});
+
+test('repeated paged history returns anchor only for the same signed-in session', async () => {
+  const article = pageFixtureArticles[100].id;
+  for (const changeAccount of [false, true]) {
+    const browser = await openedIndexHistory([pagedIndexResponse(0), pagedIndexResponse(100)], { next: true });
+    const { context } = browser;
+    // A Forward navigation clears the original live view and leaves the history entry.
+    context.clearProtected();
+    if (changeAccount) context.session.state.csrf = 'replacement-session';
+    await browser.returnToIndex();
+    assert.deepEqual(browser.restores, [changeAccount
+      ? { focusArticle: '' }
+      : { focusArticle: article, indexAnchor: article }]);
+    assert.equal(context.history.state.workshopArticleIndex.articleID, article);
+    assert.equal(context.history.state.workshopArticleIndex.marker, 'test-tab-session');
+    assert.equal(JSON.stringify(context.history.state).includes('fixture-current'), false);
   }
 });
 
