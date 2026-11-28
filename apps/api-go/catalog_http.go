@@ -338,17 +338,19 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		return s.catalog.CatalogArticleProgress(statusCtx, principal, vehicleID)
 	}
 	var changed <-chan struct{}
+	var release func()
 	if s.catalogIndexChanges != nil && paid && scoped && !scope.openDemo &&
 		pagePreference == catalogIndexLivePagesPreference && pageRequest == (catalogIndexPageRequest{}) &&
 		!filters.Has("q") && !filters.Has("title") &&
 		catalogReadPreferenceRequested(request, catalogIndexWaitPreference) {
 		// Subscribe before the snapshot so a commit between the read and wait
 		// cannot leave an already available first page sleeping.
-		var release func()
 		changed, release = s.catalogIndexChanges.watch(scope.configuration.ID)
-		if release != nil {
-			defer release()
-		}
+		defer func() {
+			if release != nil {
+				release()
+			}
+		}()
 	}
 	var progress *CatalogArticleProgress
 	var items []CatalogArticle
@@ -371,16 +373,27 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		timer := time.NewTimer(catalogIndexWaitDuration)
 		defer timer.Stop()
 		response.Header().Add("Preference-Applied", catalogIndexWaitPreference)
-		select {
-		case <-ctx.Done():
-			return
-		case <-timer.C:
-		case <-changed:
+		refreshed := false
+		for changed != nil && err == nil && statusErr == nil && len(items) == 0 && catalogIndexHydrating(progress) {
+			select {
+			case <-ctx.Done():
+				return
+			case <-timer.C:
+				changed = nil
+			case <-changed:
+				release()
+				// One provider may finish empty while another is still working.
+				// Subscribe before rereading so the same wait can see either commit.
+				changed, release = s.catalogIndexChanges.watch(scope.configuration.ID)
+				readIndex()
+				refreshed = true
+			}
+		}
+		if refreshed {
 			if grantErr := s.checkPaidCatalogGrant(ctx, principal, scope.configuration); grantErr != nil {
 				s.writePaidCatalogError(response, request, grantErr)
 				return
 			}
-			readIndex()
 		}
 	}
 	if err != nil {

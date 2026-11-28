@@ -364,7 +364,10 @@ export async function readCollection(
     if (update(data, attempt)) return latest;
     if (attempt === attempts - 1 || now() >= pollUntil) break;
     waitingForRows = Boolean(waitForEmpty && !hasChoices(latest) && latest.hydrating);
-    if (waitingForRows) continue;
+    if (waitingForRows) {
+      if (now() + interval >= pollUntil) break;
+      continue;
+    }
     if (attempt === 0 && emptyProbe && !hasChoices(latest) && emptyProbeDelays[0] < interval) {
       // Check for newly stored rows without moving the regular poll.
       const started = now();
