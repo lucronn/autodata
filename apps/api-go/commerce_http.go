@@ -217,6 +217,14 @@ func (s *Server) commerceOrderHTTP(w http.ResponseWriter, r *http.Request) {
 	input["order_id"] = r.PathValue("order_id")
 	s.commerceCall(w, r, "orders/status", input, nil, "", nil)
 }
+func commerceLibraryLimit(query url.Values) (int, bool) {
+	if !query.Has("limit") {
+		return libraryDefaultLimit, true
+	}
+	limit, err := strconv.Atoi(query.Get("limit"))
+	return limit, err == nil && limit >= 1 && limit <= 50
+}
+
 func (s *Server) commerceLibraryHTTP(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.commercePrincipal(w, r)
 	if !ok {
@@ -227,25 +235,21 @@ func (s *Server) commerceLibraryHTTP(w http.ResponseWriter, r *http.Request) {
 		commerceInvalid(w, r, 400)
 		return
 	}
-	limit := libraryDefaultLimit
-	if _, exists := q["limit"]; exists {
-		var e error
-		limit, e = strconv.Atoi(q.Get("limit"))
-		if e != nil || limit < 1 || limit > 50 {
-			commerceInvalid(w, r, 400)
-			return
-		}
+	limit, valid := commerceLibraryLimit(q)
+	if !valid {
+		commerceInvalid(w, r, 400)
+		return
 	}
 	input := commerceOwner(p)
 	input["cursor"], input["limit"] = q.Get("cursor"), limit
 	s.commerceCall(w, r, "library", input, nil, "", nil)
 }
-func (s *Server) firstWorkshopLibrary(ctx context.Context, session customerSession) *commerceLibrary {
+func (s *Server) firstWorkshopLibrary(ctx context.Context, session customerSession, limit int) *commerceLibrary {
 	if !commerceUUID(session.AccountID) || !commerceUUID(session.OrganizationID) {
 		return nil
 	}
 	input := commerceOwner(Principal{CustomerAccountID: session.AccountID, OrganizationID: session.OrganizationID})
-	input["cursor"], input["limit"] = "", libraryDefaultLimit
+	input["cursor"], input["limit"] = "", limit
 	status, body, err := s.doCommerce(ctx, "library", input, nil, "")
 	if err != nil || status != http.StatusOK {
 		return nil

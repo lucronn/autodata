@@ -76,6 +76,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
   const initialAccount = wantsDemo ? undefined : Promise.all([import('./auth.mjs'), preview])
     .then(([{ readSessionBootstrap }, initial]) => readSessionBootstrap(initial?.request, {
       includeLibrary: params.get('view') === 'library' && !params.has('order'),
+      libraryLimit: pickerStartup?.libraryLimit,
       route: params,
     }))
     .catch(() => null);
