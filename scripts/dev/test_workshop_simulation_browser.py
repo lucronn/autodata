@@ -1055,6 +1055,7 @@ async def verify_repeated_index_history(page, configuration, article, engine):
     filler_rows = [{"id": str(uuid4()), "title": f"Test index entry {number}", "availability": "pending"}
                    for number in range(1, 101)]
     reads = []
+    legacy = False
 
     async def paged_index(route):
         url = urlsplit(route.request.url)
@@ -1069,9 +1070,13 @@ async def verify_repeated_index_history(page, configuration, article, engine):
         offset = int(query.get("offset", [100 if anchor == article else 0])[0])
         assert offset in (0, 100)
         reads.append({"anchor": anchor, "offset": offset})
-        data.update(items=[selected] if offset else filler_rows,
-                    page={"offset": offset, "total": 101, "revision": "1" * 64},
-                    complete=True, hydrating=False)
+        data.update(complete=True, hydrating=False)
+        if legacy:
+            data.pop("page", None)
+            data["items"] = [*filler_rows, selected]
+        else:
+            data["page"] = {"offset": offset, "total": 101, "revision": "1" * 64}
+            data["items"] = [selected] if offset else filler_rows
         await route.fulfill(response=response, json=data)
 
     await page.route(index_request, paged_index)
@@ -1110,6 +1115,58 @@ async def verify_repeated_index_history(page, configuration, article, engine):
               "display_backend": "Xvfb", "visits": measurements}), flush=True)
         assert all(visit["reads"] == [{"anchor": article, "offset": 100}] and visit["focused"]
                    for visit in measurements), measurements
+
+        await page.go_back()
+        await expect(page_range).to_have_text("101–101 of 101")
+        await expect(article_link).to_be_focused()
+        requests = []
+
+        def observe(request):
+            path = urlsplit(request.url).path
+            if path in (index_path, "/auth/config", "/auth/session", "/workshop/purchase-config.json"):
+                requests.append(path)
+
+        page.on("request", observe)
+        reads.clear()
+        try:
+            started = time.monotonic()
+            async with page.expect_response(lambda response: index_request(response.url)) as pending:
+                assert await page.evaluate("""() => {
+                    window.dispatchEvent(new Event('focus'));
+                    return document.visibilityState === 'visible';
+                }""")
+            assert (await pending.value).ok
+            await expect(page.locator("#activity-text")).to_have_text("Article index ready.")
+            restored_range = await page_range.inner_text()
+            if restored_range == "1–100 of 101":
+                await page.locator("#article-next").click()
+            await expect(article_link).to_be_visible()
+            focused = await article_link.evaluate("node => node === document.activeElement")
+            print("WORKSHOP_INDEX_REFOCUS " + json.dumps({"engine": engine, "headed": True,
+                  "display_backend": "Xvfb", "first_visible_range": restored_range, "focused": focused,
+                  "target_visible_ms": round((time.monotonic() - started) * 1000), "index_reads": reads.copy(),
+                  "session_reads": requests.count("/auth/session"), "auth_config_reads": requests.count("/auth/config"),
+                  "purchase_config_reads": requests.count("/workshop/purchase-config.json")}), flush=True)
+            assert focused and reads == [{"anchor": article, "offset": 100}]
+            assert requests == ["/auth/session", index_path]
+
+            previous_page = page.locator("#article-prev")
+            for legacy in (False, True):
+                await previous_page.focus()
+                requests.clear()
+                reads.clear()
+                async with page.expect_response(lambda response: index_request(response.url)) as pending:
+                    await page.evaluate("window.dispatchEvent(new Event('focus'))")
+                assert (await pending.value).ok
+                await expect(previous_page).to_be_focused()
+                await expect(page_range).to_have_text("101–101 of 101")
+                assert reads == [{"anchor": None, "offset": 100}]
+                assert requests == ["/auth/session", index_path]
+            legacy = False
+        finally:
+            page.remove_listener("request", observe)
+        await page.go_forward()
+        await expect(page.locator("#article-content")).to_contain_text("Take off the pump.")
     finally:
         await page.unroute(index_request, paged_index)
 

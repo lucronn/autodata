@@ -3037,15 +3037,15 @@ async function renewMedia(g, failed, timedOut = false) {
 }
 async function library(g, append = false, {
   focusOnShow = false, initialAccountCheck = null, restorePrevious = false, pageSize = 20,
+  initialPage = null, position = null,
 } = {}) {
   if (!append) $("purchase").hidden = true;
-  let initialPage;
   const accountCheck = initialAccountCheck ?? sessionRequest;
   if (accountCheck) {
     status("Checking your account…", { busy: true });
     const bundled = await accountCheck;
     if (!g.current()) return;
-    if (!append && validLibrary(bundled)) initialPage = bundled;
+    if (!append) initialPage = bundled;
   }
   if (append && (!libraryCursor || libraryPageRequest)) return;
   if (!append) {
@@ -3060,11 +3060,11 @@ async function library(g, append = false, {
   show("library");
   status(append ? "Loading more vehicles…" : "Opening My vehicles…", { busy: true });
   const cursor = append ? libraryCursor : null;
-  const previous = !append && restorePrevious ? history.state?.workshopLibrary : null;
+  const previous = append ? null : position ?? (restorePrevious ? history.state?.workshopLibrary : null);
   const restoreCount = Number.isSafeInteger(previous?.visible) && previous.visible > 0 ? previous.visible : 0;
   const limit = Math.min(50, Math.max(pageSize, restoreCount));
   const more = $("library-more");
-  const request = initialPage ? Promise.resolve(initialPage) : requestJSON(
+  const request = validLibrary(initialPage) ? Promise.resolve(initialPage) : requestJSON(
     `/v1/workshop/library?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
     { signal: g.signal, headers: { Prefer: "workshop-library-catalog-empty" } },
   );
@@ -3157,13 +3157,7 @@ async function library(g, append = false, {
       if (list.children.length === loaded) break;
     }
     if (!g.current()) return;
-    const restored = Array.from(list.children).find(card => card.dataset.libraryItemId === previous.selected);
-    const heading = restored?.children[0];
-    if (heading) {
-      heading.setAttribute("tabindex", "-1");
-      heading.focus({ preventScroll: true });
-      heading.scrollIntoView({ behavior: "instant", block: "nearest" });
-    }
+    focusLibraryItem(previous.selected);
   }
   if (!append && focusOnShow) {
     const title = $("library-title");
@@ -3171,6 +3165,16 @@ async function library(g, append = false, {
     title.scrollIntoView({ behavior: "instant", block: "start" });
   }
   status("My vehicles ready.", { complete: true });
+}
+function focusLibraryItem(id, preferButton = false) {
+  if (!id) return false;
+  const card = Array.from($("library-items").children).find(item => item.dataset.libraryItemId === id);
+  const target = (preferButton && card?.querySelector("button")) || card?.firstElementChild;
+  if (!target) return false;
+  if (target.tagName === "H3") target.tabIndex = -1;
+  target.focus({ preventScroll: true });
+  target.scrollIntoView({ behavior: "instant", block: "nearest" });
+  return true;
 }
 function loadMoreLibrary() {
   if (!libraryCursor || libraryPageRequest) return;
@@ -4075,6 +4079,62 @@ window.addEventListener("popstate", () => void restoreHistoryEntry());
 window.addEventListener("pagehide", () => invalidate());
 let lifecycleCheck = null;
 let readerCheck = null;
+function refreshOwnedIndex() {
+  const catalog = $("catalog");
+  if (catalog.hidden || access !== "owned" || !indexPage || indexHydrating || pendingIndexPage?.current() ||
+      sessionRequest || !session.state.authenticated || session.state.mode !== "firebase" ||
+      trimArticleSearch($("search").value)) return null;
+  const route = new URLSearchParams(location.search);
+  if (route.get("configuration") !== vehicle?.id || route.get("region") !== vehicle.region ||
+      ["article", "order", "view", "q"].some((key) => route.has(key))) return null;
+
+  const focused = document.activeElement;
+  const restoreFocus = catalog.contains(focused);
+  const row = $("articles").contains(focused) ? focused.closest("[data-article-id]") : null;
+  const anchor = uuid(row?.dataset.articleId) ? row.dataset.articleId : "";
+  const offset = indexPage.offset;
+  const page = anchor ? { indexAnchor: anchor } : { offset };
+  return operation(async (g) => {
+    clearProtected();
+    articlePage = offset / articlePageSize;
+    show("welcome");
+    renderPurchase();
+    status("Checking your account…", { busy: true });
+    const sameSession = await session.matchesCurrentSession({ signal: g.signal }).catch(() => false);
+    if (!g.current()) return;
+    if (!sameSession) return bootstrap();
+    await loadArticles(g, "", page);
+    if (!g.current() || !restoreFocus || catalog.hidden || document.activeElement !== document.body) return;
+    if (!anchor && focused.getClientRects().length && !focused.disabled)
+      focused.focus({ preventScroll: true });
+    else focusArticleIndex(anchor);
+  }, () => restoreRoute());
+}
+function refreshLibrary() {
+  const route = new URLSearchParams(location.search);
+  if (route.get("view") !== "library" || route.has("order")) return null;
+  const view = $("library");
+  if (view.hidden || !viewGeneration?.current() || libraryPageRequest || sessionRequest || !session.state.authenticated ||
+      session.state.mode !== "firebase") return null;
+  const list = $("library-items");
+  const visible = list.children.length;
+  const focused = document.activeElement;
+  const restoreFocus = view.contains(focused);
+  const item = list.contains(focused) ? focused.closest("[data-library-item-id]")?.dataset.libraryItemId : "";
+  return operation(async (g) => {
+    clearProtected();
+    status("Checking your account…", { busy: true });
+    const confirmed = await session.readCurrentLibrary({ signal: g.signal, limit: Math.min(50, visible) })
+      .catch(() => null);
+    if (!g.current()) return;
+    if (!confirmed) return bootstrap();
+    await library(g, false, { initialPage: confirmed.page, position: { visible } });
+    if (!g.current() || !restoreFocus || view.hidden || document.activeElement !== document.body) return;
+    if (focusLibraryItem(item, focused.tagName === "BUTTON")) return;
+    const target = focused.getClientRects().length ? focused : $("library-title");
+    target.focus({ preventScroll: true });
+  }, () => restoreRoute());
+}
 async function recheck(preservePicker = false) {
   if (
     !sessionEstablished ||
@@ -4084,9 +4144,10 @@ async function recheck(preservePicker = false) {
     lifecycleCheck
   )
     return;
-  lifecycleCheck = preservePicker && !validScope(scope())
+  const viewCheck = preservePicker ? null : refreshLibrary() ?? refreshOwnedIndex();
+  lifecycleCheck = viewCheck ?? (preservePicker && !validScope(scope())
     ? checkAccount(undefined, true)
-    : bootstrap(undefined, undefined, { preservePicker });
+    : bootstrap(undefined, undefined, { preservePicker }));
   try {
     await lifecycleCheck;
   } finally {
