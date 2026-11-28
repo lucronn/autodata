@@ -7584,10 +7584,12 @@ function warmFigureHarness({ count = 7, origin = 'canonical', repeated = false }
   return { ...h, window, timeout, printed, images, timers };
 }
 
-test('paid documents with many distinct figures load near the viewport and keep a placeholder until decode', () => {
+test('large paid documents eagerly load the first figure and keep placeholders until decode', () => {
   for (const origin of ['canonical', 'source']) {
     const h = warmFigureHarness({ origin });
-    assert.ok(h.images.every(image => image.src && image.loading === 'lazy' && Object.hasOwn(image.dataset, 'figurePending')));
+    assert.equal(h.images[0].loading, 'eager');
+    assert.ok(h.images.slice(1).every(image => image.loading === 'lazy'));
+    assert.ok(h.images.every(image => image.src && Object.hasOwn(image.dataset, 'figurePending')));
     h.images[0].dispatch('load');
     assert.equal(Object.hasOwn(h.images[0].dataset, 'figurePending'), false);
     assert.ok(Object.hasOwn(h.images[1].dataset, 'figurePending'));
