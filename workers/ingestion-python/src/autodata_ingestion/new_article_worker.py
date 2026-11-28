@@ -17,6 +17,7 @@ import signal
 from socket import socketpair
 import stat
 from threading import Event
+from time import monotonic
 from uuid import UUID, uuid4
 
 from psycopg import DatabaseError, sql
@@ -566,6 +567,11 @@ def _run_continuous_articles(repo, state, *, registry, object_store, model_clien
     with (completions, wake, ThreadPoolExecutor(max_workers=2) as captures,
           ThreadPoolExecutor(max_workers=1) as rewrites):
         wake.setblocking(False)
+        next_model_slot = None
+
+        def note_model_budget_wait(seconds):
+            nonlocal next_model_slot
+            next_model_slot = monotonic() + seconds
 
         def completed(_):
             try:
@@ -609,8 +615,11 @@ def _run_continuous_articles(repo, state, *, registry, object_store, model_clien
                         in_flight[provider] = future
                         future.add_done_callback(completed)
                         continue
+                next_model_slot = None
                 if model_client is not None and model_future is None and not stop.is_set():
-                    lease = claim_rollout_model_job(repo, snapshot, worker_id=uuid4())
+                    lease = claim_rollout_model_job(
+                        repo, snapshot, worker_id=uuid4(), on_budget_wait=note_model_budget_wait,
+                    )
                     if lease is not None:
                         model_future = rewrites.submit(
                             _dispatch_parked_model, repo, lease, model_client=model_client,
@@ -623,6 +632,8 @@ def _run_continuous_articles(repo, state, *, registry, object_store, model_clien
                 try:
                     timeout = (_paid_source_poll_timeout(repo, available) if paid_overflow and available
                                else ARTICLE_ACTIVITY_POLL_SECONDS)
+                    if next_model_slot is not None and model_future is None:
+                        timeout = min(timeout, max(0.01, next_model_slot - monotonic()))
                     _wait_for_article_activity(listener, completions, has_active_job, stop, timeout=timeout)
                 except (DatabaseError, OSError):
                     if listener is not None:

@@ -167,7 +167,7 @@ def _parked_rollout_source_allowed(cur, row):
     )
 
 
-def claim_rollout_model_job(repo, snapshot, *, worker_id):
+def claim_rollout_model_job(repo, snapshot, *, worker_id, on_budget_wait=None):
     """Claim a retained source while the coordinator holds its only model lane."""
     args = _rollout_model_args(snapshot)
     if args is None:
@@ -175,18 +175,26 @@ def claim_rollout_model_job(repo, snapshot, *, worker_id):
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
         # A release can rebind the source SHA without resetting the rollout's
         # actual-delivery window. Count dispatches recorded before the rebind too.
-        used = cur.execute("""SELECT count(*) AS used
-            FROM canonical_article_rewrite_attempts t
-            JOIN source_fetch_jobs j ON j.source_fetch_job_id=t.source_fetch_job_id
-            LEFT JOIN source_fetch_jobs prior ON prior.canonical_article_id=j.canonical_article_id
-                AND j.rewrite_profile_version=%(correction_profile)s
-                AND j.checkpoint->'source_bound_rewrite'->>'actor'=%(correction_actor)s
-                AND prior.source_fetch_job_id::text=j.checkpoint->'source_bound_rewrite'->>'prior_job_id'
-            WHERE t.dispatched_at>clock_timestamp()-%(window)s
-              AND COALESCE(prior.checkpoint,j.checkpoint)->'new_article_rollout'->>'rollout_id'=%(rollout_id)s
-              AND COALESCE(prior.checkpoint,j.checkpoint)->'new_article_rollout'->>'cutoff'=%(cutoff)s
-            """, args).fetchone()["used"]
+        budget = cur.execute("""WITH recent AS (
+                SELECT t.dispatched_at
+                FROM canonical_article_rewrite_attempts t
+                JOIN source_fetch_jobs j ON j.source_fetch_job_id=t.source_fetch_job_id
+                LEFT JOIN source_fetch_jobs prior ON prior.canonical_article_id=j.canonical_article_id
+                    AND j.rewrite_profile_version=%(correction_profile)s
+                    AND j.checkpoint->'source_bound_rewrite'->>'actor'=%(correction_actor)s
+                    AND prior.source_fetch_job_id::text=j.checkpoint->'source_bound_rewrite'->>'prior_job_id'
+                WHERE t.dispatched_at>statement_timestamp()-%(window)s
+                  AND COALESCE(prior.checkpoint,j.checkpoint)->'new_article_rollout'->>'rollout_id'=%(rollout_id)s
+                  AND COALESCE(prior.checkpoint,j.checkpoint)->'new_article_rollout'->>'cutoff'=%(cutoff)s
+                ORDER BY t.dispatched_at DESC LIMIT %(limit)s
+            )
+            SELECT count(*) AS used, MIN(dispatched_at)+%(window)s-clock_timestamp() AS remaining
+            FROM recent
+            """, {**args, "limit": MAX_MODEL_DISPATCHES_PER_WINDOW}).fetchone()
+        used = budget["used"]
         if used >= MAX_MODEL_DISPATCHES_PER_WINDOW:
+            if on_budget_wait is not None:
+                on_budget_wait(budget["remaining"].total_seconds())
             return _claim_automatic_correction(repo, args, worker_id=worker_id, model_budget_available=False)
         for row in _parked_rollout_candidates(cur, args):
             if not _parked_rollout_source_allowed(cur, row):
