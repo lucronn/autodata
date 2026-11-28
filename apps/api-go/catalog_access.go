@@ -171,7 +171,7 @@ func (s *postgresCatalogStore) PaidArticleDescriptors(ctx context.Context, _ Pri
 		) c ON true
 		LEFT JOIN source_fetch_jobs j ON j.source_fetch_job_id=a.current_job_id AND a.current_source_revision_id IS NULL
 		JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
-		WHERE `+paidArticleScopeSQL+` AND `+lifecycleEligibleSQL+` AND a.takedown_status='active'
+		WHERE `+paidArticleScopeSQL+` AND `+lifecycleEligibleSQL+` AND `+lifecycleListedArticleSQL+` AND a.takedown_status='active'
 		  AND (a.current_source_revision_id IS NULL OR c.takedown_status='active') AND descriptor.takedown_status='active'
 		ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID, catalogPreviewReadAllowed(ctx, configurationID))
 	if err != nil {
@@ -244,7 +244,7 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 		LEFT JOIN LATERAL (`+catalogSourceBodyPreviewSQL+`) early ON $2::boolean
 		JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
 		LEFT JOIN canonical_article_source_revisions sr ON sr.source_revision_id=c.source_revision_id
-		WHERE `+paidArticleScopeSQL+` AND `+lifecycleEligibleSQL+`
+		WHERE `+paidArticleScopeSQL+` AND `+lifecycleEligibleSQL+` AND `+lifecycleListedArticleSQL+`
 		  AND a.takedown_status='active' AND descriptor.takedown_status='active'
 		  AND (a.current_source_revision_id IS NULL OR (c.availability='available' AND c.takedown_status='active'))
 		ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID, includeSource)

@@ -1538,16 +1538,25 @@ def article_worker_main(argv=None):
     parser.add_argument("--poll-seconds",type=float,default=1)
     parser.add_argument("--worker-id",type=UUID,default=None)
     parser.add_argument("--job-id", type=UUID, help="claim one exact job and exit; requires no polling")
+    parser.add_argument("--banktwo-authored-parent", type=UUID, help="register authored Banktwo article links and exit")
+    parser.add_argument("--source-revision", type=UUID, help="current source revision of the authored parent")
+    parser.add_argument("--authored-path-sha256", action="append", default=[], help="digest of an authored GUID path")
     parser.add_argument("--processes", type=int, choices=(1, 2),
                         help="Run one worker or supervise two. The deployed article-worker service defaults to two.")
     args=parser.parse_args(argv)
     if args.poll_seconds<=0:parser.error("poll interval must be positive")
+    authored = args.banktwo_authored_parent
+    if any((authored, args.source_revision, args.authored_path_sha256)):
+        if not all((authored, args.source_revision, args.authored_path_sha256)):
+            parser.error("authored registration requires the parent, source revision and path digests")
+        if args.once or args.job_id or args.worker_id or args.processes:
+            parser.error("authored registration queues jobs without starting a worker")
     single_worker_options = args.once or args.worker_id is not None or args.job_id is not None
     if args.processes == 2 and single_worker_options:
         parser.error("--processes 2 requires long-running workers with generated IDs")
     hosted_pool = (
         args.processes is None
-        and not single_worker_options
+        and not single_worker_options and not authored
         and os.getenv("AUTODATA_RUNTIME_SERVICE") == "article-worker"
     )
     if args.processes == 2 or hosted_pool:
@@ -1557,8 +1566,19 @@ def article_worker_main(argv=None):
     objects=ArticleObjectStore(endpoint=parsed.netloc,secure=parsed.scheme=="https",
         access_key=os.environ["AUTODATA_S3_ACCESS_KEY"],secret_key=os.environ["AUTODATA_S3_SECRET_KEY"],bucket=os.environ["AUTODATA_SOURCE_BUCKET"])
     registry=source_connector_registry(include_defaults=False)
-    model=Mercury2Client.from_environment() if os.getenv("INCEPTION_API_KEY","").strip() else None
     repo = ArticleRepository()
+    if authored:
+        from .banktwo_authored_article_registry import register_banktwo_authored_articles
+
+        if "banktwo" not in registry:
+            parser.error("Banktwo connector is not configured")
+        entries = register_banktwo_authored_articles(
+            repo, authored, args.source_revision, path_digests=args.authored_path_sha256,
+            connector=registry["banktwo"], object_store=objects,
+        )
+        print(json.dumps({"parent": str(authored), "articles": [str(article) for _, article in entries]}))
+        return 0
+    model=Mercury2Client.from_environment() if os.getenv("INCEPTION_API_KEY","").strip() else None
     worker = args.worker_id or uuid4()
     if args.job_id is not None:
         claimed = run_article_worker_once(repo, worker_id=worker, registry=registry, object_store=objects,

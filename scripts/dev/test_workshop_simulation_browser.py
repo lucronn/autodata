@@ -984,6 +984,64 @@ async def verify_figure_transport_retry(browser, url, storage, fixture_route, de
         await context.close()
 
 
+async def verify_banktwo_guid_reader(page, scope):
+    from playwright.async_api import expect
+
+    chain = scope["authored_guid"]
+    content = page.locator("#article-content")
+    original = page.locator("#source-review-frame")
+    series = (("Pump service options", chain["index"]), ("Pump seal removal", chain["child"]))
+    for title, target in series:
+        await page.locator("#open-original").click()
+        for container in (content, original):
+            link = container.get_by_role("link", name=title, exact=True, include_hidden=True)
+            href = parse_qs(urlsplit(await link.get_attribute("href")).query)
+            assert href == {"configuration": [scope["configuration"]], "region": ["US"], "article": [target]}
+        if target == chain["index"]:
+            await page.locator("#back-to-article").click()
+            await content.get_by_role("link", name=title, exact=True).click()
+        else:
+            await original.get_by_role("link", name=title, exact=True).click()
+        await expect(page.locator("#article-title")).to_have_text(title)
+
+    async def verify_figure(container, before, after):
+        image = container.locator("figure img")
+        await expect(image).to_be_visible()
+        assert await image.evaluate("image => image.decode().then(() => image.naturalWidth > 0)")
+        assert await image.get_attribute("data-asset-id") == chain["figure_sha256"]
+        figure_position = """(img, [before, after]) => {
+            const figure = img.closest('figure');
+            const paragraphs = [...figure.closest('.article-content').querySelectorAll('p')];
+            const text = node => node.textContent.trim();
+            const preceding = paragraphs.filter(node => text(node) === before);
+            const following = paragraphs.filter(node => text(node) === after);
+            return {
+                before: preceding.length === 1 && Boolean(preceding[0].compareDocumentPosition(figure)
+                    & Node.DOCUMENT_POSITION_FOLLOWING),
+                after: following.length === 1 && Boolean(figure.compareDocumentPosition(following[0])
+                    & Node.DOCUMENT_POSITION_FOLLOWING),
+                paragraphs: paragraphs.map(text),
+            };
+        }"""
+        observed = await image.evaluate(figure_position, [before, after])
+        assert observed["before"] and observed["after"], observed
+        src = await image.evaluate("img => img.currentSrc")
+        contents = await page.evaluate("""async src => {
+            const response = await fetch(src);
+            if (!response.ok) throw Error(String(response.status));
+            return Array.from(new Uint8Array(await response.arrayBuffer()));
+        }""", src)
+        assert sha256(bytes(contents)).hexdigest() == chain["figure_sha256"]
+        return src
+
+    visible_url = await verify_figure(content, "Begin by disconnecting the pump.", "Take off the pump seal.")
+    await page.locator("#open-original").click()
+    await expect(original).to_contain_text("Disconnect the pump.")
+    await verify_figure(original, "Disconnect the pump.", "Remove the pump seal.")
+    await page.locator("#back-to-article").click()
+    return visible_url
+
+
 async def exercise_simulated_payment(origin, scope, customer_account, repair=None, table_variant=None, table_repair=None):
     from playwright.async_api import async_playwright, expect
 
@@ -1144,6 +1202,10 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             if banktwo_hold:
                 await asyncio.to_thread(banktwo_hold[1])
             article_link = page.locator(f'#articles a[href*="{article}"]')
+            if chain := scope.get("authored_guid"):
+                await expect(article_link).to_contain_text("Pump")
+                for target in (chain["index"], chain["child"]):
+                    await expect(page.locator(f'#articles a[href*="{target}"]')).to_have_count(0)
             if cold_index:
                 try:
                     await expect(article_link).to_contain_text(cold_index["title"], timeout=15000)
@@ -1325,6 +1387,11 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                                       "initial_failure_automatically_retried": True,
                                       "second_failure_used_manual_retry": True, "startup_writes": 0}), flush=True)
 
+            if chain:
+                media = await verify_banktwo_guid_reader(page, scope)
+                child_detail = detail.replace(article, chain["child"])
+                child = (await (await owner.request.get(child_detail)).json())["article"]
+                assert child["source_revision_id"] == chain["source_revision"] and child["canonical_revision_id"]
             other = await browser.new_context(ignore_https_errors=True, service_workers="block")
             other_transport = APIFixture(origin, API_CASES[1])
             other_transport.account = "other"
@@ -1336,6 +1403,9 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
             assert other_config.status == 200 and (await other_config.json())["enabled"] is True
             assert (await other.request.get(detail)).status == 403
             assert (await other.request.get(media)).status in (401, 403, 404)
+            if chain:
+                assert (await other.request.get(child_detail)).status == 403
+                print(f"WORKSHOP_BANKTWO_GUID_READER headed={engine} authored_links=2 original_figure=true", flush=True)
             after = await api_measure(owner, origin)
             assert after["workshop_orders"] == after["workshop_checkout_requests"] == after["entitlements"] == 1
             assert after["orders"] == [{
@@ -1351,7 +1421,7 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
 @pytest.mark.parametrize("variant", [
     "payment", "list-starts", "authored-table", "archived-table", "source-table", "labelled-market", "late-group-models",
     "authored-model-index", "authored-model-index-competing-fitment", "authored-model-index-held-bankone",
-    "authored-model-index-held-banktwo",
+    "authored-model-index-held-banktwo", "authored-guid",
 ])
 def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_database, monkeypatch, tmp_path, variant):
     from autodata_ingestion.http_service import make_handler
@@ -1374,6 +1444,9 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
             scope["labelled_market"] = labelled_market_fixture(runtime)
         if variant == "late-group-models":
             scope["late_group_models"] = True
+        if variant == "authored-guid":
+            from test_workshop_authored_referrals_browser import authored_guid_reader_fixture
+            scope["authored_guid"] = authored_guid_reader_fixture(runtime)
         if variant == "payment":
             scope["pending_saved_reader"] = True
         if variant.startswith("authored-model-index"):

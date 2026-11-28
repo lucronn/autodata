@@ -449,11 +449,13 @@ def test_retained_article_link_bindings_upgrade_from_populated_052(fresh_databas
     assert applied(run_driver(repo)) == [
         "053_canonical_article_link_bindings.sql",
         "054_canonical_article_inline_link_bindings.sql",
+        "055_banktwo_authored_article_referrals.sql",
     ]
     ledger = versions(repo)
-    assert ledger[:-2] == old_ledger
-    assert [entry["version"] for entry in ledger[-2:]] == [
+    assert ledger[:-3] == old_ledger
+    assert [entry["version"] for entry in ledger[-3:]] == [
         "053_canonical_article_link_bindings", "054_canonical_article_inline_link_bindings",
+        "055_banktwo_authored_article_referrals",
     ]
     assert snapshot(repo) == snapshot(fresh_database())
 
