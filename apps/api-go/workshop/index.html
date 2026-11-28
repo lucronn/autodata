@@ -313,13 +313,20 @@
         if (params.get('sample') === '1' && params.get('demo') !== '1') return;
         const plainPicker = !['article', 'configuration', 'demo', 'order', 'q', 'sample', 'view']
           .some(key => params.has(key)) && (!params.has('region') || params.get('region') === 'US');
+        const uuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value || '');
+        const article = params.get('article');
+        const savedScope = uuid(params.get('configuration')) && /^[A-Z]{2}$/.test(params.get('region') || '') &&
+          (article === null || uuid(article));
+        const savedLibrary = params.get('view') === 'library' && params.get('demo') !== '1';
+        const savedRead = !params.has('order') && (savedScope || savedLibrary) &&
+          ['configuration', 'region', 'article', 'view', 'demo'].every(key => params.getAll(key).length <= 1);
 
         const deadline = setTimeout(recover, 10000);
         let retry;
         function stopWatchingFailures() {
           clearTimeout(deadline);
           document.removeEventListener('error', failedEntry, true);
-          window.removeEventListener('workshop-picker-startup-failed', recover);
+          window.removeEventListener('workshop-picker-startup-failed', failedApp);
         }
         function finish() {
           stopWatchingFailures();
@@ -362,9 +369,10 @@
           }
           retry.addEventListener('click', reloadPicker, { once: true });
         }
-        function recover() {
+        function recover(moduleFailed = false) {
           stopWatchingFailures();
-          if (plainPicker && !history.state?.workshopPickerStartupRetry) {
+          // Retry a failed module once for saved reads. A slow request can still finish.
+          if ((plainPicker || savedRead && moduleFailed) && !history.state?.workshopPickerStartupRetry) {
             window.removeEventListener('workshop-picker-started', finish);
             reloadPicker();
             return;
@@ -374,11 +382,14 @@
           else showRetry();
         }
         function failedEntry(event) {
-          if (event.target.id === 'workshop-bootstrap') recover();
+          if (event.target.id === 'workshop-bootstrap') failedApp();
+        }
+        function failedApp() {
+          recover(true);
         }
 
         document.addEventListener('error', failedEntry, true);
-        window.addEventListener('workshop-picker-startup-failed', recover);
+        window.addEventListener('workshop-picker-startup-failed', failedApp);
         window.addEventListener('workshop-picker-started', finish);
       })();
     </script>

@@ -720,33 +720,53 @@ async def verify_reserved_figure(image, gate, dimensions):
 
 
 @asynccontextmanager
-async def retry_workshop_entry(browser, url, storage, fixture_route):
+async def retry_workshop_entry(browser, url, storage, fixture_route, *, persistent=False):
     from playwright.async_api import expect
 
     context = await browser.new_context(ignore_https_errors=True, service_workers="block", storage_state=storage)
-    attempts = []
+    entry_path = urlsplit(url).path
+    navigations, writes = [], []
+    failed_entries = set()
+    automatic_retry = asyncio.Event()
+    fail_count = 2 if persistent else 1
 
     def app_request(url):
-        path = urlsplit(url)
-        return path.path.endswith("/app.mjs") and not path.query
+        return urlsplit(url).path.endswith("/app.mjs")
 
     async def block_app(route):
-        attempts.append(route.request.url)
-        await route.abort()
+        if len(navigations) <= fail_count:
+            failed_entries.add(len(navigations))
+            await route.abort("connectionreset")
+        else:
+            await route.fallback()
+
+    def track_entry(request):
+        path = urlsplit(request.url).path
+        if path == entry_path and request.is_navigation_request():
+            navigations.append(request.url)
+            if len(navigations) == 2:
+                automatic_retry.set()
+        if path.startswith(("/auth/", "/v1/", "/workshop/")) and request.method not in ("GET", "HEAD", "OPTIONS"):
+            writes.append((request.method, path))
 
     try:
         await context.route("**/*", fixture_route)
         page = await context.new_page()
+        page.on("request", track_entry)
         await page.route(app_request, block_app)
         await page.goto(url, wait_until="commit")
+        await asyncio.wait_for(automatic_retry.wait(), timeout=5)
         recovery = page.locator("#workshop-startup-recovery")
-        await expect(recovery).to_be_visible(timeout=5000)
-        assert attempts and page.url == url
-        async with page.expect_request(lambda request: request.is_navigation_request() and request.url == url):
-            await recovery.get_by_role("button", name="Try again").click()
-        await page.wait_for_function("!history.state?.workshopPickerStartupRetry")
+        if persistent:
+            await expect(recovery).to_be_visible(timeout=5000)
+            assert navigations == [url, url]
+            async with page.expect_request(lambda request: request.is_navigation_request() and request.url == url):
+                await recovery.get_by_role("button", name="Try again").click()
         await expect(recovery).to_be_hidden()
         yield page
+        await page.wait_for_function("!history.state?.workshopPickerStartupRetry")
+        assert navigations == [url] * (fail_count + 1)
+        assert failed_entries == set(range(1, fail_count + 1)) and not writes
     finally:
         await context.close()
 
@@ -1116,11 +1136,14 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
                         assert recovered_image.ok and sha256(await recovered_image.body()).hexdigest() == cold_index["figure_sha"]
                     await page.locator("#my-vehicles").click()
                     await expect(page.locator("#library-items > li")).to_have_count(1)
-                    async with retry_workshop_entry(browser, page.url, storage, route_fixture) as saved:
-                        await expect(saved.locator("#library-items > li")).to_have_count(1)
-                        await expect(saved.locator("#library-items h3")).to_contain_text("Escalade")
+                    for persistent in (False, True):
+                        async with retry_workshop_entry(browser, page.url, storage, route_fixture, persistent=persistent) as saved:
+                            await expect(saved.locator("#library-items > li")).to_have_count(1)
+                            await expect(saved.locator("#library-items h3")).to_contain_text("Escalade")
                     print(json.dumps({"case": "workshop-entry-recovery", "engine": engine, "headed": True,
-                                      "protected_article_and_library_verified": True}), flush=True)
+                                      "protected_article_and_library_verified": True,
+                                      "initial_failure_automatically_retried": True,
+                                      "second_failure_used_manual_retry": True, "startup_writes": 0}), flush=True)
 
             other = await browser.new_context(ignore_https_errors=True, service_workers="block")
             other_transport = APIFixture(origin, API_CASES[1])
