@@ -515,7 +515,7 @@ function drivetrainModelChoices() {
   const name = rows.model.find((item) => item.id === selected)?.name?.trim().toLowerCase();
   if (!name) return null;
   const choices = rows.model.flatMap((item) => {
-    const sibling = item.name?.trim().match(/^(.+)\s+(?:AWD|FWD|RWD|2WD|4WD|4x2|4x4)$/i);
+    const sibling = item.name?.trim().match(/^(.+?)(?:\s*-\s*|\s+)(?:AWD|FWD|RWD|2WD|4WD|4x2|4x4)$/i);
     return item.id !== selected && sibling?.[1].trim().toLowerCase() === name
       ? [{ id: item.id, name: selectorLabel("model", item) }]
       : [];
@@ -598,6 +598,7 @@ async function refreshPicker(name, { followDiscovery = false, waitForDiscovery =
           select.append(...additional.map((item) => pickerOption(pickerChoice(name, item))));
         }
         onChoices?.();
+        if (name === "model") pickerStates.get("configuration")?.onModelChoices?.();
       },
     });
   } catch {
@@ -619,9 +620,7 @@ async function loadOptions(name, g, desired = "", initial = null, {
   const stopWithChoices = name !== "configuration" && !desired;
   const groupNames = name === "configuration" && !desired ? groupedModelNames() : null;
   let modelAlternatives = groupedModelChoices(groupNames);
-  const drivetrainAlternatives = name === "configuration" && !desired && !groupNames
-    ? drivetrainModelChoices()
-    : null;
+  const suggestDrivetrains = name === "configuration" && !desired && !groupNames;
   let loadingStatus = modelAlternatives
     ? "Checking engines for this group. You can choose an individual model."
     : `Loading ${label} choices…`;
@@ -639,7 +638,7 @@ async function loadOptions(name, g, desired = "", initial = null, {
     if (!(data.hydrating || data.discovering)) return;
     const hasChoices = pickerHasChoices(name, data.items);
     if (modelAlternatives && !hasChoices) return;
-    const drivetrainChoices = hasChoices ? null : drivetrainAlternatives;
+    const drivetrainChoices = !hasChoices && suggestDrivetrains ? drivetrainModelChoices() : null;
     const message = drivetrainChoices
       ? "Checking engines and trims. You can choose a drivetrain-specific model."
       : hasChoices ? `More ${label} choices are loading. You can choose an available option.`
@@ -740,12 +739,23 @@ async function loadOptions(name, g, desired = "", initial = null, {
     await refreshPicker("model", { followDiscovery: true, onChoices: showAvailableModels });
     if (!g.current()) return;
   }
-  if ((modelAlternatives || drivetrainAlternatives) && !pickerHasChoices(name, result.items)) {
-    const message = modelAlternatives
-      ? "No verified engine or trim loaded for this group. Choose an individual model."
-      : "Choose a drivetrain-specific model to see its engines and trims.";
-    status(message, { modelAlternatives: modelAlternatives ?? drivetrainAlternatives, retry: incomplete ? retry : null });
+  if (modelAlternatives && !pickerHasChoices(name, result.items)) {
+    status("No verified engine or trim loaded for this group. Choose an individual model.",
+      { modelAlternatives, retry: incomplete ? retry : null });
     return;
+  }
+  if (suggestDrivetrains && !pickerHasChoices(name, result.items)) {
+    picker.onModelChoices = () => {
+      if (!g.current() || pickerHasChoices(name, rows[name])) return false;
+      const choices = drivetrainModelChoices();
+      if (!choices) return false;
+      status("Choose a drivetrain-specific model to see its engines and trims.",
+        { modelAlternatives: choices, retry: incomplete ? retry : null });
+      return true;
+    };
+    const shown = picker.onModelChoices();
+    if (pickerStates.get("model")?.incomplete) void refreshPicker("model", { followDiscovery: true });
+    if (shown) return;
   }
   if (!selected && incomplete) {
     if (!desired && result.items.length) {

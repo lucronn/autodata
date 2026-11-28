@@ -404,26 +404,41 @@ async def verify_drivetrain_model_choices(page, origin, engine):
     models = [
         {"id": "trail", "name": "Trail"},
         {"id": "trail-awd", "name": "Trail Awd", "market_unverified": True},
-        {"id": "trail-fwd", "name": "Trail Fwd"},
+        {"id": "trail-fwd", "name": "Trail - Fwd"},
         {"id": "trail-awd-premium", "name": "Trail AWD Premium"},
         {"id": "trailblazer-awd", "name": "Trailblazer AWD"},
         {"id": "road", "name": "Road"},
         {"id": "road-awd", "name": "Road AWD"},
     ]
-    engines = {name: str(uuid4()) for name in ("trail", "trail-awd", "trail-fwd", "road")}
+    ridge = {"id": "ridge", "name": "Ridge"}
+    ridge_awd = {"id": "ridge-awd", "name": "Ridge AWD"}
+    engines = {name: str(uuid4()) for name in ("trail", "trail-awd", "trail-fwd", "road", "ridge", "ridge-awd")}
     finish_discovery = False
+    late_models = False
+    ridge_requested = False
+    release_ridge_sibling = asyncio.Event()
 
     async def selector(route):
+        nonlocal ridge_requested
         path = urlsplit(route.request.url).path
         complete = True
         if path == model_path:
             items = models
+            if late_models:
+                complete = ridge_requested
+                items = [ridge]
+                if complete:
+                    await release_ridge_sibling.wait()
+                    items.append(ridge_awd)
         else:
             model = path.split("/")[-2]
             row = {"id": engines[model], "year": 2024, "make": "Example", "region": "US",
-                   "model": next(item["name"] for item in models if item["id"] == model)}
+                   "model": next(item["name"] for item in (*models, ridge, ridge_awd) if item["id"] == model)}
             if model == "trail":
                 complete = finish_discovery
+                row["configuration_unresolved"] = True
+            elif model == "ridge":
+                ridge_requested = True
                 row["configuration_unresolved"] = True
             else:
                 row["engine"] = "2.4 L"
@@ -441,7 +456,7 @@ async def verify_drivetrain_model_choices(page, origin, engine):
             started = time.monotonic()
             await model.select_option("trail")
             await expect(alternatives.get_by_role("button")).to_have_text(
-                ["Trail Awd · market unverified", "Trail Fwd"], timeout=4000,
+                ["Trail Awd · market unverified", "Trail - Fwd"], timeout=4000,
             )
             choices_ms = round((time.monotonic() - started) * 1000)
             if not finish_discovery:
@@ -463,7 +478,25 @@ async def verify_drivetrain_model_choices(page, origin, engine):
         await model.select_option("road")
         await expect(page.locator(f'#configuration option[value="{engines["road"]}"]')).to_have_text("2.4 L")
         await expect(alternatives).to_be_hidden()
+
+        late_models = True
+        await page.goto(f"{origin}/workshop/?year=2024&make=example&model=ridge")
+        await expect(model).to_have_value("ridge")
+        await expect(page.locator("#activity-text")).to_contain_text("No verified engine or trim is available")
+        await expect(alternatives).to_be_hidden()
+        await expect(model.locator('option[value="ridge-awd"]')).to_have_count(0)
+        started = time.monotonic()
+        release_ridge_sibling.set()
+        await expect(alternatives.get_by_role("button")).to_have_text(["Ridge AWD"])
+        choices_ms = round((time.monotonic() - started) * 1000)
+        await alternatives.get_by_role("button", name="Ridge AWD").click()
+        await expect(model).to_have_value("ridge-awd")
+        await expect(page.locator(f'#configuration option[value="{engines["ridge-awd"]}"]')).to_have_text("2.4 L")
+        print("WORKSHOP_DRIVETRAIN_LATE_MODEL " + json.dumps({
+            "engine": engine, "headed": True, "alternatives_ms": choices_ms, "model": "ridge-awd",
+        }), flush=True)
     finally:
+        release_ridge_sibling.set()
         for path in paths:
             await page.unroute(f"{origin}{path}?*", selector)
 
