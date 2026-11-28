@@ -446,7 +446,7 @@ async def verify_drivetrain_model_choices(page, origin, engine):
             choices_ms = round((time.monotonic() - started) * 1000)
             if not finish_discovery:
                 await expect(page.locator("#activity-text")).to_contain_text("Checking")
-            await expect(page.locator(f'#configuration option[value="{engines["trail"]}"]')).to_be_disabled()
+            await expect(page.locator(f'#configuration option[value="{engines["trail"]}"][disabled]')).to_have_count(1)
             await expect(page.locator("#purchase")).to_be_hidden()
             selected_at = time.monotonic()
             await alternatives.locator(f'button[value="{target}"]').click()
