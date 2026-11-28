@@ -27,6 +27,7 @@ CONTINUOUS_MAX_STATE_BYTES = 2 * 1024 * 1024
 CONTINUOUS_MAX_RESERVATIONS = 10000
 WINDOW = timedelta(hours=24)
 PAID_SOURCE_INTERVAL = timedelta(seconds=30)
+ARTICLE_ACTIVITY_POLL_SECONDS = 2
 
 
 class WorkerBlocked(RuntimeError):
@@ -502,19 +503,42 @@ def _subscribe_to_article_jobs(repo):
         return None
 
 
-def _wait_for_article_activity(listener, completions, has_active_job, stop):
+def _paid_source_poll_timeout(repo, providers):
+    """Wake near the next supplier gate while retaining normal idle polling."""
+    with repo.connect() as conn:
+        row = conn.execute("""
+            SELECT MIN(ready_at) - statement_timestamp() AS remaining
+            FROM (
+                SELECT GREATEST(
+                    MAX((checkpoint->>'paid_source_reserved_at')::timestamptz) + %(interval)s,
+                    MAX((checkpoint->>'source_cooldown_until')::timestamptz)
+                ) AS ready_at
+                FROM source_fetch_jobs
+                WHERE job_kind='article' AND provider_slug=ANY(%(providers)s)
+                  AND ((checkpoint->>'paid_source_reserved_at')::timestamptz >
+                       statement_timestamp() - %(interval)s
+                       OR (checkpoint->>'source_cooldown_until')::timestamptz > statement_timestamp())
+                GROUP BY provider_slug
+            ) deadlines
+            WHERE ready_at > statement_timestamp()
+        """, {"providers": providers, "interval": PAID_SOURCE_INTERVAL}).fetchone()
+    remaining = row["remaining"]
+    if remaining is None:
+        return ARTICLE_ACTIVITY_POLL_SECONDS
+    return max(0.01, min(ARTICLE_ACTIVITY_POLL_SECONDS, remaining.total_seconds()))
+
+
+def _wait_for_article_activity(listener, completions, has_active_job, stop, *, timeout=ARTICLE_ACTIVITY_POLL_SECONDS):
     if has_active_job:
         watched = [completions] if listener is None else [completions, listener]
-        ready, _, _ = select(watched, [], [], 2)
+        ready, _, _ = select(watched, [], [], timeout)
         if completions in ready:
             completions.recv(4096)
         if listener not in ready:
             return
         timeout = 0
-    elif listener is not None:
-        timeout = 2
-    else:
-        stop.wait(2)
+    elif listener is None:
+        stop.wait(timeout)
         return
     with closing(listener.notifies(timeout=timeout, stop_after=1)) as notifications:
         next(notifications, None)
@@ -597,7 +621,9 @@ def _run_continuous_articles(repo, state, *, registry, object_store, model_clien
                     break
                 has_active_job = bool(in_flight) or model_future is not None
                 try:
-                    _wait_for_article_activity(listener, completions, has_active_job, stop)
+                    timeout = (_paid_source_poll_timeout(repo, available) if paid_overflow and available
+                               else ARTICLE_ACTIVITY_POLL_SECONDS)
+                    _wait_for_article_activity(listener, completions, has_active_job, stop, timeout=timeout)
                 except (DatabaseError, OSError):
                     if listener is not None:
                         listener.close()
