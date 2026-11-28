@@ -1084,17 +1084,20 @@ async function loadArticles(g, articleID = "", {
   stage("articles");
   const visibleRows = !$("catalog").hidden && (articles.length > 0 || searchItems?.length > 0);
   let retryIndexConnection = compactDemo && !visibleRows && !firstIndex;
+  const waitingForOwnedRows = !visibleRows && !articleID && !openDemo && session.state.mode === "firebase";
+  let indexCanWait = false;
   status(visibleRows ? "Updating your article index…" : "Opening your article index…", {
     busy: !visibleRows,
     cancelable: true,
   });
-  const requestIndex = (timeout) => {
+  const requestIndex = (timeout, waitForRows = false) => {
     const path = articleRequestPath(undefined, "", offerPaging ? pageQuery : undefined);
     const options = { signal: g.signal, timeout };
     const prefer = [
       includePurchaseQuote && "workshop-purchase-quote",
       offerPaging && articleIndexPagePreferences,
       compactDemo && "workshop-demo-readable-index",
+      waitForRows && "workshop-index-wait-for-first-rows",
     ].filter(Boolean).join(", ");
     const startup = initialDemoIndex;
     initialDemoIndex = null;
@@ -1123,8 +1126,21 @@ async function loadArticles(g, articleID = "", {
       ...options,
       fetcher,
       headers: prefer ? { Prefer: prefer } : undefined,
+      onResponseStatus: waitingForOwnedRows && offerPaging && !pageQuery
+        ? (status, headers) => { indexCanWait = status === 200 && headers?.get("Workshop-Index-Wait") === "1"; }
+        : undefined,
     });
   };
+  const probeIndex = async (timeout, waitForRows = false) => {
+    try {
+      return await requestIndex(timeout, waitForRows);
+    } catch (error) {
+      g.signal.throwIfAborted();
+      if (error.status === 0 || error.status === 408 || error.status >= 500) return null;
+      throw error;
+    }
+  };
+  const waitForIndexRows = timeout => probeIndex(Math.min(4000, timeout), true);
   const indexRead = await readCollection(
     () => {
       if (firstIndex) {
@@ -1139,19 +1155,10 @@ async function loadArticles(g, articleID = "", {
       signal: g.signal,
       desired: articleID,
       backoffWithChoices: Boolean(offerPaging),
+      nextEmptyRead: () => indexCanWait ? waitForIndexRows : undefined,
       // Give the first owned page one more chance to appear during the initial poll interval.
       emptyProbeDelays: offerPaging ? [350, 900] : undefined,
-      emptyProbe: !visibleRows && !articleID && !openDemo && session.state.mode === "firebase"
-        ? async (timeout) => {
-          try {
-            return await requestIndex(timeout);
-          } catch (error) {
-            g.signal.throwIfAborted();
-            if (error.status === 0 || error.status === 408 || error.status >= 500) return null;
-            throw error;
-          }
-        }
-        : undefined,
+      emptyProbe: waitingForOwnedRows ? probeIndex : undefined,
       onUpdate(result) {
         if (!g.current()) return;
         if (pageQuery && (result.configuration?.id !== selected.id || result.configuration.region !== selected.region))

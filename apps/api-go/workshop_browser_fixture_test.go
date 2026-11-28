@@ -590,6 +590,7 @@ func newWorkshopBrowserApplication(t *testing.T, paid *paidFixture, firebase *fi
 			t.Fatal(err)
 		}
 		server = NewServerWithCatalogStore(staticReadiness{}, customer, newMemoryRequestStore(), newPostgresCatalogStore(paid.pool))
+		server.catalogIndexChanges = listenCatalogIndexChanges(t.Context(), paid.pool.Config().ConnConfig)
 		server.customerAuth = customer
 		server.commerceClient = paid.applications[0].commerceClient
 		server.ingestionClient = paid.applications[0].ingestionClient

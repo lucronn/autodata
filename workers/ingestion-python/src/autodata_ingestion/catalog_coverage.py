@@ -232,6 +232,12 @@ def _lock_scope(cur, lease):
     return scope
 
 
+def _notify_catalog_index(cur, scope):
+    configuration = scope["vehicle_configuration_id"]
+    if configuration is not None:
+        cur.execute("SELECT pg_notify('autodata_workshop_index', %s)", (str(configuration),))
+
+
 def _complete(cur, lease, scope, code=None):
     cur.execute(
         "UPDATE catalog_article_provider_scopes SET status='complete',completed_generation=generation,next_cursor=NULL,error_code=%s,updated_at=clock_timestamp() WHERE catalog_provider_scope_id=%s",
@@ -275,6 +281,7 @@ def _complete(cur, lease, scope, code=None):
         "UPDATE source_fetch_jobs SET status='completed',phase='completed',lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,retryable=false,error_code=NULL,next_attempt_at=NULL,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",
         (lease.job_id,),
     )
+    _notify_catalog_index(cur, scope)
 
 
 def _configuration_candidate_matches(cur, scope, configuration, candidate):
@@ -706,6 +713,8 @@ def run_catalog_index_job(repo, lease, *, registry, object_store, yield_for_wait
                 if envelope.complete and not conflict:
                     _complete(cur, lease, scope)
                     return
+                if not scope["row_count"] and count:
+                    _notify_catalog_index(cur, scope)
                 if (
                     yield_for_waiting_job and not conflict and not repeated
                     and number + 1 < MAX_CATALOG_PAGES

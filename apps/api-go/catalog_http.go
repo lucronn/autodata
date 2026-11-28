@@ -337,17 +337,63 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		defer cancel()
 		return s.catalog.CatalogArticleProgress(statusCtx, principal, vehicleID)
 	}
-	// Read progress before the rows. A completion committed after the row
-	// snapshot must not make that older snapshot look complete.
-	progress, statusErr := readProgress(statusBudget)
-	items, err := s.catalogIndexRows(ctx, principal, vehicleID, query, title)
-	if err == nil && len(items) == 0 && statusBudget < catalogStatusReadTimeout &&
-		errors.Is(statusErr, context.DeadlineExceeded) && ctx.Err() == nil {
-		// An empty read needs progress to distinguish waiting from an empty
-		// catalog. Preserve the rest of the budget, then take a new snapshot.
-		progress, statusErr = readProgress(catalogStatusReadTimeout - statusBudget)
-		if statusErr == nil {
-			items, err = s.catalogIndexRows(ctx, principal, vehicleID, query, title)
+	var changed <-chan struct{}
+	var release func()
+	offersIndexWait := s.catalogIndexChanges != nil && paid && scoped && !scope.openDemo &&
+		pagePreference == catalogIndexLivePagesPreference && pageRequest == (catalogIndexPageRequest{}) &&
+		!filters.Has("q") && !filters.Has("title")
+	if offersIndexWait && catalogReadPreferenceRequested(request, catalogIndexWaitPreference) {
+		// Subscribe before the snapshot so a commit between the read and wait
+		// cannot leave an already available first page sleeping.
+		changed, release = s.catalogIndexChanges.watch(scope.configuration.ID)
+		defer func() {
+			if release != nil {
+				release()
+			}
+		}()
+	}
+	var progress *CatalogArticleProgress
+	var items []CatalogArticle
+	var statusErr, err error
+	readIndex := func() {
+		// A completion committed after the row snapshot must not make that
+		// older snapshot look complete.
+		progress, statusErr = readProgress(statusBudget)
+		items, err = s.catalogIndexRows(ctx, principal, vehicleID, query, title)
+		if err == nil && len(items) == 0 && statusBudget < catalogStatusReadTimeout &&
+			errors.Is(statusErr, context.DeadlineExceeded) && ctx.Err() == nil {
+			progress, statusErr = readProgress(catalogStatusReadTimeout - statusBudget)
+			if statusErr == nil {
+				items, err = s.catalogIndexRows(ctx, principal, vehicleID, query, title)
+			}
+		}
+	}
+	readIndex()
+	if changed != nil && err == nil && statusErr == nil && len(items) == 0 && catalogIndexHydrating(progress) {
+		timer := time.NewTimer(catalogIndexWaitDuration)
+		defer timer.Stop()
+		response.Header().Add("Preference-Applied", catalogIndexWaitPreference)
+		refreshed := false
+		for changed != nil && err == nil && statusErr == nil && len(items) == 0 && catalogIndexHydrating(progress) {
+			select {
+			case <-ctx.Done():
+				return
+			case <-timer.C:
+				changed = nil
+			case <-changed:
+				release()
+				// One provider may finish empty while another is still working.
+				// Subscribe before rereading so the same wait can see either commit.
+				changed, release = s.catalogIndexChanges.watch(scope.configuration.ID)
+				readIndex()
+				refreshed = true
+			}
+		}
+		if refreshed {
+			if grantErr := s.checkPaidCatalogGrant(ctx, principal, scope.configuration); grantErr != nil {
+				s.writePaidCatalogError(response, request, grantErr)
+				return
+			}
 		}
 	}
 	if err != nil {
@@ -363,6 +409,9 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 	}
 	if statusErr != nil {
 		progress = nil
+	}
+	if offersIndexWait && len(items) == 0 && catalogIndexHydrating(progress) && s.catalogIndexChanges.available() {
+		response.Header().Set("Workshop-Index-Wait", "1")
 	}
 	if !paid && (progress == nil || !progress.Complete) && s.ingestionClient != nil {
 		ctx, cancel := context.WithTimeout(request.Context(), catalogStatusReadTimeout)

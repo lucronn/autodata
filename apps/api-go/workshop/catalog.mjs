@@ -298,6 +298,7 @@ export async function readCollection(
     attempts = DEFAULT_COLLECTION_POLL_ATTEMPTS,
     interval = DEFAULT_COLLECTION_POLL_INTERVAL_MS,
     wait = delay,
+    nextEmptyRead,
     emptyProbe,
     emptyProbeDelays = [EMPTY_COLLECTION_PROBE_DELAY_MS],
     backoffWithChoices = false,
@@ -312,6 +313,7 @@ export async function readCollection(
   let fastPollingSince;
   let emptyReadRetried = false;
   let partialInterval = interval;
+  let readWithWait;
   const pollUntil = backoffWithChoices ? now() + DEFAULT_COLLECTION_POLL_WINDOW_MS : Infinity;
   const fastWindow = stopWithChoices ? FIRST_SELECTOR_CHOICES_FAST_WINDOW_MS : PARTIAL_SELECTOR_FAST_WINDOW_MS;
   function update(data, attempt) {
@@ -330,7 +332,21 @@ export async function readCollection(
     if (remaining < 1 && latest) break;
     let data;
     try {
-      data = await read(backoffWithChoices ? Math.max(1, remaining) : undefined);
+      const timeout = backoffWithChoices ? Math.max(1, remaining) : undefined;
+      if (readWithWait) {
+        const started = now();
+        data = await readWithWait(timeout);
+        signal?.throwIfAborted();
+        // If a listener stops or the request times out, continue with ordinary reads.
+        if (!data || (data?.items?.length === 0 && data.hydrating && !data.complete))
+          await wait(Math.max(0, Math.min(interval, remaining) - (now() - started)), signal);
+        if (!data) {
+          readWithWait = undefined;
+          continue;
+        }
+      } else {
+        data = await read(timeout);
+      }
     } catch (error) {
       signal?.throwIfAborted();
       // A failed stored read does not end an active lookup for the first choices.
@@ -350,6 +366,11 @@ export async function readCollection(
     }
     if (update(data, attempt)) return latest;
     if (attempt === attempts - 1 || now() >= pollUntil) break;
+    readWithWait = nextEmptyRead && latest.hydrating && !hasChoices(latest) ? nextEmptyRead() : undefined;
+    if (readWithWait) {
+      if (now() + interval >= pollUntil) break;
+      continue;
+    }
     if (attempt === 0 && emptyProbe && !hasChoices(latest) && emptyProbeDelays[0] < interval) {
       // Check for newly stored rows without moving the regular poll.
       const started = now();
@@ -469,7 +490,7 @@ export async function requestArticleJSON(path, {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    onResponseStatus?.(response.status);
+    onResponseStatus?.(response.status, response.headers);
     const applied = response.headers.get('Preference-Applied');
     if (onSelectedIndexSession && response.status !== 401 &&
         applied?.split(',').some(preference => preference.trim() === selectedIndexSessionPreference)) {
