@@ -23,10 +23,16 @@ function isSavedEntry(request, url) {
     (!params.has("demo") || params.get("demo") === "1");
 }
 
-function savedEntryReader(upstreamOrigin, publicHost, fetchDocument = fetch) {
+function savedEntryReader(upstreamOrigin, publicHost, fetchDocument = fetch, regionCache) {
   const canonicalUrl = new URL("/workshop" + canonicalQuery, upstreamOrigin);
+  const cacheKey = "workshop-entry-shell-v1:" + canonicalUrl.origin + ":" + publicHost;
   let document;
   let pending;
+
+  function isFresh(entry) {
+    const elapsed = Date.now() - entry?.storedAt;
+    return elapsed >= 0 && elapsed < lifetimeMs;
+  }
 
   async function readCanonicalDocument() {
     try {
@@ -71,20 +77,43 @@ function savedEntryReader(upstreamOrigin, publicHost, fetchDocument = fetch) {
         const value = headers.get(name);
         if (value !== null) stored.set(name, value);
       }
-      return { body, headers: stored, storedAt: Date.now() };
+      return { body, headers: [...stored], storedAt: Date.now() };
     } catch {
       return null;
     }
   }
 
+  async function refresh() {
+    let cache;
+    try {
+      cache = regionCache?.();
+      const existing = await cache?.get(cacheKey);
+      if (isFresh(existing)) {
+        document = existing;
+        return true;
+      }
+    } catch {
+      // A cache failure leaves the canonical origin available.
+    }
+    document = await readCanonicalDocument();
+    if (document && cache) {
+      try {
+        await cache.set(cacheKey, document, { ttl: lifetimeMs / 1000 });
+      } catch {
+        // The verified document is still available in this instance.
+      }
+    }
+    return false;
+  }
+
   return async (request, url = new URL(request.url)) => {
     if (!isSavedEntry(request, url)) return null;
-    const hit = document && Date.now() - document.storedAt < lifetimeMs;
+    let hit = isFresh(document);
     if (!hit) {
-      pending ??= readCanonicalDocument().then(entry => { document = entry; }).finally(() => { pending = null; });
-      await pending;
+      pending ??= refresh().finally(() => { pending = null; });
+      hit = await pending;
     }
-    if (!document) return null;
+    if (!isFresh(document)) return null;
     const headers = new Headers(document.headers);
     headers.set("age", Math.floor((Date.now() - document.storedAt) / 1000).toString());
     headers.set("server-timing", "workshop-entry;desc=" + (hit ? "hit" : "fill"));
@@ -92,7 +121,9 @@ function savedEntryReader(upstreamOrigin, publicHost, fetchDocument = fetch) {
   };
 }
 
-export const config = { matcher: "/((?!workshop/assets/[a-f0-9]{64}/).*)" };
+export const config = { matcher: "/((?!workshop/assets/[a-f0-9]{64}/).*)", runtime: "nodejs" };
+
+import { getCache } from "@vercel/functions";
 
 const UPSTREAM_ORIGIN = "https://autodata.curtis.click";
 const PUBLIC_HOST = "autodata.cars.tk";
@@ -108,7 +139,7 @@ const PUBLIC_READ_PATHS = [
   /^\/v1\/catalog\/years\/[^/]+\/makes\/[^/]+\/models\/[^/]+\/configurations$/,
 ];
 
-const readSavedEntry = savedEntryReader(UPSTREAM_ORIGIN, PUBLIC_HOST);
+const readSavedEntry = savedEntryReader(UPSTREAM_ORIGIN, PUBLIC_HOST, fetch, getCache);
 
 export default async function middleware(request) {
   const url = new URL(request.url);
