@@ -322,9 +322,12 @@
           ['configuration', 'region', 'article', 'view', 'demo'].every(key => params.getAll(key).length <= 1);
 
         const deadline = setTimeout(recover, 10000);
+        const savedReadDelay = savedRead ? setTimeout(showRetryWhenParsed, 3000) : undefined;
+        let startupFailed = false;
         let retry;
         function stopWatchingFailures() {
           clearTimeout(deadline);
+          clearTimeout(savedReadDelay);
           document.removeEventListener('error', failedEntry, true);
           window.removeEventListener('workshop-picker-startup-failed', failedApp);
         }
@@ -364,12 +367,21 @@
             retry.hidden = false;
           } else {
             const recovery = document.getElementById('workshop-startup-recovery');
+            recovery.dataset.tone = startupFailed ? 'error' : 'loading';
+            recovery.querySelector('[role="alert"]').textContent = startupFailed
+              ? 'Workshop could not open this page.' : 'Workshop is taking longer to open this page.';
             retry = recovery.querySelector('button');
             recovery.hidden = false;
           }
           retry.addEventListener('click', reloadPicker, { once: true });
         }
+        function showRetryWhenParsed() {
+          if (document.readyState === 'loading')
+            document.addEventListener('readystatechange', showRetry, { once: true });
+          else showRetry();
+        }
         function recover(moduleFailed = false) {
+          startupFailed = true;
           stopWatchingFailures();
           // Retry a failed module once for saved reads. A slow request can still finish.
           if ((plainPicker || savedRead && moduleFailed) && !history.state?.workshopPickerStartupRetry) {
@@ -377,9 +389,7 @@
             reloadPicker();
             return;
           }
-          if (document.readyState === 'loading')
-            document.addEventListener('readystatechange', showRetry, { once: true });
-          else showRetry();
+          showRetryWhenParsed();
         }
         function failedEntry(event) {
           if (event.target.id === 'workshop-bootstrap') failedApp();
