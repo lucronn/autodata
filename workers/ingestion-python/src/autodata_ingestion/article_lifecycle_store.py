@@ -1960,7 +1960,7 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
         or projection!={"body":row["canonical_body"],"steps":row["canonical_steps"],"images":row["canonical_images"]}):
         raise ValueError("publication binding validation failed")
     from .procedure_rewrite_auto import (
-        SOURCE_PRESERVING_METHOD, require_distinct_generated_introduction,
+        SOURCE_PRESERVING_METHOD, require_component_installation_modality, require_distinct_generated_introduction,
         require_preserved_display_quotations, require_required_procedure_actions,
     )
     server_candidate=(profile in AUTOMATIC_REWRITE_PROFILES
@@ -1996,6 +1996,7 @@ def _publish_article_revision(cur, lease, revision_id, *, hooks=None):
         require_distinct_generated_introduction(source, document, rewritten_paths=rewritten_paths)
         require_preserved_display_quotations(source, document, rewritten_paths=rewritten_paths)
         require_required_procedure_actions(source, document, rewritten_paths=rewritten_paths)
+        require_component_installation_modality(source, document, rewritten_paths=rewritten_paths)
         require_authored_procedure_scope(source, document, rewritten_paths=rewritten_paths)
     cur.execute("UPDATE canonical_article_revisions SET status='published',published_at=clock_timestamp() WHERE canonical_article_revision_id=%s",(revision_id,))
     if hooks is not None:hooks("inside_publication")

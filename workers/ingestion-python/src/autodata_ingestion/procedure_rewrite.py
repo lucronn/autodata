@@ -425,12 +425,12 @@ def rewrite_ordered_document(document, *, client, context, profile_version=_PROF
         if not validation.passed:
             return result(source, raw=raw, error=validation.error_codes[0])
         if profile_version in AUTOMATIC_REWRITE_PROFILES:
-            from .procedure_rewrite_auto import require_required_procedure_actions
+            from .procedure_rewrite_auto import require_component_installation_modality, require_required_procedure_actions
 
             try:
-                require_required_procedure_actions(
-                    source, candidate, rewritten_paths=validation.report["changed_prose_slots"],
-                )
+                paths = validation.report["changed_prose_slots"]
+                require_required_procedure_actions(source, candidate, rewritten_paths=paths)
+                require_component_installation_modality(source, candidate, rewritten_paths=paths)
             except ValueError as error:
                 return result(source, raw=raw, error=str(error))
         return result(candidate, validation.report["changed_slots"], raw)

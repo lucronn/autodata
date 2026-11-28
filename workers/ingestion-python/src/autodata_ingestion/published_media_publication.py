@@ -107,10 +107,18 @@ def _validate_technical_evidence(cur, job, row, attempt):
 
 
 def _publication_evidence(cur, article, binding, *, fixture_mode, lock, table_geometry=False):
-    return _publication_evidence_for_revision(
+    from .procedure_rewrite_auto import require_component_installation_modality
+
+    evidence = _publication_evidence_for_revision(
         cur, article, binding, article["current_canonical_revision_id"], fixture_mode=fixture_mode, lock=lock,
         table_geometry=table_geometry,
     )
+    revision = evidence[0]
+    require_component_installation_modality(
+        revision["normalized_source_document"], revision["canonical_document"],
+        rewritten_paths=revision["validation_report"].get("changed_prose_slots", ()),
+    )
+    return evidence
 
 
 def _publication_evidence_for_revision(cur, article, binding, revision_id, *, fixture_mode, lock,
