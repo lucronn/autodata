@@ -160,7 +160,7 @@ const PUBLIC_READ_PATHS = [
   /^\/v1\/catalog\/years\/[^/]+\/makes\/[^/]+\/models\/[^/]+\/configurations$/,
 ];
 
-const readSavedEntry = savedEntryReader(UPSTREAM_ORIGIN, PUBLIC_HOST, fetch, getCache);
+const readSavedEntry = savedEntryReader(UPSTREAM_ORIGIN, PUBLIC_HOST, readWithPool, getCache);
 
 export default async function middleware(request) {
   const url = new URL(request.url);
