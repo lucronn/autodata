@@ -298,6 +298,7 @@ export async function readCollection(
     attempts = DEFAULT_COLLECTION_POLL_ATTEMPTS,
     interval = DEFAULT_COLLECTION_POLL_INTERVAL_MS,
     wait = delay,
+    waitForEmpty,
     emptyProbe,
     emptyProbeDelays = [EMPTY_COLLECTION_PROBE_DELAY_MS],
     backoffWithChoices = false,
@@ -312,6 +313,7 @@ export async function readCollection(
   let fastPollingSince;
   let emptyReadRetried = false;
   let partialInterval = interval;
+  let waitingForRows = false;
   const pollUntil = backoffWithChoices ? now() + DEFAULT_COLLECTION_POLL_WINDOW_MS : Infinity;
   const fastWindow = stopWithChoices ? FIRST_SELECTOR_CHOICES_FAST_WINDOW_MS : PARTIAL_SELECTOR_FAST_WINDOW_MS;
   function update(data, attempt) {
@@ -330,7 +332,18 @@ export async function readCollection(
     if (remaining < 1 && latest) break;
     let data;
     try {
-      data = await read(backoffWithChoices ? Math.max(1, remaining) : undefined);
+      const timeout = backoffWithChoices ? Math.max(1, remaining) : undefined;
+      if (waitingForRows) {
+        const started = now();
+        data = await waitForEmpty(timeout);
+        signal?.throwIfAborted();
+        // A server without a listener can reply immediately. Continue at the
+        // ordinary cadence while its catalog remains empty.
+        if (data?.items?.length === 0 && data.hydrating && !data.complete)
+          await wait(Math.max(0, Math.min(interval, remaining) - (now() - started)), signal);
+      } else {
+        data = await read(timeout);
+      }
     } catch (error) {
       signal?.throwIfAborted();
       // A failed stored read does not end an active lookup for the first choices.
@@ -350,6 +363,8 @@ export async function readCollection(
     }
     if (update(data, attempt)) return latest;
     if (attempt === attempts - 1 || now() >= pollUntil) break;
+    waitingForRows = Boolean(waitForEmpty && !hasChoices(latest) && latest.hydrating);
+    if (waitingForRows) continue;
     if (attempt === 0 && emptyProbe && !hasChoices(latest) && emptyProbeDelays[0] < interval) {
       // Check for newly stored rows without moving the regular poll.
       const started = now();

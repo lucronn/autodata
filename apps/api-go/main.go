@@ -75,6 +75,7 @@ type Server struct {
 	workshopOpenDemoHost       string
 	vehicleIdentity            VehicleIdentityStore
 	catalog                    CatalogStore
+	catalogIndexChanges        *catalogIndexNotifications
 	catalogImageKey            []byte
 	catalogImageReader         catalogImageObjectReader
 	metrics                    *apiMetrics
@@ -692,6 +693,11 @@ func main() {
 	}
 	if authConfig.Mode == "firebase" {
 		application.auth = application.customerAuth
+		if durable, ok := projectionStore.(*postgresProjectionStore); ok {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			application.catalogIndexChanges = listenCatalogIndexChanges(ctx, durable.pool.Config().ConnConfig)
+		}
 	}
 	if endpoint := strings.TrimSpace(os.Getenv("AUTODATA_INGESTION_URL")); endpoint != "" {
 		client, err := NewHTTPIngestionClient(

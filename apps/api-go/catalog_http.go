@@ -337,17 +337,50 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		defer cancel()
 		return s.catalog.CatalogArticleProgress(statusCtx, principal, vehicleID)
 	}
-	// Read progress before the rows. A completion committed after the row
-	// snapshot must not make that older snapshot look complete.
-	progress, statusErr := readProgress(statusBudget)
-	items, err := s.catalogIndexRows(ctx, principal, vehicleID, query, title)
-	if err == nil && len(items) == 0 && statusBudget < catalogStatusReadTimeout &&
-		errors.Is(statusErr, context.DeadlineExceeded) && ctx.Err() == nil {
-		// An empty read needs progress to distinguish waiting from an empty
-		// catalog. Preserve the rest of the budget, then take a new snapshot.
-		progress, statusErr = readProgress(catalogStatusReadTimeout - statusBudget)
-		if statusErr == nil {
-			items, err = s.catalogIndexRows(ctx, principal, vehicleID, query, title)
+	var changed <-chan struct{}
+	if s.catalogIndexChanges != nil && paid && scoped && !scope.openDemo &&
+		pagePreference == catalogIndexLivePagesPreference && pageRequest == (catalogIndexPageRequest{}) &&
+		!filters.Has("q") && !filters.Has("title") &&
+		catalogReadPreferenceRequested(request, catalogIndexWaitPreference) {
+		// Subscribe before the snapshot so a commit between the read and wait
+		// cannot leave an already available first page sleeping.
+		var release func()
+		changed, release = s.catalogIndexChanges.watch(scope.configuration.ID)
+		if release != nil {
+			defer release()
+		}
+	}
+	var progress *CatalogArticleProgress
+	var items []CatalogArticle
+	var statusErr, err error
+	readIndex := func() {
+		// A completion committed after the row snapshot must not make that
+		// older snapshot look complete.
+		progress, statusErr = readProgress(statusBudget)
+		items, err = s.catalogIndexRows(ctx, principal, vehicleID, query, title)
+		if err == nil && len(items) == 0 && statusBudget < catalogStatusReadTimeout &&
+			errors.Is(statusErr, context.DeadlineExceeded) && ctx.Err() == nil {
+			progress, statusErr = readProgress(catalogStatusReadTimeout - statusBudget)
+			if statusErr == nil {
+				items, err = s.catalogIndexRows(ctx, principal, vehicleID, query, title)
+			}
+		}
+	}
+	readIndex()
+	if changed != nil && err == nil && statusErr == nil && len(items) == 0 && catalogIndexHydrating(progress) {
+		timer := time.NewTimer(catalogIndexWaitDuration)
+		defer timer.Stop()
+		response.Header().Add("Preference-Applied", catalogIndexWaitPreference)
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		case <-changed:
+			if grantErr := s.checkPaidCatalogGrant(ctx, principal, scope.configuration); grantErr != nil {
+				s.writePaidCatalogError(response, request, grantErr)
+				return
+			}
+			readIndex()
 		}
 	}
 	if err != nil {

@@ -1084,17 +1084,19 @@ async function loadArticles(g, articleID = "", {
   stage("articles");
   const visibleRows = !$("catalog").hidden && (articles.length > 0 || searchItems?.length > 0);
   let retryIndexConnection = compactDemo && !visibleRows && !firstIndex;
+  const waitingForOwnedRows = !visibleRows && !articleID && !openDemo && session.state.mode === "firebase";
   status(visibleRows ? "Updating your article index…" : "Opening your article index…", {
     busy: !visibleRows,
     cancelable: true,
   });
-  const requestIndex = (timeout) => {
+  const requestIndex = (timeout, waitForRows = false) => {
     const path = articleRequestPath(undefined, "", offerPaging ? pageQuery : undefined);
     const options = { signal: g.signal, timeout };
     const prefer = [
       includePurchaseQuote && "workshop-purchase-quote",
       offerPaging && articleIndexPagePreferences,
       compactDemo && "workshop-demo-readable-index",
+      waitForRows && "workshop-index-wait-for-first-rows",
     ].filter(Boolean).join(", ");
     const startup = initialDemoIndex;
     initialDemoIndex = null;
@@ -1139,9 +1141,11 @@ async function loadArticles(g, articleID = "", {
       signal: g.signal,
       desired: articleID,
       backoffWithChoices: Boolean(offerPaging),
+      waitForEmpty: waitingForOwnedRows && offerPaging && !pageQuery
+        ? timeout => requestIndex(Math.min(4000, timeout), true) : undefined,
       // Give the first owned page one more chance to appear during the initial poll interval.
       emptyProbeDelays: offerPaging ? [350, 900] : undefined,
-      emptyProbe: !visibleRows && !articleID && !openDemo && session.state.mode === "firebase"
+      emptyProbe: waitingForOwnedRows
         ? async (timeout) => {
           try {
             return await requestIndex(timeout);
