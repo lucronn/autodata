@@ -138,6 +138,66 @@ def procedure_facts(text: str, *, allow_drain_subject: bool = True) -> tuple[str
     return _idle_facts(text)
 
 
+_BRAKE_HALF_FULL = r"(?:the )?half[- ]full(?: point)?"
+_BRAKE_FLUID_MIDPOINT = (
+    r"(?:the )?(?:midpoint|midway(?: point)?) between the maximum-full point and the minimum allowable level"
+)
+_BRAKE_LEVEL_CONDITION = re.compile(
+    r"\b(?:(?:if|when) the brake fluid (?:level is|stands)|showing a brake fluid level of|"
+    r"during (?:a )?routine fluid check, a level of) "
+    r"(?:(?P<prefix>at or below|at or above|no higher than|no lower than|higher than|lower than|above|below|at) )?"
+    rf"(?P<reference>{_BRAKE_HALF_FULL}|{_BRAKE_FLUID_MIDPOINT})"
+    r"(?: or (?P<suffix>less|more))?\b(?=[,.]|$| during (?:a )?routine fluid checks?\b| calls for\b| permits\b)"
+)
+_BRAKE_LEVEL_RELATIONS = {
+    None: "equal", "at": "equal", "at or below": "at_or_below", "no higher than": "at_or_below", "less": "at_or_below",
+    "at or above": "at_or_above", "no lower than": "at_or_above", "more": "at_or_above",
+    "lower than": "below", "below": "below", "higher than": "above", "above": "above",
+}
+_ROUTINE_BRAKE_CHECK = re.compile(r"\broutine fluid checks?\b")
+_NORMAL_BRAKE_CONDITIONS = re.compile(r"\bunder normal conditions\b")
+_BEFORE_PROCEEDING = re.compile(r"\bbefore proceeding\b")
+_CLEAN_BRAKE_INSPECTION = re.compile(
+    r"\b(?:and an inspection of the brake system did not reveal wear or brake fluid leaks|"
+    r"once an inspection finds the brake system free of wear and brake fluid leaks)\b"
+)
+_BRAKE_LEVEL_ACTIONS = tuple(
+    (action, re.compile(syntax))
+    for action, syntax in (
+        ("inspect_for_wear_and_leaks", r"\b(?:the brake system should be inspected|calls for inspecting the brake system)"
+         r" for wear and possible (?:brake )?fluid leaks\b"),
+        ("allow_refill_to_maximum", r"\b(?:the brake fluid may be topped[- ]off up|permits topping up the brake fluid)"
+         r" to the maximum-fill level\b"),
+        ("discourage_refill", r"\b(?:adding brake fluid is not recommended|topping up is discouraged)\b"),
+        ("no_drain_required", r"\b(?:no brake fluid needs to be removed|no need to remove brake fluid)\b"),
+        ("drain_to_midpoint", r"\bremove brake fluid (?:to the midway point|until it reaches that midpoint)\b"),
+    )
+)
+
+
+def brake_fluid_level_facts(text: str) -> tuple[str, str, str, bool, bool, bool, bool] | None:
+    """Read the condition and qualifiers of a recognized brake-fluid instruction."""
+    if not isinstance(text, str):
+        return None
+    text = " ".join(text.casefold().split())
+    if "brake fluid" not in text:
+        return None
+    conditions = list(_BRAKE_LEVEL_CONDITION.finditer(text))
+    actions = [action for action, syntax in _BRAKE_LEVEL_ACTIONS if syntax.search(text)]
+    if len(conditions) != 1 or len(actions) != 1:
+        return None
+    condition, = conditions
+    prefix, suffix = condition["prefix"], condition["suffix"]
+    if prefix and suffix:
+        return None
+    reference = "half_full" if "half" in condition["reference"] else "midpoint_between_limits"
+    return (
+        actions[0], _BRAKE_LEVEL_RELATIONS[prefix or suffix], reference,
+        bool(_ROUTINE_BRAKE_CHECK.search(text)), bool(_NORMAL_BRAKE_CONDITIONS.search(text)),
+        bool(_CLEAN_BRAKE_INSPECTION.search(text)), bool(_BEFORE_PROCEEDING.search(text)),
+    )
+
+
 _COOLANT_PRODUCT_WORD = r"[a-z][a-z0-9®™/-]{0,31}"
 _COOLANT_PRODUCT = rf"{_COOLANT_PRODUCT_WORD}(?: (?:{_COOLANT_PRODUCT_WORD}|[®™])){{0,7}}(?: |/)coolant"
 _HUE = (

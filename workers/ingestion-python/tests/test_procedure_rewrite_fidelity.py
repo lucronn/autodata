@@ -9,6 +9,7 @@ import pytest
 from autodata_ingestion import procedure_rewrite as rewrite
 from autodata_ingestion import procedure_rewrite_auto as auto
 from autodata_ingestion.article_lifecycle_types import SOURCE_BOUND_CORRECTION_PROFILE, digest_json
+from autodata_ingestion.procedure_rewrite_fidelity import brake_fluid_level_facts
 from autodata_ingestion.procedure_rewrite_full import render_full
 from autodata_ingestion.procedure_rewrite_recovery import FIRST_DRAFT_COOLING_SEQUENCE_RECOVERY_METHOD, recover_first_draft
 from autodata_ingestion.retained_note_label_repair import _restore_procedure_condition_reply
@@ -35,6 +36,26 @@ _IDLE = (
 )
 _ACTION = "REWRITE_ACTION_MUTATION"
 _QUALIFIER = "REWRITE_QUALIFIER_MUTATION"
+
+
+def test_brake_fluid_level_guard_keeps_inclusive_condition_and_clean_inspection():
+    def instruction(level, inspection):
+        return (
+            f"During a routine fluid check, a level of {level} permits topping up the brake fluid "
+            f"to the maximum-fill level {inspection}."
+        )
+
+    clean = "once an inspection finds the brake system free of wear and brake fluid leaks"
+    original = brake_fluid_level_facts(instruction("no higher than half full", clean))
+    assert original is not None
+    assert brake_fluid_level_facts(instruction("half-full or less", clean)) == original
+    for wrong_level in ("half-full or more", "below half-full", "at half-full"):
+        assert brake_fluid_level_facts(instruction(wrong_level, clean)) != original
+    for wrong_inspection in (
+        clean.replace("once", "before"),
+        clean.replace("free of", "with"),
+    ):
+        assert brake_fluid_level_facts(instruction("half-full or less", wrong_inspection)) != original
 
 
 def test_archived_repair_restores_only_an_exact_authored_condition():
