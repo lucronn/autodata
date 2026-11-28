@@ -17,6 +17,18 @@
           "value": "0"
         }
       ]
+    },
+    {
+      "source": "/v1/catalog/vehicles/:configuration([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/articles/:article([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})",
+      "headers": [
+        { "key": "x-vercel-enable-rewrite-caching", "value": "0" }
+      ]
+    },
+    {
+      "source": "/v1/catalog/vehicles/:configuration([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/articles/:article([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/source",
+      "headers": [
+        { "key": "x-vercel-enable-rewrite-caching", "value": "0" }
+      ]
     }
   ],
   "rewrites": [
@@ -27,6 +39,14 @@
     {
       "source": "/v1/catalog/images/:token(v2\\.[A-Za-z0-9_-]{1,6000})",
       "destination": "https://autodata.curtis.click/v1/catalog/images/:token"
+    },
+    {
+      "source": "/v1/catalog/vehicles/:configuration([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/articles/:article([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})",
+      "destination": "https://autodata.curtis.click/v1/catalog/vehicles/:configuration/articles/:article"
+    },
+    {
+      "source": "/v1/catalog/vehicles/:configuration([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/articles/:article([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/source",
+      "destination": "https://autodata.curtis.click/v1/catalog/vehicles/:configuration/articles/:article/source"
     }
   ]
 }
