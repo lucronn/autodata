@@ -237,10 +237,40 @@ def _complete(cur, lease, scope, code=None):
         "UPDATE catalog_article_provider_scopes SET status='complete',completed_generation=generation,next_cursor=NULL,error_code=%s,updated_at=clock_timestamp() WHERE catalog_provider_scope_id=%s",
         (code, lease.catalog_provider_scope_id),
     )
-    cur.execute(
-        "UPDATE canonical_articles SET membership_status='retired',updated_at=clock_timestamp() WHERE scope_key=%s AND provider_slug=%s AND last_seen_catalog_generation<%s",
-        (scope["scope_key"], scope["provider_slug"], scope["generation"]),
-    )
+    if scope["provider_slug"] == "banktwo":
+        # GUID-only documents remain eligible while reachable from a current
+        # catalog entry through the exact active supplier observations.
+        cur.execute("""
+            WITH RECURSIVE current_articles(canonical_article_id, current_source_revision_id) AS (
+                SELECT a.canonical_article_id, a.current_source_revision_id FROM canonical_articles a
+                JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
+                WHERE a.scope_key=%(scope_key)s AND a.provider_slug='banktwo'
+                  AND a.source_vehicle_ref=%(source_vehicle_ref)s AND a.last_seen_catalog_generation=%(generation)s
+                  AND a.membership_status='active' AND a.takedown_status='active' AND descriptor.takedown_status='active'
+                UNION
+                SELECT a.canonical_article_id, a.current_source_revision_id FROM current_articles parent
+                JOIN banktwo_authored_article_referrals referral ON referral.parent_article_id=parent.canonical_article_id
+                  AND referral.parent_source_revision_id=parent.current_source_revision_id
+                JOIN canonical_article_source_revisions parent_source ON parent_source.source_revision_id=parent.current_source_revision_id
+                JOIN source_snapshots parent_body ON parent_body.source_snapshot_id=parent_source.body_source_snapshot_id
+                JOIN canonical_articles a ON a.canonical_article_id=referral.target_article_id
+                JOIN source_snapshots proof ON proof.source_snapshot_id=referral.descriptor_source_snapshot_id
+                JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
+                WHERE a.scope_key=%(scope_key)s AND a.provider_slug='banktwo'
+                  AND a.source_vehicle_ref=%(source_vehicle_ref)s AND proof.takedown_status='active'
+                  AND parent_body.takedown_status='active'
+                  AND a.membership_status='active' AND a.takedown_status='active' AND descriptor.takedown_status='active'
+            )
+            UPDATE canonical_articles a SET membership_status='retired',updated_at=clock_timestamp()
+            WHERE a.scope_key=%(scope_key)s AND a.provider_slug='banktwo'
+              AND a.last_seen_catalog_generation<%(generation)s AND a.membership_status='active'
+              AND NOT EXISTS (SELECT 1 FROM current_articles x WHERE x.canonical_article_id=a.canonical_article_id)
+        """, scope)
+    else:
+        cur.execute(
+            "UPDATE canonical_articles SET membership_status='retired',updated_at=clock_timestamp() WHERE scope_key=%s AND provider_slug=%s AND last_seen_catalog_generation<%s",
+            (scope["scope_key"], scope["provider_slug"], scope["generation"]),
+        )
     cur.execute(
         "UPDATE source_fetch_jobs SET status='completed',phase='completed',lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,retryable=false,error_code=NULL,next_attempt_at=NULL,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",
         (lease.job_id,),

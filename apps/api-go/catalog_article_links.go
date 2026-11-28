@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -206,6 +208,10 @@ func applyRetainedInlineCatalogLinks(bindings map[string][]retainedCatalogInline
 			}
 			if binding.itemIndex == -1 && node["type"] == "paragraph" {
 				appendInlineCatalogLink(node, binding.label, target)
+			} else if binding.itemIndex == -1 && node["type"] == "link" {
+				if len(bindings[blockID]) == 1 && node["text"] == binding.label && node["target_article_id"] == nil {
+					node["target_article_id"] = target
+				}
 			} else if node["type"] == "ordered_list" || node["type"] == "unordered_list" {
 				items, _ := node["items"].([]any)
 				if binding.itemIndex < 0 || binding.itemIndex >= len(items) {
@@ -244,8 +250,31 @@ func appendInlineCatalogLink(node map[string]any, label, target string) bool {
 
 // Resolve only within the authorized origin's immutable provider identity.
 // A withdrawn or ambiguous target stays readable as ordinary link text.
+// The caller selects the visible source and article as part of the same read.
+// Request one extra slot so the projection can reject an oversized result.
+var banktwoAuthoredArticleLinkSlotsSQL = `(
+		SELECT jsonb_build_object('authored_inline_article_links',COALESCE(jsonb_agg(slot),'[]'::jsonb))
+		FROM (
+			SELECT entries.slot
+			FROM banktwo_authored_article_referrals referral
+			JOIN source_snapshots proof ON proof.source_snapshot_id=referral.descriptor_source_snapshot_id
+			CROSS JOIN LATERAL jsonb_array_elements(referral.inline_slots) entries(slot)
+			WHERE referral.parent_article_id=a.canonical_article_id
+				AND referral.parent_source_revision_id=a.current_source_revision_id
+				AND proof.takedown_status='active'
+			LIMIT ` + strconv.Itoa(maxCatalogArticleLinkTargets+1) + `
+		) bound)`
+
+func decodeBanktwoAuthoredLinkSlots(raw []byte) map[string][]retainedCatalogInlineLink {
+	var slots any
+	if json.Unmarshal(raw, &slots) != nil {
+		return nil
+	}
+	return capturedInlineCatalogLinks(slots, nil)
+}
+
 func (s *postgresCatalogStore) authoredArticleLinkResolver(ctx context.Context, identity PaidArticleIdentity, readyOnly bool) catalogArticleLinkResolver {
-	if identity.ProviderSlug != "bankone" || identity.SourceVehicleRef == "" ||
+	if (identity.ProviderSlug != "bankone" && identity.ProviderSlug != "banktwo") || identity.SourceVehicleRef == "" ||
 		!commerceUUID(identity.CanonicalArticleID) || !commerceUUID(identity.ConfigurationID) {
 		return nil
 	}
@@ -263,14 +292,22 @@ func (s *postgresCatalogStore) authoredArticleLinkResolver(ctx context.Context, 
 			JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
 			`+paidArticleCurrentJoinSQL+`
 			WHERE origin.canonical_article_id=$1::uuid AND origin.vehicle_configuration_id=$2::uuid
-			  AND origin.provider_slug='bankone' AND origin.source_vehicle_ref=$3
+			  AND origin.provider_slug=$7 AND origin.source_vehicle_ref=$3
 			  AND origin.membership_status='active' AND origin.takedown_status='active'
 			  AND origin_descriptor.takedown_status='active'
 			  AND a.takedown_status='active' AND descriptor.takedown_status='active' AND c.takedown_status='active'
 			  AND encode(sha256(convert_to(a.source_article_ref,'UTF8')),'hex')=ANY($4::text[])
+			  AND (origin.provider_slug='bankone' OR EXISTS (
+				SELECT 1 FROM banktwo_authored_article_referrals referral
+				JOIN source_snapshots proof ON proof.source_snapshot_id=referral.descriptor_source_snapshot_id
+				WHERE referral.parent_article_id=origin.canonical_article_id
+				  AND referral.parent_source_revision_id=origin.current_source_revision_id
+				  AND referral.target_article_id=a.canonical_article_id AND proof.takedown_status='active'
+			  ))
 			  AND `+lifecycleEligibleSQL+`
-			GROUP BY ref_hash HAVING count(*)=1 AND (NOT $6 OR bool_and(c.availability='available'))
-			LIMIT $5`, identity.CanonicalArticleID, identity.ConfigurationID, identity.SourceVehicleRef, hashes, maxCatalogArticleLinkTargets, readyOnly)
+			GROUP BY ref_hash HAVING count(*)=1 AND (NOT $6 OR bool_and(c.availability='available'
+				AND ($7='bankone' OR c.canonical_revision_id IS NOT NULL)))
+			LIMIT $5`, identity.CanonicalArticleID, identity.ConfigurationID, identity.SourceVehicleRef, hashes, maxCatalogArticleLinkTargets, readyOnly, identity.ProviderSlug)
 		if err != nil {
 			return nil
 		}

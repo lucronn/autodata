@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Callable, Protocol
-from urllib.parse import unquote, urljoin, urlparse, urlsplit
+from urllib.parse import parse_qs, unquote, urljoin, urlparse, urlsplit
 from xml.etree import ElementTree
 
 
@@ -1990,6 +1990,39 @@ def _maintenance_xml_blocks(text: str) -> list[dict[str, Any]]:
     return blocks
 
 
+def _bound_banktwo_legacy_hal(value, embedded, data, resource, context):
+    if (
+        context.key.provider != "banktwo"
+        or resource.metadata.get("source_provider") != "banktwo"
+        or resource.metadata.get("kind") != "article"
+        or not isinstance(data, dict)
+        or not isinstance(data.get("content"), str)
+        or not data["content"].strip()
+        or "article" in data or "partsAndLabor" in data
+    ):
+        return False
+    car = embedded.get("car")
+    heading = value.get("title")
+    if not isinstance(car, dict) or not isinstance(heading, str) or heading.strip() != context.descriptor.get("title"):
+        return False
+    locator = urlsplit(resource.source_uri)
+    if locator.fragment:
+        return False
+    scope = re.fullmatch(r"/v1/content/carids/(\d{1,20})/resource", locator.path)
+    query = parse_qs(locator.query, keep_blank_values=True)
+    if scope and set(query) == {"path"} and len(query["path"]) == 1:
+        path = query["path"][0]
+    elif not scope and not locator.query:
+        path = locator.path
+    else:
+        return False
+    identity = re.fullmatch(r"/api/v1/content/carids/(\d{1,20})/guid/([A-Za-z0-9_-]{1,160})", path)
+    return bool(
+        identity and identity[2] == value.get("id") and identity[1] == str(car.get("id"))
+        and (not scope or scope[1] == identity[1])
+    )
+
+
 def adapt_bound_article(
     resource: SourceResource, context, *, keep_embedded_pdf: bool = False,
     keep_html_headings: bool = False, keep_bound_pdf_iframes: bool = False,
@@ -2137,9 +2170,10 @@ def adapt_bound_article(
             embedded = value.get("_embedded")
             data = embedded.get("data") if isinstance(embedded, dict) else None
             article = data.get("article") if isinstance(data, dict) else None
-            if not isinstance(article, dict) or (
-                "content" in article and not isinstance(article["content"], str)
-            ):
+            if not isinstance(article, dict):
+                if not _bound_banktwo_legacy_hal(value, embedded, data, resource, context):
+                    raise ValueError("invalid article document")
+            elif "content" in article and not isinstance(article["content"], str):
                 raise ValueError("invalid article document")
         identity_layers = [value]
         embedded = value.get("_embedded")

@@ -16,7 +16,7 @@ from .article_lifecycle_types import (
     BANKONE_DEFINITION_HEADING_LAYOUT,
     BANKONE_LIST_BOUNDARY_LAYOUT,
     BANKONE_HTML_FLOW_LAYOUT,
-    BANKTWO_DOTTED_LIST_START_LAYOUT, BANKTWO_LIST_NOTICE_LAYOUT,
+    BANKTWO_DOTTED_LIST_START_LAYOUT, BANKTWO_GUID_INDEX_LAYOUT, BANKTWO_LIST_NOTICE_LAYOUT,
     CapturedSource,
     HTML_BOUND_IMAGE_LAYOUT,
     HTML_DOCUMENT_LINK_LAYOUT,
@@ -54,6 +54,7 @@ from .article_lifecycle_types import (
     article_id,
     digest_json,
 )
+from .banktwo_authored_article_links import preserve_guid_index
 from .banktwo_service_schedule import banktwo_service_schedule
 from .source_adapters import adapt_bound_article, adapt_bound_pdf_embed
 from .source_connector_client import SourceConnectorError
@@ -1567,6 +1568,12 @@ def capture_source_article(
         new_structure = True
         for record in (resources[0], provenance[0], manifest[0]):
             record["missing_table_image_caption_layout"] = caption_layout
+    if provider == "banktwo" and preserve_guid_index(
+        body_payload, doc, str(context.descriptor.get("title") or "").strip(),
+    ):
+        new_structure = True
+        for record in (resources[0], provenance[0], manifest[0]):
+            record["banktwo_guid_index_layout"] = BANKTWO_GUID_INDEX_LAYOUT
     if (keep_inline_article_links and provider == "bankone"
         and body_payload.media_type == "text/html" and manifest[0].get("article_link_bindings")
         and body_digest != context.legacy_published_inline_article_link_body):

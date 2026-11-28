@@ -32,7 +32,7 @@ func (s *postgresCatalogStore) paidCatalogSourceView(ctx context.Context, config
 		requested = &revision
 	}
 	var takedown string
-	var doc, images, steps []byte
+	var doc, images, steps, authoredLinkSlots []byte
 	var body string
 	err := s.pool.QueryRow(ctx, `SELECT a.vehicle_configuration_id::text,a.canonical_article_id::text,a.vehicle_id::text,
 		a.provider_slug,a.source_vehicle_ref,a.source_article_ref,a.current_source_revision_id::text,
@@ -40,7 +40,10 @@ func (s *postgresCatalogStore) paidCatalogSourceView(ctx context.Context, config
 		view_row.source_revision_id::text,view_row.canonical_revision_id::text,
 		selected.source_revision_id::text,COALESCE(selected.body_source_snapshot_id::text,''),
 		COALESCE(selected.content_sha256::text,''),COALESCE(selected.source_version,''),
-		selected.source_document,selected.source_images,COALESCE(selected.source_body,''),selected.source_steps
+		selected.source_document,selected.source_images,COALESCE(selected.source_body,''),selected.source_steps,
+		CASE WHEN a.provider_slug='banktwo' AND selected.source_revision_id=view_row.source_revision_id
+			AND selected.source_revision_id=a.current_source_revision_id
+			THEN `+banktwoAuthoredArticleLinkSlotsSQL+` END
 		FROM canonical_articles a
 		JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
 		CROSS JOIN LATERAL (
@@ -66,6 +69,7 @@ func (s *postgresCatalogStore) paidCatalogSourceView(ctx context.Context, config
 		&identity.SourceVehicleRef, &identity.SourceArticleRef, &identity.CurrentSourceRevisionID, &takedown,
 		&view.Article.SourceRevisionID, &view.Article.CanonicalRevisionID,
 		&source.SourceRevisionID, &source.SnapshotID, &source.ContentSHA256, &source.Version, &doc, &images, &body, &steps,
+		&authoredLinkSlots,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ErrCatalogNotFound
@@ -87,8 +91,12 @@ func (s *postgresCatalogStore) paidCatalogSourceView(ctx context.Context, config
 	var links catalogArticleLinkProjection
 	links.resolve = s.authoredArticleLinkResolver(ctx, identity, !allowStagedOriginal)
 	if links.resolve != nil && view.Article.SourceRevisionID != nil && *view.Article.SourceRevisionID == *source.SourceRevisionID {
-		links.retained, links.inline = s.retainedArticleLinkBindings(ctx, article, source.SourceRevisionID,
-			view.Article.CanonicalRevisionID, source.ContentSHA256)
+		if identity.ProviderSlug == "banktwo" {
+			links.inline = decodeBanktwoAuthoredLinkSlots(authoredLinkSlots)
+		} else {
+			links.retained, links.inline = s.retainedArticleLinkBindings(ctx, article, source.SourceRevisionID,
+				view.Article.CanonicalRevisionID, source.ContentSHA256)
+		}
 	}
 	source, err = decodeCatalogSourceProjection(source, doc, images, body, steps, links)
 	return identity, view, source, err

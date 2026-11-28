@@ -235,7 +235,7 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 	if !commerceUUID(id) {
 		return CatalogArticleView{}, ErrCatalogNotFound
 	}
-	var raw, preview, linkedPreview []byte
+	var raw, preview, linkedPreview, authoredLinkSlots []byte
 	var correctionCheck bool
 	var serviceSchedule string
 	var originalRevision *string
@@ -257,7 +257,10 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 					AND job.phase='validating' AND NOT job.retryable
 					AND job.error_code IN ('REWRITE_UNCHANGED','REWRITE_PROSE_TOO_SIMILAR','REWRITE_TECHNICAL_MUTATION')
 					AND job.checkpoint ? 'new_article_rollout' AND job.checkpoint ? 'rollout_model_observation_id'
-			) ELSE false END
+			) ELSE false END,
+		CASE WHEN $4 AND a.provider_slug='banktwo' AND view_row.takedown_status='active'
+			AND view_row.source_revision_id=a.current_source_revision_id
+			THEN `+banktwoAuthoredArticleLinkSlotsSQL+` END
 		FROM canonical_articles a
 		JOIN LATERAL (
 			SELECT * FROM catalog_article_current WHERE canonical_article_id=a.canonical_article_id LIMIT 1
@@ -273,8 +276,10 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 			WHERE alias.catalog_article_id=$2::uuid AND legacy.vehicle_id=owner.vehicle_id
 			AND legacy.vehicle_configuration_id IS NOT DISTINCT FROM owner.vehicle_configuration_id
 		)) AND `+lifecycleScopeSQL+` AND `+lifecycleEligibleSQL+`
-		ORDER BY (a.canonical_article_id=$2::uuid) DESC LIMIT 1`, v, id, paid && !scope.openDemo).Scan(
+		ORDER BY (a.canonical_article_id=$2::uuid) DESC LIMIT 1`, v, id, paid && !scope.openDemo,
+		paid && scope.identity != nil && scope.identity.ProviderSlug == "banktwo").Scan(
 		&raw, &preview, &linkedPreview, &serviceSchedule, &originalRevision, &originalSnapshot, &originalHash, &originalVersion, &correctionCheck,
+		&authoredLinkSlots,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		legacy, e := s.legacyArticle(ctx, p, v, id)
@@ -366,7 +371,9 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 		scope.configuration.ID == v && row.ConfigurationID != nil && *row.ConfigurationID == v &&
 		row.CanonicalArticleID == scope.identity.CanonicalArticleID {
 		links.resolve = s.authoredArticleLinkResolver(ctx, *scope.identity, scope.openDemo)
-		if links.resolve != nil && article.Complete {
+		if links.resolve != nil && scope.identity.ProviderSlug == "banktwo" {
+			links.inline = decodeBanktwoAuthoredLinkSlots(authoredLinkSlots)
+		} else if links.resolve != nil && article.Complete {
 			links.retained, links.inline = s.retainedArticleLinkBindings(ctx, row.CanonicalArticleID, row.SourceRevisionID,
 				row.CanonicalRevisionID, article.sourceContentSHA256)
 		}
@@ -480,9 +487,17 @@ func catalogErrorMessage(code string) string {
 	}
 }
 
+// Authored-only targets belong under their supplier's links. If the normal
+// index later lists one, its descriptor snapshot is replaced by the page.
+const lifecycleListedArticleSQL = `NOT EXISTS (
+	SELECT 1 FROM banktwo_authored_article_referrals referral
+	WHERE referral.target_article_id=a.canonical_article_id
+	  AND referral.descriptor_source_snapshot_id=a.descriptor_source_snapshot_id
+)`
+
 func (s *postgresCatalogStore) Articles(ctx context.Context, p Principal, v string) ([]CatalogArticle, error) {
 	// Descriptor-only selection never reads a source document or performs work.
-	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''), c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status FROM canonical_articles a JOIN catalog_article_current c USING(canonical_article_id) WHERE `+lifecycleScopeSQL+` AND `+lifecycleEligibleSQL+` AND c.takedown_status='active' ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, v)
+	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''), c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status FROM canonical_articles a JOIN catalog_article_current c USING(canonical_article_id) WHERE `+lifecycleScopeSQL+` AND `+lifecycleEligibleSQL+` AND `+lifecycleListedArticleSQL+` AND c.takedown_status='active' ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, v)
 	if err != nil {
 		return nil, err
 	}
