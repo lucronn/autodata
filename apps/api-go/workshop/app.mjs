@@ -2788,11 +2788,12 @@ function requestSourceDocument(path, g, key, sourceView) {
   const deadline = performance.now() + timeout;
   const options = {
     signal: g.signal,
-    timeout,
     reportBodyNetworkError: true,
     headers: sourceView ? { ...sourceDocumentHeaders, "X-Workshop-Source-View": sourceView } : sourceDocumentHeaders,
   };
-  const response = requestJSON(path, options).catch((error) => {
+  // Leave time to retry a stalled connection. A successful response can
+  // still use the full deadline to deliver its body.
+  const response = requestJSON(path, { ...options, timeout: 3_000, readableBodyTimeout: timeout }).catch((error) => {
     g.signal.throwIfAborted();
     const remaining = Math.floor(deadline - performance.now());
     if (error.code !== "NETWORK_UNAVAILABLE" || error.status !== 0 || error.retryAfterSeconds || remaining <= 0)
