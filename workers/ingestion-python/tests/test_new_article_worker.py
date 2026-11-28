@@ -336,8 +336,8 @@ def test_continuous_quota_waits_and_resumes(continuous_state, monkeypatch):
                 assert seconds == 2
                 stop.set()
 
-    def poll_timeout(repo, providers):
-        paid_deadline_reads.append((clock[0], tuple(providers)))
+    def poll_timeout(repo, providers, *, eligibility_started_at):
+        paid_deadline_reads.append((eligibility_started_at, tuple(providers)))
         return 0.25
 
     def reserve(*args, **kwargs):

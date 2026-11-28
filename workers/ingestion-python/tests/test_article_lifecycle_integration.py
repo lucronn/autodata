@@ -2448,10 +2448,15 @@ def test_continuous_capture_passes_same_supplier_while_first_rewrite_waits(runti
 
 
 def test_continuous_paid_overflow_preserves_ledger_and_provider_cooldown(runtime, tmp_path, monkeypatch):
+    from datetime import timedelta
+
     from autodata_ingestion import commerce_service as commerce
     from autodata_ingestion.article_lifecycle_store import upsert_article_descriptor
     from autodata_ingestion.article_lifecycle_types import ArticleKey
-    from autodata_ingestion.new_article_worker import _CooldownConnector, _reserve_next_article, database_now
+    from autodata_ingestion.new_article_worker import (
+        ARTICLE_ACTIVITY_POLL_SECONDS, _CooldownConnector, _paid_source_poll_timeout,
+        _reserve_next_article, database_now,
+    )
     from autodata_ingestion.source_connector_client import SourceConnectorError
     from autodata_ingestion.source_job_persistence import claim_source_job, ensure_article_job
     from lifecycle_support import seed_configuration, seed_snapshot
@@ -2509,9 +2514,17 @@ def test_continuous_paid_overflow_preserves_ledger_and_provider_cooldown(runtime
         assert origin.get("source_cooldown_until")
     assert _reserve_next_article(repo, state, providers=["bankone"], paid_overflow=True) is None
     assert _reserve_next_article(repo, state, providers=["banktwo"], paid_overflow=True) == (other, "banktwo")
+    cooldown_expiry = database_now(repo) - timedelta(seconds=1)
     with repo.connect() as conn:
-        conn.execute("UPDATE source_fetch_jobs SET checkpoint=checkpoint-'source_cooldown_until' WHERE source_fetch_job_id=%s",
-                     (first,))
+        conn.execute("""UPDATE source_fetch_jobs SET checkpoint=checkpoint||
+                     jsonb_build_object('source_cooldown_until', %s::timestamptz)
+                     WHERE source_fetch_job_id=%s""", (cooldown_expiry, first))
+    assert _paid_source_poll_timeout(
+        repo, ["bankone"], eligibility_started_at=cooldown_expiry - timedelta(seconds=1),
+    ) == 0.01
+    assert _paid_source_poll_timeout(
+        repo, ["bankone"], eligibility_started_at=cooldown_expiry,
+    ) == ARTICLE_ACTIVITY_POLL_SECONDS
     assert _reserve_next_article(repo, state, providers=["bankone"], paid_overflow=True) == (second, "bankone")
     assert state.read() == before
 
