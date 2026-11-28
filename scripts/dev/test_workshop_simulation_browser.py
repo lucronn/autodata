@@ -443,7 +443,7 @@ async def verify_pending_saved_article(owner, origin, configuration, article, ex
         await tab.close()
 
 
-def authored_model_index_fixture(runtime, scope, *, competing_fitment=False):
+def authored_model_index_fixture(runtime, scope, *, competing_fitment=False, spelling="alias"):
     from threading import Event, Thread
 
     from psycopg.types.json import Jsonb
@@ -453,7 +453,8 @@ def authored_model_index_fixture(runtime, scope, *, competing_fitment=False):
 
     vehicle = seed_vehicle(runtime.repo)
     configuration = seed_configuration(runtime.repo, vehicle, engine_displacement_l=6.0)
-    make, model, authored = "Cadillac Truck", "Escalade Esv Awd", "Escalade/ESV AWD"
+    make, model = "Cadillac Truck", "Escalade Esv Awd"
+    authored = {"alias": "Escalade/ESV AWD", "case": "Escalade ESV AWD", "same": model}[spelling]
     ref, document = "vehicle:fixture-cadillac-awd-6", "cold-procedure"
     title = "Fixture pump service"
     with runtime.repo.connect() as conn:
@@ -1428,6 +1429,8 @@ async def exercise_simulated_payment(origin, scope, customer_account, repair=Non
     "payment", "list-starts", "authored-table", "archived-table", "source-table", "labelled-market", "late-group-models",
     "authored-model-index", "authored-model-index-competing-fitment", "authored-model-index-held-bankone",
     "authored-model-index-held-banktwo", "authored-guid", "authored-guid-source",
+    "authored-model-index-case", "authored-model-index-case-competing-fitment",
+    "authored-model-index-same-spelling",
 ])
 def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_database, monkeypatch, tmp_path, variant):
     from autodata_ingestion.http_service import make_handler
@@ -1456,7 +1459,12 @@ def test_simulated_payment_preserves_workshop_library_article_and_media(fresh_da
         if variant == "payment":
             scope["pending_saved_reader"] = True
         if variant.startswith("authored-model-index"):
-            scope = authored_model_index_fixture(runtime, scope, competing_fitment=variant.endswith("-competing-fitment"))
+            spelling = "case" if variant.startswith("authored-model-index-case") else (
+                "same" if variant.endswith("-same-spelling") else "alias"
+            )
+            scope = authored_model_index_fixture(
+                runtime, scope, competing_fitment=variant.endswith("-competing-fitment"), spelling=spelling,
+            )
         if variant == "authored-model-index":
             scope["retry_workshop_entry"] = True
         if variant == "authored-model-index-held-bankone":
