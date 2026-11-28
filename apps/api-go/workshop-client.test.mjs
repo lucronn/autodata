@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, awaitingArticleRewrite, processingArticle, readableArticle, readyReprojectedSource } from './workshop/article-read.mjs';
 import { pollOrder, purchaseConfiguration, quoteConfigurationLabel, readOrder, resumableCheckoutURL, sameScope, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
-import { articlePresentation, articleSearchParams, CatalogRequestError, configurationLabel, DEFAULT_COLLECTION_POLL_INTERVAL_MS, delay, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestArticleJSON, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, trimArticleSearch, vehicleSelectorPath } from './workshop/catalog.mjs';
+import { articlePresentation, articleSearchParams, CatalogRequestError, configurationLabel, DEFAULT_COLLECTION_POLL_INTERVAL_MS, delay, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, prioritizeReadableTitle, readCollection, requestArticleJSON, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, trimArticleSearch, vehicleSelectorPath } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 const paidPagePreferences = 'workshop-index-pages, workshop-index-live-pages';
@@ -4130,7 +4130,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     show() {},
     status(message, options = {}) { statuses.push({ message, options }); },
     stage() {}, articlePath: () => `/v1/catalog/vehicles/${scope.configuration_id}/articles`,
-    filterArticles,
+    filterArticles, prioritizeReadableTitle,
     renderArticleLinks(items) { $('articles').replaceChildren(...items.map(item => ({ id: item.id }))); },
     async loadArticle() { if (articleOpenError) throw articleOpenError; },
     readCollection: (read, options) => readCollection(read, {
@@ -5322,7 +5322,7 @@ function articleIndexHarness(responses, { wait = async () => {}, now = () => per
     demoPath: path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path,
     location: { href: `https://cars.example/workshop?vehicle=B${openDemo ? '&demo=1' : ''}` },
     document,
-    navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], demoIndexedCount: null, indexLoaded: false, indexComplete: false, indexCatalogEmpty: false, indexHydrating: false, indexFailed: false, access: '', retryAction: null, filterArticles,
+    navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], demoIndexedCount: null, indexLoaded: false, indexComplete: false, indexCatalogEmpty: false, indexHydrating: false, indexFailed: false, access: '', retryAction: null, filterArticles, prioritizeReadableTitle,
     searchNavigation, searchItems: null, searchQuery: '', searchPending: false, searchComplete: false, searchError: false, searchTimer: null,
     currentArticle: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
     sourceDocumentRequest: null,
@@ -6253,14 +6253,16 @@ test('article index shows article types and marks only readable rows as ready', 
   assert.equal(new URL(list.children[0].children[0].href, 'https://cars.example').searchParams.get('article'), 'source/procedure');
 });
 
-test('owned search keeps stored articles above entries that still need a body', () => {
+test('owned search puts readable exact titles first and keeps entries without a body below readable results', () => {
   const h = articleIndexHarness([]);
-  const indexed = { id: 'index', title: 'Pump repair', availability: 'unavailable' };
+  const indexed = { id: 'index', title: 'Pump installation', availability: 'unavailable' };
   const source = { id: 'source', title: 'Pump seal inspection', availability: 'available' };
   const published = { id: 'publication', title: 'Pump installation', availability: 'available' };
   h.context.searchQuery = 'pump';
   h.context.searchItems = [indexed, source, published];
   assert.deepEqual(Array.from(h.context.articleIndexItems('pump'), row => row.id), ['source', 'publication', 'index']);
+  h.context.searchQuery = 'pUmP iNstallation';
+  assert.deepEqual(Array.from(h.context.articleIndexItems(h.context.searchQuery), row => row.id), ['publication', 'source', 'index']);
   assert.deepEqual(h.context.searchItems.map(row => row.id), ['index', 'source', 'publication']);
 });
 

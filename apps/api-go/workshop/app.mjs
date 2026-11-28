@@ -18,6 +18,7 @@ const {
   selectorLabel,
   delay,
   filterArticles,
+  prioritizeReadableTitle,
   localImageURL,
   matchesRetainedReaderSession,
   readCollection,
@@ -1516,11 +1517,13 @@ const articlePageSize = 100;
 const articleIndexPagePreferences = "workshop-index-pages, workshop-index-live-pages";
 function articleIndexItems(query) {
   const visible = openDemo ? articles.filter((item) => item.availability === "available") : articles;
-  if (query && query === searchQuery && searchItems !== null) {
+  if (!query) return visible;
+  if (query === searchQuery && searchItems !== null) {
     const ready = searchItems.filter((item) => item.availability === "available");
-    return openDemo ? ready : [...ready, ...searchItems.filter((item) => item.availability !== "available")];
+    const ordered = prioritizeReadableTitle(ready, query);
+    return openDemo ? ordered : [...ordered, ...searchItems.filter((item) => item.availability !== "available")];
   }
-  return query ? filterArticles(visible, query) : visible;
+  return prioritizeReadableTitle(filterArticles(visible, query), query);
 }
 function moveArticlePage(direction) {
   if (indexPage && !trimArticleSearch($("search").value)) {
