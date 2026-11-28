@@ -43,6 +43,20 @@ _ACTION = "REWRITE_ACTION_MUTATION"
 _QUALIFIER = "REWRITE_QUALIFIER_MUTATION"
 
 
+def test_component_installation_state_stays_with_its_subject():
+    source = "The inspection cover is removed for service. Remove the auxiliary fixture plate retaining bracket."
+    valid = "For service, the inspection cover is removed. The auxiliary fixture plate retaining bracket must be removed."
+    reversed_state = valid.replace("bracket must be removed", "bracket must be installed")
+
+    auto._require_procedure_conditions(source, {"blocks": [{"text": valid}]}, "/blocks/0/text")
+    try:
+        auto._require_procedure_conditions(source, {"blocks": [{"text": reversed_state}]}, "/blocks/0/text")
+    except ValueError as error:
+        assert str(error) == auto.PROCEDURE_CONDITION_MUTATION
+    else:
+        raise AssertionError("the installation state of the named cover was reversed")
+
+
 def test_brake_fluid_level_guard_keeps_inclusive_condition_and_clean_inspection():
     def instruction(level, inspection):
         return (

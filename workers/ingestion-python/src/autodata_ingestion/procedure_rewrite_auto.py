@@ -16,7 +16,8 @@ from . import procedure_rewrite_full as full
 from .article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, ValidationResult
 from .bankone_brake_recovery import reservoir_preparation_facts
 from .procedure_rewrite_fidelity import (
-    brake_fluid_level_facts, conditional_service_facts, procedure_facts, recast_conditional_color_note,
+    brake_fluid_level_facts, component_installation_states, conditional_service_facts, procedure_facts,
+    recast_conditional_color_note,
 )
 from .vehicle_lifting_recovery import recast_reviewed_hood_precaution
 
@@ -2272,6 +2273,18 @@ def _require_brake_fluid_level(original, restored, path):
 
 def _require_procedure_conditions(original, restored, path):
     _require_brake_fluid_level(original, restored, path)
+    if expected_states := component_installation_states(original):
+        replacement = full._get(restored, path)
+        if isinstance(replacement, str):
+            actual_states = component_installation_states(replacement)
+            changed = {part for part, states in expected_states.items()
+                       if part in actual_states and actual_states[part] - states}
+            if changed:
+                # Direct instructions already have action checks and correction rules.
+                stated = component_installation_states(original, include_actions=False)
+                restated = component_installation_states(replacement, include_actions=False)
+                if changed & (stated.keys() | restated.keys()):
+                    raise ValueError(PROCEDURE_CONDITION_MUTATION)
     if "fluid" in original and (expected := reservoir_preparation_facts(original)):
         replacement = full._get(restored, path)
         if not isinstance(replacement, str) or reservoir_preparation_facts(replacement) != expected:

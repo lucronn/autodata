@@ -17,6 +17,31 @@ def _object_name(text: str) -> bool:
     return _CLAUSE_WORDS.isdisjoint(text.casefold().split())
 
 
+_COMPONENT_INSTALLATION = re.compile(
+    rf"\bthe (?P<part>{_PHRASE}) (?:must be|is|are|has been|have been) "
+    r"(?P<state>installed|removed)\b", _FLAGS,
+)
+_COMPONENT_INSTALLATION_ACTION = re.compile(
+    rf"(?:^|(?<=[.!?]) )(?P<action>install|remove) the (?P<part>{_PHRASE})(?=[.!?]|$)", _FLAGS,
+)
+_INSTALLATION_ACTION_STATES = {"install": "installed", "remove": "removed"}
+_SUBJECT_BOUNDARIES = frozenset("is are has have been was were that which of on in from".split())
+
+
+def component_installation_states(text: str, *, include_actions: bool = True) -> dict[str, set[str]]:
+    """Bind explicit installation states to their named subjects."""
+    normalized = " ".join(text.casefold().split())
+    statements = [(match["part"], match["state"]) for match in _COMPONENT_INSTALLATION.finditer(normalized)]
+    if include_actions:
+        statements.extend((match["part"], _INSTALLATION_ACTION_STATES[match["action"]])
+                          for match in _COMPONENT_INSTALLATION_ACTION.finditer(normalized))
+    states: dict[str, set[str]] = {}
+    for part, state in statements:
+        if _object_name(part) and _SUBJECT_BOUNDARIES.isdisjoint(part.split()):
+            states.setdefault(part, set()).add(state)
+    return states
+
+
 _CONTACT = rf"(?P<endpoint>it (?:contacts|touches) the (?P<stop>(?:{_WORD} ){{0,5}}stop))"
 _INSTALL_TO_STOP = re.compile(rf"Install the (?P<part>{_PHRASE}) until {_CONTACT}\.", _FLAGS)
 _REFIT_TO_STOP = re.compile(
