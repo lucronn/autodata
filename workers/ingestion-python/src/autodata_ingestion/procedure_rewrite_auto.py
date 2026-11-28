@@ -14,7 +14,7 @@ import re
 
 from . import procedure_rewrite_full as full
 from .article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, ValidationResult
-from .procedure_rewrite_fidelity import procedure_facts, recast_conditional_color_note
+from .procedure_rewrite_fidelity import brake_fluid_level_facts, procedure_facts, recast_conditional_color_note
 
 PROFILE = AUTOMATIC_REWRITE_PROFILE
 _PROSE_PROMPT_V4 = "full-prose-auto-prompt-v4"
@@ -2259,6 +2259,12 @@ def _passage_procedure_facts(text, *, allow_drain_subject):
     return procedure_facts(text[len(label):] if label else text, allow_drain_subject=allow_drain_subject)
 
 
+def _require_brake_fluid_level(original, restored, path):
+    if expected := brake_fluid_level_facts(original):
+        if expected != brake_fluid_level_facts(full._get(restored, path)):
+            raise ValueError("REWRITE_QUALIFIER_MUTATION")
+
+
 def _auto_procedure_prompt_payload(document, *, context, allow_drain_subject, allow_rotation_removal=False):
     payload = _auto_prompt_payload_v61(document, context=context, allow_rotation_removal=allow_rotation_removal)
     version = None
@@ -4360,6 +4366,7 @@ def _require_changes(
     def check_slot(slot):
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
+        _require_brake_fluid_level(original, restored, slot["path"])
         if slot["path"] in service_labels:
             if replacement != original:
                 raise ValueError("REWRITE_SERVICE_LABEL_MUTATION")
@@ -4642,6 +4649,7 @@ def require_current_publication_checks(source, candidate, *, saved_prompt_versio
     restored = {"blocks": candidate["blocks"][1:]}
     for slot in full.prose_slots(source, include_cell_blocks=True):
         original = slot["text"]
+        _require_brake_fluid_level(original, restored, slot["path"])
         if (recast := recast_spaced_rotation_removal(original)) and full._get(restored, slot["path"]) not in (original, recast):
             raise ValueError("REWRITE_ROTATION_DIRECTION_MUTATION")
     enforce_spaced_rotation = saved_prompt_version == _SPACED_ROTATION_PROMPT_VERSION
