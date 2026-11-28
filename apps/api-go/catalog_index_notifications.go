@@ -103,3 +103,9 @@ func (n *catalogIndexNotifications) watch(id string) (<-chan struct{}, func()) {
 		}
 	}
 }
+
+func (n *catalogIndexNotifications) available() bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.online
+}

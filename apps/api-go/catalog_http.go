@@ -339,10 +339,10 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 	}
 	var changed <-chan struct{}
 	var release func()
-	if s.catalogIndexChanges != nil && paid && scoped && !scope.openDemo &&
+	offersIndexWait := s.catalogIndexChanges != nil && paid && scoped && !scope.openDemo &&
 		pagePreference == catalogIndexLivePagesPreference && pageRequest == (catalogIndexPageRequest{}) &&
-		!filters.Has("q") && !filters.Has("title") &&
-		catalogReadPreferenceRequested(request, catalogIndexWaitPreference) {
+		!filters.Has("q") && !filters.Has("title")
+	if offersIndexWait && catalogReadPreferenceRequested(request, catalogIndexWaitPreference) {
 		// Subscribe before the snapshot so a commit between the read and wait
 		// cannot leave an already available first page sleeping.
 		changed, release = s.catalogIndexChanges.watch(scope.configuration.ID)
@@ -409,6 +409,9 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 	}
 	if statusErr != nil {
 		progress = nil
+	}
+	if offersIndexWait && len(items) == 0 && catalogIndexHydrating(progress) && s.catalogIndexChanges.available() {
+		response.Header().Set("Workshop-Index-Wait", "1")
 	}
 	if !paid && (progress == nil || !progress.Complete) && s.ingestionClient != nil {
 		ctx, cancel := context.WithTimeout(request.Context(), catalogStatusReadTimeout)

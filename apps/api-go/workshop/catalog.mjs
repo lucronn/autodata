@@ -298,7 +298,7 @@ export async function readCollection(
     attempts = DEFAULT_COLLECTION_POLL_ATTEMPTS,
     interval = DEFAULT_COLLECTION_POLL_INTERVAL_MS,
     wait = delay,
-    waitForEmpty,
+    nextEmptyRead,
     emptyProbe,
     emptyProbeDelays = [EMPTY_COLLECTION_PROBE_DELAY_MS],
     backoffWithChoices = false,
@@ -313,7 +313,7 @@ export async function readCollection(
   let fastPollingSince;
   let emptyReadRetried = false;
   let partialInterval = interval;
-  let waitingForRows = false;
+  let readWithWait;
   const pollUntil = backoffWithChoices ? now() + DEFAULT_COLLECTION_POLL_WINDOW_MS : Infinity;
   const fastWindow = stopWithChoices ? FIRST_SELECTOR_CHOICES_FAST_WINDOW_MS : PARTIAL_SELECTOR_FAST_WINDOW_MS;
   function update(data, attempt) {
@@ -333,14 +333,17 @@ export async function readCollection(
     let data;
     try {
       const timeout = backoffWithChoices ? Math.max(1, remaining) : undefined;
-      if (waitingForRows) {
+      if (readWithWait) {
         const started = now();
-        data = await waitForEmpty(timeout);
+        data = await readWithWait(timeout);
         signal?.throwIfAborted();
-        // A server without a listener can reply immediately. Continue at the
-        // ordinary cadence while its catalog remains empty.
-        if (data?.items?.length === 0 && data.hydrating && !data.complete)
+        // If a listener stops or the request times out, continue with ordinary reads.
+        if (!data || (data?.items?.length === 0 && data.hydrating && !data.complete))
           await wait(Math.max(0, Math.min(interval, remaining) - (now() - started)), signal);
+        if (!data) {
+          readWithWait = undefined;
+          continue;
+        }
       } else {
         data = await read(timeout);
       }
@@ -363,8 +366,8 @@ export async function readCollection(
     }
     if (update(data, attempt)) return latest;
     if (attempt === attempts - 1 || now() >= pollUntil) break;
-    waitingForRows = Boolean(waitForEmpty && !hasChoices(latest) && latest.hydrating);
-    if (waitingForRows) {
+    readWithWait = nextEmptyRead && latest.hydrating && !hasChoices(latest) ? nextEmptyRead() : undefined;
+    if (readWithWait) {
       if (now() + interval >= pollUntil) break;
       continue;
     }
@@ -487,7 +490,7 @@ export async function requestArticleJSON(path, {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    onResponseStatus?.(response.status);
+    onResponseStatus?.(response.status, response.headers);
     const applied = response.headers.get('Preference-Applied');
     if (onSelectedIndexSession && response.status !== 401 &&
         applied?.split(',').some(preference => preference.trim() === selectedIndexSessionPreference)) {
