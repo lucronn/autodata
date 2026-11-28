@@ -89,16 +89,16 @@ def install_markup(runtime):
     return index_path, child_path, svg
 
 
-def register_fixture_chain(runtime, index_path, child_path, *, model_client=None):
+def register_fixture_chain(runtime, index_path, child_path, *, model_client=None, rewrite_child=True):
     repo, parent = runtime.repo, runtime.article_id
     with repo.connect() as conn:
         profile = conn.execute("SELECT target_rewrite_profile_version FROM canonical_articles WHERE canonical_article_id=%s",
                                (parent,)).fetchone()["target_rewrite_profile_version"]
     ensure_article_job(repo, parent, normalization_version="ordered-article-v1", rewrite_profile_version=profile)
 
-    def run(job_id):
+    def run(job_id, client):
         assert run_article_worker_once(repo, worker_id=uuid4(), registry=runtime.registry,
-                                       object_store=runtime.objects, model_client=model_client, job_id=job_id)
+                                       object_store=runtime.objects, model_client=client, job_id=job_id)
 
     def state(article):
         with repo.connect() as conn:
@@ -114,28 +114,32 @@ def register_fixture_chain(runtime, index_path, child_path, *, model_client=None
         assert authored == digest(path)
         return target
 
-    run(state(parent)["current_job_id"])
+    run(state(parent)["current_job_id"], model_client)
     index = register(parent, index_path)
     same_job = state(index)["current_job_id"]
     stored_objects = {item.object_name for item in runtime.objects.client.list_objects(runtime.bucket, recursive=True)}
     assert register(parent, index_path) == index and state(index)["current_job_id"] == same_job
     assert {item.object_name for item in runtime.objects.client.list_objects(runtime.bucket, recursive=True)} == stored_objects
-    run(same_job)
+    run(same_job, model_client)
     child = register(index, child_path)
-    run(state(child)["current_job_id"])
+    run(state(child)["current_job_id"], model_client if rewrite_child else None)
     if model_client:
         with repo.connect() as conn:
             rows = conn.execute("""
-                SELECT title,availability,content_origin,canonical_revision_id,processing_error_code
+                SELECT canonical_article_id,title,availability,content_origin,canonical_revision_id,processing_error_code
                 FROM catalog_article_current WHERE canonical_article_id=ANY(%s)
             """, ([parent, index, child],)).fetchall()
-        assert len(rows) == 3 and all(row["availability"] == "available" and row["content_origin"] == "canonical"
-                                      and row["canonical_revision_id"] for row in rows), json.dumps(rows, default=str)
-        assert model_client.calls == 2
+        assert len(rows) == 3, json.dumps(rows, default=str)
+        for row in rows:
+            published = row["canonical_article_id"] != child or rewrite_child
+            assert row["availability"] == "available", row["title"]
+            assert row["content_origin"] == ("canonical" if published else "source"), row["title"]
+            assert bool(row["canonical_revision_id"]) == published, row["title"]
+        assert model_client.calls == (2 if rewrite_child else 1)
     return index, child
 
 
-def authored_guid_reader_fixture(runtime):
+def authored_guid_reader_fixture(runtime, *, rewrite_child=True):
     index_path, child_path, svg = install_markup(runtime)
 
     class Model:
@@ -161,7 +165,7 @@ def authored_guid_reader_fixture(runtime):
                 ],
             }
 
-    index, child = register_fixture_chain(runtime, index_path, child_path, model_client=Model())
+    index, child = register_fixture_chain(runtime, index_path, child_path, model_client=Model(), rewrite_child=rewrite_child)
     with runtime.repo.connect() as conn:
         result = conn.execute("""
             SELECT s.source_revision_id, s.resource_manifest FROM canonical_articles a
@@ -171,7 +175,7 @@ def authored_guid_reader_fixture(runtime):
     image, = [item for item in result["resource_manifest"] if item["role"] == "asset"]
     assert image["derived_from_sha256"] == digest(svg)
     return {"index": str(index), "child": str(child), "source_revision": str(result["source_revision_id"]),
-            "figure_sha256": image["sha256"]}
+            "figure_sha256": image["sha256"], "child_published": rewrite_child}
 
 
 def verify_registration(runtime, scope, index_path, child_path, svg):

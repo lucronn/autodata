@@ -305,8 +305,7 @@ func (s *postgresCatalogStore) authoredArticleLinkResolver(ctx context.Context, 
 				  AND referral.target_article_id=a.canonical_article_id AND proof.takedown_status='active'
 			  ))
 			  AND `+lifecycleEligibleSQL+`
-			GROUP BY ref_hash HAVING count(*)=1 AND (NOT $6 OR bool_and(c.availability='available'
-				AND ($7='bankone' OR c.canonical_revision_id IS NOT NULL)))
+			GROUP BY ref_hash HAVING count(*)=1 AND (NOT $6 OR bool_and(c.availability='available'))
 			LIMIT $5`, identity.CanonicalArticleID, identity.ConfigurationID, identity.SourceVehicleRef, hashes, maxCatalogArticleLinkTargets, readyOnly, identity.ProviderSlug)
 		if err != nil {
 			return nil
