@@ -278,6 +278,10 @@ func buildWorkshopAssetsHandler() func(http.ResponseWriter, *http.Request, works
 			} else if entry.publicSelectors {
 				document, tag = publicEntry, publicEntryTag
 			}
+			if r.URL.Path == workshopEntryPath && r.URL.RawQuery == "view=library" && len(entry.initialYears) == 0 {
+				// The relay may reuse this account-independent document for eligible saved links.
+				w.Header().Set("Workshop-Entry-Shell", "1")
+			}
 			if len(entry.initialYears) != 0 {
 				data := fmt.Appendf(nil, `<script id="workshop-initial-years" type="application/json">%s</script>`, entry.initialYears)
 				if len(entry.initialMakes) != 0 {
