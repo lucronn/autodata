@@ -4075,6 +4075,37 @@ window.addEventListener("popstate", () => void restoreHistoryEntry());
 window.addEventListener("pagehide", () => invalidate());
 let lifecycleCheck = null;
 let readerCheck = null;
+function refreshOwnedIndex() {
+  const catalog = $("catalog");
+  if (catalog.hidden || access !== "owned" || !indexPage || indexHydrating || pendingIndexPage?.current() ||
+      sessionRequest || !session.state.authenticated || session.state.mode !== "firebase" ||
+      trimArticleSearch($("search").value)) return null;
+  const route = new URLSearchParams(location.search);
+  if (route.get("configuration") !== vehicle?.id || route.get("region") !== vehicle.region ||
+      ["article", "order", "view", "q"].some((key) => route.has(key))) return null;
+
+  const focused = document.activeElement;
+  const restoreFocus = catalog.contains(focused);
+  const row = $("articles").contains(focused) ? focused.closest("[data-article-id]") : null;
+  const anchor = uuid(row?.dataset.articleId) ? row.dataset.articleId : "";
+  const offset = indexPage.offset;
+  const page = anchor ? { indexAnchor: anchor } : { offset };
+  return operation(async (g) => {
+    clearProtected();
+    articlePage = offset / articlePageSize;
+    show("welcome");
+    renderPurchase();
+    status("Checking your account…", { busy: true });
+    const sameSession = await session.matchesCurrentSession({ signal: g.signal }).catch(() => false);
+    if (!g.current()) return;
+    if (!sameSession) return bootstrap();
+    await loadArticles(g, "", page);
+    if (!g.current() || !restoreFocus || catalog.hidden || document.activeElement !== document.body) return;
+    if (!anchor && focused.getClientRects().length && !focused.disabled)
+      focused.focus({ preventScroll: true });
+    else focusArticleIndex(anchor);
+  }, () => restoreRoute());
+}
 async function recheck(preservePicker = false) {
   if (
     !sessionEstablished ||
@@ -4086,7 +4117,7 @@ async function recheck(preservePicker = false) {
     return;
   lifecycleCheck = preservePicker && !validScope(scope())
     ? checkAccount(undefined, true)
-    : bootstrap(undefined, undefined, { preservePicker });
+    : (preservePicker ? null : refreshOwnedIndex()) ?? bootstrap(undefined, undefined, { preservePicker });
   try {
     await lifecycleCheck;
   } finally {

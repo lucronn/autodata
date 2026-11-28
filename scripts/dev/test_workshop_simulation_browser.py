@@ -1055,6 +1055,7 @@ async def verify_repeated_index_history(page, configuration, article, engine):
     filler_rows = [{"id": str(uuid4()), "title": f"Test index entry {number}", "availability": "pending"}
                    for number in range(1, 101)]
     reads = []
+    legacy = False
 
     async def paged_index(route):
         url = urlsplit(route.request.url)
@@ -1069,9 +1070,13 @@ async def verify_repeated_index_history(page, configuration, article, engine):
         offset = int(query.get("offset", [100 if anchor == article else 0])[0])
         assert offset in (0, 100)
         reads.append({"anchor": anchor, "offset": offset})
-        data.update(items=[selected] if offset else filler_rows,
-                    page={"offset": offset, "total": 101, "revision": "1" * 64},
-                    complete=True, hydrating=False)
+        data.update(complete=True, hydrating=False)
+        if legacy:
+            data.pop("page", None)
+            data["items"] = [*filler_rows, selected]
+        else:
+            data["page"] = {"offset": offset, "total": 101, "revision": "1" * 64}
+            data["items"] = [selected] if offset else filler_rows
         await route.fulfill(response=response, json=data)
 
     await page.route(index_request, paged_index)
@@ -1143,6 +1148,21 @@ async def verify_repeated_index_history(page, configuration, article, engine):
                   "session_reads": requests.count("/auth/session"), "auth_config_reads": requests.count("/auth/config"),
                   "purchase_config_reads": requests.count("/workshop/purchase-config.json")}), flush=True)
             assert focused and reads == [{"anchor": article, "offset": 100}]
+            assert requests == ["/auth/session", index_path]
+
+            previous_page = page.locator("#article-prev")
+            for legacy in (False, True):
+                await previous_page.focus()
+                requests.clear()
+                reads.clear()
+                async with page.expect_response(lambda response: index_request(response.url)) as pending:
+                    await page.evaluate("window.dispatchEvent(new Event('focus'))")
+                assert (await pending.value).ok
+                await expect(previous_page).to_be_focused()
+                await expect(page_range).to_have_text("101–101 of 101")
+                assert reads == [{"anchor": None, "offset": 100}]
+                assert requests == ["/auth/session", index_path]
+            legacy = False
         finally:
             page.remove_listener("request", observe)
         await page.go_forward()
