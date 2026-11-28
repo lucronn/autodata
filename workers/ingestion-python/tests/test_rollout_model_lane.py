@@ -127,8 +127,11 @@ def test_actual_dispatch_fence_counts_rebound_jobs_and_ignores_expired_or_prepar
     target, _ = parked_job(repo, snapshot)
     assert claim_rollout_model_job(repo, snapshot, worker_id=uuid4()).job_id == target
     parked_job(repo, snapshot)
-    add_attempt(repo, rebound, lease_token=12, dispatched_at=now)
-    assert claim_rollout_model_job(repo, snapshot, worker_id=uuid4()) is None
+    add_attempt(repo, rebound, lease_token=12, dispatched_at=now - timedelta(hours=24) + timedelta(minutes=10))
+    waits = []
+    assert claim_rollout_model_job(repo, snapshot, worker_id=uuid4(), on_budget_wait=waits.append) is None
+    wait, = waits
+    assert 0 < wait <= 600
 
 
 def test_rollout_model_lane_rechecks_source_permission_at_dispatch(fresh_database):
