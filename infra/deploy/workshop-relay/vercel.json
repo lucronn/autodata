@@ -1,0 +1,19 @@
+{
+  "headers": [
+    {
+      "source": "/workshop/assets/:version([a-f0-9]{64})/:asset*",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "1"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/workshop/assets/:version([a-f0-9]{64})/:asset*",
+      "destination": "https://autodata.curtis.click/workshop/assets/:version/:asset*"
+    }
+  ]
+}
