@@ -16,8 +16,8 @@ from . import procedure_rewrite_full as full
 from .article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, ValidationResult
 from .bankone_brake_recovery import reservoir_preparation_facts
 from .procedure_rewrite_fidelity import (
-    brake_fluid_level_facts, component_installation_states, conditional_service_facts, procedure_facts,
-    recast_conditional_color_note,
+    brake_fluid_level_facts, component_installation_modality_changed, component_installation_states,
+    conditional_service_facts, procedure_facts, recast_conditional_color_note,
 )
 from .vehicle_lifting_recovery import recast_reviewed_hood_precaution
 
@@ -2725,8 +2725,18 @@ def require_required_procedure_actions(source, candidate, *, rewritten_paths):
     """Keep required repair steps mandatory in a new automatic publication."""
     rewritten = {"blocks": candidate["blocks"][1:]}
     for path in rewritten_paths:
-        if advisory_required_action(full._get(source, path), full._get(rewritten, path)):
+        original, replacement = full._get(source, path), full._get(rewritten, path)
+        if advisory_required_action(original, replacement):
             raise ValueError("REWRITE_REQUIRED_ACTION_WEAKENED")
+
+
+def require_component_installation_modality(source, candidate, *, rewritten_paths):
+    """Apply the current modality policy after verifying the draft's saved evidence."""
+    rewritten = {"blocks": candidate["blocks"][1:]}
+    for path in rewritten_paths:
+        original, replacement = full._get(source, path), full._get(rewritten, path)
+        if component_installation_modality_changed(original, replacement):
+            raise ValueError(PROCEDURE_CONDITION_MUTATION)
 
 
 def _display_control_quotations(text):

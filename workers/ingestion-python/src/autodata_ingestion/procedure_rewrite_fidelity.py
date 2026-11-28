@@ -25,7 +25,18 @@ _COMPONENT_INSTALLATION_ACTION = re.compile(
     rf"(?:^|(?<=[.!?]) )(?P<action>install|remove) the (?P<part>{_PHRASE})(?=[.!?]|$)", _FLAGS,
 )
 _INSTALLATION_ACTION_STATES = {"install": "installed", "remove": "removed"}
+_INSTALLATION_MODALITY = {
+    "may be": "optional", "can be": "optional", "should be": "advisory", "must not be": "prohibited",
+}
+_QUALIFIED_INSTALLATION = re.compile(
+    rf"\bthe (?P<part>{_PHRASE}) (?P<form>{'|'.join(_INSTALLATION_MODALITY)}) "
+    r"(?P<state>installed|removed)\b", _FLAGS,
+)
 _SUBJECT_BOUNDARIES = frozenset("is are has have been was were that which of on in from".split())
+
+
+def _component_name(part: str) -> bool:
+    return _object_name(part) and _SUBJECT_BOUNDARIES.isdisjoint(part.split())
 
 
 def component_installation_states(text: str, *, include_actions: bool = True) -> dict[str, set[str]]:
@@ -37,9 +48,28 @@ def component_installation_states(text: str, *, include_actions: bool = True) ->
                           for match in _COMPONENT_INSTALLATION_ACTION.finditer(normalized))
     states: dict[str, set[str]] = {}
     for part, state in statements:
-        if _object_name(part) and _SUBJECT_BOUNDARIES.isdisjoint(part.split()):
+        if _component_name(part):
             states.setdefault(part, set()).add(state)
     return states
+
+
+def _component_installation_modalities(text: str) -> dict[str, set[tuple[str, str]]]:
+    facts = {part: {(state, "affirmed") for state in states}
+             for part, states in component_installation_states(text).items()}
+    for match in _QUALIFIED_INSTALLATION.finditer(" ".join(text.casefold().split())):
+        if _component_name(match["part"]):
+            facts.setdefault(match["part"], set()).add((match["state"], _INSTALLATION_MODALITY[match["form"]]))
+    return facts
+
+
+def component_installation_modality_changed(original: str, replacement: str) -> bool:
+    expected = _component_installation_modalities(original)
+    actual = _component_installation_modalities(replacement)
+    for part, source in expected.items():
+        rewritten = actual.get(part)
+        if rewritten and rewritten - source and any(modality != "affirmed" for _, modality in source | rewritten):
+            return True
+    return False
 
 
 _CONTACT = rf"(?P<endpoint>it (?:contacts|touches) the (?P<stop>(?:{_WORD} ){{0,5}}stop))"

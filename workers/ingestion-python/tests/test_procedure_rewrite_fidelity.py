@@ -57,6 +57,44 @@ def test_component_installation_state_stays_with_its_subject():
         raise AssertionError("the installation state of the named cover was reversed")
 
 
+def test_component_installation_modality_stays_with_its_subject():
+    source = document("The inspection cover may be removed for service. Remove the auxiliary fixture plate retaining bracket.")
+    valid = "For service, the inspection cover can be removed. The auxiliary fixture plate retaining bracket must be removed."
+    incorrect = [valid.replace("bracket must be removed", f"bracket {form} removed")
+                 for form in ("may be", "can be", "should be", "must not be")]
+    incorrect.append(valid.replace("cover can be removed", "cover must be removed"))
+
+    def check(replacement):
+        auto.require_component_installation_modality(
+            source, document("This article describes service information.", replacement), rewritten_paths=("/blocks/0/text",),
+        )
+
+    check(valid)
+    for replacement in incorrect:
+        try:
+            check(replacement)
+        except ValueError as error:
+            assert str(error) == auto.PROCEDURE_CONDITION_MUTATION
+        else:
+            raise AssertionError("the requirement for the named component changed")
+
+
+def test_automatic_rewrite_preserves_optional_component_removal():
+    source = document("For access to the test fixture, the inspection cover may be removed.")
+
+    def rewrite_text(wording):
+        draft = response(wording, introduction="This article describes service information.")
+        return rewrite.rewrite_ordered_document(source, client=Draft(draft), context={}, profile_version=auto.PROFILE)
+
+    optional = "The inspection cover can be removed to reach the test fixture."
+    accepted = rewrite_text(optional)
+    assert accepted.error_code is None
+    assert accepted.document["blocks"][1]["text"] == optional
+    rejected = rewrite_text(optional.replace("can be", "must be"))
+    assert rejected.error_code == auto.PROCEDURE_CONDITION_MUTATION
+    assert rejected.document == source
+
+
 def test_brake_fluid_level_guard_keeps_inclusive_condition_and_clean_inspection():
     def instruction(level, inspection):
         return (
