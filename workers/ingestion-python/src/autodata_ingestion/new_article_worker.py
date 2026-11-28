@@ -504,8 +504,10 @@ def _subscribe_to_article_jobs(repo):
         return None
 
 
-def _paid_source_poll_timeout(repo, providers):
+def _paid_source_poll_timeout(repo, providers, *, eligibility_started_at):
     """Wake near the next supplier gate while retaining normal idle polling."""
+    # A gate can open after the reservation check but before this query.
+    # Keep that deadline for one prompt retry when it was pending at the start.
     with repo.connect() as conn:
         row = conn.execute("""
             SELECT MIN(ready_at) - statement_timestamp() AS remaining
@@ -517,12 +519,13 @@ def _paid_source_poll_timeout(repo, providers):
                 FROM source_fetch_jobs
                 WHERE job_kind='article' AND provider_slug=ANY(%(providers)s)
                   AND ((checkpoint->>'paid_source_reserved_at')::timestamptz >
-                       statement_timestamp() - %(interval)s
-                       OR (checkpoint->>'source_cooldown_until')::timestamptz > statement_timestamp())
+                       %(eligibility_started_at)s - %(interval)s
+                       OR (checkpoint->>'source_cooldown_until')::timestamptz > %(eligibility_started_at)s)
                 GROUP BY provider_slug
             ) deadlines
-            WHERE ready_at > statement_timestamp()
-        """, {"providers": providers, "interval": PAID_SOURCE_INTERVAL}).fetchone()
+            WHERE ready_at > %(eligibility_started_at)s
+        """, {"providers": providers, "interval": PAID_SOURCE_INTERVAL,
+              "eligibility_started_at": eligibility_started_at}).fetchone()
     remaining = row["remaining"]
     if remaining is None:
         return ARTICLE_ACTIVITY_POLL_SECONDS
@@ -630,7 +633,8 @@ def _run_continuous_articles(repo, state, *, registry, object_store, model_clien
                     break
                 has_active_job = bool(in_flight) or model_future is not None
                 try:
-                    timeout = (_paid_source_poll_timeout(repo, available) if paid_overflow and available
+                    timeout = (_paid_source_poll_timeout(repo, available, eligibility_started_at=now)
+                               if paid_overflow and available
                                else ARTICLE_ACTIVITY_POLL_SECONDS)
                     if next_model_slot is not None and model_future is None:
                         timeout = min(timeout, max(0.01, next_model_slot - monotonic()))
